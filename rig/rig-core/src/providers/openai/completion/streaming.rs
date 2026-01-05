@@ -512,30 +512,38 @@ mod tests {
                 &self,
                 _req: http::Request<T>,
             ) -> impl std::future::Future<
-                Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody<U>>>,
+                Output = crate::http_client::Result<
+                    http::Response<crate::http_client::LazyBody<U>>,
+                >,
             > + crate::wasm_compat::WasmCompatSend
-                   + 'static
+            + 'static
             where
                 T: Into<Bytes>,
                 T: crate::wasm_compat::WasmCompatSend,
                 U: From<Bytes>,
                 U: crate::wasm_compat::WasmCompatSend + 'static,
             {
-                async move { unimplemented!("not needed for this test") }
+                std::future::ready(Err(crate::http_client::Error::InvalidStatusCode(
+                    http::StatusCode::NOT_IMPLEMENTED,
+                )))
             }
 
             fn send_multipart<U>(
                 &self,
                 _req: http::Request<crate::http_client::MultipartForm>,
             ) -> impl std::future::Future<
-                Output = crate::http_client::Result<http::Response<crate::http_client::LazyBody<U>>>,
+                Output = crate::http_client::Result<
+                    http::Response<crate::http_client::LazyBody<U>>,
+                >,
             > + crate::wasm_compat::WasmCompatSend
-                   + 'static
+            + 'static
             where
                 U: From<Bytes>,
                 U: crate::wasm_compat::WasmCompatSend + 'static,
             {
-                async move { unimplemented!("not needed for this test") }
+                std::future::ready(Err(crate::http_client::Error::InvalidStatusCode(
+                    http::StatusCode::NOT_IMPLEMENTED,
+                )))
             }
 
             fn send_streaming<T>(
@@ -543,15 +551,16 @@ mod tests {
                 _req: http::Request<T>,
             ) -> impl std::future::Future<
                 Output = crate::http_client::Result<crate::http_client::StreamingResponse>,
-            >
-                   + crate::wasm_compat::WasmCompatSend
+            > + crate::wasm_compat::WasmCompatSend
             where
                 T: Into<Bytes>,
             {
                 let sse_bytes = self.sse_bytes.clone();
                 async move {
-                    let byte_stream =
-                        futures::stream::iter(vec![Ok::<Bytes, crate::http_client::Error>(sse_bytes)]);
+                    let byte_stream = futures::stream::iter(vec![Ok::<
+                        Bytes,
+                        crate::http_client::Error,
+                    >(sse_bytes)]);
                     let boxed_stream: crate::http_client::sse::BoxedStream = Box::pin(byte_stream);
 
                     http::Response::builder()
@@ -580,16 +589,15 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req).await.unwrap();
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
 
         let mut final_usage = None;
         while let Some(chunk) = stream.next().await {
-            match chunk.unwrap() {
-                streaming::StreamedAssistantContent::Final(res) => {
-                    final_usage = Some(res.usage);
-                    break;
-                }
-                _ => {}
+            if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+                final_usage = Some(res.usage);
+                break;
             }
         }
 
