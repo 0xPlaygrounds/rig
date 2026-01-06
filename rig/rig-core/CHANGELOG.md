@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.27.0...rig-core-v0.28.0) - 2026-01-06
+
+### Added
+
+- *(agent)* export StreamingError to public API ([#1200](https://github.com/0xPlaygrounds/rig/pull/1200))
+
+### Fixed
+
+- some completion providers send usage chunks with 0 completion choices causing 0 reported usage ([#1211](https://github.com/0xPlaygrounds/rig/pull/1211))
+- *(rig-1109)* export agent StreamingResult type ([#1220](https://github.com/0xPlaygrounds/rig/pull/1220))
+- docs typo ([#1219](https://github.com/0xPlaygrounds/rig/pull/1219))
+- missing json header on send_streaming ([#1196](https://github.com/0xPlaygrounds/rig/pull/1196))
+- *(rig-1113)* `calculate_max_tokens` assumes known model (anthropic) ([#1216](https://github.com/0xPlaygrounds/rig/pull/1216))
+- add headers to get call ([#1178](https://github.com/0xPlaygrounds/rig/pull/1178))
+- deepseek stream_prompt Invalid status code 415 ([#1170](https://github.com/0xPlaygrounds/rig/pull/1170))
+- *(openrouter)* add default serde attr to reasoning_details for optional field deserialization ([#1173](https://github.com/0xPlaygrounds/rig/pull/1173))
+
+### Other
+
+- add tool name to tool call delta streaming events ([#1222](https://github.com/0xPlaygrounds/rig/pull/1222))
+- *(deps)* update rmcp dependency to 0.12.0 ([#1182](https://github.com/0xPlaygrounds/rig/pull/1182))
+- *(deps)* upgrade rmcp dependency to 0.11 ([#1165](https://github.com/0xPlaygrounds/rig/pull/1165))
+- Respect custom http headers for outgoing client requests ([#1166](https://github.com/0xPlaygrounds/rig/pull/1166))
+
 ## [0.27.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.26.0...rig-core-v0.27.0) - 2025-12-15
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "rig-s3vectors"
-version = "0.1.16"
+version = "0.1.17"
 edition = { workspace = true }
 description = "AWS S3Vectors vector store implementation for the rig framework"
 license = "MIT"
@@ -14,7 +14,7 @@ aws-smithy-types = { workspace = true, features = [
   "serde-deserialize",
   "serde-serialize",
 ] }
-rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false, features = [
+rig-core = { path = "../../rig/rig-core", version = "0.28.0", default-features = false, features = [
   "derive",
 ] }
 serde = { workspace = true, features = ["derive"] }

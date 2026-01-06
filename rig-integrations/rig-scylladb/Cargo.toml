@@ -1,6 +1,6 @@
 [package]
 name = "rig-scylladb"
-version = "0.1.19"
+version = "0.1.20"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false, features = [
+rig-core = { path = "../../rig/rig-core", version = "0.28.0", default-features = false, features = [
   "derive",
 ] }
 serde_json = { workspace = true }

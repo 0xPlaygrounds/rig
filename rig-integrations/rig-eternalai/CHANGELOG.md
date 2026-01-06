@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.16](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.15...rig-eternalai-v0.3.16) - 2026-01-06
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.3.15](https://github.com/0xPlaygrounds/rig/compare/rig-eternalai-v0.3.14...rig-eternalai-v0.3.15) - 2025-12-15
 
 ### Other

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.31](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.30...rig-sqlite-v0.1.31) - 2026-01-06
+
+### Fixed
+
+- *(rig-1118)* rig-sqlite incorrectly uses euclidian distance ([#1217](https://github.com/0xPlaygrounds/rig/pull/1217))
+
 ## [0.1.30](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.29...rig-sqlite-v0.1.30) - 2025-12-15
 
 ### Other
