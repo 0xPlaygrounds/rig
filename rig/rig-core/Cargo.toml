@@ -59,6 +59,7 @@ tokio-stream = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }
+protoc-bin-vendored = "3.2.0"
 
 [dev-dependencies]
 anyhow = { workspace = true }

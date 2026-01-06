@@ -3,6 +3,9 @@ fn main() {
 }
 
 fn compile_gemini_protos() {
+    unsafe {
+        std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path().unwrap());
+    }
     tonic_build::configure()
         .build_server(false)
         .build_client(true)
