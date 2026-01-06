@@ -81,8 +81,11 @@ impl Interceptor for ApiKeyInterceptor {
 impl GeminiGrpcExt {
     /// Create a gRPC client with the given API key
     pub async fn new(api_key: String) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let endpoint = Endpoint::from_static(GEMINI_GRPC_ENDPOINT)
-            .tls_config(tonic::transport::ClientTlsConfig::new())?;
+        let endpoint = Endpoint::from_static(GEMINI_GRPC_ENDPOINT).tls_config(
+            tonic::transport::ClientTlsConfig::new()
+                .with_webpki_roots()
+                .domain_name("generativelanguage.googleapis.com"),
+        )?;
 
         let channel = endpoint.connect().await?;
 
