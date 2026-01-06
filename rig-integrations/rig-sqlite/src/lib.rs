@@ -504,7 +504,7 @@ fn build_where_clause(
     query_vec: Vec<f32>,
 ) -> Result<(String, Vec<Value>), FilterError> {
     let thresh = req.threshold().unwrap_or(0.);
-    let thresh = SqliteSearchFilter::gt("e.distance".into(), thresh.into());
+    let thresh = SqliteSearchFilter::gt("distance".into(), thresh.into());
 
     let filter = req
         .filter()
@@ -522,7 +522,7 @@ fn build_where_clause(
     let query_vec = Value::Blob(query_vec);
     let samples = req.samples() as u32;
 
-    let mut params = vec![query_vec, samples.into()];
+    let mut params = vec![query_vec.clone(), query_vec, samples.into()];
     let filter_params = filter.clone().compile_params()?;
     params.extend(filter_params);
 
@@ -560,11 +560,11 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.{select_cols}, e.distance
+                    "SELECT d.{select_cols}, (1 - vec_distance_cosine(?, e.embedding)) as distance
                     FROM {table_name}_embeddings e
                     JOIN {table_name} d ON e.rowid = d.rowid
                     {where_clause}
-                    ORDER BY e.distance"
+                    ORDER BY distance"
                 ))?;
 
                 let rows = stmt
@@ -623,11 +623,11 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.id, e.distance
+                    "SELECT d.id, (1 - vec_distance_cosine(?1, e.embedding)) as distance
                      FROM {table_name}_embeddings e
                      JOIN {table_name} d ON e.rowid = d.rowid
                      {where_clause}
-                     ORDER BY e.distance"
+                     ORDER BY distance"
                 ))?;
 
                 let results = stmt
