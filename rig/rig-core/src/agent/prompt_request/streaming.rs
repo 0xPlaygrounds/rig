@@ -348,9 +348,13 @@ where
                                 }
                             }
                         },
-                        Ok(StreamedAssistantContent::ToolCallDelta { id, delta }) => {
+                        Ok(StreamedAssistantContent::ToolCallDelta { id, content }) => {
                             if let Some(ref hook) = self.hook {
-                                hook.on_tool_call_delta(&id, &delta, cancel_signal.clone())
+                                let (name, delta) = match &content {
+                                    rig::streaming::ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
+                                    rig::streaming::ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
+                                };
+                                hook.on_tool_call_delta(&id, name, delta, cancel_signal.clone())
                                 .await;
 
                                 if cancel_signal.is_cancelled() {
@@ -461,7 +465,7 @@ where
     }
 }
 
-/// helper function to stream a completion selfuest to stdout
+/// Helper function to stream a completion request to stdout.
 pub async fn stream_to_stdout<R>(
     stream: &mut StreamingResult<R>,
 ) -> Result<FinalResponse, std::io::Error> {
@@ -524,10 +528,12 @@ where
     }
 
     #[allow(unused_variables)]
-    /// Called when receiving a tool call delta
+    /// Called when receiving a tool call delta.
+    /// `tool_name` is Some on the first delta for a tool call, None on subsequent deltas.
     fn on_tool_call_delta(
         &self,
         tool_call_id: &str,
+        tool_name: Option<&str>,
         tool_call_delta: &str,
         cancel_sig: CancelSignal,
     ) -> impl Future<Output = ()> + Send {

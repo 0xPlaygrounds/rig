@@ -282,6 +282,14 @@ where
 
                         if let StreamingCompletionChunk::Delta(chunk) = &data {
                             match &chunk.data {
+                                ItemChunkKind::OutputItemAdded(message) => {
+                                    if let StreamingItemDoneOutput { item: Output::FunctionCall(func), .. } = message {
+                                        yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                            id: func.id.clone(),
+                                            content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
+                                        });
+                                    }
+                                }
                                 ItemChunkKind::OutputItemDone(message) => {
                                     match message {
                                         StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
@@ -325,7 +333,7 @@ where
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), delta: delta.delta.clone() })
+                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone()) })
                                 }
 
                                 _ => { continue }
