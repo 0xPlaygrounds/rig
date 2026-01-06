@@ -27,6 +27,10 @@ pub const GEMINI_2_5_FLASH_LITE: &str = "gemini-2.5-flash-lite";
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.5-pro`
 pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
+/// `gemini-3-pro-preview`
+pub const GEMINI_3_PRO_PREVIEW: &str = "gemini-3-pro-preview";
+/// `gemini-3-flash-preview`
+pub const GEMINI_3_FLASH_PREVIEW: &str = "gemini-3-flash-preview";
 
 #[derive(Clone)]
 pub struct CompletionModel {
