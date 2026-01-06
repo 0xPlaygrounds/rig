@@ -1,6 +1,6 @@
 [package]
 name = "rig-eternalai"
-version = "0.3.15"
+version = "0.3.16"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false }
+rig-core = { path = "../../rig/rig-core", version = "0.28.0", default-features = false }
 ethers = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }

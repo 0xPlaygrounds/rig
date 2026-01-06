@@ -1,6 +1,6 @@
 [package]
 name = "rig-mongodb"
-version = "0.3.3"
+version = "0.3.4"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 futures = { workspace = true }
 mongodb = { workspace = true }
-rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false }
+rig-core = { path = "../../rig/rig-core", version = "0.28.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }

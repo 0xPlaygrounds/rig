@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.19...rig-milvus-v0.1.20) - 2026-01-06
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.19](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.18...rig-milvus-v0.1.19) - 2025-12-15
 
 ### Other
