@@ -195,10 +195,11 @@ fn rig_user_content_to_grpc_part(
                 }
             };
 
-            let result_value: serde_json::Value =
-                serde_json::from_str(&response_text).unwrap_or_else(|_| serde_json::json!(response_text));
+            let result_value: serde_json::Value = serde_json::from_str(&response_text)
+                .unwrap_or_else(|_| serde_json::json!(response_text));
 
-            let response_struct = json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
+            let response_struct =
+                json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
             Ok(proto::Part {
                 data: Some(proto::part::Data::FunctionResponse(
@@ -238,7 +239,10 @@ fn rig_user_content_to_grpc_part(
             let data = match img.data {
                 message::DocumentSourceKind::Url(file_uri) => {
                     return Ok(proto::Part {
-                        data: Some(proto::part::Data::FileData(proto::FileData { mime_type, file_uri })),
+                        data: Some(proto::part::Data::FileData(proto::FileData {
+                            mime_type,
+                            file_uri,
+                        })),
                         thought: false,
                         thought_signature: Vec::new(),
                         part_metadata: None,
@@ -254,10 +258,7 @@ fn rig_user_content_to_grpc_part(
             };
 
             Ok(proto::Part {
-                data: Some(proto::part::Data::InlineData(proto::Blob {
-                    mime_type,
-                    data,
-                })),
+                data: Some(proto::part::Data::InlineData(proto::Blob { mime_type, data })),
                 thought: false,
                 thought_signature: Vec::new(),
                 part_metadata: None,
@@ -328,9 +329,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             let assistant_content = match &part.data {
                 Some(proto::part::Data::Text(text)) => {
                     if part.thought {
-                        completion::AssistantContent::Reasoning(
-                            Reasoning::new(text).with_signature(encode_optional_base64(&part.thought_signature)),
-                        )
+                        completion::AssistantContent::Reasoning(Reasoning::new(text).with_signature(
+                            encode_optional_base64(&part.thought_signature),
+                        ))
                     } else {
                         completion::AssistantContent::text(text)
                     }
@@ -455,7 +456,7 @@ impl ProviderResponseExt for GenerateContentResponse {
                 if text.is_empty() {
                     None
                 } else {
-                    Some(text.join("\\n"))
+                    Some(text.join("\n"))
                 }
             })
         })
@@ -476,9 +477,22 @@ fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
         data
     };
 
-    base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .map_err(|e| CompletionError::RequestError(format!("Invalid base64 data: {e}").into()))
+    let mut last_err: Option<String> = None;
+
+    for engine in [
+        &base64::engine::general_purpose::STANDARD,
+        &base64::engine::general_purpose::URL_SAFE,
+        &base64::engine::general_purpose::STANDARD_NO_PAD,
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+    ] {
+        match engine.decode(data) {
+            Ok(bytes) => return Ok(bytes),
+            Err(err) => last_err = Some(err.to_string()),
+        }
+    }
+
+    let err = last_err.unwrap_or_else(|| "unknown base64 decode error".to_string());
+    Err(CompletionError::RequestError(format!("Invalid base64 data: {err}").into()))
 }
 
 fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionError> {
@@ -562,5 +576,42 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
         Some(proto::value::Kind::ListValue(list)) => {
             serde_json::Value::Array(list.values.iter().map(prost_value_to_json).collect())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_base64_bytes_accepts_url_safe_with_padding() {
+        assert!(matches!(
+            decode_base64_bytes("_-wgVQA="),
+            Ok(bytes) if bytes == vec![0xFF, 0xEC, 0x20, 0x55, 0x00]
+        ));
+    }
+
+    #[test]
+    fn test_decode_base64_bytes_accepts_url_safe_no_pad() {
+        assert!(matches!(
+            decode_base64_bytes("_-wgVQA"),
+            Ok(bytes) if bytes == vec![0xFF, 0xEC, 0x20, 0x55, 0x00]
+        ));
+    }
+
+    #[test]
+    fn test_decode_base64_bytes_accepts_standard_no_pad() {
+        assert!(matches!(
+            decode_base64_bytes("Zg"),
+            Ok(bytes) if bytes == b"f".to_vec()
+        ));
+    }
+
+    #[test]
+    fn test_decode_base64_bytes_accepts_data_uri_prefix() {
+        assert!(matches!(
+            decode_base64_bytes("data:text/plain;base64,Zm9v"),
+            Ok(bytes) if bytes == b"foo".to_vec()
+        ));
     }
 }
