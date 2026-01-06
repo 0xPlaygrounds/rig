@@ -13,6 +13,7 @@ use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::ProviderResponseExt;
+use base64::Engine as _;
 use std::convert::TryFrom;
 
 use super::Client;
@@ -93,11 +94,12 @@ pub(crate) fn create_grpc_request(
     // Handle system instruction (preamble)
     let system_instruction = completion_request.preamble.map(|preamble| proto::Content {
         parts: vec![proto::Part {
-            thought: Some(false),
-            thought_signature: None,
             data: Some(proto::part::Data::Text(preamble)),
+            thought: false,
+            thought_signature: Vec::new(),
+            part_metadata: None,
         }],
-        role: Some("model".to_string()),
+        role: "model".to_string(),
     });
 
     // Handle generation config
@@ -120,7 +122,7 @@ pub(crate) fn create_grpc_request(
             .map(|tool| proto::FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
-                parameters: None, // TODO: map schema
+                ..Default::default()
             })
             .collect();
 
@@ -135,11 +137,12 @@ pub(crate) fn create_grpc_request(
     Ok(GenerateContentRequest {
         model: format!("models/{}", model),
         contents,
-        system_instruction,
         tools,
-        tool_config: None,
         safety_settings: vec![],
         generation_config,
+        tool_config: None,
+        system_instruction,
+        cached_content: String::new(),
     })
 }
 
@@ -154,7 +157,7 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
 
             Ok(proto::Content {
                 parts,
-                role: Some("user".to_string()),
+                role: "user".to_string(),
             })
         }
         message::Message::Assistant { content, .. } => {
@@ -165,7 +168,7 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
 
             Ok(proto::Content {
                 parts,
-                role: Some("model".to_string()),
+                role: "model".to_string(),
             })
         }
     }
@@ -177,50 +180,87 @@ fn rig_user_content_to_grpc_part(
 ) -> Result<proto::Part, CompletionError> {
     match content {
         message::UserContent::Text(message::Text { text }) => Ok(proto::Part {
-            thought: Some(false),
-            thought_signature: None,
             data: Some(proto::part::Data::Text(text)),
+            thought: false,
+            thought_signature: Vec::new(),
+            part_metadata: None,
         }),
         message::UserContent::ToolResult(result) => {
             let response_text = match &result.content.first() {
                 message::ToolResultContent::Text(t) => t.text.clone(),
-                _ => String::new(),
-            };
-
-            Ok(proto::Part {
-                thought: Some(false),
-                thought_signature: None,
-                data: Some(proto::part::Data::FunctionResponse(
-                    proto::FunctionResponse {
-                        name: result.id,
-                        response: Some(response_text),
-                    },
-                )),
-            })
-        }
-        message::UserContent::Image(img) => {
-            let mime_type = img
-                .media_type
-                .map(|mt| mt.to_mime_type().to_string())
-                .unwrap_or_else(|| "image/jpeg".to_string());
-
-            let data = match img.data {
-                message::DocumentSourceKind::Base64(data)
-                | message::DocumentSourceKind::String(data) => data,
-                _ => {
+                message::ToolResultContent::Image(_) => {
                     return Err(CompletionError::RequestError(
-                        "Only base64 encoded images are supported".into(),
+                        "Tool result content must be text".into(),
                     ));
                 }
             };
 
+            let result_value: serde_json::Value =
+                serde_json::from_str(&response_text).unwrap_or_else(|_| serde_json::json!(response_text));
+
+            let response_struct = json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
+
             Ok(proto::Part {
-                thought: Some(false),
-                thought_signature: None,
+                data: Some(proto::part::Data::FunctionResponse(
+                    proto::FunctionResponse {
+                        name: result.id,
+                        response: Some(response_struct),
+                        id: result.call_id.unwrap_or_default(),
+                    },
+                )),
+                thought: false,
+                thought_signature: Vec::new(),
+                part_metadata: None,
+            })
+        }
+        message::UserContent::Image(img) => {
+            let Some(media_type) = img.media_type else {
+                return Err(CompletionError::RequestError(
+                    "Media type for image is required for Gemini".into(),
+                ));
+            };
+
+            match media_type {
+                message::ImageMediaType::JPEG
+                | message::ImageMediaType::PNG
+                | message::ImageMediaType::WEBP
+                | message::ImageMediaType::HEIC
+                | message::ImageMediaType::HEIF => {}
+                _ => {
+                    return Err(CompletionError::RequestError(
+                        format!("Unsupported image media type {media_type:?}").into(),
+                    ));
+                }
+            }
+
+            let mime_type = media_type.to_mime_type().to_string();
+
+            let data = match img.data {
+                message::DocumentSourceKind::Url(file_uri) => {
+                    return Ok(proto::Part {
+                        data: Some(proto::part::Data::FileData(proto::FileData { mime_type, file_uri })),
+                        thought: false,
+                        thought_signature: Vec::new(),
+                        part_metadata: None,
+                    });
+                }
+                message::DocumentSourceKind::Raw(bytes) => bytes,
+                message::DocumentSourceKind::Base64(data) | message::DocumentSourceKind::String(data) => {
+                    decode_base64_bytes(&data)?
+                }
+                message::DocumentSourceKind::Unknown => {
+                    return Err(CompletionError::RequestError("Image content has no body".into()));
+                }
+            };
+
+            Ok(proto::Part {
                 data: Some(proto::part::Data::InlineData(proto::Blob {
                     mime_type,
                     data,
                 })),
+                thought: false,
+                thought_signature: Vec::new(),
+                part_metadata: None,
             })
         }
         _ => Err(CompletionError::RequestError(
@@ -235,22 +275,30 @@ fn rig_assistant_content_to_grpc_part(
 ) -> Result<proto::Part, CompletionError> {
     match content {
         message::AssistantContent::Text(message::Text { text }) => Ok(proto::Part {
-            thought: Some(false),
-            thought_signature: None,
             data: Some(proto::part::Data::Text(text)),
+            thought: false,
+            thought_signature: Vec::new(),
+            part_metadata: None,
         }),
-        message::AssistantContent::ToolCall(tool_call) => Ok(proto::Part {
-            thought: Some(false),
-            thought_signature: tool_call.signature,
-            data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
-                name: tool_call.function.name,
-                args: Some(serde_json::to_string(&tool_call.function.arguments)?),
-            })),
-        }),
+        message::AssistantContent::ToolCall(tool_call) => {
+            let args = json_to_prost_struct(tool_call.function.arguments)?;
+
+            Ok(proto::Part {
+                data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
+                    name: tool_call.function.name,
+                    args: Some(args),
+                    id: tool_call.call_id.unwrap_or(tool_call.id),
+                })),
+                thought: false,
+                thought_signature: decode_optional_base64(tool_call.signature)?,
+                part_metadata: None,
+            })
+        }
         message::AssistantContent::Reasoning(reasoning) => Ok(proto::Part {
-            thought: Some(true),
-            thought_signature: reasoning.signature,
             data: Some(proto::part::Data::Text(reasoning.reasoning.join("\n"))),
+            thought: true,
+            thought_signature: decode_optional_base64(reasoning.signature)?,
+            part_metadata: None,
         }),
         _ => Err(CompletionError::RequestError(
             "Unsupported assistant content type".into(),
@@ -269,7 +317,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
 
         let content_ref = candidate.content.as_ref().ok_or_else(|| {
             CompletionError::ResponseError(format!(
-                "Gemini candidate missing content (finish_reason={:?})",
+                "Gemini candidate missing content (finish_reason={})",
                 candidate.finish_reason
             ))
         })?;
@@ -279,27 +327,54 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         for part in &content_ref.parts {
             let assistant_content = match &part.data {
                 Some(proto::part::Data::Text(text)) => {
-                    if part.thought.unwrap_or(false) {
-                        completion::AssistantContent::Reasoning(Reasoning::new(text))
+                    if part.thought {
+                        completion::AssistantContent::Reasoning(
+                            Reasoning::new(text).with_signature(encode_optional_base64(&part.thought_signature)),
+                        )
                     } else {
                         completion::AssistantContent::text(text)
+                    }
+                }
+                Some(proto::part::Data::InlineData(inline_data)) => {
+                    let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+                    match mime_type {
+                        Some(message::MediaType::Image(media_type)) => {
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&inline_data.data);
+                            completion::AssistantContent::image_base64(
+                                b64,
+                                Some(media_type),
+                                Some(message::ImageDetail::default()),
+                            )
+                        }
+                        _ => {
+                            return Err(CompletionError::ResponseError(format!(
+                                "Unsupported media type {mime_type:?}"
+                            )));
+                        }
                     }
                 }
                 Some(proto::part::Data::FunctionCall(function_call)) => {
                     let args = function_call
                         .args
                         .as_ref()
-                        .and_then(|a| serde_json::from_str(a).ok())
+                        .map(prost_struct_to_json)
                         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
                     let mut tool_call = message::ToolCall::new(
-                        function_call.name.clone(),
+                        if function_call.id.is_empty() {
+                            function_call.name.clone()
+                        } else {
+                            function_call.id.clone()
+                        },
                         message::ToolFunction::new(function_call.name.clone(), args),
                     );
 
-                    if let Some(sig) = &part.thought_signature {
-                        tool_call = tool_call.with_signature(Some(sig.clone()));
+                    if !function_call.id.is_empty() {
+                        tool_call = tool_call.with_call_id(function_call.id.clone());
                     }
+
+                    tool_call =
+                        tool_call.with_signature(encode_optional_base64(&part.thought_signature));
 
                     completion::AssistantContent::ToolCall(tool_call)
                 }
@@ -324,7 +399,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             .as_ref()
             .map(|usage| completion::Usage {
                 input_tokens: usage.prompt_token_count as u64,
-                output_tokens: usage.candidates_token_count.unwrap_or(0) as u64,
+                output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
             })
             .unwrap_or_default();
@@ -339,15 +414,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
 
 // Implement ProviderResponseExt for telemetry
 impl ProviderResponseExt for GenerateContentResponse {
-    type OutputMessage = proto::ContentCandidate;
+    type OutputMessage = proto::Candidate;
     type Usage = proto::UsageMetadata;
 
     fn get_response_id(&self) -> Option<String> {
-        Some(self.response_id.clone())
+        if self.response_id.is_empty() {
+            None
+        } else {
+            Some(self.response_id.clone())
+        }
     }
 
     fn get_response_model_name(&self) -> Option<String> {
-        self.model_version.clone()
+        if self.model_version.is_empty() {
+            None
+        } else {
+            Some(self.model_version.clone())
+        }
     }
 
     fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
@@ -380,5 +463,104 @@ impl ProviderResponseExt for GenerateContentResponse {
 
     fn get_usage(&self) -> Option<Self::Usage> {
         self.usage_metadata.clone()
+    }
+}
+
+fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
+    let data = input.trim();
+
+    // Allow `data:<mime>;base64,<data>` inputs.
+    let data = if let Some(rest) = data.strip_prefix("data:") {
+        rest.split_once(',').map(|(_, b64)| b64).unwrap_or(data)
+    } else {
+        data
+    };
+
+    base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| CompletionError::RequestError(format!("Invalid base64 data: {e}").into()))
+}
+
+fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionError> {
+    let Some(sig) = sig else { return Ok(Vec::new()); };
+    decode_base64_bytes(&sig)
+}
+
+fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
+    if bytes.is_empty() {
+        None
+    } else {
+        Some(base64::engine::general_purpose::STANDARD.encode(bytes))
+    }
+}
+
+fn json_to_prost_struct(value: serde_json::Value) -> Result<proto::Struct, CompletionError> {
+    match value {
+        serde_json::Value::Object(map) => Ok(proto::Struct {
+            fields: map
+                .into_iter()
+                .map(|(k, v)| (k, json_to_prost_value(v)))
+                .collect(),
+        }),
+        _ => Err(CompletionError::RequestError(
+            "Expected a JSON object for google.protobuf.Struct".into(),
+        )),
+    }
+}
+
+fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
+    match value {
+        serde_json::Value::Null => proto::Value {
+            kind: Some(proto::value::Kind::NullValue(
+                proto::NullValue::NullValue as i32,
+            )),
+        },
+        serde_json::Value::Bool(b) => proto::Value {
+            kind: Some(proto::value::Kind::BoolValue(b)),
+        },
+        serde_json::Value::Number(n) => proto::Value {
+            kind: Some(proto::value::Kind::NumberValue(
+                n.as_f64().unwrap_or_default(),
+            )),
+        },
+        serde_json::Value::String(s) => proto::Value {
+            kind: Some(proto::value::Kind::StringValue(s)),
+        },
+        serde_json::Value::Array(items) => proto::Value {
+            kind: Some(proto::value::Kind::ListValue(proto::ListValue {
+                values: items.into_iter().map(json_to_prost_value).collect(),
+            })),
+        },
+        serde_json::Value::Object(map) => proto::Value {
+            kind: Some(proto::value::Kind::StructValue(proto::Struct {
+                fields: map
+                    .into_iter()
+                    .map(|(k, v)| (k, json_to_prost_value(v)))
+                    .collect(),
+            })),
+        },
+    }
+}
+
+fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
+    let mut out = serde_json::Map::with_capacity(st.fields.len());
+    for (k, v) in &st.fields {
+        out.insert(k.clone(), prost_value_to_json(v));
+    }
+    serde_json::Value::Object(out)
+}
+
+fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
+    match &v.kind {
+        None | Some(proto::value::Kind::NullValue(_)) => serde_json::Value::Null,
+        Some(proto::value::Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
+        Some(proto::value::Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Some(proto::value::Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
+        Some(proto::value::Kind::StructValue(st)) => prost_struct_to_json(st),
+        Some(proto::value::Kind::ListValue(list)) => {
+            serde_json::Value::Array(list.values.iter().map(prost_value_to_json).collect())
+        }
     }
 }

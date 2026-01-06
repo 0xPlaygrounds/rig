@@ -58,11 +58,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 model: format!("models/{}", self.model),
                 content: Some(proto::Content {
                     parts: vec![proto::Part {
-                        thought: None,
-                        thought_signature: None,
                         data: Some(proto::part::Data::Text(doc.clone())),
+                        thought: false,
+                        thought_signature: Vec::new(),
+                        part_metadata: None,
                     }],
-                    role: None,
+                    role: String::new(),
                 }),
                 task_type: None,
                 title: None,

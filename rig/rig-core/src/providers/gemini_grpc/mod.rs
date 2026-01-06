@@ -42,7 +42,7 @@ impl crate::completion::GetTokenUsage for proto::GenerateContentResponse {
             .as_ref()
             .map(|u| crate::completion::Usage {
                 input_tokens: u.prompt_token_count as u64,
-                output_tokens: u.candidates_token_count.unwrap_or(0) as u64,
+                output_tokens: u.candidates_token_count as u64,
                 total_tokens: u.total_token_count as u64,
             })
     }
