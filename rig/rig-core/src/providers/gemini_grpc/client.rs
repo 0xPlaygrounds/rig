@@ -8,7 +8,7 @@ use tonic::service::Interceptor;
 use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, Status};
 
-use super::proto::generative_service_client::GenerativeServiceClient;
+use super::GenerativeServiceClient;
 
 // ================================================================
 // Google Gemini gRPC Client

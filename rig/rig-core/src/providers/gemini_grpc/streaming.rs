@@ -8,7 +8,7 @@ use futures::stream::{Stream, StreamExt};
 use std::pin::Pin;
 
 use super::Client;
-use super::proto::GenerateContentResponse;
+use super::GenerateContentResponse;
 
 pub type StreamingCompletionResponse = GenerateContentResponse;
 

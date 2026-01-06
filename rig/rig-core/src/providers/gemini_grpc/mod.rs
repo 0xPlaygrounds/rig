@@ -26,13 +26,13 @@ pub use client::Client;
 mod proto {
     #![allow(clippy::all)]
     #![allow(warnings)]
-    tonic::include_proto!("gemini");
+    tonic::include_proto!("google.ai.generativelanguage.v1beta");
 }
 
 // Re-export commonly used proto types
 pub use proto::{
-    Content, GenerateContentRequest, GenerateContentResponse, Part,
-    generative_service_client::GenerativeServiceClient,
+    Content, EmbedContentRequest, EmbedContentResponse, GenerateContentRequest,
+    GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
 
 // Implement GetTokenUsage for proto::GenerateContentResponse to support streaming

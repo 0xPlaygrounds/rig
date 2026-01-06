@@ -4,7 +4,7 @@
 
 syntax = "proto3";
 
-package gemini;
+package google.ai.generativelanguage.v1beta;
 
 // GenerativeService provides AI text generation capabilities
 service GenerativeService {
