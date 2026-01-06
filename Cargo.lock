@@ -9854,6 +9854,7 @@ dependencies = [
  "opentelemetry_sdk",
  "ordered-float",
  "pin-project-lite",
+ "prost",
  "quick-xml 0.38.0",
  "rayon",
  "reqwest 0.12.24",
@@ -9867,7 +9868,10 @@ dependencies = [
  "serenity",
  "thiserror 2.0.16",
  "tokio",
+ "tokio-stream",
  "tokio-test",
+ "tonic 0.12.3",
+ "tonic-build",
  "tracing",
  "tracing-futures",
  "tracing-opentelemetry",
@@ -12917,6 +12921,20 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "tonic-build"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9557ce109ea773b399c9b9e5dca39294110b74f1f342cb347a80d1fce8c26a11"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "prost-build",
+ "prost-types",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
