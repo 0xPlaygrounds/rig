@@ -43,10 +43,9 @@ impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, Embeddin
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EncodingFormat {
-    #[serde(rename = "float")]
     Float,
-    #[serde(rename = "base64")]
     Base64,
 }
 
@@ -61,9 +60,8 @@ pub struct EmbeddingData {
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
-    pub encoding_format: EncodingFormat,
+    pub encoding_format: Option<EncodingFormat>,
     ndims: usize,
-    pub user: Option<String>,
 }
 
 fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
@@ -104,15 +102,14 @@ where
         let mut body = json!({
             "model": self.model,
             "input": documents,
-            "encoding_format": self.encoding_format,
         });
 
         if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
             body["dimensions"] = json!(self.ndims);
         }
 
-        if let Some(user) = self.user.as_ref() {
-            body["user"] = json!(user);
+        if let Some(encoding_format) = &self.encoding_format { 
+             body["encoding_format"] = json!(encoding_format);
         }
 
         let body = serde_json::to_vec(&body)?;
@@ -166,9 +163,8 @@ impl<T> EmbeddingModel<T> {
         Self {
             client,
             model: model.into(),
-            encoding_format: EncodingFormat::Float,
+            encoding_format: None,
             ndims,
-            user: None,
         }
     }
 
@@ -176,9 +172,8 @@ impl<T> EmbeddingModel<T> {
         Self {
             client,
             model: model.into(),
-            encoding_format: EncodingFormat::Float,
+            encoding_format: None,
             ndims,
-            user: None,
         }
     }
 
@@ -191,19 +186,13 @@ impl<T> EmbeddingModel<T> {
         Self {
             client,
             model: model.into(),
-            encoding_format,
+            encoding_format: Some(encoding_format),
             ndims,
-            user: None,
         }
     }
 
     pub fn encoding_format(mut self, encoding_format: EncodingFormat) -> Self {
-        self.encoding_format = encoding_format;
-        self
-    }
-
-    pub fn user(mut self, user: impl Into<String>) -> Self {
-        self.user = Some(user.into());
+        self.encoding_format = Some(encoding_format);
         self
     }
 }
