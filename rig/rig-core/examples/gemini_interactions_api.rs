@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
         .init();
 
     let client = gemini::Client::from_env().interactions_api();
-    let model = client.completion_model(gemini::completion::GEMINI_2_0_FLASH);
+    let model = client.completion_model("gemini-3-flash-preview");
 
     println!("== Basic interaction ==");
     let basic_params = AdditionalParameters {
@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
         ..Default::default()
     };
     let search_request = model
-        .completion_request("Who won the last Super Bowl?")
+        .completion_request("What is the most recent country the US stole the leader of?")
         .additional_params(serde_json::to_value(&search_params)?)
         .build();
     let search_response = model.completion(search_request).await?;
