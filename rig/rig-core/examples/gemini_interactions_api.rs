@@ -91,6 +91,10 @@ async fn main() -> Result<()> {
     let search_response = model.completion(search_request).await?;
     print_text("Search response", &search_response.choice);
 
+    if let Some(cited) = search_response.raw_response.text_with_inline_citations() {
+        println!("Search response with citations: {cited}");
+    }
+
     let exchanges = search_response.raw_response.google_search_exchanges();
     if exchanges.is_empty() {
         println!("No search tool outputs returned.");
@@ -120,6 +124,52 @@ async fn main() -> Result<()> {
                     } else {
                         println!("[{}] {} ({})", idx + 1, title, url);
                     }
+                }
+            }
+        }
+    }
+
+    println!("\n== URL Context tool ==");
+    let url_params = AdditionalParameters {
+        tools: Some(vec![Tool::UrlContext]),
+        ..Default::default()
+    };
+    let url1 = "https://www.rust-lang.org/";
+    let url2 = "https://doc.rust-lang.org/book/";
+    let url_prompt =
+        format!("Compare the focus of the pages at {url1} and {url2}. Provide a concise summary.");
+    let url_request = model
+        .completion_request(url_prompt)
+        .additional_params(serde_json::to_value(&url_params)?)
+        .build();
+    let url_response = model.completion(url_request).await?;
+    print_text("URL context response", &url_response.choice);
+
+    let url_exchanges = url_response.raw_response.url_context_exchanges();
+    if url_exchanges.is_empty() {
+        println!("No URL context tool outputs returned.");
+    } else {
+        for exchange in url_exchanges {
+            let exchange_label = exchange
+                .call_id
+                .as_deref()
+                .map(|id| format!(" ({id})"))
+                .unwrap_or_default();
+            println!("URL context exchange{exchange_label}:");
+
+            let urls = exchange.urls();
+            if !urls.is_empty() {
+                println!("URLs: {}", urls.join(", "));
+            }
+
+            let results = exchange.result_items();
+            if results.is_empty() {
+                println!("No URL context results returned.");
+            } else {
+                for result in results {
+                    let url = result.url.as_deref().unwrap_or("unknown");
+                    let status = result.status.as_deref().unwrap_or("unknown");
+                    println!("- {url} ({status})");
                 }
             }
         }

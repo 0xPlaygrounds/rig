@@ -1,6 +1,7 @@
 use async_stream::stream;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::pin::Pin;
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
@@ -13,6 +14,7 @@ use super::interactions_api_types::{
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
+use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
 use crate::telemetry::SpanCombinator;
@@ -24,6 +26,14 @@ pub struct StreamingCompletionResponse {
     pub usage: Option<InteractionUsage>,
     pub interaction: Option<Interaction>,
 }
+
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+pub type InteractionEventStream =
+    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>> + Send>>;
+
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub type InteractionEventStream =
+    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
@@ -157,6 +167,48 @@ where
             stream,
         )))
     }
+}
+
+pub(crate) fn stream_interaction_events<T>(
+    client: super::InteractionsClient<T>,
+    request: Request<Vec<u8>>,
+) -> InteractionEventStream
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+{
+    let mut event_source = GenericEventSource::new(client.clone(), request);
+
+    let stream = stream! {
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => continue,
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() {
+                        continue;
+                    }
+
+                    let data = serde_json::from_str::<InteractionSseEvent>(&message.data);
+                    let Ok(data) = data else {
+                        let err = data.unwrap_err();
+                        tracing::debug!("Failed to deserialize interactions SSE event: {err}");
+                        continue;
+                    };
+
+                    yield Ok(data);
+                }
+                Err(crate::http_client::Error::StreamEnded) => break,
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    break;
+                }
+            }
+        }
+
+        event_source.close();
+    };
+
+    Box::pin(stream)
 }
 
 fn content_start_to_choice(

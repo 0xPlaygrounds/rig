@@ -117,8 +117,18 @@ impl Provider for GeminiInteractionsExt {
         })
     }
 
-    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
-        format!("{}/{}", base_url, path.trim_start_matches('/'))
+    fn build_uri(&self, base_url: &str, path: &str, transport: Transport) -> String {
+        let trimmed = path.trim_start_matches('/');
+        match transport {
+            Transport::Sse => {
+                if trimmed.contains('?') {
+                    format!("{}/{}&alt=sse", base_url, trimmed)
+                } else {
+                    format!("{}/{}?alt=sse", base_url, trimmed)
+                }
+            }
+            _ => format!("{}/{}", base_url, trimmed),
+        }
     }
 
     fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {

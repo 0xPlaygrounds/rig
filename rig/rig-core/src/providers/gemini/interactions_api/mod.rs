@@ -9,6 +9,7 @@ use crate::telemetry::SpanCombinator;
 use serde_json::{Map, Value};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
+use url::form_urlencoded;
 
 use super::client::InteractionsClient;
 
@@ -58,6 +59,48 @@ impl<T> InteractionsCompletionModel<T> {
         stream_override: Option<bool>,
     ) -> Result<CreateInteractionRequest, CompletionError> {
         create_request_body(self.model.clone(), completion_request, stream_override)
+    }
+}
+
+impl<T> InteractionsCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    /// Create an interaction and return the raw response payload.
+    pub async fn create_interaction(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<Interaction, CompletionError> {
+        let request = self.create_completion_request(completion_request, Some(false))?;
+        self.client.create_interaction(request).await
+    }
+
+    /// Fetch an interaction by ID for polling background tasks.
+    pub async fn get_interaction(
+        &self,
+        interaction_id: impl AsRef<str>,
+    ) -> Result<Interaction, CompletionError> {
+        self.client.get_interaction(interaction_id).await
+    }
+
+    /// Start an interaction and stream raw SSE events.
+    pub async fn stream_interaction_events(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::InteractionEventStream, CompletionError> {
+        let request = self.create_completion_request(completion_request, Some(true))?;
+        self.client.stream_interaction_events(request).await
+    }
+
+    /// Resume an interaction stream by ID and optional last event ID.
+    pub async fn stream_interaction_events_by_id(
+        &self,
+        interaction_id: impl AsRef<str>,
+        last_event_id: Option<&str>,
+    ) -> Result<streaming::InteractionEventStream, CompletionError> {
+        self.client
+            .stream_interaction_events_by_id(interaction_id, last_event_id)
+            .await
     }
 }
 
@@ -172,6 +215,79 @@ where
     }
 }
 
+impl<T> InteractionsClient<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    /// Create a new interaction and return the raw response payload.
+    pub async fn create_interaction(
+        &self,
+        request: CreateInteractionRequest,
+    ) -> Result<Interaction, CompletionError> {
+        if request.stream == Some(true) {
+            return Err(CompletionError::RequestError(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "stream=true requires stream_interaction_events",
+                ),
+            )));
+        }
+
+        let body = serde_json::to_vec(&request)?;
+        let request = self
+            .post("/v1beta/interactions")?
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        send_interaction_request(self, request).await
+    }
+
+    /// Fetch an interaction by ID (useful for polling background tasks).
+    pub async fn get_interaction(
+        &self,
+        interaction_id: impl AsRef<str>,
+    ) -> Result<Interaction, CompletionError> {
+        let path = format!("/v1beta/interactions/{}", interaction_id.as_ref());
+        let request = self
+            .get(path)?
+            .body(Vec::new())
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        send_interaction_request(self, request).await
+    }
+
+    /// Start an interaction and stream raw SSE events.
+    pub async fn stream_interaction_events(
+        &self,
+        mut request: CreateInteractionRequest,
+    ) -> Result<streaming::InteractionEventStream, CompletionError> {
+        request.stream = Some(true);
+        let body = serde_json::to_vec(&request)?;
+        let request = self
+            .post_sse("/v1beta/interactions")?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        Ok(streaming::stream_interaction_events(self.clone(), request))
+    }
+
+    /// Resume an interaction stream by ID and optional last event ID.
+    pub async fn stream_interaction_events_by_id(
+        &self,
+        interaction_id: impl AsRef<str>,
+        last_event_id: Option<&str>,
+    ) -> Result<streaming::InteractionEventStream, CompletionError> {
+        let path = build_interaction_stream_path(interaction_id.as_ref(), last_event_id);
+        let request = self
+            .get_sse(path)?
+            .body(Vec::new())
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        Ok(streaming::stream_interaction_events(self.clone(), request))
+    }
+}
+
 pub(crate) fn create_request_body(
     model: String,
     completion_request: CompletionRequest,
@@ -271,14 +387,72 @@ pub(crate) fn create_request_body(
     })
 }
 
+async fn send_interaction_request<T>(
+    client: &InteractionsClient<T>,
+    request: crate::http_client::Request<Vec<u8>>,
+) -> Result<Interaction, CompletionError>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    let response = client.send::<_, Vec<u8>>(request).await?;
+
+    if response.status().is_success() {
+        let response_body = response
+            .into_body()
+            .await
+            .map_err(CompletionError::HttpError)?;
+
+        let response_text = String::from_utf8_lossy(&response_body).to_string();
+
+        let response: Interaction = serde_json::from_slice(&response_body).map_err(|err| {
+            tracing::error!(
+                error = %err,
+                body = %response_text,
+                "Failed to deserialize Gemini interactions response"
+            );
+            CompletionError::JsonError(err)
+        })?;
+
+        Ok(response)
+    } else {
+        let text = String::from_utf8_lossy(
+            &response
+                .into_body()
+                .await
+                .map_err(CompletionError::HttpError)?,
+        )
+        .into();
+
+        Err(CompletionError::ProviderError(text))
+    }
+}
+
+fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&str>) -> String {
+    let mut serializer = form_urlencoded::Serializer::new(String::new());
+    serializer.append_pair("stream", "true");
+    if let Some(last_event_id) = last_event_id {
+        serializer.append_pair("last_event_id", last_event_id);
+    }
+    format!(
+        "/v1beta/interactions/{}?{}",
+        interaction_id,
+        serializer.finish()
+    )
+}
+
 impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
         if response.outputs.is_empty() {
-            return Err(CompletionError::ResponseError(
-                "Response contained no outputs".to_owned(),
-            ));
+            let status = response.status.as_ref().map(|status| format!("{status:?}"));
+            let message = match status {
+                Some(status) => format!(
+                    "Interaction contained no outputs (status: {status}). Use get_interaction for background tasks."
+                ),
+                None => "Interaction contained no outputs".to_string(),
+            };
+            return Err(CompletionError::ResponseError(message));
         }
 
         let content = response
@@ -609,6 +783,43 @@ pub mod interactions_api_types {
         }
     }
 
+    /// Groups URL context tool calls and results for a single interaction.
+    #[derive(Clone, Debug, Default)]
+    pub struct UrlContextExchange {
+        /// Call identifier used to match calls to results.
+        pub call_id: Option<String>,
+        /// One or more URL context tool calls.
+        pub calls: Vec<UrlContextCallContent>,
+        /// One or more URL context tool results.
+        pub results: Vec<UrlContextResultContent>,
+    }
+
+    impl UrlContextExchange {
+        /// Collects all URLs from the stored URL context tool calls.
+        pub fn urls(&self) -> Vec<String> {
+            let mut urls = Vec::new();
+            for call in &self.calls {
+                if let Some(args) = &call.arguments {
+                    if let Some(call_urls) = &args.urls {
+                        urls.extend(call_urls.clone());
+                    }
+                }
+            }
+            urls
+        }
+
+        /// Collects all URL context result entries from tool results.
+        pub fn result_items(&self) -> Vec<UrlContextResult> {
+            let mut items = Vec::new();
+            for result in &self.results {
+                if let Some(entries) = &result.result {
+                    items.extend(entries.clone());
+                }
+            }
+            items
+        }
+    }
+
     impl Interaction {
         /// Groups Google Search tool calls and results by call_id.
         pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
@@ -698,6 +909,122 @@ pub mod interactions_api_types {
                 .flat_map(|exchange| exchange.result_items())
                 .collect()
         }
+
+        /// Groups URL context tool calls and results by call_id.
+        pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
+            let mut exchanges: Vec<UrlContextExchange> = Vec::new();
+
+            for content in &self.outputs {
+                match content {
+                    Content::UrlContextCall(call) => {
+                        if let Some(call_id) = call.id.as_ref() {
+                            if let Some(index) = exchanges
+                                .iter()
+                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+                            {
+                                exchanges[index].calls.push(call.clone());
+                            } else {
+                                exchanges.push(UrlContextExchange {
+                                    call_id: Some(call_id.clone()),
+                                    calls: vec![call.clone()],
+                                    results: Vec::new(),
+                                });
+                            }
+                        } else {
+                            exchanges.push(UrlContextExchange {
+                                call_id: None,
+                                calls: vec![call.clone()],
+                                results: Vec::new(),
+                            });
+                        }
+                    }
+                    Content::UrlContextResult(result) => {
+                        if let Some(call_id) = result.call_id.as_ref() {
+                            if let Some(index) = exchanges
+                                .iter()
+                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+                            {
+                                exchanges[index].results.push(result.clone());
+                            } else {
+                                exchanges.push(UrlContextExchange {
+                                    call_id: Some(call_id.clone()),
+                                    calls: Vec::new(),
+                                    results: vec![result.clone()],
+                                });
+                            }
+                        } else {
+                            exchanges.push(UrlContextExchange {
+                                call_id: None,
+                                calls: Vec::new(),
+                                results: vec![result.clone()],
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            exchanges
+        }
+
+        /// Collects URL context tool call contents from the interaction outputs.
+        pub fn url_context_call_contents(&self) -> Vec<UrlContextCallContent> {
+            self.url_context_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.calls)
+                .collect()
+        }
+
+        /// Collects URL context result contents from the interaction outputs.
+        pub fn url_context_result_contents(&self) -> Vec<UrlContextResultContent> {
+            self.url_context_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.results)
+                .collect()
+        }
+
+        /// Collects all URLs from URL context tool calls in the outputs.
+        pub fn url_context_urls(&self) -> Vec<String> {
+            self.url_context_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.urls())
+                .collect()
+        }
+
+        /// Collects all URL context result entries from tool results in the outputs.
+        pub fn url_context_results(&self) -> Vec<UrlContextResult> {
+            self.url_context_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.result_items())
+                .collect()
+        }
+
+        /// Returns concatenated text outputs with inline citations appended.
+        pub fn text_with_inline_citations(&self) -> Option<String> {
+            let text = self
+                .outputs
+                .iter()
+                .filter_map(|content| match content {
+                    Content::Text(text) => Some(text.with_inline_citations()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if text.is_empty() { None } else { Some(text) }
+        }
+
+        /// Returns true when the interaction is in a terminal state.
+        pub fn is_terminal(&self) -> bool {
+            self.status
+                .as_ref()
+                .map_or(false, InteractionStatus::is_terminal)
+        }
+
+        /// Returns true when the interaction completed successfully.
+        pub fn is_completed(&self) -> bool {
+            matches!(self.status, Some(InteractionStatus::Completed))
+        }
     }
 
     /// Lifecycle status of an interaction.
@@ -709,6 +1036,18 @@ pub mod interactions_api_types {
         Completed,
         Failed,
         Cancelled,
+    }
+
+    impl InteractionStatus {
+        /// Returns true if the status is terminal.
+        pub fn is_terminal(&self) -> bool {
+            matches!(
+                self,
+                InteractionStatus::Completed
+                    | InteractionStatus::Failed
+                    | InteractionStatus::Cancelled
+            )
+        }
     }
 
     /// Token usage metadata for an interaction.
@@ -801,11 +1140,22 @@ pub mod interactions_api_types {
     // Content
     // =================================================================
 
-    /// Text annotation metadata.
+    /// Text annotation metadata for citations.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct Annotation {
-        pub start_index: i64,
-        pub end_index: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub start_index: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub end_index: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub source: Option<String>,
+    }
+
+    /// Normalized citation extracted from an annotation.
+    #[derive(Clone, Debug)]
+    pub struct Citation {
+        pub start_index: usize,
+        pub end_index: usize,
         pub source: String,
     }
 
@@ -815,6 +1165,97 @@ pub mod interactions_api_types {
         pub text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub annotations: Option<Vec<Annotation>>,
+    }
+
+    impl TextContent {
+        /// Collects citations extracted from annotations.
+        pub fn citations(&self) -> Vec<Citation> {
+            let mut citations = Vec::new();
+            let Some(annotations) = self.annotations.as_ref() else {
+                return citations;
+            };
+
+            for annotation in annotations {
+                let (Some(start), Some(end), Some(source)) = (
+                    annotation.start_index,
+                    annotation.end_index,
+                    annotation.source.as_ref(),
+                ) else {
+                    continue;
+                };
+
+                if start < 0 || end < 0 {
+                    continue;
+                }
+                let start = start as usize;
+                let end = end as usize;
+                if end <= start || end > self.text.len() {
+                    continue;
+                }
+                if !self.text.is_char_boundary(start) || !self.text.is_char_boundary(end) {
+                    continue;
+                }
+
+                citations.push(Citation {
+                    start_index: start,
+                    end_index: end,
+                    source: source.clone(),
+                });
+            }
+
+            citations.sort_by(|a, b| {
+                a.start_index
+                    .cmp(&b.start_index)
+                    .then_with(|| a.end_index.cmp(&b.end_index))
+            });
+
+            citations
+        }
+
+        /// Returns the text with inline citations appended after annotated spans.
+        pub fn with_inline_citations(&self) -> String {
+            let citations = self.citations();
+            if citations.is_empty() {
+                return self.text.clone();
+            }
+
+            let mut source_order = Vec::new();
+            for citation in &citations {
+                if !source_order.contains(&citation.source) {
+                    source_order.push(citation.source.clone());
+                }
+            }
+
+            let mut inserts = citations
+                .iter()
+                .map(|citation| {
+                    let index = source_order
+                        .iter()
+                        .position(|source| source == &citation.source)
+                        .map(|idx| idx + 1)
+                        .unwrap_or(0);
+                    (
+                        citation.start_index,
+                        citation.end_index,
+                        index,
+                        &citation.source,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            inserts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
+
+            let mut text = self.text.clone();
+            for (_, end, index, source) in inserts {
+                if index == 0 {
+                    continue;
+                }
+                let citation = format!("[{}]({})", index, source);
+                text.insert_str(end, &citation);
+            }
+
+            text
+        }
     }
 
     /// Image content item.
@@ -938,7 +1379,8 @@ pub mod interactions_api_types {
     /// Arguments for a URL context call.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextCallArguments {
-        pub urls: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub urls: Option<Vec<String>>,
     }
 
     /// URL context call content item.
@@ -953,8 +1395,10 @@ pub mod interactions_api_types {
     /// URL context result entry.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextResult {
-        pub url: String,
-        pub status: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub status: Option<String>,
     }
 
     /// URL context result content item.
@@ -1857,6 +2301,13 @@ mod tests {
     }
 
     #[test]
+    fn test_url_context_tool_serialization() {
+        let tool = Tool::UrlContext;
+        let value = serde_json::to_value(tool).expect("tool should serialize");
+        assert_eq!(value, json!({ "type": "url_context" }));
+    }
+
+    #[test]
     fn test_google_search_helpers() {
         let interaction = Interaction {
             outputs: vec![
@@ -1930,5 +2381,112 @@ mod tests {
         assert_eq!(result_contents.len(), 2);
         assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
         assert_eq!(result_contents[1].call_id.as_deref(), Some("call-2"));
+    }
+
+    #[test]
+    fn test_url_context_helpers() {
+        let interaction = Interaction {
+            outputs: vec![
+                Content::UrlContextCall(UrlContextCallContent {
+                    arguments: Some(UrlContextCallArguments {
+                        urls: Some(vec![
+                            "https://example.com".to_string(),
+                            "https://example.org".to_string(),
+                        ]),
+                    }),
+                    id: Some("call-1".to_string()),
+                }),
+                Content::UrlContextResult(UrlContextResultContent {
+                    result: Some(vec![UrlContextResult {
+                        url: Some("https://example.com".to_string()),
+                        status: Some("success".to_string()),
+                    }]),
+                    signature: None,
+                    is_error: None,
+                    call_id: Some("call-1".to_string()),
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let exchanges = interaction.url_context_exchanges();
+        assert_eq!(exchanges.len(), 1);
+        assert_eq!(exchanges[0].call_id.as_deref(), Some("call-1"));
+        assert_eq!(
+            exchanges[0].urls(),
+            vec!["https://example.com", "https://example.org"]
+        );
+        let results = exchanges[0].result_items();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status.as_deref(), Some("success"));
+
+        let urls = interaction.url_context_urls();
+        assert_eq!(urls, vec!["https://example.com", "https://example.org"]);
+
+        let results = interaction.url_context_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].url.as_deref(), Some("https://example.com"));
+
+        let call_contents = interaction.url_context_call_contents();
+        assert_eq!(call_contents.len(), 1);
+        assert_eq!(call_contents[0].id.as_deref(), Some("call-1"));
+
+        let result_contents = interaction.url_context_result_contents();
+        assert_eq!(result_contents.len(), 1);
+        assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
+    }
+
+    #[test]
+    fn test_interaction_status_helpers() {
+        let mut interaction = Interaction {
+            status: Some(InteractionStatus::InProgress),
+            ..Default::default()
+        };
+        assert!(!interaction.is_terminal());
+        assert!(!interaction.is_completed());
+
+        interaction.status = Some(InteractionStatus::Completed);
+        assert!(interaction.is_terminal());
+        assert!(interaction.is_completed());
+
+        interaction.status = Some(InteractionStatus::Failed);
+        assert!(interaction.is_terminal());
+        assert!(!interaction.is_completed());
+    }
+
+    #[test]
+    fn test_inline_citations_from_annotations() {
+        let text_content = TextContent {
+            text: "Hello world".to_string(),
+            annotations: Some(vec![
+                Annotation {
+                    start_index: Some(6),
+                    end_index: Some(11),
+                    source: Some("https://example.com".to_string()),
+                },
+                Annotation {
+                    start_index: Some(0),
+                    end_index: Some(5),
+                    source: Some("https://hello.example".to_string()),
+                },
+            ]),
+        };
+
+        let cited = text_content.with_inline_citations();
+        assert_eq!(
+            cited,
+            "Hello[1](https://hello.example) world[2](https://example.com)"
+        );
+
+        let interaction = Interaction {
+            outputs: vec![Content::Text(text_content)],
+            ..Default::default()
+        };
+
+        let cited_text = interaction.text_with_inline_citations();
+        assert_eq!(
+            cited_text.as_deref(),
+            Some("Hello[1](https://hello.example) world[2](https://example.com)")
+        );
     }
 }
