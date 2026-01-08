@@ -108,8 +108,8 @@ where
             body["dimensions"] = json!(self.ndims);
         }
 
-        if let Some(encoding_format) = &self.encoding_format { 
-             body["encoding_format"] = json!(encoding_format);
+        if let Some(encoding_format) = &self.encoding_format {
+            body["encoding_format"] = json!(encoding_format);
         }
 
         let body = serde_json::to_vec(&body)?;
