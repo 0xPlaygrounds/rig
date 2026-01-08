@@ -175,6 +175,42 @@ async fn main() -> Result<()> {
         }
     }
 
+    println!("\n== Code execution tool ==");
+    let code_params = AdditionalParameters {
+        tools: Some(vec![Tool::CodeExecution]),
+        ..Default::default()
+    };
+    let code_request = model
+        .completion_request(
+            "What is the sum of the first 50 prime numbers? Use code execution to compute it.",
+        )
+        .additional_params(serde_json::to_value(&code_params)?)
+        .build();
+    let code_response = model.completion(code_request).await?;
+    print_text("Code execution response", &code_response.choice);
+
+    let code_exchanges = code_response.raw_response.code_execution_exchanges();
+    if code_exchanges.is_empty() {
+        println!("No code execution tool outputs returned.");
+    } else {
+        for exchange in code_exchanges {
+            let exchange_label = exchange
+                .call_id
+                .as_deref()
+                .map(|id| format!(" ({id})"))
+                .unwrap_or_default();
+            println!("Code execution exchange{exchange_label}:");
+
+            for snippet in exchange.code_snippets() {
+                println!("Code:\n{snippet}");
+            }
+
+            for output in exchange.outputs() {
+                println!("Output:\n{output}");
+            }
+        }
+    }
+
     println!("\n== Tool call roundtrip ==");
     let add_tool = ToolDefinition {
         name: "add".to_string(),

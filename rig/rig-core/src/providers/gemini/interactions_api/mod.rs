@@ -820,6 +820,43 @@ pub mod interactions_api_types {
         }
     }
 
+    /// Groups code execution tool calls and results for a single interaction.
+    #[derive(Clone, Debug, Default)]
+    pub struct CodeExecutionExchange {
+        /// Call identifier used to match calls to results.
+        pub call_id: Option<String>,
+        /// One or more code execution tool calls.
+        pub calls: Vec<CodeExecutionCallContent>,
+        /// One or more code execution tool results.
+        pub results: Vec<CodeExecutionResultContent>,
+    }
+
+    impl CodeExecutionExchange {
+        /// Collects all code snippets from the stored code execution tool calls.
+        pub fn code_snippets(&self) -> Vec<String> {
+            let mut snippets = Vec::new();
+            for call in &self.calls {
+                if let Some(args) = &call.arguments {
+                    if let Some(code) = &args.code {
+                        snippets.push(code.clone());
+                    }
+                }
+            }
+            snippets
+        }
+
+        /// Collects all code execution outputs from tool results.
+        pub fn outputs(&self) -> Vec<String> {
+            let mut outputs = Vec::new();
+            for result in &self.results {
+                if let Some(output) = &result.result {
+                    outputs.push(output.clone());
+                }
+            }
+            outputs
+        }
+    }
+
     impl Interaction {
         /// Groups Google Search tool calls and results by call_id.
         pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
@@ -996,6 +1033,95 @@ pub mod interactions_api_types {
             self.url_context_exchanges()
                 .into_iter()
                 .flat_map(|exchange| exchange.result_items())
+                .collect()
+        }
+
+        /// Groups code execution tool calls and results by call_id.
+        pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
+            let mut exchanges: Vec<CodeExecutionExchange> = Vec::new();
+
+            for content in &self.outputs {
+                match content {
+                    Content::CodeExecutionCall(call) => {
+                        if let Some(call_id) = call.id.as_ref() {
+                            if let Some(index) = exchanges
+                                .iter()
+                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+                            {
+                                exchanges[index].calls.push(call.clone());
+                            } else {
+                                exchanges.push(CodeExecutionExchange {
+                                    call_id: Some(call_id.clone()),
+                                    calls: vec![call.clone()],
+                                    results: Vec::new(),
+                                });
+                            }
+                        } else {
+                            exchanges.push(CodeExecutionExchange {
+                                call_id: None,
+                                calls: vec![call.clone()],
+                                results: Vec::new(),
+                            });
+                        }
+                    }
+                    Content::CodeExecutionResult(result) => {
+                        if let Some(call_id) = result.call_id.as_ref() {
+                            if let Some(index) = exchanges
+                                .iter()
+                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+                            {
+                                exchanges[index].results.push(result.clone());
+                            } else {
+                                exchanges.push(CodeExecutionExchange {
+                                    call_id: Some(call_id.clone()),
+                                    calls: Vec::new(),
+                                    results: vec![result.clone()],
+                                });
+                            }
+                        } else {
+                            exchanges.push(CodeExecutionExchange {
+                                call_id: None,
+                                calls: Vec::new(),
+                                results: vec![result.clone()],
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            exchanges
+        }
+
+        /// Collects code execution tool call contents from the interaction outputs.
+        pub fn code_execution_call_contents(&self) -> Vec<CodeExecutionCallContent> {
+            self.code_execution_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.calls)
+                .collect()
+        }
+
+        /// Collects code execution result contents from the interaction outputs.
+        pub fn code_execution_result_contents(&self) -> Vec<CodeExecutionResultContent> {
+            self.code_execution_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.results)
+                .collect()
+        }
+
+        /// Collects all code snippets from code execution calls in the outputs.
+        pub fn code_execution_snippets(&self) -> Vec<String> {
+            self.code_execution_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.code_snippets())
+                .collect()
+        }
+
+        /// Collects all code execution outputs from tool results in the outputs.
+        pub fn code_execution_outputs(&self) -> Vec<String> {
+            self.code_execution_exchanges()
+                .into_iter()
+                .flat_map(|exchange| exchange.outputs())
                 .collect()
         }
 
@@ -1350,8 +1476,10 @@ pub mod interactions_api_types {
     /// Arguments for a code execution call.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct CodeExecutionCallArguments {
-        pub language: String,
-        pub code: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub language: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub code: Option<String>,
     }
 
     /// Code execution call content item.
@@ -2308,6 +2436,13 @@ mod tests {
     }
 
     #[test]
+    fn test_code_execution_tool_serialization() {
+        let tool = Tool::CodeExecution;
+        let value = serde_json::to_value(tool).expect("tool should serialize");
+        assert_eq!(value, json!({ "type": "code_execution" }));
+    }
+
+    #[test]
     fn test_google_search_helpers() {
         let interaction = Interaction {
             outputs: vec![
@@ -2434,6 +2569,48 @@ mod tests {
         let result_contents = interaction.url_context_result_contents();
         assert_eq!(result_contents.len(), 1);
         assert_eq!(result_contents[0].call_id.as_deref(), Some("call-1"));
+    }
+
+    #[test]
+    fn test_code_execution_helpers() {
+        let interaction = Interaction {
+            outputs: vec![
+                Content::CodeExecutionCall(CodeExecutionCallContent {
+                    arguments: Some(CodeExecutionCallArguments {
+                        language: Some("python".to_string()),
+                        code: Some("print(2 + 2)".to_string()),
+                    }),
+                    id: Some("call-1".to_string()),
+                }),
+                Content::CodeExecutionResult(CodeExecutionResultContent {
+                    result: Some("4\n".to_string()),
+                    signature: None,
+                    is_error: None,
+                    call_id: Some("call-1".to_string()),
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let exchanges = interaction.code_execution_exchanges();
+        assert_eq!(exchanges.len(), 1);
+        assert_eq!(exchanges[0].call_id.as_deref(), Some("call-1"));
+        assert_eq!(exchanges[0].code_snippets(), vec!["print(2 + 2)"]);
+        assert_eq!(exchanges[0].outputs(), vec!["4\n"]);
+
+        let calls = interaction.code_execution_call_contents();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id.as_deref(), Some("call-1"));
+
+        let results = interaction.code_execution_result_contents();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].call_id.as_deref(), Some("call-1"));
+
+        let snippets = interaction.code_execution_snippets();
+        assert_eq!(snippets, vec!["print(2 + 2)"]);
+
+        let outputs = interaction.code_execution_outputs();
+        assert_eq!(outputs, vec!["4\n"]);
     }
 
     #[test]
