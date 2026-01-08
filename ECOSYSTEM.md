@@ -5,12 +5,12 @@ Interested in having your project added here? Feel free to open an issue or PR.
 ## Community-maintained companion crates
 - [graph-flow](https://github.com/a-agmon/rs-graph-llm) - a graph execution library like LangGraph that uses Rig
 
-
 ## Project showcase
 - [clipbud](https://github.com/evilsocket/clipbud) - a cross platform util that interacts with your system clipboard and augments it with AI capabilities.
 - [Litho (deepwiki-rs)](https://github.com/sopaco/deepwiki-rs) - an AI-powered documentation engine that builds out your docs using your codebase.
 - [git-iris](https://github.com/hyperb1iss/git-iris) - an AI-powered tool to help automate Git workflows
-- [VT Code](https://github.com/vinhnx/vtcode) - a (currently research-preview) terminal coding agent.
+- [VT Code](https://github.com/vinhnx/vtcode) - a (currently research-preview) terminal coding agent
+- [rv](https://github.com/gi-dellav/rv) - a non-invasive AI code review tool
 
 ## Tutorials
 Nothing here yet. Maybe you'd like to be the first person to add something here?
