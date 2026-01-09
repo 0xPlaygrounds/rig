@@ -859,8 +859,12 @@ pub mod interactions_api_types {
 
     impl Interaction {
         /// Groups Google Search tool calls and results by call_id.
+        ///
+        /// When a call_id is missing, results are grouped with the most recent
+        /// call lacking an id as a best-effort fallback.
         pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
             let mut exchanges: Vec<GoogleSearchExchange> = Vec::new();
+            let mut last_unidentified_index: Option<usize> = None;
 
             for content in &self.outputs {
                 match content {
@@ -884,6 +888,7 @@ pub mod interactions_api_types {
                                 calls: vec![call.clone()],
                                 results: Vec::new(),
                             });
+                            last_unidentified_index = Some(exchanges.len() - 1);
                         }
                     }
                     Content::GoogleSearchResult(result) => {
@@ -901,11 +906,16 @@ pub mod interactions_api_types {
                                 });
                             }
                         } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
+                            if let Some(index) = last_unidentified_index {
+                                exchanges[index].results.push(result.clone());
+                            } else {
+                                exchanges.push(GoogleSearchExchange {
+                                    call_id: None,
+                                    calls: Vec::new(),
+                                    results: vec![result.clone()],
+                                });
+                                last_unidentified_index = Some(exchanges.len() - 1);
+                            }
                         }
                     }
                     _ => {}
@@ -948,8 +958,12 @@ pub mod interactions_api_types {
         }
 
         /// Groups URL context tool calls and results by call_id.
+        ///
+        /// When a call_id is missing, results are grouped with the most recent
+        /// call lacking an id as a best-effort fallback.
         pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
             let mut exchanges: Vec<UrlContextExchange> = Vec::new();
+            let mut last_unidentified_index: Option<usize> = None;
 
             for content in &self.outputs {
                 match content {
@@ -973,6 +987,7 @@ pub mod interactions_api_types {
                                 calls: vec![call.clone()],
                                 results: Vec::new(),
                             });
+                            last_unidentified_index = Some(exchanges.len() - 1);
                         }
                     }
                     Content::UrlContextResult(result) => {
@@ -990,11 +1005,16 @@ pub mod interactions_api_types {
                                 });
                             }
                         } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
+                            if let Some(index) = last_unidentified_index {
+                                exchanges[index].results.push(result.clone());
+                            } else {
+                                exchanges.push(UrlContextExchange {
+                                    call_id: None,
+                                    calls: Vec::new(),
+                                    results: vec![result.clone()],
+                                });
+                                last_unidentified_index = Some(exchanges.len() - 1);
+                            }
                         }
                     }
                     _ => {}
@@ -1037,8 +1057,12 @@ pub mod interactions_api_types {
         }
 
         /// Groups code execution tool calls and results by call_id.
+        ///
+        /// When a call_id is missing, results are grouped with the most recent
+        /// call lacking an id as a best-effort fallback.
         pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
             let mut exchanges: Vec<CodeExecutionExchange> = Vec::new();
+            let mut last_unidentified_index: Option<usize> = None;
 
             for content in &self.outputs {
                 match content {
@@ -1062,6 +1086,7 @@ pub mod interactions_api_types {
                                 calls: vec![call.clone()],
                                 results: Vec::new(),
                             });
+                            last_unidentified_index = Some(exchanges.len() - 1);
                         }
                     }
                     Content::CodeExecutionResult(result) => {
@@ -1079,11 +1104,16 @@ pub mod interactions_api_types {
                                 });
                             }
                         } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
+                            if let Some(index) = last_unidentified_index {
+                                exchanges[index].results.push(result.clone());
+                            } else {
+                                exchanges.push(CodeExecutionExchange {
+                                    call_id: None,
+                                    calls: Vec::new(),
+                                    results: vec![result.clone()],
+                                });
+                                last_unidentified_index = Some(exchanges.len() - 1);
+                            }
                         }
                     }
                     _ => {}
@@ -2519,6 +2549,54 @@ mod tests {
     }
 
     #[test]
+    fn test_google_search_helpers_without_call_id() {
+        let interaction = Interaction {
+            outputs: vec![
+                Content::GoogleSearchCall(GoogleSearchCallContent {
+                    arguments: Some(GoogleSearchCallArguments {
+                        queries: Some(vec!["query-one".to_string()]),
+                    }),
+                    id: None,
+                }),
+                Content::GoogleSearchResult(GoogleSearchResultContent {
+                    result: Some(vec![GoogleSearchResult {
+                        url: Some("https://example.com".to_string()),
+                        title: Some("Example One".to_string()),
+                        rendered_content: None,
+                    }]),
+                    signature: None,
+                    is_error: None,
+                    call_id: None,
+                }),
+                Content::GoogleSearchCall(GoogleSearchCallContent {
+                    arguments: Some(GoogleSearchCallArguments {
+                        queries: Some(vec!["query-two".to_string()]),
+                    }),
+                    id: None,
+                }),
+                Content::GoogleSearchResult(GoogleSearchResultContent {
+                    result: Some(vec![GoogleSearchResult {
+                        url: Some("https://example.org".to_string()),
+                        title: Some("Example Two".to_string()),
+                        rendered_content: None,
+                    }]),
+                    signature: None,
+                    is_error: None,
+                    call_id: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let exchanges = interaction.google_search_exchanges();
+        assert_eq!(exchanges.len(), 2);
+        assert_eq!(exchanges[0].calls.len(), 1);
+        assert_eq!(exchanges[0].results.len(), 1);
+        assert_eq!(exchanges[1].calls.len(), 1);
+        assert_eq!(exchanges[1].results.len(), 1);
+    }
+
+    #[test]
     fn test_url_context_helpers() {
         let interaction = Interaction {
             outputs: vec![
@@ -2572,6 +2650,35 @@ mod tests {
     }
 
     #[test]
+    fn test_url_context_helpers_without_call_id() {
+        let interaction = Interaction {
+            outputs: vec![
+                Content::UrlContextCall(UrlContextCallContent {
+                    arguments: Some(UrlContextCallArguments {
+                        urls: Some(vec!["https://example.com".to_string()]),
+                    }),
+                    id: None,
+                }),
+                Content::UrlContextResult(UrlContextResultContent {
+                    result: Some(vec![UrlContextResult {
+                        url: Some("https://example.com".to_string()),
+                        status: Some("success".to_string()),
+                    }]),
+                    signature: None,
+                    is_error: None,
+                    call_id: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let exchanges = interaction.url_context_exchanges();
+        assert_eq!(exchanges.len(), 1);
+        assert_eq!(exchanges[0].calls.len(), 1);
+        assert_eq!(exchanges[0].results.len(), 1);
+    }
+
+    #[test]
     fn test_code_execution_helpers() {
         let interaction = Interaction {
             outputs: vec![
@@ -2614,6 +2721,33 @@ mod tests {
     }
 
     #[test]
+    fn test_code_execution_helpers_without_call_id() {
+        let interaction = Interaction {
+            outputs: vec![
+                Content::CodeExecutionCall(CodeExecutionCallContent {
+                    arguments: Some(CodeExecutionCallArguments {
+                        language: Some("python".to_string()),
+                        code: Some("print(1 + 1)".to_string()),
+                    }),
+                    id: None,
+                }),
+                Content::CodeExecutionResult(CodeExecutionResultContent {
+                    result: Some("2\n".to_string()),
+                    signature: None,
+                    is_error: None,
+                    call_id: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let exchanges = interaction.code_execution_exchanges();
+        assert_eq!(exchanges.len(), 1);
+        assert_eq!(exchanges[0].calls.len(), 1);
+        assert_eq!(exchanges[0].results.len(), 1);
+    }
+
+    #[test]
     fn test_interaction_status_helpers() {
         let mut interaction = Interaction {
             status: Some(InteractionStatus::InProgress),
@@ -2629,6 +2763,19 @@ mod tests {
         interaction.status = Some(InteractionStatus::Failed);
         assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
+    }
+
+    #[test]
+    fn test_build_interaction_stream_path() {
+        let path = build_interaction_stream_path("interaction-123", None);
+        assert_eq!(path, "/v1beta/interactions/interaction-123?stream=true");
+
+        let path =
+            build_interaction_stream_path("interaction-123", Some("event-456"));
+        assert_eq!(
+            path,
+            "/v1beta/interactions/interaction-123?stream=true&last_event_id=event-456"
+        );
     }
 
     #[test]

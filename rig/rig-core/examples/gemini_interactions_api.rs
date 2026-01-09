@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
         ..Default::default()
     };
     let search_request = model
-        .completion_request("What is the most recent country the US stole the leader of?")
+        .completion_request("Who won the Euro 2024 tournament?")
         .additional_params(serde_json::to_value(&search_params)?)
         .build();
     let search_response = model.completion(search_request).await?;
