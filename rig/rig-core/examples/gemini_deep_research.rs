@@ -84,10 +84,10 @@ fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
                     print!("{text}");
                     state.saw_text = true;
                 }
-                ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
-                    if let ThoughtSummaryContent::Text(text) = content {
-                        println!("\nThought: {}", text.text);
-                    }
+                ContentDelta::ThoughtSummary(ThoughtSummaryDelta {
+                    content: ThoughtSummaryContent::Text(text),
+                }) => {
+                    println!("\nThought: {}", text.text);
                 }
                 _ => {}
             }
@@ -194,36 +194,36 @@ async fn main() -> Result<()> {
             sleep(Duration::from_secs(STREAM_RETRY_DELAY_SECS)).await;
         }
 
-        if !state.is_complete {
-            if let Some(interaction_id) = state.interaction_id.as_deref() {
-                println!("Switching to polling for interaction {interaction_id}...");
-                loop {
-                    let interaction = model.get_interaction(interaction_id).await?;
-                    if interaction.is_terminal() {
-                        match interaction.status {
-                            Some(InteractionStatus::Completed) => {
-                                let text = extract_text(&interaction.outputs);
-                                if text.is_empty() {
-                                    println!("No text output returned.");
-                                } else {
-                                    println!("{text}");
-                                }
-                            }
-                            Some(status) => {
-                                println!("Research ended with status: {status:?}");
-                            }
-                            None => {
-                                println!("Research ended without a status.");
+        if !state.is_complete
+            && let Some(interaction_id) = state.interaction_id.as_deref()
+        {
+            println!("Switching to polling for interaction {interaction_id}...");
+            loop {
+                let interaction = model.get_interaction(interaction_id).await?;
+                if interaction.is_terminal() {
+                    match interaction.status {
+                        Some(InteractionStatus::Completed) => {
+                            let text = extract_text(&interaction.outputs);
+                            if text.is_empty() {
+                                println!("No text output returned.");
+                            } else {
+                                println!("{text}");
                             }
                         }
-                        break;
+                        Some(status) => {
+                            println!("Research ended with status: {status:?}");
+                        }
+                        None => {
+                            println!("Research ended without a status.");
+                        }
                     }
-                    println!(
-                        "Status: {:?}. Polling again in 10s...",
-                        interaction.status.unwrap_or(InteractionStatus::InProgress)
-                    );
-                    sleep(Duration::from_secs(10)).await;
+                    break;
                 }
+                println!(
+                    "Status: {:?}. Polling again in 10s...",
+                    interaction.status.unwrap_or(InteractionStatus::InProgress)
+                );
+                sleep(Duration::from_secs(10)).await;
             }
         }
 

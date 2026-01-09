@@ -762,10 +762,10 @@ pub mod interactions_api_types {
         pub fn queries(&self) -> Vec<String> {
             let mut queries = Vec::new();
             for call in &self.calls {
-                if let Some(args) = &call.arguments {
-                    if let Some(call_queries) = &args.queries {
-                        queries.extend(call_queries.clone());
-                    }
+                if let Some(args) = &call.arguments
+                    && let Some(call_queries) = &args.queries
+                {
+                    queries.extend(call_queries.clone());
                 }
             }
             queries
@@ -799,10 +799,10 @@ pub mod interactions_api_types {
         pub fn urls(&self) -> Vec<String> {
             let mut urls = Vec::new();
             for call in &self.calls {
-                if let Some(args) = &call.arguments {
-                    if let Some(call_urls) = &args.urls {
-                        urls.extend(call_urls.clone());
-                    }
+                if let Some(args) = &call.arguments
+                    && let Some(call_urls) = &args.urls
+                {
+                    urls.extend(call_urls.clone());
                 }
             }
             urls
@@ -836,10 +836,10 @@ pub mod interactions_api_types {
         pub fn code_snippets(&self) -> Vec<String> {
             let mut snippets = Vec::new();
             for call in &self.calls {
-                if let Some(args) = &call.arguments {
-                    if let Some(code) = &args.code {
-                        snippets.push(code.clone());
-                    }
+                if let Some(args) = &call.arguments
+                    && let Some(code) = &args.code
+                {
+                    snippets.push(code.clone());
                 }
             }
             snippets
@@ -1177,7 +1177,7 @@ pub mod interactions_api_types {
         pub fn is_terminal(&self) -> bool {
             self.status
                 .as_ref()
-                .map_or(false, InteractionStatus::is_terminal)
+                .is_some_and(InteractionStatus::is_terminal)
         }
 
         /// Returns true when the interaction completed successfully.
@@ -2835,8 +2835,7 @@ mod tests {
         let path = build_interaction_stream_path("interaction-123", None);
         assert_eq!(path, "/v1beta/interactions/interaction-123?stream=true");
 
-        let path =
-            build_interaction_stream_path("interaction-123", Some("event-456"));
+        let path = build_interaction_stream_path("interaction-123", Some("event-456"));
         assert_eq!(
             path,
             "/v1beta/interactions/interaction-123?stream=true&last_event_id=event-456"
