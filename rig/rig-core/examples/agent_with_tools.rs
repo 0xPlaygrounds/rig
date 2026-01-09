@@ -1,9 +1,9 @@
 use anyhow::Result;
 use rig::prelude::*;
+use rig::tool::{Tool, ToolDyn};
 use rig::{
     completion::{Prompt, ToolDefinition},
     providers,
-    tool::Tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -102,14 +102,16 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = providers::openai::Client::from_env();
 
+    let tools: Vec<Box<dyn ToolDyn>> = vec![Box::new(Adder), Box::new(Subtract)];
+
     // Create agent with a single context prompt and two tools
     let calculator_agent = openai_client
         .agent(providers::openai::GPT_4O)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
-        .max_tokens(1024)
-        .tool(Adder)
-        .tool(Subtract)
-        .build();
+        .tools(tools)
+        .max_tokens(1024);
+
+    let calculator_agent = calculator_agent.build();
 
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");

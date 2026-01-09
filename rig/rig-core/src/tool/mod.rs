@@ -433,6 +433,14 @@ impl ToolSet {
         toolset
     }
 
+    pub fn from_tools_boxed(tools: Vec<Box<dyn ToolDyn + 'static>>) -> Self {
+        let mut toolset = Self::default();
+        tools.into_iter().for_each(|tool| {
+            toolset.add_tool_boxed(tool);
+        });
+        toolset
+    }
+
     /// Create a toolset builder
     pub fn builder() -> ToolSetBuilder {
         ToolSetBuilder::default()
