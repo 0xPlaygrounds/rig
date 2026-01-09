@@ -12,10 +12,11 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod interactions_api;
 pub mod streaming;
 pub mod transcription;
 
-pub use client::Client;
+pub use client::{Client, InteractionsClient};
 
 pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
