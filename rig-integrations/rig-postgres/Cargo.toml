@@ -1,6 +1,6 @@
 [package]
 name = "rig-postgres"
-version = "0.1.28"
+version = "0.1.29"
 edition = { workspace = true }
 description = "PostgreSQL-based vector store implementation for the rig framework"
 license = "MIT"
@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false, features = [
+rig-core = { path = "../../rig/rig-core", version = "0.28.0", default-features = false, features = [
   "derive",
 ] }
 serde = { workspace = true, features = ["derive"] }

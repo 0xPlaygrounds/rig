@@ -1,6 +1,6 @@
 [package]
 name = "rig-qdrant"
-version = "0.1.33"
+version = "0.1.34"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../../rig/rig-core", version = "0.27.0", default-features = false }
+rig-core = { path = "../../rig/rig-core", version = "0.28.0", default-features = false }
 serde_json = { workspace = true }
 serde = { workspace = true }
 qdrant-client = { workspace = true }

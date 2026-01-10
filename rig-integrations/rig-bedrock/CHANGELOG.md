@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.9...rig-bedrock-v0.3.10) - 2026-01-06
+
+### Other
+
+- add tool name to tool call delta streaming events ([#1222](https://github.com/0xPlaygrounds/rig/pull/1222))
+
 ## [0.3.9](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.8...rig-bedrock-v0.3.9) - 2025-12-15
 
 ### Other
