@@ -2,11 +2,11 @@
 //!
 //! # Example
 //! ```
-//! use rig::providers::google;
+//! use rig::providers::gemini;
 //!
-//! let client = google::Client::new("YOUR_API_KEY");
+//! let client = gemini::Client::new("YOUR_API_KEY");
 //!
-//! let gemini_embedding_model = client.embedding_model(google::EMBEDDING_001);
+//! let gemini_embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
 //! ```
 
 pub mod client;
