@@ -9,8 +9,7 @@ use crate::{
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{pin::Pin, sync::Arc};
-use tokio::sync::RwLock;
+use std::{pin::Pin, sync::{Arc, RwLock}};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -103,9 +102,9 @@ where
 {
     /// The prompt message to send to the model
     prompt: Message,
-    /// Optional chat history to include with the prompt
-    /// Note: chat history needs to outlive the agent as it might be used with other agents
-    chat_history: Option<Vec<Message>>,
+    /// Optional chat history to include with the prompt.
+    /// Uses shared ownership so callers can access updated history after the request completes.
+    chat_history: Option<Arc<RwLock<Vec<Message>>>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_depth: usize,
     /// The agent to use for execution
@@ -138,8 +137,19 @@ where
         self
     }
 
-    /// Add chat history to the prompt request
-    pub fn with_history(mut self, history: Vec<Message>) -> Self {
+    /// Add chat history to the prompt request.
+    ///
+    /// Uses shared ownership so you can access the updated history after the request completes:
+    /// ```ignore
+    /// let history = Arc::new(RwLock::new(Vec::new()));
+    /// let mut stream = agent
+    ///     .stream_prompt("Hello")
+    ///     .with_history(history.clone())
+    ///     .await;
+    /// // ... consume stream ...
+    /// let updated = history.read().expect("lock poisoned");  // Access updated history
+    /// ```
+    pub fn with_history(mut self, history: Arc<RwLock<Vec<Message>>>) -> Self {
         self.chat_history = Some(history);
         self
     }
@@ -181,11 +191,9 @@ where
 
         let agent = self.agent;
 
-        let chat_history = if let Some(history) = self.chat_history {
-            Arc::new(RwLock::new(history))
-        } else {
-            Arc::new(RwLock::new(vec![]))
-        };
+        let chat_history = self
+            .chat_history
+            .unwrap_or_else(|| Arc::new(RwLock::new(vec![])));
 
         let mut current_max_depth = 0;
         let mut last_prompt_error = String::new();
@@ -226,12 +234,13 @@ where
                 }
 
                 if let Some(ref hook) = self.hook {
-                    let reader = chat_history.read().await;
-                    hook.on_completion_call(&current_prompt, &reader.to_vec(), cancel_signal.clone())
+                    let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                    hook.on_completion_call(&current_prompt, &history_snapshot, cancel_signal.clone())
                         .await;
 
                     if cancel_signal.is_cancelled() {
-                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                        let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot).into()));
                     }
                 }
 
@@ -251,16 +260,17 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
+                let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
                 let mut stream = tracing::Instrument::instrument(
                     agent
-                    .stream_completion(current_prompt.clone(), (*chat_history.read().await).clone())
+                    .stream_completion(current_prompt.clone(), history_snapshot)
                     .await?
                     .stream(), chat_stream_span
                 )
 
                 .await?;
 
-                chat_history.write().await.push(current_prompt.clone());
+                chat_history.write().expect("chat_history lock poisoned").push(current_prompt.clone());
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
@@ -276,7 +286,8 @@ where
                             if let Some(ref hook) = self.hook {
                                 hook.on_text_delta(&text.text, &last_text_response, cancel_signal.clone()).await;
                                 if cancel_signal.is_cancelled() {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                    let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot).into()));
                                 }
                             }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
@@ -302,7 +313,8 @@ where
                                 if let Some(ref hook) = self.hook {
                                     hook.on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, cancel_signal.clone()).await;
                                     if cancel_signal.is_cancelled() {
-                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                        let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot).into()));
                                     }
                                 }
 
@@ -325,7 +337,8 @@ where
                                     .await;
 
                                     if cancel_signal.is_cancelled() {
-                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                        let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot).into()));
                                     }
                                 }
 
@@ -358,7 +371,8 @@ where
                                 .await;
 
                                 if cancel_signal.is_cancelled() {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                    let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot).into()));
                                 }
                             }
                         }
@@ -377,7 +391,8 @@ where
                                     hook.on_stream_completion_response_finish(&prompt, &final_resp, cancel_signal.clone()).await;
 
                                     if cancel_signal.is_cancelled() {
-                                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec()).into()));
+                                        let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
+                                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot).into()));
                                     }
                                 }
 
@@ -395,7 +410,7 @@ where
 
                 // Add (parallel) tool calls to chat history
                 if !tool_calls.is_empty() {
-                    chat_history.write().await.push(Message::Assistant {
+                    chat_history.write().expect("chat_history lock poisoned").push(Message::Assistant {
                         id: None,
                         content: OneOrMany::many(tool_calls.clone()).expect("Impossible EmptyListError"),
                     });
@@ -404,7 +419,7 @@ where
                 // Add tool results to chat history
                 for (id, call_id, tool_result) in tool_results {
                     if let Some(call_id) = call_id {
-                        chat_history.write().await.push(Message::User {
+                        chat_history.write().expect("chat_history lock poisoned").push(Message::User {
                             content: OneOrMany::one(UserContent::tool_result_with_call_id(
                                 &id,
                                 call_id.clone(),
@@ -412,7 +427,7 @@ where
                             )),
                         });
                     } else {
-                        chat_history.write().await.push(Message::User {
+                        chat_history.write().expect("chat_history lock poisoned").push(Message::User {
                             content: OneOrMany::one(UserContent::tool_result(
                                 &id,
                                 OneOrMany::one(ToolResultContent::text(&tool_result)),
@@ -422,12 +437,21 @@ where
                 }
 
                 // Set the current prompt to the last message in the chat history
-                current_prompt = match chat_history.write().await.pop() {
+                current_prompt = match chat_history.write().expect("chat_history lock poisoned").pop() {
                     Some(prompt) => prompt,
                     None => unreachable!("Chat history should never be empty at this point"),
                 };
 
                 if !did_call_tool {
+                    // Add user message and assistant response to history before finishing
+                    {
+                        let mut history = chat_history.write().expect("chat_history lock poisoned");
+                        history.push(current_prompt.clone());
+                        if !last_text_response.is_empty() {
+                            history.push(Message::assistant(&last_text_response));
+                        }
+                    }
+
                     let current_span = tracing::Span::current();
                     current_span.record("gen_ai.usage.input_tokens", aggregated_usage.input_tokens);
                     current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
@@ -438,9 +462,10 @@ where
             }
 
             if max_depth_reached {
+                let history_snapshot = chat_history.read().expect("chat_history lock poisoned").clone();
                 yield Err(Box::new(PromptError::MaxDepthError {
                     max_depth: self.max_depth,
-                    chat_history: Box::new((*chat_history.read().await).clone()),
+                    chat_history: Box::new(history_snapshot),
                     prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
             }
@@ -685,6 +710,81 @@ mod tests {
             leaks, 0,
             "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
              This indicates that span.enter() is being used inside async_stream instead of .instrument()"
+        );
+    }
+
+    /// Test that chat_history with shared ownership (Arc<RwLock<...>>) is correctly
+    /// updated after the streaming request completes.
+    ///
+    /// This verifies that:
+    /// 1. The caller can access the updated history through the Arc after streaming
+    /// 2. The history contains both the user prompt and assistant response
+    #[tokio::test]
+    #[ignore = "This requires an API key"]
+    async fn test_chat_history_shared_ownership() {
+        use crate::message::Message;
+        use std::sync::RwLock;
+
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .preamble("You are a helpful assistant. Keep responses brief.")
+            .temperature(0.1)
+            .max_tokens(50)
+            .build();
+
+        // Create shared history
+        let history = Arc::new(RwLock::new(Vec::<Message>::new()));
+
+        // Send streaming request with shared history
+        let mut stream = agent
+            .stream_prompt("Say 'hello' and nothing else.")
+            .with_history(history.clone())
+            .await;
+
+        // Consume the stream
+        let mut response_text = String::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    response_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    break;
+                }
+                Err(e) => {
+                    panic!("Streaming error: {:?}", e);
+                }
+                _ => {}
+            }
+        }
+
+        // Verify the shared history was updated
+        let updated_history = history.read().expect("chat_history lock poisoned");
+
+        assert!(
+            !updated_history.is_empty(),
+            "History should not be empty after streaming request"
+        );
+
+        // Should contain at least the user message
+        assert!(
+            updated_history.iter().any(|m| matches!(m, Message::User { .. })),
+            "History should contain the user message"
+        );
+
+        // Should contain the assistant response
+        assert!(
+            updated_history.iter().any(|m| matches!(m, Message::Assistant { .. })),
+            "History should contain the assistant response"
+        );
+
+        tracing::info!(
+            "History after streaming: {} messages, response: {:?}",
+            updated_history.len(),
+            response_text
         );
     }
 }
