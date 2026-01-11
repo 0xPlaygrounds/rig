@@ -6,7 +6,8 @@ use crate::{
     completion::{CompletionModel, Document},
     message::ToolChoice,
     tool::{
-        server::{ToolServer, ToolServerHandle}, Tool, ToolDyn, ToolSet
+        Tool, ToolDyn, ToolSet,
+        server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
 };
