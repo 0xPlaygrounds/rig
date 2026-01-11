@@ -46,7 +46,7 @@
 - [Table of contents](#table-of-contents)
 - [What is Rig?](#what-is-rig)
 - [High-level features](#high-level-features)
-- [Who's using Rig in production?](#who-is-using-rig-in-production)
+- [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
 - [Integrations](#supported-integrations)
@@ -78,7 +78,9 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Cairnify](https://cairnify.com/) - helps users find documents, links, and information instantly through an intelligent search bar. Rig provides the agentic foundation behind Cairnify’s AI search experience, enabling tool-calling, reasoning, and retrieval workflows.
 - [Ryzome](https://ryzome.ai) - Ryzome is a visual AI workspace that lets you build interconnected canvases of thoughts, research, and AI agents to orchestrate complex knowledge work.
 
-Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
+For a full list, check out our [ECOSYSTEM.md file.](https://www.github.com/0xPlaygrounds/rig/tree/main/ECOSYSTEM.md)
+
+Are you also using Rig? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
 ## Get Started
 ```bash
