@@ -1,6 +1,6 @@
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
     extractor::ExtractorBuilder,
@@ -75,6 +75,7 @@ impl<H> Capabilities<H> for OpenAIResponsesExt {
     type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -85,6 +86,7 @@ impl<H> Capabilities<H> for OpenAICompletionsExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]

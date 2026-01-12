@@ -12,10 +12,9 @@
 use std::fmt::Debug;
 
 use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
-#[cfg(feature = "image")]
-use crate::client::Nothing;
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
+    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::multipart::Part;
@@ -113,6 +112,7 @@ impl<H> Capabilities<H> for AzureExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Capable<TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
