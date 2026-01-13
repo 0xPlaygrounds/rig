@@ -6,7 +6,7 @@ use crate::{
     completion::{CompletionModel, Document},
     message::ToolChoice,
     tool::{
-        Tool, ToolSet,
+        Tool, ToolDyn, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -136,6 +136,29 @@ where
         let toolname = tool.name();
         let tools = ToolSet::from_tools(vec![tool]);
         let static_tools = vec![toolname];
+
+        AgentBuilderSimple {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            static_tools,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: vec![],
+            dynamic_tools: vec![],
+            temperature: self.temperature,
+            tools,
+            tool_choice: self.tool_choice,
+        }
+    }
+
+    /// Add a vector of boxed static tools to the agent
+    /// This is useful when you need to dynamically add static tools to the agent
+    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilderSimple<M> {
+        let static_tools = tools.iter().map(|tool| tool.name()).collect();
+        let tools = ToolSet::from_tools_boxed(tools);
 
         AgentBuilderSimple {
             name: self.name,
@@ -437,6 +460,14 @@ where
         let toolname = tool.name();
         self.tools.add_tool(tool);
         self.static_tools.push(toolname);
+        self
+    }
+
+    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
+        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
+        let tools = ToolSet::from_tools_boxed(tools);
+        self.tools.add_tools(tools);
+        self.static_tools.extend(toolnames);
         self
     }
 
