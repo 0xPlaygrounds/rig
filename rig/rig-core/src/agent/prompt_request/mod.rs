@@ -155,6 +155,9 @@ where
     }
 }
 
+/// Handles cancellations from a [`PromptHook`] in an agentic loop.
+/// Upon using `CancelSignal::cancel()`, the agent loop will terminate early, providing the messages generated so far.
+/// You can additionally add a reason for early termination with `CancelSignal::cancel_with_reason()`.
 pub struct CancelSignal {
     sig: Arc<AtomicBool>,
     reason: OnceLock<String>,
