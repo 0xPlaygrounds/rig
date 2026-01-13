@@ -249,7 +249,7 @@ impl SearchParams {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MongoDbSearchFilter(Document);
 
 impl SearchFilter for MongoDbSearchFilter {

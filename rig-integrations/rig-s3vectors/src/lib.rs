@@ -24,6 +24,7 @@ pub struct CreateRecord {
     embedded_text: String,
 }
 
+// NOTE: Cannot be used in dynamic store due to aws_smithy_types::Document not impl'ing Serialize or Deserialize
 #[derive(Clone, Debug)]
 pub struct S3SearchFilter(aws_smithy_types::Document);
 

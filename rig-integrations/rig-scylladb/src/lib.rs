@@ -41,6 +41,7 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     cache: Arc<RwLock<HashMap<u64, PreparedStatement>>>,
 }
 
+// NOTE: Cannot be used as a dynamic store due to CqlValue not impl'ing Serialize or Deserialize
 /// TODO: Write tests for this !
 #[derive(Clone, Debug)]
 pub struct ScyllaSearchFilter {
