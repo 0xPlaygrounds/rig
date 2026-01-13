@@ -3,9 +3,10 @@ use qdrant_client::qdrant::{
     condition::ConditionOneOf, r#match::MatchValue,
 };
 use rig::vector_store::request::{FilterError, SearchFilter};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QdrantFilter(serde_json::Value);
 
 impl SearchFilter for QdrantFilter {

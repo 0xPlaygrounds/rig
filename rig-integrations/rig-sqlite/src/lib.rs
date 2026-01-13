@@ -3,7 +3,7 @@ use rig::embeddings::{Embedding, EmbeddingModel};
 use rig::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig::vector_store::{VectorStoreError, VectorStoreIndex};
 use rusqlite::types::Value;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
@@ -245,7 +245,7 @@ where
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct SqliteSearchFilter {
     condition: String,
     params: Vec<serde_json::Value>,

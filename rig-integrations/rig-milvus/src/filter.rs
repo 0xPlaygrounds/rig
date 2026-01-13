@@ -1,4 +1,5 @@
 use rig::vector_store::request::SearchFilter;
+use serde::{Deserialize, Serialize};
 
 pub enum MilvusValue {
     Number(f64),
@@ -84,7 +85,7 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filter(String);
 
 impl SearchFilter for Filter {

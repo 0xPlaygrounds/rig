@@ -93,7 +93,7 @@ use rig::{
     embeddings::EmbeddingModel,
     vector_store::{VectorStoreError, request::SearchFilter},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
 pub struct Neo4jClient {
@@ -104,7 +104,7 @@ fn neo4j_to_rig_error(e: neo4rs::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Neo4jSearchFilter(String);
 
 impl SearchFilter for Neo4jSearchFilter {
