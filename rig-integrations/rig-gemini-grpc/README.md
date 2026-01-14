@@ -2,15 +2,19 @@
 
 This companion crate integrates Google Gemini gRPC API with Rig, offering better performance and type safety compared to the REST API.
 
-## Installation
+## Usage
 
-Add the companion crate to your `Cargo.toml`, along with rig-core:
+Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
 rig-gemini-grpc = "0.1.0"
 rig-core = "0.28.0"
 ```
+
+You can also run `cargo add rig-gemini-grpc rig-core` to add the most recent versions of the dependencies to your project.
+
+See the [`/examples`](./examples) folder for more usage examples.
 
 ## Setup
 
@@ -75,7 +79,3 @@ use rig_gemini_grpc::{Client, completion::GEMINI_2_5_FLASH};
 let client = Client::from_env();
 let model = client.completion_model(GEMINI_2_5_FLASH);
 ```
-
-## More Examples
-
-See the [`/examples`](./examples) folder for more usage examples.
