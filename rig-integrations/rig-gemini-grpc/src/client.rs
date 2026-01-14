@@ -53,7 +53,9 @@ impl Interceptor for ApiKeyInterceptor {
 
 impl Client {
     /// Create a gRPC client with the given API key
-    pub async fn new(api_key: impl Into<String>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(
+        api_key: impl Into<String>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let api_key = api_key.into();
         let endpoint = Endpoint::from_static(GEMINI_GRPC_ENDPOINT).tls_config(
             tonic::transport::ClientTlsConfig::new()

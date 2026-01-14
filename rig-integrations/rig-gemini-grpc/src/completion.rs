@@ -9,11 +9,11 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
+use base64::Engine as _;
 use rig::OneOrMany;
 use rig::completion::{self, CompletionError, CompletionRequest};
 use rig::message::{self, MimeType, Reasoning};
 use rig::telemetry::ProviderResponseExt;
-use base64::Engine as _;
 use std::convert::TryFrom;
 
 use super::Client;
@@ -70,10 +70,8 @@ impl completion::CompletionModel for CompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }
@@ -248,19 +246,25 @@ fn rig_user_content_to_grpc_part(
                     });
                 }
                 message::DocumentSourceKind::Raw(bytes) => bytes,
-                message::DocumentSourceKind::Base64(data) | message::DocumentSourceKind::String(data) => {
-                    decode_base64_bytes(&data)?
-                }
+                message::DocumentSourceKind::Base64(data)
+                | message::DocumentSourceKind::String(data) => decode_base64_bytes(&data)?,
                 message::DocumentSourceKind::Unknown => {
-                    return Err(CompletionError::RequestError("Image content has no body".into()));
+                    return Err(CompletionError::RequestError(
+                        "Image content has no body".into(),
+                    ));
                 }
                 _ => {
-                    return Err(CompletionError::RequestError("Unsupported document source kind".into()));
+                    return Err(CompletionError::RequestError(
+                        "Unsupported document source kind".into(),
+                    ));
                 }
             };
 
             Ok(proto::Part {
-                data: Some(proto::part::Data::InlineData(proto::Blob { mime_type, data })),
+                data: Some(proto::part::Data::InlineData(proto::Blob {
+                    mime_type,
+                    data,
+                })),
                 thought: false,
                 thought_signature: Vec::new(),
                 part_metadata: None,
@@ -331,9 +335,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             let assistant_content = match &part.data {
                 Some(proto::part::Data::Text(text)) => {
                     if part.thought {
-                        completion::AssistantContent::Reasoning(Reasoning::new(text).with_signature(
-                            encode_optional_base64(&part.thought_signature),
-                        ))
+                        completion::AssistantContent::Reasoning(
+                            Reasoning::new(text)
+                                .with_signature(encode_optional_base64(&part.thought_signature)),
+                        )
                     } else {
                         completion::AssistantContent::text(text)
                     }
@@ -342,7 +347,8 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                     let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
                     match mime_type {
                         Some(message::MediaType::Image(media_type)) => {
-                            let b64 = base64::engine::general_purpose::STANDARD.encode(&inline_data.data);
+                            let b64 =
+                                base64::engine::general_purpose::STANDARD.encode(&inline_data.data);
                             completion::AssistantContent::image_base64(
                                 b64,
                                 Some(media_type),
@@ -465,7 +471,7 @@ impl ProviderResponseExt for GenerateContentResponse {
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        self.usage_metadata.clone()
+        self.usage_metadata
     }
 }
 
@@ -494,11 +500,15 @@ fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
     }
 
     let err = last_err.unwrap_or_else(|| "unknown base64 decode error".to_string());
-    Err(CompletionError::RequestError(format!("Invalid base64 data: {err}").into()))
+    Err(CompletionError::RequestError(
+        format!("Invalid base64 data: {err}").into(),
+    ))
 }
 
 fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionError> {
-    let Some(sig) = sig else { return Ok(Vec::new()); };
+    let Some(sig) = sig else {
+        return Ok(Vec::new());
+    };
     decode_base64_bytes(&sig)
 }
 

@@ -10,9 +10,9 @@ use serde_json::{Map, Value};
 use rig::completion::{CompletionError, CompletionRequest};
 use rig::streaming;
 
-use super::proto;
 use super::Client;
 use super::GenerateContentResponse;
+use super::proto;
 
 pub type StreamingCompletionResponse = GenerateContentResponse;
 
@@ -111,7 +111,9 @@ pub(crate) async fn stream(
         yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(stream)))
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {
