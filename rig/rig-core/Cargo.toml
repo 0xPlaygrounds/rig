@@ -52,14 +52,6 @@ futures-timer = "3.0.3"
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
 mime = "0.3.17"
 reqwest-middleware = { version = "0.4.2", optional = true, features = ["json", "multipart", "charset", "http2"] }
-tonic = { workspace = true, features = ["tls", "transport", "tls-webpki-roots", "zstd", "gzip"] }
-prost = { workspace = true }
-tokio-stream = { workspace = true }
-
-
-[build-dependencies]
-tonic-build = { workspace = true }
-protoc-bin-vendored = "3.2.0"
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -184,6 +176,3 @@ name = "request_hook"
 [[example]]
 name = "discord_bot"
 required-features = ["discord-bot"]
-
-[[example]]
-name = "gemini_grpc_agent"

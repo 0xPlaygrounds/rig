@@ -5,12 +5,12 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::providers::gemini_grpc;
+//! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = gemini_grpc::Client::new("YOUR_API_KEY").await?;
+//! let client = Client::new("YOUR_API_KEY").await?;
 //!
-//! let completion_model = client.completion_model(gemini_grpc::completion::GEMINI_2_0_FLASH);
+//! let completion_model = client.completion_model(GEMINI_2_0_FLASH);
 //! # Ok(())
 //! # }
 //! ```
@@ -36,11 +36,11 @@ pub use proto::{
 };
 
 // Implement GetTokenUsage for proto::GenerateContentResponse to support streaming
-impl crate::completion::GetTokenUsage for proto::GenerateContentResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+impl rig::completion::GetTokenUsage for proto::GenerateContentResponse {
+    fn token_usage(&self) -> Option<rig::completion::Usage> {
         self.usage_metadata
             .as_ref()
-            .map(|u| crate::completion::Usage {
+            .map(|u| rig::completion::Usage {
                 input_tokens: u.prompt_token_count as u64,
                 output_tokens: u.candidates_token_count as u64,
                 total_tokens: u.total_token_count as u64,

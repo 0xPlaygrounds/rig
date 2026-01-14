@@ -5,7 +5,7 @@
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 
-use crate::embeddings::{self, EmbeddingError};
+use rig::embeddings::{self, EmbeddingError};
 
 use super::Client;
 use super::proto::{self, EmbedContentRequest};
@@ -42,14 +42,13 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + rig::wasm_compat::WasmCompatSend,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
         let mut embeddings = Vec::new();
 
         let mut grpc_client = self
             .client
-            .ext()
             .grpc_client()
             .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
 

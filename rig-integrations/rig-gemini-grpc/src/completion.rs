@@ -9,10 +9,10 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
-use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest};
-use crate::message::{self, MimeType, Reasoning};
-use crate::telemetry::ProviderResponseExt;
+use rig::OneOrMany;
+use rig::completion::{self, CompletionError, CompletionRequest};
+use rig::message::{self, MimeType, Reasoning};
+use rig::telemetry::ProviderResponseExt;
 use base64::Engine as _;
 use std::convert::TryFrom;
 
@@ -55,7 +55,6 @@ impl completion::CompletionModel for CompletionModel {
 
         let mut grpc_client = self
             .client
-            .ext()
             .grpc_client()
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
@@ -72,7 +71,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
@@ -254,6 +253,9 @@ fn rig_user_content_to_grpc_part(
                 }
                 message::DocumentSourceKind::Unknown => {
                     return Err(CompletionError::RequestError("Image content has no body".into()));
+                }
+                _ => {
+                    return Err(CompletionError::RequestError("Unsupported document source kind".into()));
                 }
             };
 

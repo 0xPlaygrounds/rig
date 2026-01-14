@@ -7,8 +7,8 @@ use base64::Engine as _;
 use futures::StreamExt;
 use serde_json::{Map, Value};
 
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::streaming;
+use rig::completion::{CompletionError, CompletionRequest};
+use rig::streaming;
 
 use super::proto;
 use super::Client;
@@ -24,7 +24,6 @@ pub(crate) async fn stream(
     let request = super::completion::create_grpc_request(model, completion_request)?;
 
     let mut grpc_client = client
-        .ext()
         .grpc_client()
         .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
