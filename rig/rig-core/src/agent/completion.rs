@@ -73,6 +73,8 @@ where
     pub dynamic_context: DynamicContextStore,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub tool_choice: Option<ToolChoice>,
+    /// Default maximum depth for recursive agent calls
+    pub default_max_depth: Option<usize>,
 }
 
 impl<M> Agent<M>

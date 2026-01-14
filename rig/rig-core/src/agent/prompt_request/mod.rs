@@ -73,7 +73,7 @@ where
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_depth: 0,
+            max_depth: agent.default_max_depth.unwrap_or(0),
             agent,
             state: PhantomData,
             hook: None,

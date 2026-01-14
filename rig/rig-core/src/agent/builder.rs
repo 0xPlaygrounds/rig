@@ -65,6 +65,8 @@ where
     tool_server_handle: Option<ToolServerHandle>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
+    /// Default maximum depth for recursive agent calls
+    default_max_depth: Option<usize>,
 }
 
 impl<M> AgentBuilder<M>
@@ -84,6 +86,7 @@ where
             dynamic_context: vec![],
             tool_server_handle: None,
             tool_choice: None,
+            default_max_depth: None,
         }
     }
 
@@ -151,6 +154,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -174,6 +178,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -208,6 +213,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -246,6 +252,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -263,6 +270,11 @@ where
 
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
+        self.default_max_depth = Some(default_max_depth);
         self
     }
 
@@ -291,6 +303,7 @@ where
             temperature: self.temperature,
             tools: toolset,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -332,6 +345,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
+            default_max_depth: self.default_max_depth,
         }
     }
 }
@@ -387,6 +401,8 @@ where
     tools: ToolSet,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
+    /// Default maximum depth for recursive agent calls
+    default_max_depth: Option<usize>,
 }
 
 impl<M> AgentBuilderSimple<M>
@@ -408,6 +424,7 @@ where
             dynamic_tools: vec![],
             tools: ToolSet::default(),
             tool_choice: None,
+            default_max_depth: None,
         }
     }
 
@@ -506,6 +523,11 @@ where
         self
     }
 
+    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
+        self.default_max_depth = Some(default_max_depth);
+        self
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     pub fn dynamic_tools(
@@ -557,6 +579,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
+            default_max_depth: self.default_max_depth,
         }
     }
 }
