@@ -189,7 +189,7 @@ async fn main() -> Result<(), anyhow::Error> {
         RedisVectorStore::new("redis://127.0.0.1:6379", "test_vectors", embedding_model).await?;
 
     // Sample documents to index
-    let documents = vec![
+    let documents = [
         Document {
             title: "Rust Programming".to_string(),
             content: "Rust is a systems programming language focused on safety and performance."
