@@ -51,7 +51,12 @@ pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
 mime = "0.3.17"
-reqwest-middleware = { version = "0.4.2", optional = true, features = ["json", "multipart", "charset", "http2"] }
+reqwest-middleware = { version = "0.4.2", optional = true, features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -59,6 +64,7 @@ assert_fs = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
+redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 
@@ -94,10 +100,7 @@ discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-wasm = [
-  "dep:wasm-bindgen-futures",
-  "futures-timer/wasm-bindgen",
-]
+wasm = ["dep:wasm-bindgen-futures", "futures-timer/wasm-bindgen"]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 reqwest-tls = ["reqwest/default"]
@@ -109,7 +112,10 @@ reqwest-rustls = [
   "reqwest/macos-system-configuration",
 ]
 reqwest-middleware = ["dep:reqwest-middleware"]
-reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls-tls"]
+reqwest-middleware-rustls = [
+  "reqwest-middleware",
+  "reqwest-middleware/rustls-tls",
+]
 
 [[test]]
 name = "embed_macro"
@@ -176,3 +182,6 @@ name = "request_hook"
 [[example]]
 name = "discord_bot"
 required-features = ["discord-bot"]
+
+[[example]]
+name = "custom_vector_store"
