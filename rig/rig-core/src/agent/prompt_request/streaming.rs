@@ -125,7 +125,7 @@ where
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_depth: 0,
+            max_depth: agent.default_max_depth.unwrap_or_default(),
             agent,
             hook: None,
         }
