@@ -65,7 +65,7 @@ where
     tool_server_handle: Option<ToolServerHandle>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for recursive agent calls
+    /// Default maximum depth for multi-turn agent calls
     default_max_depth: Option<usize>,
 }
 
@@ -273,6 +273,7 @@ where
         self
     }
 
+    /// Set the default maximum depth that an agent will use for multi-turn.
     pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
         self.default_max_depth = Some(default_max_depth);
         self
@@ -401,7 +402,7 @@ where
     tools: ToolSet,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
-    /// Default maximum depth for recursive agent calls
+    /// Default maximum depth for multi-turn agent calls
     default_max_depth: Option<usize>,
 }
 
@@ -523,6 +524,7 @@ where
         self
     }
 
+    /// Set the default maximum depth that an agent will use for multi-turn.
     pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
         self.default_max_depth = Some(default_max_depth);
         self
