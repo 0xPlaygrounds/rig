@@ -128,16 +128,16 @@ impl std::fmt::Display for SurrealSearchFilter {
 impl SearchFilter for SurrealSearchFilter {
     type Value = surrealdb::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} = {value}"))
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} = {value}", key.as_ref()))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} > {value}"))
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} > {value}", key.as_ref()))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} < {value}"))
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} < {value}", key.as_ref()))
     }
 
     fn and(self, rhs: Self) -> Self {

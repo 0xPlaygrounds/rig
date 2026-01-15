@@ -91,16 +91,16 @@ pub struct Filter(String);
 impl SearchFilter for Filter {
     type Value = MilvusValue;
 
-    fn eq(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} == {}", value.escaped()))
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} == {}", key.as_ref(), value.escaped()))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} > {}", value.escaped()))
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} > {}", key.as_ref(), value.escaped()))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} < {}", value.escaped()))
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} < {}", key.as_ref(), value.escaped()))
     }
 
     fn and(self, rhs: Self) -> Self {

@@ -168,7 +168,7 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .samples(samples)
         .query(query)
-        .filter(SqliteSearchFilter::eq("id".into(), "doc1".into()).not())
+        .filter(SqliteSearchFilter::eq("id", "doc1".into()).not())
         .build()
         .expect("VectorSearchRequest should not fail to build here");
 

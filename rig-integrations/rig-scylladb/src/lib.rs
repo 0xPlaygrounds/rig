@@ -58,23 +58,23 @@ impl std::hash::Hash for ScyllaSearchFilter {
 impl SearchFilter for ScyllaSearchFilter {
     type Value = CqlValue;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} = ?"),
+            condition: format!("{} = ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} > ?"),
+            condition: format!("{} > ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} < ?"),
+            condition: format!("{} < ?", key.as_ref()),
             params: vec![value],
         }
     }

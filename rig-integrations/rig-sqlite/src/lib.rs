@@ -254,23 +254,23 @@ pub struct SqliteSearchFilter {
 impl SearchFilter for SqliteSearchFilter {
     type Value = serde_json::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} = ?"),
+            condition: format!("{} = ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} > ?"),
+            condition: format!("{} > ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} < ?"),
+            condition: format!("{} < ?", key.as_ref()),
             params: vec![value],
         }
     }
@@ -504,7 +504,7 @@ fn build_where_clause(
     query_vec: Vec<f32>,
 ) -> Result<(String, Vec<Value>), FilterError> {
     let thresh = req.threshold().unwrap_or(0.);
-    let thresh = SqliteSearchFilter::gt("distance".into(), thresh.into());
+    let thresh = SqliteSearchFilter::gt("distance", thresh.into());
 
     let filter = req
         .filter()

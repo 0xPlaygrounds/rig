@@ -11,6 +11,7 @@ Interested in having your project added here? Feel free to open an issue or PR.
 - [git-iris](https://github.com/hyperb1iss/git-iris) - an AI-powered tool to help automate Git workflows
 - [VT Code](https://github.com/vinhnx/vtcode) - a (currently research-preview) terminal coding agent
 - [rv](https://github.com/gi-dellav/rv) - a non-invasive AI code review tool
+- [Cortex Memory](https://github.com/sopaco/cortex-mem) - The production-ready memory system for intelligent agents. A complete solution for memory management, from extraction and vector search to automated optimization, with a REST API, MCP, CLI, and insights dashboard out-of-the-box.
 
 ## Tutorials
 Nothing here yet. Maybe you'd like to be the first person to add something here?
