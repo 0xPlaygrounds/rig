@@ -8,7 +8,7 @@
 //!
 //! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
 //!
-//! Types implementing [`VectorStoreIndex`] automatically implement [`Tool`](crate::tool::Tool).
+//! Types implementing [`VectorStoreIndex`] automatically implement [`Tool`].
 
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
