@@ -45,7 +45,6 @@ use std::fmt;
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct Model {
     /// The unique identifier for the model (required)
     pub id: String,
@@ -167,7 +166,6 @@ impl fmt::Display for Model {
 /// # Fields
 ///
 /// - `data`: The complete list of available models
-/// - `total`: Total number of models
 ///
 /// # Example
 ///
@@ -185,13 +183,9 @@ impl fmt::Display for Model {
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModelList {
     /// The complete list of available models
     pub data: Vec<Model>,
-
-    /// Total number of models available
-    pub total: usize,
 }
 
 impl ModelList {
@@ -211,11 +205,9 @@ impl ModelList {
     ///     Model::from_id("gpt-3.5-turbo"),
     /// ]);
     /// assert_eq!(list.len(), 2);
-    /// assert_eq!(list.total, 2);
     /// ```
     pub fn new(data: Vec<Model>) -> Self {
-        let total = data.len();
-        Self { data, total }
+        Self { data }
     }
 
     /// Returns true if the list is empty.
@@ -295,16 +287,6 @@ impl<'a> IntoIterator for &'a ModelList {
 ///
 /// This enum represents the various error conditions that may arise when
 /// attempting to retrieve the list of available models from an LLM provider.
-///
-/// # Variants
-///
-/// - `ApiError`: The provider returned an error response with a status code
-/// - `RequestError`: Failed to send the request to the provider
-/// - `ParseError`: Failed to parse the provider's response
-/// - `AuthError`: Authentication failed (invalid API key, etc.)
-/// - `RateLimitError`: Rate limit was exceeded
-/// - `ServiceUnavailable`: The provider service is temporarily unavailable
-/// - `UnknownError`: An unexpected error occurred
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelListingError {
     /// The provider returned an error response with a status code
@@ -465,7 +447,6 @@ mod tests {
     fn test_model_list_new() {
         let list = ModelList::new(vec![Model::from_id("gpt-4")]);
         assert_eq!(list.len(), 1);
-        assert_eq!(list.total, 1);
     }
 
     #[test]
@@ -544,16 +525,13 @@ mod tests {
     fn test_model_list_serde() {
         let list = ModelList {
             data: vec![Model::from_id("gpt-4")],
-            total: 100,
         };
 
         let json = serde_json::to_string(&list).unwrap();
         assert!(json.contains("gpt-4"));
-        assert!(json.contains("total"));
 
         let deserialized: ModelList = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.len(), 1);
-        assert_eq!(deserialized.total, 100);
     }
 
     #[test]
