@@ -168,7 +168,7 @@ impl<H> ClientBuilder<H> {
 
 impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
     /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn azure_endpoint(self, endpoint: impl Into<String>) -> ClientBuilder<H> {
+    pub fn azure_endpoint(self, endpoint: String) -> ClientBuilder<H> {
         self.over_ext(|AzureExtBuilder { api_version, .. }| AzureExtBuilder {
             endpoint: Some(endpoint),
             api_version,
