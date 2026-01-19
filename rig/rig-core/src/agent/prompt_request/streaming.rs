@@ -242,6 +242,7 @@ where
                     parent: tracing::Span::current(),
                     "chat_streaming",
                     gen_ai.operation.name = "chat",
+                    gen_ai.agent.name = &agent.name(),
                     gen_ai.system_instructions = &agent.preamble,
                     gen_ai.provider.name = tracing::field::Empty,
                     gen_ai.request.model = tracing::field::Empty,
