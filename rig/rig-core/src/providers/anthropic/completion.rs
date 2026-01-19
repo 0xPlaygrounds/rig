@@ -790,7 +790,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 }
 
 /// A request to Anthropic's Batch API.
-/// Reference: https://platform.claude.com/docs/en/build-with-claude/batch-processing
+/// Reference: <https://platform.claude.com/docs/en/build-with-claude/batch-processing>
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AnthropicBatchCompletionRequest {
     requests: Vec<AnthropicBatchCompletionRequestItem>,
