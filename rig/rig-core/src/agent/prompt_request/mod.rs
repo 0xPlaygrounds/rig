@@ -389,6 +389,7 @@ where
                 parent: &span,
                 "chat",
                 gen_ai.operation.name = "chat",
+                gen_ai.agent.name = self.agent.name(),
                 gen_ai.system_instructions = self.agent.preamble,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
