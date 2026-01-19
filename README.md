@@ -89,23 +89,27 @@ cargo add rig-core
 
 ### Simple example
 ```rust
-use rig::{client::CompletionClient, completion::Prompt, providers::openai};
+use rig::client::{CompletionClient, ProviderClient};
+use rig::completion::Prompt;
+use rig::providers::openai;
 
 #[tokio::main]
-async fn main() {
-    // Create OpenAI client and model
-    // This requires the `OPENAI_API_KEY` environment variable to be set.
-    let openai_client = openai::Client::from_env();
+async fn main() -> Result<(), anyhow::Error> {
+    // Create OpenAI client
+    let client = openai::Client::from_env();
 
-    let gpt4 = openai_client.agent("gpt-4").build();
+    // Create agent with a single context prompt
+    let comedian_agent = client
+        .agent(openai::GPT_4O)
+        .preamble("You are a comedian here to entertain the user using humour and jokes.")
+        .build();
 
-    // Prompt the model and print its response
-    let response = gpt4
-        .prompt("Who are you?")
-        .await
-        .expect("Failed to prompt GPT-4");
+    // Prompt the agent and print the response
+    let response = comedian_agent.prompt("Entertain me!").await?;
 
-    println!("GPT-4: {response}");
+    println!("{response}");
+
+    Ok(())
 }
 ```
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
