@@ -3,11 +3,21 @@
 //! # Example
 //! ```
 //! use rig::providers::azure;
+//! use rig::client::CompletionClient;
 //!
-//! let client = azure::Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+//! let client: azure::Client<reqwest::Client> = azure::Client::builder()
+//!     .api_key("test")
+//!     .azure_endpoint("test".to_string()) // add your endpoint here!
+//!     .build()?;
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
+//!
+//! ## Authentication
+//! The authentication type used for the `azure` module is [`AzureOpenAIAuth`].
+//!
+//! By default, using a type that implements `Into<String>` as the input for the client builder will turn the type into a bearer auth token.
+//! If you want to use an API key, you need to use the type specifically.
 
 use std::fmt::Debug;
 
@@ -158,7 +168,7 @@ impl<H> ClientBuilder<H> {
 
 impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
     /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn azure_endpoint(self, endpoint: String) -> ClientBuilder<H> {
+    pub fn azure_endpoint(self, endpoint: impl Into<String>) -> ClientBuilder<H> {
         self.over_ext(|AzureExtBuilder { api_version, .. }| AzureExtBuilder {
             endpoint: Some(endpoint),
             api_version,
@@ -166,6 +176,8 @@ impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
     }
 }
 
+/// The authentication type for Azure OpenAI. Can either be an API key or a token.
+/// String types will automatically be coerced to a bearer auth token by default.
 #[derive(Clone)]
 pub enum AzureOpenAIAuth {
     ApiKey(String),
