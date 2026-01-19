@@ -14,6 +14,8 @@ use std::pin::Pin;
 
 use crate::wasm_compat::*;
 
+pub use reqwest::Client as ReqwestClient;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Http error: {0}")]
