@@ -201,6 +201,9 @@ pub enum Message {
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
+        /// only exists on `deepseek-reasoner` model at time of addition
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -295,22 +298,29 @@ impl TryFrom<message::Message> for Vec<Message> {
             }
             message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
+                let mut text_content = String::new();
+                let mut reasoning_content = String::new();
 
-                // extract text
-                let text_content = content
-                    .clone()
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::Text(text) => Some(Message::Assistant {
-                            content: text.text,
-                            name: None,
-                            tool_calls: vec![],
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
+                content.iter().for_each(|content| match content {
+                    message::AssistantContent::Text(text) => {
+                        text_content.push_str(text.text());
+                    }
+                    message::AssistantContent::Reasoning(reasoning) => {
+                        reasoning_content.push_str(&reasoning.reasoning.join("\n"));
+                    }
+                    _ => {}
+                });
 
-                messages.extend(text_content);
+                messages.push(Message::Assistant {
+                    content: text_content,
+                    name: None,
+                    tool_calls: vec![],
+                    reasoning_content: if reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(reasoning_content)
+                    },
+                });
 
                 // extract tool calls
                 let tool_calls = content
@@ -330,6 +340,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         content: "".to_string(),
                         name: None,
                         tool_calls,
+                        reasoning_content: None,
                     });
                 }
 
@@ -701,7 +712,6 @@ pub async fn send_compatible_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    let span = tracing::Span::current();
     let mut event_source = GenericEventSource::new(http_client, req);
 
     let stream = stream! {
@@ -823,14 +833,6 @@ where
                 crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
             ));
         }
-
-        let message = Message::Assistant {
-            content: text_response,
-            name: None,
-            tool_calls
-        };
-
-        span.record("gen_ai.output.messages", serde_json::to_string(&message).unwrap());
 
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
@@ -994,6 +996,7 @@ mod tests {
                     index: 0,
                     r#type: ToolType::Function,
                 }],
+                reasoning_content: None,
             },
         };
 
