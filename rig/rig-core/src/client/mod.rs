@@ -188,7 +188,14 @@ pub trait Provider: Sized {
     ) -> http_client::Result<Self>;
 
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
-        base_url.to_string() + "/" + path.trim_start_matches('/')
+        // Some providers (like Azure) have a blank base URL to allow users to input their own endpoints.
+        let base_url = if base_url.is_empty() {
+            base_url.to_string()
+        } else {
+            base_url.to_string() + "/"
+        };
+
+        base_url.to_string() + path.trim_start_matches('/')
     }
 
     fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
