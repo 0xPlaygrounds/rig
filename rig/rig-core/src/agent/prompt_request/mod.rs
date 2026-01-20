@@ -160,14 +160,14 @@ where
 /// You can additionally add a reason for early termination with `CancelSignal::cancel_with_reason()`.
 pub struct CancelSignal {
     sig: Arc<AtomicBool>,
-    reason: OnceLock<String>,
+    reason: Arc<OnceLock<String>>,
 }
 
 impl CancelSignal {
     fn new() -> Self {
         Self {
             sig: Arc::new(AtomicBool::new(false)),
-            reason: OnceLock::new(),
+            reason: Arc::new(OnceLock::new()),
         }
     }
 
@@ -179,6 +179,7 @@ impl CancelSignal {
         // SAFETY: This can only be set once. We immediately return once the prompt hook is finished if the internal AtomicBool is set to true
         // It is technically on the user to return early when using this in a prompt hook, but this is relatively obvious
         let _ = self.reason.set(reason.to_string());
+        self.cancel();
     }
 
     fn is_cancelled(&self) -> bool {
