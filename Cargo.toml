@@ -45,7 +45,7 @@ google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, feat
 ] }
 httpmock = "0.7.0"
 indoc = "2.0.6"
-lancedb = { version = "0.22", default-features = false }
+lancedb = { version = "0.23", default-features = false }
 log = "0.4.27"
 lopdf = "0.36.0"
 mime_guess = "2.0.5"
