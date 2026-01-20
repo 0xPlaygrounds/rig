@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.4...rig-mongodb-v0.3.5) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+- make integration filters available to be used as rig agent rag store ([#1249](https://github.com/0xPlaygrounds/rig/pull/1249))
+
 ## [0.3.4](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.3...rig-mongodb-v0.3.4) - 2026-01-06
 
 ### Other

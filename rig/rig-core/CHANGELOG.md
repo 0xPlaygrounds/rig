@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.28.0...rig-core-v0.29.0) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+- *(rig-1142)* include agent names in tracing ([#1270](https://github.com/0xPlaygrounds/rig/pull/1270))
+- *(rig-1144)* deepseek reasoning content (non-streaming) ([#1269](https://github.com/0xPlaygrounds/rig/pull/1269))
+- *(rig-1147)* re-export reqwest client ([#1277](https://github.com/0xPlaygrounds/rig/pull/1277))
+- add custom vector store backend example ([#1252](https://github.com/0xPlaygrounds/rig/pull/1252))
+- add default max depth to agents ([#1253](https://github.com/0xPlaygrounds/rig/pull/1253))
+- Add the `user` parameter to openai-embedding. ([#1254](https://github.com/0xPlaygrounds/rig/pull/1254))
+- *(rig-1135)* Agentic loop early termination reason ([#1248](https://github.com/0xPlaygrounds/rig/pull/1248))
+- Add the ```encoding_format``` parameter to openai-embedding. ([#1203](https://github.com/0xPlaygrounds/rig/pull/1203))
+
+### Fixed
+
+- *(agent)* fix CancelSignal cancellation and reason sharing bugs ([#1282](https://github.com/0xPlaygrounds/rig/pull/1282))
+- *(rig-1140)* do not prepend a forward slash to blank base URLs ([#1275](https://github.com/0xPlaygrounds/rig/pull/1275))
+
+### Other
+
+- bump dependencies ([#1257](https://github.com/0xPlaygrounds/rig/pull/1257))
+- *(rig-1145)* update code snippet ([#1268](https://github.com/0xPlaygrounds/rig/pull/1268))
+- fix gemini streaming ([#1262](https://github.com/0xPlaygrounds/rig/pull/1262))
+- Add `AgentBuilder::tools` for adding static tools dynamically ([#1236](https://github.com/0xPlaygrounds/rig/pull/1236))
+- *(rig-core)* Fix gemini doc example with wrong imports ([#1238](https://github.com/0xPlaygrounds/rig/pull/1238))
+
 ## [0.28.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.27.0...rig-core-v0.28.0) - 2026-01-06
 
 ### Added
