@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.27](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.26...rig-surrealdb-v0.1.27) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+
 ## [0.1.26](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.1.25...rig-surrealdb-v0.1.26) - 2026-01-06
 
 ### Other
