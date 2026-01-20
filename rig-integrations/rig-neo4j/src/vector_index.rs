@@ -135,10 +135,10 @@ where
         req: &VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Query {
         let where_clause = match (req.threshold(), req.filter()) {
-            (Some(thresh), Some(filt)) => Neo4jSearchFilter::gt("distance".into(), thresh.into())
+            (Some(thresh), Some(filt)) => Neo4jSearchFilter::gt("distance", thresh.into())
                 .and(filt.clone())
                 .render(),
-            (Some(thresh), _) => Neo4jSearchFilter::gt("distance".into(), thresh.into()).render(),
+            (Some(thresh), _) => Neo4jSearchFilter::gt("distance", thresh.into()).render(),
             (_, Some(filt)) => filt.clone().render(),
             _ => String::new(),
         };

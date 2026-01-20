@@ -59,23 +59,23 @@ pub struct PgSearchFilter {
 impl SearchFilter for PgSearchFilter {
     type Value = serde_json::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} = $"),
+            condition: format!("{} = $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} > $"),
+            condition: format!("{} > $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} < $"),
+            condition: format!("{} < $", key.as_ref()),
             values: vec![value],
         }
     }
@@ -285,7 +285,7 @@ where
 
         let thresh = req
             .threshold()
-            .map(|t| PgSearchFilter::gt("distance".into(), t.into()));
+            .map(|t| PgSearchFilter::gt("distance", t.into()));
         let filter = match (thresh, req.filter()) {
             (Some(thresh), Some(filt)) => Some(thresh.and(filt.clone())),
             (Some(thresh), _) => Some(thresh),

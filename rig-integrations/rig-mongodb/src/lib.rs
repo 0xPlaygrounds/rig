@@ -255,15 +255,18 @@ pub struct MongoDbSearchFilter(Document);
 impl SearchFilter for MongoDbSearchFilter {
     type Value = Bson;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
         Self(doc! { key: value })
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
         Self(doc! { key: { "$gt": value } })
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
         Self(doc! { key: { "$lt": value } })
     }
 

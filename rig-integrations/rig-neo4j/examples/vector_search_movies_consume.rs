@@ -73,7 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(5)
-        .filter(SearchFilter::gt("node.year".into(), 1990.into()))
+        .filter(SearchFilter::gt("node.year", 1990.into()))
         .build()?;
 
     // Query the index

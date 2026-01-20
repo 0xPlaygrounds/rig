@@ -1,3 +1,15 @@
+//! Vector store abstractions for semantic search and retrieval.
+//!
+//! # Core Traits
+//!
+//! - [`VectorStoreIndex`]: Query a vector store for similar documents.
+//! - [`InsertDocuments`]: Insert documents and their embeddings.
+//! - [`VectorStoreIndexDyn`]: Type-erased version for dynamic contexts.
+//!
+//! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
+//!
+//! Types implementing [`VectorStoreIndex`] automatically implement [`Tool`].
+
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -17,12 +29,12 @@ pub mod in_memory_store;
 pub mod lsh;
 pub mod request;
 
+/// Errors from vector store operations.
 #[derive(Debug, thiserror::Error)]
 pub enum VectorStoreError {
     #[error("Embedding error: {0}")]
     EmbeddingError(#[from] EmbeddingError),
 
-    /// Json error (e.g.: serialization, deserialization, etc.)
     #[error("Json error: {0}")]
     JsonError(#[from] serde_json::Error),
 
@@ -50,29 +62,27 @@ pub enum VectorStoreError {
     BuilderError(String),
 }
 
-/// Trait for inserting documents into a vector store.
+/// Trait for inserting documents and embeddings into a vector store.
 pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
-    /// Insert documents into the vector store.
-    ///
     fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + WasmCompatSend;
 }
 
-/// Trait for vector store indexes
+/// Trait for querying a vector store by similarity.
 pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
+    /// The filter type for this backend.
     type Filter: SearchFilter + WasmCompatSend + WasmCompatSync;
 
-    /// Get the top n documents based on the distance to the given query.
-    /// The result is a list of tuples of the form (score, id, document)
+    /// Returns the top N most similar documents as `(score, id, document)` tuples.
     fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>>
     + WasmCompatSend;
 
-    /// Same as `top_n` but returns the document ids only.
+    /// Returns the top N most similar document IDs as `(score, id)` tuples.
     fn top_n_ids(
         &self,
         req: VectorSearchRequest<Self::Filter>,
@@ -81,6 +91,7 @@ pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
 
 pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
 
+/// Type-erased [`VectorStoreIndex`] for dynamic dispatch.
 pub trait VectorStoreIndexDyn: WasmCompatSend + WasmCompatSync {
     fn top_n<'a>(
         &'a self,
@@ -153,6 +164,7 @@ fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
     }
 }
 
+/// The output of vector store queries invoked via [`Tool`]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VectorStoreOutput {
     pub score: f64,
