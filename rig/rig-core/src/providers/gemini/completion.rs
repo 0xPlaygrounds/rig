@@ -218,7 +218,7 @@ pub(crate) fn create_request_body(
     let tools = if completion_request.tools.is_empty() {
         None
     } else {
-        Some(Tool::try_from(completion_request.tools)?)
+        Some(vec![Tool::try_from(completion_request.tools)?])
     };
 
     let tool_config = if let Some(cfg) = completion_request.tool_choice {
@@ -1631,7 +1631,7 @@ pub mod gemini_api_types {
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub tools: Option<Tool>,
+        pub tools: Option<Vec<Tool>>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
         pub generation_config: Option<GenerationConfig>,
