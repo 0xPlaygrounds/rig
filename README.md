@@ -46,7 +46,7 @@
 - [Table of contents](#table-of-contents)
 - [What is Rig?](#what-is-rig)
 - [High-level features](#high-level-features)
-- [Who's using Rig in production?](#who-is-using-rig-in-production)
+- [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
 - [Integrations](#supported-integrations)
@@ -78,7 +78,9 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Cairnify](https://cairnify.com/) - helps users find documents, links, and information instantly through an intelligent search bar. Rig provides the agentic foundation behind Cairnify’s AI search experience, enabling tool-calling, reasoning, and retrieval workflows.
 - [Ryzome](https://ryzome.ai) - Ryzome is a visual AI workspace that lets you build interconnected canvases of thoughts, research, and AI agents to orchestrate complex knowledge work.
 
-Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
+For a full list, check out our [ECOSYSTEM.md file.](https://www.github.com/0xPlaygrounds/rig/tree/main/ECOSYSTEM.md)
+
+Are you also using Rig? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
 ## Get Started
 ```bash
@@ -87,23 +89,27 @@ cargo add rig-core
 
 ### Simple example
 ```rust
-use rig::{client::CompletionClient, completion::Prompt, providers::openai};
+use rig::client::{CompletionClient, ProviderClient};
+use rig::completion::Prompt;
+use rig::providers::openai;
 
 #[tokio::main]
-async fn main() {
-    // Create OpenAI client and model
-    // This requires the `OPENAI_API_KEY` environment variable to be set.
-    let openai_client = openai::Client::from_env();
+async fn main() -> Result<(), anyhow::Error> {
+    // Create OpenAI client
+    let client = openai::Client::from_env();
 
-    let gpt4 = openai_client.agent("gpt-4").build();
+    // Create agent with a single context prompt
+    let comedian_agent = client
+        .agent(openai::GPT_4O)
+        .preamble("You are a comedian here to entertain the user using humour and jokes.")
+        .build();
 
-    // Prompt the model and print its response
-    let response = gpt4
-        .prompt("Who are you?")
-        .await
-        .expect("Failed to prompt GPT-4");
+    // Prompt the agent and print the response
+    let response = comedian_agent.prompt("Entertain me!").await?;
 
-    println!("GPT-4: {response}");
+    println!("{response}");
+
+    Ok(())
 }
 ```
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features

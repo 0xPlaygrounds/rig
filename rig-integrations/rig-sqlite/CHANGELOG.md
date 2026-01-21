@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.32](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.31...rig-sqlite-v0.1.32) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+- make integration filters available to be used as rig agent rag store ([#1249](https://github.com/0xPlaygrounds/rig/pull/1249))
+
 ## [0.1.31](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.1.30...rig-sqlite-v0.1.31) - 2026-01-06
 
 ### Fixed

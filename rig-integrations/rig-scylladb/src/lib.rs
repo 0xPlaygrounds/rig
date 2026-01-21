@@ -41,6 +41,7 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     cache: Arc<RwLock<HashMap<u64, PreparedStatement>>>,
 }
 
+// NOTE: Cannot be used as a dynamic store due to CqlValue not impl'ing Serialize or Deserialize
 /// TODO: Write tests for this !
 #[derive(Clone, Debug)]
 pub struct ScyllaSearchFilter {
@@ -57,23 +58,23 @@ impl std::hash::Hash for ScyllaSearchFilter {
 impl SearchFilter for ScyllaSearchFilter {
     type Value = CqlValue;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} = ?"),
+            condition: format!("{} = ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} > ?"),
+            condition: format!("{} > ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} < ?"),
+            condition: format!("{} < ?", key.as_ref()),
             params: vec![value],
         }
     }

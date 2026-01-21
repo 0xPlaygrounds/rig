@@ -283,7 +283,11 @@ pub mod rmcp {
             Box::pin(async move {
                 let result = self
                     .client
-                    .call_tool(rmcp::model::CallToolRequestParam { name, arguments })
+                    .call_tool(rmcp::model::CallToolRequestParam {
+                        name,
+                        arguments,
+                        task: None,
+                    })
                     .await
                     .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
@@ -429,6 +433,14 @@ impl ToolSet {
         let mut toolset = Self::default();
         tools.into_iter().for_each(|tool| {
             toolset.add_tool(tool);
+        });
+        toolset
+    }
+
+    pub fn from_tools_boxed(tools: Vec<Box<dyn ToolDyn + 'static>>) -> Self {
+        let mut toolset = Self::default();
+        tools.into_iter().for_each(|tool| {
+            toolset.add_tool_boxed(tool);
         });
         toolset
     }

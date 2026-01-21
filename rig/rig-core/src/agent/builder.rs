@@ -6,7 +6,7 @@ use crate::{
     completion::{CompletionModel, Document},
     message::ToolChoice,
     tool::{
-        Tool, ToolSet,
+        Tool, ToolDyn, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
     vector_store::VectorStoreIndexDyn,
@@ -65,6 +65,8 @@ where
     tool_server_handle: Option<ToolServerHandle>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
+    /// Default maximum depth for multi-turn agent calls
+    default_max_depth: Option<usize>,
 }
 
 impl<M> AgentBuilder<M>
@@ -84,6 +86,7 @@ where
             dynamic_context: vec![],
             tool_server_handle: None,
             tool_choice: None,
+            default_max_depth: None,
         }
     }
 
@@ -151,6 +154,31 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
+        }
+    }
+
+    /// Add a vector of boxed static tools to the agent
+    /// This is useful when you need to dynamically add static tools to the agent
+    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilderSimple<M> {
+        let static_tools = tools.iter().map(|tool| tool.name()).collect();
+        let tools = ToolSet::from_tools_boxed(tools);
+
+        AgentBuilderSimple {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            static_tools,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: vec![],
+            dynamic_tools: vec![],
+            temperature: self.temperature,
+            tools,
+            tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -185,6 +213,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -223,6 +252,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -240,6 +270,12 @@ where
 
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Set the default maximum depth that an agent will use for multi-turn.
+    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
+        self.default_max_depth = Some(default_max_depth);
         self
     }
 
@@ -268,6 +304,7 @@ where
             temperature: self.temperature,
             tools: toolset,
             tool_choice: self.tool_choice,
+            default_max_depth: self.default_max_depth,
         }
     }
 
@@ -309,6 +346,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
+            default_max_depth: self.default_max_depth,
         }
     }
 }
@@ -364,6 +402,8 @@ where
     tools: ToolSet,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
+    /// Default maximum depth for multi-turn agent calls
+    default_max_depth: Option<usize>,
 }
 
 impl<M> AgentBuilderSimple<M>
@@ -385,6 +425,7 @@ where
             dynamic_tools: vec![],
             tools: ToolSet::default(),
             tool_choice: None,
+            default_max_depth: None,
         }
     }
 
@@ -440,6 +481,14 @@ where
         self
     }
 
+    pub fn tools(mut self, tools: Vec<Box<dyn ToolDyn>>) -> Self {
+        let toolnames: Vec<String> = tools.iter().map(|tool| tool.name()).collect();
+        let tools = ToolSet::from_tools_boxed(tools);
+        self.tools.add_tools(tools);
+        self.static_tools.extend(toolnames);
+        self
+    }
+
     /// Add an array of MCP tools (from `rmcp`) to the agent
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
@@ -472,6 +521,12 @@ where
 
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Set the default maximum depth that an agent will use for multi-turn.
+    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
+        self.default_max_depth = Some(default_max_depth);
         self
     }
 
@@ -526,6 +581,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
+            default_max_depth: self.default_max_depth,
         }
     }
 }

@@ -3,15 +3,18 @@ use qdrant_client::qdrant::{
     condition::ConditionOneOf, r#match::MatchValue,
 };
 use rig::vector_store::request::{FilterError, SearchFilter};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QdrantFilter(serde_json::Value);
 
 impl SearchFilter for QdrantFilter {
     type Value = serde_json::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
+
         Self(json!({
             "key": key,
             "match": {
@@ -20,7 +23,9 @@ impl SearchFilter for QdrantFilter {
         }))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
+
         Self(json!({
             "key": key,
             "range": {
@@ -29,7 +34,9 @@ impl SearchFilter for QdrantFilter {
         }))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
+
         Self(json!({
             "key": key,
             "range": {
