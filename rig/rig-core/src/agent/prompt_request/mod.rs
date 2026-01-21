@@ -539,7 +539,11 @@ where
 
                                 if let ToolCallHookAction::Skip { reason } = action {
                                     // Tool execution rejected, return rejection message as tool result
-                                    tracing::info!("Tool {tool_name} rejected: {reason}");
+                                    tracing::info!(
+                                        tool_name = tool_name,
+                                        reason = reason,
+                                        "Tool call rejected"
+                                    );
                                     if let Some(call_id) = tool_call.call_id.clone() {
                                         return Ok(UserContent::tool_result_with_call_id(
                                             tool_call.id.clone(),
