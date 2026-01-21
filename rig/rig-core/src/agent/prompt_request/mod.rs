@@ -33,6 +33,15 @@ pub struct Extended;
 impl PromptType for Standard {}
 impl PromptType for Extended {}
 
+/// Control flow action for tool call hooks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolCallHookAction {
+    /// Continue tool execution as normal.
+    Continue,
+    /// Skip tool execution and return the provided reason as the tool result.
+    Skip { reason: String },
+}
+
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
@@ -230,14 +239,18 @@ where
 
     #[allow(unused_variables)]
     /// Called before a tool is invoked.
+    ///
+    /// # Returns
+    /// - `ToolCallHookAction::Continue` - Allow tool execution to proceed
+    /// - `ToolCallHookAction::Skip { reason }` - Reject tool execution; `reason` will be returned to the LLM as the tool result
     fn on_tool_call(
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
         args: &str,
         cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + WasmCompatSend {
-        async {}
+    ) -> impl Future<Output = ToolCallHookAction> + WasmCompatSend {
+        async { ToolCallHookAction::Continue }
     }
 
     #[allow(unused_variables)]
@@ -513,15 +526,38 @@ where
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
                             if let Some(hook) = hook1 {
-                                hook.on_tool_call(
-                                    tool_name,
-                                    tool_call.call_id.clone(),
-                                    &args,
-                                    cancel_sig1.clone(),
-                                )
-                                .await;
+                                let action = hook
+                                    .on_tool_call(
+                                        tool_name,
+                                        tool_call.call_id.clone(),
+                                        &args,
+                                        cancel_sig1.clone(),
+                                    )
+                                    .await;
+
                                 if cancel_sig1.is_cancelled() {
                                     return Err(ToolSetError::Interrupted);
+                                }
+
+                                if let ToolCallHookAction::Skip { reason } = action {
+                                    // Tool execution rejected, return rejection message as tool result
+                                    tracing::info!(
+                                        tool_name = tool_name,
+                                        reason = reason,
+                                        "Tool call rejected"
+                                    );
+                                    if let Some(call_id) = tool_call.call_id.clone() {
+                                        return Ok(UserContent::tool_result_with_call_id(
+                                            tool_call.id.clone(),
+                                            call_id,
+                                            OneOrMany::one(reason.into()),
+                                        ));
+                                    } else {
+                                        return Ok(UserContent::tool_result(
+                                            tool_call.id.clone(),
+                                            OneOrMany::one(reason.into()),
+                                        ));
+                                    }
                                 }
                             }
                             let output =

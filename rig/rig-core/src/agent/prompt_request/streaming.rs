@@ -14,6 +14,7 @@ use tokio::sync::RwLock;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
+use super::ToolCallHookAction;
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -305,11 +306,28 @@ where
                                 let tool_span = tracing::Span::current();
                                 let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, cancel_sig.clone()).await;
+                                    let action = hook
+                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, cancel_sig.clone())
+                                        .await;
+
                                     if cancel_sig.is_cancelled() {
                                         return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
                                             cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
                                         ).into()));
+                                    }
+
+                                    if let ToolCallHookAction::Skip { reason } = action {
+                                        // Tool execution rejected, return rejection message as tool result
+                                        tracing::info!(
+                                            tool_name = tool_call.function.name.as_str(),
+                                            reason = reason,
+                                            "Tool call rejected"
+                                        );
+                                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
+                                        tool_calls.push(tool_call_msg);
+                                        tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
+                                        did_call_tool = true;
+                                        return Ok(reason);
                                     }
                                 }
 
@@ -566,14 +584,18 @@ where
 
     #[allow(unused_variables)]
     /// Called before a tool is invoked.
+    ///
+    /// # Returns
+    /// - `ToolCallHookAction::Continue` - Allow tool execution to proceed
+    /// - `ToolCallHookAction::Skip { reason }` - Reject tool execution; `reason` will be returned to the LLM as the tool result
     fn on_tool_call(
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
         args: &str,
         cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
+    ) -> impl Future<Output = ToolCallHookAction> + Send {
+        async { ToolCallHookAction::Continue }
     }
 
     #[allow(unused_variables)]
