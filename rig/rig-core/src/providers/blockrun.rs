@@ -8,7 +8,7 @@
 //! use rig::providers::blockrun;
 //!
 //! // Create client with wallet private key (for signing payments)
-//! let client = blockrun::Client::from_env(); // reads BLOCKRUN_PRIVATE_KEY
+//! let client = blockrun::Client::from_env(); // reads BLOCKRUN_WALLET_KEY
 //!
 //! // Or create with explicit private key
 //! let client = blockrun::Client::from_private_key("0x...your_private_key")?;
@@ -49,7 +49,6 @@ use crate::message::{Document, DocumentSourceKind};
 use crate::{json_utils, message, OneOrMany};
 use async_stream::stream;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use bytes::Bytes;
 use futures::StreamExt;
 use http::{Request, StatusCode};
 use rand::RngCore;
@@ -504,7 +503,7 @@ impl ProviderClient for Client {
 
     fn from_env() -> Self {
         let private_key =
-            std::env::var("BLOCKRUN_PRIVATE_KEY").expect("BLOCKRUN_PRIVATE_KEY not set");
+            std::env::var("BLOCKRUN_WALLET_KEY").expect("BLOCKRUN_WALLET_KEY not set");
         let auth = BlockRunAuth::new(&private_key).expect("Invalid private key");
 
         let mut client_builder = Self::builder();
@@ -966,25 +965,31 @@ where
         }
 
         let body = serde_json::to_vec(&request)?;
-
-        // First request - will return 402
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body.clone())
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
+        let url = format!("{}/v1/chat/completions", BLOCKRUN_API_BASE_URL);
 
         async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
+            // Use reqwest directly for the initial request to handle 402 properly
+            // Rig's HTTP client abstraction treats 402 as an error before we can process it
+            let http_client = reqwest::Client::new();
+
+            // First request - will return 402 with payment requirements
+            let initial_response = http_client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(body.clone())
+                .send()
+                .await
+                .map_err(|e| CompletionError::ProviderError(format!("Request failed: {}", e)))?;
+
+            let status = initial_response.status();
 
             // Handle 402 Payment Required
             if status == StatusCode::PAYMENT_REQUIRED {
                 // Extract payment requirements from header
-                let payment_header = response
+                let payment_header = initial_response
                     .headers()
                     .get("x-payment-required")
-                    .or_else(|| response.headers().get("payment-required"))
+                    .or_else(|| initial_response.headers().get("payment-required"))
                     .ok_or_else(|| {
                         CompletionError::ProviderError(
                             "402 response missing payment header".to_string(),
@@ -993,10 +998,11 @@ where
                     .to_str()
                     .map_err(|_| {
                         CompletionError::ProviderError("Invalid payment header".to_string())
-                    })?;
+                    })?
+                    .to_string();
 
                 // Parse payment requirements
-                let payment_required_json = BASE64.decode(payment_header).map_err(|e| {
+                let payment_required_json = BASE64.decode(&payment_header).map_err(|e| {
                     CompletionError::ProviderError(format!(
                         "Failed to decode payment header: {}",
                         e
@@ -1014,20 +1020,24 @@ where
                 // Create signed payment
                 let payment_payload = self.client.ext().auth.create_payment(&payment_required)?;
 
-                // Retry with payment
-                let req = self
-                    .client
-                    .post("/v1/chat/completions")?
+                // Retry with payment header
+                let paid_response = http_client
+                    .post(&url)
+                    .header("Content-Type", "application/json")
                     .header("payment", &payment_payload)
                     .header("x-payment", &payment_payload)
                     .body(body)
-                    .map_err(|e| CompletionError::HttpError(e.into()))?;
+                    .send()
+                    .await
+                    .map_err(|e| CompletionError::ProviderError(format!("Paid request failed: {}", e)))?;
 
-                let response = self.client.send::<_, Bytes>(req).await?;
-                let status = response.status();
-                let response_body = response.into_body().into_future().await?.to_vec();
+                let paid_status = paid_response.status();
+                let response_body = paid_response
+                    .bytes()
+                    .await
+                    .map_err(|e| CompletionError::ProviderError(format!("Failed to read response: {}", e)))?;
 
-                if status.is_success() {
+                if paid_status.is_success() {
                     match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)?
                     {
                         ApiResponse::Ok(response) => {
@@ -1054,13 +1064,19 @@ where
                 }
             } else if status.is_success() {
                 // Unexpected success without payment (shouldn't happen)
-                let response_body = response.into_body().into_future().await?.to_vec();
+                let response_body = initial_response
+                    .bytes()
+                    .await
+                    .map_err(|e| CompletionError::ProviderError(format!("Failed to read response: {}", e)))?;
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => response.try_into(),
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                let response_body = response.into_body().into_future().await?.to_vec();
+                let response_body = initial_response
+                    .bytes()
+                    .await
+                    .map_err(|e| CompletionError::ProviderError(format!("Failed to read response: {}", e)))?;
                 Err(CompletionError::ProviderError(
                     String::from_utf8_lossy(&response_body).to_string(),
                 ))
@@ -1093,30 +1109,36 @@ where
         }
 
         let body = serde_json::to_vec(&request)?;
+        let url = format!("{}/v1/chat/completions", BLOCKRUN_API_BASE_URL);
 
-        // First request - will return 402
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
+        // Use reqwest directly for the initial 402 request
+        let http_client = reqwest::Client::new();
+
+        // First request - will return 402 with payment requirements
+        let initial_response = http_client
+            .post(&url)
+            .header("Content-Type", "application/json")
             .body(body.clone())
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(format!("Request failed: {}", e)))?;
 
-        let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
+        let status = initial_response.status();
 
         // Handle 402 Payment Required
-        let final_req = if status == StatusCode::PAYMENT_REQUIRED {
-            let payment_header = response
+        let payment_payload = if status == StatusCode::PAYMENT_REQUIRED {
+            let payment_header = initial_response
                 .headers()
                 .get("x-payment-required")
-                .or_else(|| response.headers().get("payment-required"))
+                .or_else(|| initial_response.headers().get("payment-required"))
                 .ok_or_else(|| {
                     CompletionError::ProviderError("402 response missing payment header".to_string())
                 })?
                 .to_str()
-                .map_err(|_| CompletionError::ProviderError("Invalid payment header".to_string()))?;
+                .map_err(|_| CompletionError::ProviderError("Invalid payment header".to_string()))?
+                .to_string();
 
-            let payment_required_json = BASE64.decode(payment_header).map_err(|e| {
+            let payment_required_json = BASE64.decode(&payment_header).map_err(|e| {
                 CompletionError::ProviderError(format!("Failed to decode payment header: {}", e))
             })?;
 
@@ -1128,19 +1150,21 @@ where
                     ))
                 })?;
 
-            let payment_payload = self.client.ext().auth.create_payment(&payment_required)?;
-
-            self.client
-                .post("/v1/chat/completions")?
-                .header("payment", &payment_payload)
-                .header("x-payment", &payment_payload)
-                .body(body)
-                .map_err(|e| CompletionError::HttpError(e.into()))?
+            self.client.ext().auth.create_payment(&payment_required)?
         } else {
             return Err(CompletionError::ProviderError(
                 "Expected 402 response for payment".to_string(),
             ));
         };
+
+        // Build the paid request using Rig's HTTP client for streaming support
+        let final_req = self
+            .client
+            .post("/v1/chat/completions")?
+            .header("payment", &payment_payload)
+            .header("x-payment", &payment_payload)
+            .body(body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
