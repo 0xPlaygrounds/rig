@@ -68,6 +68,24 @@ impl<Filter> VectorSearchRequest<Filter> {
             filter: self.filter.map(f),
         }
     }
+
+    /// Transforms the filter type using a provided function which can additionally return a result.
+    ///
+    /// Useful for converting between filter representations where the conversion can potentially fail (eg, unrepresentable or invalid values).
+    pub fn try_map_filter<T, F>(self, f: F) -> Result<VectorSearchRequest<T>, FilterError>
+    where
+        F: Fn(Filter) -> Result<T, FilterError>,
+    {
+        let filter = self.filter.map(f).transpose()?;
+
+        Ok(VectorSearchRequest {
+            query: self.query,
+            samples: self.samples,
+            threshold: self.threshold,
+            additional_params: self.additional_params,
+            filter,
+        })
+    }
 }
 
 /// Errors from constructing or converting filter expressions.
