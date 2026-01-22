@@ -76,11 +76,9 @@ impl TryFrom<serde_json::Value> for MilvusValue {
                     .map(MilvusValue::try_from)
                     .collect::<Result<_, _>>()?,
             )),
-            serde_json::Value::Null | serde_json::Value::Object(_) => {
-                Err(FilterError::TypeError(
-                    "Milvus filter does not currently support null values or obejcts".into(),
-                ));
-            }
+            serde_json::Value::Null | serde_json::Value::Object(_) => Err(FilterError::TypeError(
+                "Milvus filter does not currently support null values or objects".into(),
+            )),
         }
     }
 }
