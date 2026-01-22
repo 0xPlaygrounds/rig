@@ -807,6 +807,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 input_tokens: usage.prompt_tokens as u64,
                 output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
                 total_tokens: usage.total_tokens as u64,
+                cached_input_tokens: usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map(|d| d.cached_tokens as u64)
+                    .unwrap_or(0),
             })
             .unwrap_or_default();
 
@@ -859,10 +864,19 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct PromptTokensDetails {
+    /// Cached tokens from prompt caching
+    #[serde(default)]
+    pub cached_tokens: usize,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     pub total_tokens: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
 impl Usage {
@@ -870,6 +884,7 @@ impl Usage {
         Self {
             prompt_tokens: 0,
             total_tokens: 0,
+            prompt_tokens_details: None,
         }
     }
 }
@@ -885,6 +900,7 @@ impl fmt::Display for Usage {
         let Usage {
             prompt_tokens,
             total_tokens,
+            ..
         } = self;
         write!(
             f,
@@ -899,6 +915,11 @@ impl GetTokenUsage for Usage {
         usage.input_tokens = self.prompt_tokens as u64;
         usage.output_tokens = (self.total_tokens - self.prompt_tokens) as u64;
         usage.total_tokens = self.total_tokens as u64;
+        usage.cached_input_tokens = self
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens as u64)
+            .unwrap_or(0);
 
         Some(usage)
     }

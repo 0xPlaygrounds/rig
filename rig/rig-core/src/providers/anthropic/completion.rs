@@ -172,6 +172,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             input_tokens: response.usage.input_tokens,
             output_tokens: response.usage.output_tokens,
             total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+            cached_input_tokens: response.usage.cache_read_input_tokens.unwrap_or(0),
         };
 
         Ok(completion::CompletionResponse {

@@ -257,6 +257,7 @@ pub mod xai_api_types {
                 input_tokens: response.usage.prompt_tokens as u64,
                 output_tokens: response.usage.completion_tokens as u64,
                 total_tokens: response.usage.total_tokens as u64,
+                cached_input_tokens: 0,
             };
 
             Ok(completion::CompletionResponse {
