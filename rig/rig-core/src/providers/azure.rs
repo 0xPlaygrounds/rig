@@ -451,6 +451,7 @@ where
 
         let body = serde_json::to_vec(&json!({
             "input": documents,
+            "dimensions": self.ndims,
         }))?;
 
         let req = self
