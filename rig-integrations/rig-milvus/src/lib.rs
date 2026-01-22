@@ -5,9 +5,10 @@ use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
+        request::{Filter as CoreFilter, SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmBoxedFuture,
 };
 use serde::{Deserialize, Serialize};
 
@@ -307,5 +308,35 @@ where
             .collect();
 
         Ok(res)
+    }
+}
+
+impl<M> VectorStoreIndexDyn for MilvusVectorStore<M>
+where
+    M: EmbeddingModel + Sync + Send,
+{
+    fn top_n<'a>(
+        &'a self,
+        req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
+    ) -> WasmBoxedFuture<'a, TopNResults> {
+        Box::pin(async move {
+            let req = req.try_map_filter(Filter::try_from)?;
+            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
+
+            Ok(results)
+        })
+    }
+
+    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
+    fn top_n_ids<'a>(
+        &'a self,
+        req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
+    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        Box::pin(async move {
+            let req = req.try_map_filter(Filter::try_from)?;
+            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
+
+            Ok(results)
+        })
     }
 }

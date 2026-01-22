@@ -1,13 +1,14 @@
 use futures::StreamExt;
-use mongodb::bson::{self, Bson, Document, doc};
+use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
 use rig::{
     Embed, OneOrMany,
     embeddings::embedding::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
+        request::{Filter, SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmBoxedFuture,
 };
 use serde::{Deserialize, Serialize};
 
@@ -306,13 +307,38 @@ impl MongoDbSearchFilter {
         Self(doc! { key: { "$size": size } })
     }
 
-    // Array ops
+    // Array opsreq.filter.unwrap().
     pub fn all(key: String, values: Vec<Bson>) -> Self {
         Self(doc! { key: { "$all": values } })
     }
 
     pub fn any(key: String, condition: Document) -> Self {
         Self(doc! { key: { "$elemMatch": condition } })
+    }
+}
+
+impl From<Filter<serde_json::Value>> for MongoDbSearchFilter {
+    fn from(value: Filter<serde_json::Value>) -> Self {
+        fn serde_json_value_to_bson(v: &serde_json::Value) -> Bson {
+            to_bson(v).unwrap_or(Bson::Null)
+        }
+
+        match value {
+            Filter::Eq(k, val) => {
+                let bson_val = serde_json_value_to_bson(&val);
+                MongoDbSearchFilter::eq(k, bson_val)
+            }
+            Filter::Gt(k, val) => {
+                let bson_val = serde_json_value_to_bson(&val);
+                MongoDbSearchFilter::gt(k, bson_val)
+            }
+            Filter::Lt(k, val) => {
+                let bson_val = serde_json_value_to_bson(&val);
+                MongoDbSearchFilter::lt(k, bson_val)
+            }
+            Filter::And(l, r) => Self::from(*l).and(Self::from(*r)),
+            Filter::Or(l, r) => Self::from(*l).or(Self::from(*r)),
+        }
     }
 }
 
@@ -411,6 +437,38 @@ where
         );
 
         Ok(results)
+    }
+}
+
+impl<C, M> VectorStoreIndexDyn for MongoDbVectorIndex<C, M>
+where
+    C: Sync + Send,
+    M: EmbeddingModel + Sync + Send,
+{
+    fn top_n<'a>(
+        &'a self,
+        req: VectorSearchRequest<Filter<serde_json::Value>>,
+    ) -> WasmBoxedFuture<'a, TopNResults> {
+        let req = req.map_filter(MongoDbSearchFilter::from);
+
+        Box::pin(async move {
+            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
+
+            Ok(results)
+        })
+    }
+
+    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
+    fn top_n_ids<'a>(
+        &'a self,
+        req: VectorSearchRequest<Filter<serde_json::Value>>,
+    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        let req = req.map_filter(MongoDbSearchFilter::from);
+        Box::pin(async move {
+            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
+
+            Ok(results)
+        })
     }
 }
 
