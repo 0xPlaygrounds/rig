@@ -1049,6 +1049,21 @@ mod azure_tests {
 
     #[tokio::test]
     #[ignore]
+    async fn test_azure_embedding_dimensions() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let ndims = 256;
+        let client = Client::<reqwest::Client>::from_env();
+        let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
+        let embedding = model.embed_text("Hello, world!").await.unwrap();
+
+        assert!(embedding.vec.len() == ndims);
+
+        tracing::info!("Azure dimensions embedding: {:?}", embedding);
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn test_azure_completion() {
         let _ = tracing_subscriber::fmt::try_init();
 
