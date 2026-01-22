@@ -49,12 +49,6 @@ fastrand = "2.3.0"
 eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
-
-# BlockRun x402 payment support
-sha3 = { version = "0.10", optional = true }
-k256 = { version = "0.13", features = ["ecdsa"], optional = true }
-hex = { version = "0.4", optional = true }
-rand = { version = "0.9", optional = true }
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
 mime = "0.3.17"
 reqwest-middleware = { version = "0.4.2", optional = true, features = [
@@ -97,10 +91,9 @@ tracing-opentelemetry = "0.31.0"
 
 [features]
 default = ["reqwest-tls"]
-all = ["derive", "pdf", "rayon", "blockrun"]
+all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
-blockrun = ["dep:sha3", "dep:k256", "dep:hex", "dep:rand"]
 derive = ["dep:rig-derive"]
 experimental = []
 discord-bot = ["dep:serenity"]
@@ -192,7 +185,3 @@ required-features = ["discord-bot"]
 
 [[example]]
 name = "custom_vector_store"
-
-[[example]]
-name = "agent_with_blockrun"
-required-features = ["blockrun"]

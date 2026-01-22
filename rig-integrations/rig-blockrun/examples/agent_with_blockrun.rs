@@ -7,20 +7,19 @@
 //!
 //! 1. Generate a wallet private key or use an existing one
 //! 2. Fund it with USDC on Base (even $1 is enough to get started)
-//! 3. Set `BLOCKRUN_PRIVATE_KEY` environment variable
+//! 3. Set `BLOCKRUN_WALLET_KEY` environment variable
 //!
 //! # Running
 //!
 //! ```bash
-//! BLOCKRUN_PRIVATE_KEY=0x... cargo run --example agent_with_blockrun --features blockrun
+//! BLOCKRUN_WALLET_KEY=0x... cargo run --example agent_with_blockrun
 //! ```
 
-use rig::prelude::*;
-use rig::providers::blockrun::{self, CLAUDE_SONNET_4, DEEPSEEK_CHAT, GPT_4O};
 use rig::{
     completion::{Prompt, ToolDefinition},
     tool::Tool,
 };
+use rig_blockrun::{Client, CLAUDE_SONNET_4, DEEPSEEK_CHAT, GPT_4O};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -32,8 +31,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create BlockRun client from environment variable
-    // This reads BLOCKRUN_PRIVATE_KEY - your wallet key for signing payments
-    let client = blockrun::Client::from_env();
+    // This reads BLOCKRUN_WALLET_KEY - your wallet key for signing payments
+    let client = Client::from_env();
 
     // Print the wallet address (useful for funding)
     println!("Wallet address: {}", client.address());

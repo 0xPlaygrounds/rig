@@ -11,7 +11,6 @@
 //! - DeepSeek
 //! - Azure OpenAI
 //! - Mira
-//! - BlockRun (pay-per-request via x402 micropayments)
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -48,8 +47,6 @@
 //! be used with the Cohere provider client.
 pub mod anthropic;
 pub mod azure;
-#[cfg(feature = "blockrun")]
-pub mod blockrun;
 pub mod cohere;
 pub mod deepseek;
 pub mod galadriel;

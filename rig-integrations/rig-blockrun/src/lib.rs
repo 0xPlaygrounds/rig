@@ -5,18 +5,18 @@
 //!
 //! # Example
 //! ```ignore
-//! use rig::providers::blockrun;
+//! use rig_blockrun::{Client, CLAUDE_SONNET_4, GPT_4O, DEEPSEEK_CHAT};
 //!
 //! // Create client with wallet private key (for signing payments)
-//! let client = blockrun::Client::from_env(); // reads BLOCKRUN_WALLET_KEY
+//! let client = Client::from_env(); // reads BLOCKRUN_WALLET_KEY
 //!
 //! // Or create with explicit private key
-//! let client = blockrun::Client::from_private_key("0x...your_private_key")?;
+//! let client = Client::from_private_key("0x...your_private_key")?;
 //!
 //! // Use any supported model - no API keys needed, just USDC in your wallet
-//! let claude = client.completion_model(blockrun::CLAUDE_SONNET_4);
-//! let gpt = client.completion_model(blockrun::GPT_4O);
-//! let deepseek = client.completion_model(blockrun::DEEPSEEK_CHAT);
+//! let claude = client.completion_model(CLAUDE_SONNET_4);
+//! let gpt = client.completion_model(GPT_4O);
+//! let deepseek = client.completion_model(DEEPSEEK_CHAT);
 //! ```
 //!
 //! # Supported Models
@@ -39,21 +39,20 @@
 //!
 //! The private key never leaves your machine - it's only used for local signing.
 
-use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-};
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::sse::{Event, GenericEventSource};
-use crate::http_client::{self, HttpClientExt};
-use crate::message::{Document, DocumentSourceKind};
-use crate::{json_utils, message, OneOrMany};
+mod json_utils;
+
 use async_stream::stream;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use futures::StreamExt;
-use http::{Request, StatusCode};
 use rand::RngCore;
+use rig::agent::AgentBuilder;
+use rig::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use rig::message::{self, Document, DocumentSourceKind};
+use rig::OneOrMany;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 use tracing::{enabled, info_span, Instrument, Level};
 
 // ================================================================
@@ -183,7 +182,6 @@ struct Authorization {
 fn eip712_domain_separator() -> [u8; 32] {
     use sha3::{Digest, Keccak256};
 
-    // EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)
     let type_hash = Keccak256::digest(
         b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
     );
@@ -198,7 +196,6 @@ fn eip712_domain_separator() -> [u8; 32] {
     let mut contract_padded = [0u8; 32];
     contract_padded[12..].copy_from_slice(&contract_bytes);
 
-    // Hash: keccak256(typeHash || nameHash || versionHash || chainId || verifyingContract)
     let mut data = Vec::with_capacity(160);
     data.extend_from_slice(&type_hash);
     data.extend_from_slice(&name_hash);
@@ -220,12 +217,10 @@ fn transfer_struct_hash(
 ) -> [u8; 32] {
     use sha3::{Digest, Keccak256};
 
-    // TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)
     let type_hash = Keccak256::digest(
         b"TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)",
     );
 
-    // Pad addresses to 32 bytes
     let from_bytes = hex::decode(&from[2..]).expect("Invalid from address");
     let mut from_padded = [0u8; 32];
     from_padded[12..].copy_from_slice(&from_bytes);
@@ -234,19 +229,16 @@ fn transfer_struct_hash(
     let mut to_padded = [0u8; 32];
     to_padded[12..].copy_from_slice(&to_bytes);
 
-    // Value as uint256
     let value_num: u128 = value.parse().expect("Invalid value");
     let mut value_bytes = [0u8; 32];
     value_bytes[16..].copy_from_slice(&value_num.to_be_bytes());
 
-    // Timestamps as uint256
     let mut valid_after_bytes = [0u8; 32];
     valid_after_bytes[24..].copy_from_slice(&valid_after.to_be_bytes());
 
     let mut valid_before_bytes = [0u8; 32];
     valid_before_bytes[24..].copy_from_slice(&valid_before.to_be_bytes());
 
-    // Hash the struct
     let mut data = Vec::with_capacity(224);
     data.extend_from_slice(&type_hash);
     data.extend_from_slice(&from_padded);
@@ -284,10 +276,9 @@ fn sign_eip712(private_key: &[u8; 32], message_hash: [u8; 32]) -> Result<String,
         .sign_prehash_recoverable(&message_hash)
         .map_err(|e| CompletionError::ProviderError(format!("Signing failed: {}", e)))?;
 
-    // Encode as 65-byte signature (r || s || v)
     let mut sig_bytes = [0u8; 65];
     sig_bytes[..64].copy_from_slice(&signature.to_bytes());
-    sig_bytes[64] = recovery_id.to_byte() + 27; // Ethereum uses 27/28 for v
+    sig_bytes[64] = recovery_id.to_byte() + 27;
 
     Ok(format!("0x{}", hex::encode(sig_bytes)))
 }
@@ -302,20 +293,20 @@ fn get_address_from_private_key(private_key: &[u8; 32]) -> Result<String, Comple
 
     let public_key = signing_key.verifying_key();
     let public_key_bytes = public_key.to_encoded_point(false);
-    let public_key_uncompressed = &public_key_bytes.as_bytes()[1..]; // Skip the 0x04 prefix
+    let public_key_uncompressed = &public_key_bytes.as_bytes()[1..];
 
     let hash = Keccak256::digest(public_key_uncompressed);
-    let address_bytes = &hash[12..]; // Last 20 bytes
+    let address_bytes = &hash[12..];
 
     Ok(format!("0x{}", hex::encode(address_bytes)))
 }
 
 // ================================================================
-// BlockRun API Key (Private Key for signing)
+// BlockRun Auth
 // ================================================================
 
 #[derive(Clone)]
-pub struct BlockRunAuth {
+struct BlockRunAuth {
     private_key: [u8; 32],
     address: String,
 }
@@ -329,16 +320,8 @@ impl std::fmt::Debug for BlockRunAuth {
     }
 }
 
-impl crate::client::ApiKey for BlockRunAuth {
-    fn into_header(self) -> Option<crate::http_client::Result<(http::HeaderName, http::HeaderValue)>> {
-        // BlockRun uses x402 payment headers instead of bearer auth
-        // The payment is added per-request, not as a default header
-        None
-    }
-}
-
 impl BlockRunAuth {
-    pub fn new(private_key_hex: &str) -> Result<Self, CompletionError> {
+    fn new(private_key_hex: &str) -> Result<Self, CompletionError> {
         let key_hex = private_key_hex.strip_prefix("0x").unwrap_or(private_key_hex);
         let key_bytes = hex::decode(key_hex)
             .map_err(|e| CompletionError::ProviderError(format!("Invalid hex key: {}", e)))?;
@@ -360,7 +343,7 @@ impl BlockRunAuth {
         })
     }
 
-    pub fn address(&self) -> &str {
+    fn address(&self) -> &str {
         &self.address
     }
 
@@ -379,15 +362,13 @@ impl BlockRunAuth {
             .map_err(|e| CompletionError::ProviderError(format!("Time error: {}", e)))?
             .as_secs();
 
-        let valid_after = now.saturating_sub(600); // 10 minutes before (clock skew)
+        let valid_after = now.saturating_sub(600);
         let valid_before = now + accept.max_timeout_seconds;
 
-        // Generate random nonce
         let mut nonce = [0u8; 32];
         rand::rng().fill_bytes(&mut nonce);
         let nonce_hex = format!("0x{}", hex::encode(nonce));
 
-        // Create struct hash
         let struct_hash = transfer_struct_hash(
             &self.address,
             &accept.pay_to,
@@ -397,11 +378,9 @@ impl BlockRunAuth {
             &nonce,
         );
 
-        // Create final hash and sign
         let message_hash = eip712_hash(struct_hash);
         let signature = sign_eip712(&self.private_key, message_hash)?;
 
-        // Build payment payload
         let payload = PaymentPayload {
             x402_version: 2,
             resource: payment_required
@@ -446,84 +425,16 @@ impl BlockRunAuth {
 }
 
 // ================================================================
-// BlockRun Provider
+// BlockRun Client
 // ================================================================
 
-#[derive(Debug, Clone)]
-pub struct BlockRunExt {
+/// BlockRun API client for x402 micropayment-based AI inference
+#[derive(Clone)]
+pub struct Client {
     auth: BlockRunAuth,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct BlockRunExtBuilder;
-
-impl Provider for BlockRunExt {
-    type Builder = BlockRunExtBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-
-    fn build<H>(
-        builder: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self {
-            auth: builder.get_api_key().clone(),
-        })
-    }
-}
-
-impl<H> Capabilities<H> for BlockRunExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing; // TODO: Add image generation support
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
-
-impl DebugExt for BlockRunExt {}
-
-impl ProviderBuilder for BlockRunExtBuilder {
-    type Output = BlockRunExt;
-    type ApiKey = BlockRunAuth;
-
-    const BASE_URL: &'static str = BLOCKRUN_API_BASE_URL;
-}
-
-pub type Client<H = reqwest::Client> = client::Client<BlockRunExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<BlockRunExtBuilder, BlockRunAuth, H>;
-
-impl ProviderClient for Client {
-    type Input = BlockRunAuth;
-
-    fn from_env() -> Self {
-        let private_key =
-            std::env::var("BLOCKRUN_WALLET_KEY").expect("BLOCKRUN_WALLET_KEY not set");
-        let auth = BlockRunAuth::new(&private_key).expect("Invalid private key");
-
-        let mut client_builder = Self::builder();
-        client_builder.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-        );
-        let client_builder = client_builder.api_key(auth);
-        client_builder.build().unwrap()
-    }
-
-    fn from_val(input: Self::Input) -> Self {
-        let mut client_builder = Self::builder();
-        client_builder.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-        );
-        let client_builder = client_builder.api_key(input);
-        client_builder.build().unwrap()
-    }
+    http_client: reqwest::Client,
+    #[allow(dead_code)] // Reserved for custom endpoint support
+    base_url: String,
 }
 
 impl Client {
@@ -535,16 +446,51 @@ impl Client {
     ///
     /// # Example
     /// ```ignore
-    /// let client = blockrun::Client::from_private_key("0x...")?;
+    /// let client = Client::from_private_key("0x...")?;
     /// ```
     pub fn from_private_key(private_key: &str) -> Result<Self, CompletionError> {
         let auth = BlockRunAuth::new(private_key)?;
-        Ok(Self::from_val(auth))
+        let http_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| CompletionError::ProviderError(format!("HTTP client error: {}", e)))?;
+
+        Ok(Self {
+            auth,
+            http_client,
+            base_url: BLOCKRUN_API_BASE_URL.to_string(),
+        })
+    }
+
+    /// Create a new BlockRun client from the `BLOCKRUN_WALLET_KEY` environment variable.
+    /// Panics if the environment variable is not set.
+    pub fn from_env() -> Self {
+        let private_key =
+            std::env::var("BLOCKRUN_WALLET_KEY").expect("BLOCKRUN_WALLET_KEY not set");
+        Self::from_private_key(&private_key).expect("Invalid private key")
     }
 
     /// Get the wallet address associated with this client
     pub fn address(&self) -> &str {
-        self.ext().auth.address()
+        self.auth.address()
+    }
+
+    /// Create a completion model with the given name.
+    pub fn completion_model(&self, model: &str) -> CompletionModel {
+        CompletionModel::new(self.clone(), model)
+    }
+
+    /// Create an agent builder with the given completion model.
+    pub fn agent(&self, model: &str) -> AgentBuilder<CompletionModel> {
+        AgentBuilder::new(self.completion_model(model))
+    }
+
+    #[allow(dead_code)] // Reserved for future API extensions
+    fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        let url = format!("{}/{}", self.base_url, path.trim_start_matches('/'));
+        self.http_client
+            .post(url)
+            .header("Content-Type", "application/json")
     }
 }
 
@@ -562,12 +508,6 @@ struct ApiErrorResponse {
 enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -636,115 +576,106 @@ impl Message {
     }
 }
 
-impl From<message::ToolResult> for Message {
-    fn from(tool_result: message::ToolResult) -> Self {
-        let content = match tool_result.content.first() {
-            message::ToolResultContent::Text(text) => text.text,
-            message::ToolResultContent::Image(_) => String::from("[Image]"),
-        };
+fn tool_result_to_message(tool_result: message::ToolResult) -> Message {
+    let content = match tool_result.content.first() {
+        message::ToolResultContent::Text(text) => text.text,
+        message::ToolResultContent::Image(_) => String::from("[Image]"),
+    };
 
-        Message::ToolResult {
-            tool_call_id: tool_result.id,
-            content,
-        }
+    Message::ToolResult {
+        tool_call_id: tool_result.id,
+        content,
     }
 }
 
-impl From<message::ToolCall> for ToolCall {
-    fn from(tool_call: message::ToolCall) -> Self {
-        Self {
-            id: tool_call.id,
-            index: 0,
-            r#type: ToolType::Function,
-            function: Function {
-                name: tool_call.function.name,
-                arguments: tool_call.function.arguments,
-            },
-        }
+fn tool_call_to_api(tool_call: message::ToolCall) -> ToolCall {
+    ToolCall {
+        id: tool_call.id,
+        index: 0,
+        r#type: ToolType::Function,
+        function: Function {
+            name: tool_call.function.name,
+            arguments: tool_call.function.arguments,
+        },
     }
 }
 
-impl TryFrom<message::Message> for Vec<Message> {
-    type Error = message::MessageError;
+fn message_to_api(msg: message::Message) -> Result<Vec<Message>, message::MessageError> {
+    match msg {
+        message::Message::User { content } => {
+            let mut messages = vec![];
 
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        match message {
-            message::Message::User { content } => {
-                let mut messages = vec![];
-
-                let tool_results = content
-                    .clone()
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::UserContent::ToolResult(tool_result) => {
-                            Some(Message::from(tool_result))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                messages.extend(tool_results);
-
-                let text_messages = content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::UserContent::Text(text) => Some(Message::User {
-                            content: text.text,
-                            name: None,
-                        }),
-                        message::UserContent::Document(Document {
-                            data:
-                                DocumentSourceKind::Base64(content)
-                                | DocumentSourceKind::String(content),
-                            ..
-                        }) => Some(Message::User {
-                            content,
-                            name: None,
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                messages.extend(text_messages);
-
-                Ok(messages)
-            }
-            message::Message::Assistant { content, .. } => {
-                let mut messages: Vec<Message> = vec![];
-                let mut text_content = String::new();
-
-                content.iter().for_each(|content| {
-                    if let message::AssistantContent::Text(text) = content {
-                        text_content.push_str(text.text());
+            let tool_results: Vec<Message> = content
+                .clone()
+                .into_iter()
+                .filter_map(|c| match c {
+                    message::UserContent::ToolResult(tool_result) => {
+                        Some(tool_result_to_message(tool_result))
                     }
-                });
+                    _ => None,
+                })
+                .collect();
 
-                messages.push(Message::Assistant {
-                    content: text_content,
-                    name: None,
-                    tool_calls: vec![],
-                });
+            messages.extend(tool_results);
 
-                let tool_calls = content
-                    .clone()
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::ToolCall(tool_call) => {
-                            Some(ToolCall::from(tool_call))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                if !tool_calls.is_empty() {
-                    messages.push(Message::Assistant {
-                        content: "".to_string(),
+            let text_messages: Vec<Message> = content
+                .into_iter()
+                .filter_map(|c| match c {
+                    message::UserContent::Text(text) => Some(Message::User {
+                        content: text.text,
                         name: None,
-                        tool_calls,
-                    });
-                }
+                    }),
+                    message::UserContent::Document(Document {
+                        data:
+                            DocumentSourceKind::Base64(content) | DocumentSourceKind::String(content),
+                        ..
+                    }) => Some(Message::User {
+                        content,
+                        name: None,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            messages.extend(text_messages);
 
-                Ok(messages)
+            Ok(messages)
+        }
+        message::Message::Assistant { content, .. } => {
+            let mut messages: Vec<Message> = vec![];
+            let mut text_content = String::new();
+
+            content.iter().for_each(|c| {
+                if let message::AssistantContent::Text(text) = c {
+                    text_content.push_str(text.text());
+                }
+            });
+
+            messages.push(Message::Assistant {
+                content: text_content,
+                name: None,
+                tool_calls: vec![],
+            });
+
+            let tool_calls: Vec<ToolCall> = content
+                .clone()
+                .into_iter()
+                .filter_map(|c| match c {
+                    message::AssistantContent::ToolCall(tool_call) => {
+                        Some(tool_call_to_api(tool_call))
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            if !tool_calls.is_empty() {
+                messages.push(Message::Assistant {
+                    content: "".to_string(),
+                    name: None,
+                    tool_calls,
+                });
             }
+
+            Ok(messages)
         }
     }
 }
@@ -778,8 +709,8 @@ pub struct ToolDefinition {
     pub function: completion::ToolDefinition,
 }
 
-impl From<crate::completion::ToolDefinition> for ToolDefinition {
-    fn from(tool: crate::completion::ToolDefinition) -> Self {
+impl From<completion::ToolDefinition> for ToolDefinition {
+    fn from(tool: completion::ToolDefinition) -> Self {
         Self {
             r#type: "function".into(),
             function: tool,
@@ -864,46 +795,42 @@ struct BlockRunCompletionRequest {
     additional_params: Option<serde_json::Value>,
 }
 
-impl TryFrom<(&str, CompletionRequest)> for BlockRunCompletionRequest {
-    type Error = CompletionError;
+fn build_request(model: &str, req: CompletionRequest) -> Result<BlockRunCompletionRequest, CompletionError> {
+    let mut full_history: Vec<Message> = match &req.preamble {
+        Some(preamble) => vec![Message::system(preamble)],
+        None => vec![],
+    };
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+    if let Some(docs) = req.normalized_documents() {
+        let docs: Vec<Message> = message_to_api(docs)?;
+        full_history.extend(docs);
+    }
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
+    let chat_history: Vec<Message> = req
+        .chat_history
+        .clone()
+        .into_iter()
+        .map(message_to_api)
+        .collect::<Result<Vec<Vec<Message>>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
 
-        let chat_history: Vec<Message> = req
-            .chat_history
+    full_history.extend(chat_history);
+
+    Ok(BlockRunCompletionRequest {
+        model: model.to_string(),
+        messages: full_history,
+        temperature: req.temperature,
+        tools: req
+            .tools
             .clone()
             .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice: None, // TODO: Handle tool_choice properly
-            additional_params: req.additional_params,
-        })
-    }
+            .map(ToolDefinition::from)
+            .collect::<Vec<_>>(),
+        tool_choice: None,
+        additional_params: req.additional_params,
+    })
 }
 
 // ================================================================
@@ -911,24 +838,27 @@ impl TryFrom<(&str, CompletionRequest)> for BlockRunCompletionRequest {
 // ================================================================
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub client: Client<T>,
-    pub model: String,
+pub struct CompletionModel {
+    client: Client,
+    model: String,
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
+impl CompletionModel {
+    fn new(client: Client, model: &str) -> Self {
+        Self {
+            client,
+            model: model.to_string(),
+        }
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
-    type Client = Client<T>;
+    type Client = Client;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self {
-            client: client.clone(),
-            model: model.into(),
-        }
+        Self::new(client.clone(), &model.into())
     }
 
     async fn completion(
@@ -954,8 +884,7 @@ where
 
         span.record("gen_ai.system_instructions", &completion_request.preamble);
 
-        let request =
-            BlockRunCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let request = build_request(&self.model, completion_request)?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(target: "rig::completions",
@@ -967,13 +896,12 @@ where
         let body = serde_json::to_vec(&request)?;
         let url = format!("{}/v1/chat/completions", BLOCKRUN_API_BASE_URL);
 
-        async move {
-            // Use reqwest directly for the initial request to handle 402 properly
-            // Rig's HTTP client abstraction treats 402 as an error before we can process it
-            let http_client = reqwest::Client::new();
+        let client = self.client.clone();
 
+        async move {
             // First request - will return 402 with payment requirements
-            let initial_response = http_client
+            let initial_response = client
+                .http_client
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .body(body.clone())
@@ -985,7 +913,6 @@ where
 
             // Handle 402 Payment Required
             if status == StatusCode::PAYMENT_REQUIRED {
-                // Extract payment requirements from header
                 let payment_header = initial_response
                     .headers()
                     .get("x-payment-required")
@@ -1001,7 +928,6 @@ where
                     })?
                     .to_string();
 
-                // Parse payment requirements
                 let payment_required_json = BASE64.decode(&payment_header).map_err(|e| {
                     CompletionError::ProviderError(format!(
                         "Failed to decode payment header: {}",
@@ -1017,11 +943,10 @@ where
                         ))
                     })?;
 
-                // Create signed payment
-                let payment_payload = self.client.ext().auth.create_payment(&payment_required)?;
+                let payment_payload = client.auth.create_payment(&payment_required)?;
 
-                // Retry with payment header
-                let paid_response = http_client
+                let paid_response = client
+                    .http_client
                     .post(&url)
                     .header("Content-Type", "application/json")
                     .header("payment", &payment_payload)
@@ -1029,13 +954,14 @@ where
                     .body(body)
                     .send()
                     .await
-                    .map_err(|e| CompletionError::ProviderError(format!("Paid request failed: {}", e)))?;
+                    .map_err(|e| {
+                        CompletionError::ProviderError(format!("Paid request failed: {}", e))
+                    })?;
 
                 let paid_status = paid_response.status();
-                let response_body = paid_response
-                    .bytes()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(format!("Failed to read response: {}", e)))?;
+                let response_body = paid_response.bytes().await.map_err(|e| {
+                    CompletionError::ProviderError(format!("Failed to read response: {}", e))
+                })?;
 
                 if paid_status.is_success() {
                     match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)?
@@ -1055,7 +981,9 @@ where
                             }
                             response.try_into()
                         }
-                        ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                        ApiResponse::Err(err) => {
+                            Err(CompletionError::ProviderError(err.message))
+                        }
                     }
                 } else {
                     Err(CompletionError::ProviderError(
@@ -1063,20 +991,17 @@ where
                     ))
                 }
             } else if status.is_success() {
-                // Unexpected success without payment (shouldn't happen)
-                let response_body = initial_response
-                    .bytes()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(format!("Failed to read response: {}", e)))?;
+                let response_body = initial_response.bytes().await.map_err(|e| {
+                    CompletionError::ProviderError(format!("Failed to read response: {}", e))
+                })?;
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => response.try_into(),
                     ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
                 }
             } else {
-                let response_body = initial_response
-                    .bytes()
-                    .await
-                    .map_err(|e| CompletionError::ProviderError(format!("Failed to read response: {}", e)))?;
+                let response_body = initial_response.bytes().await.map_err(|e| {
+                    CompletionError::ProviderError(format!("Failed to read response: {}", e))
+                })?;
                 Err(CompletionError::ProviderError(
                     String::from_utf8_lossy(&response_body).to_string(),
                 ))
@@ -1089,11 +1014,10 @@ where
     async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+    ) -> Result<rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
     {
         let preamble = completion_request.preamble.clone();
-        let mut request =
-            BlockRunCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
+        let mut request = build_request(&self.model, completion_request)?;
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -1111,11 +1035,10 @@ where
         let body = serde_json::to_vec(&request)?;
         let url = format!("{}/v1/chat/completions", BLOCKRUN_API_BASE_URL);
 
-        // Use reqwest directly for the initial 402 request
-        let http_client = reqwest::Client::new();
-
         // First request - will return 402 with payment requirements
-        let initial_response = http_client
+        let initial_response = self
+            .client
+            .http_client
             .post(&url)
             .header("Content-Type", "application/json")
             .body(body.clone())
@@ -1132,7 +1055,9 @@ where
                 .get("x-payment-required")
                 .or_else(|| initial_response.headers().get("payment-required"))
                 .ok_or_else(|| {
-                    CompletionError::ProviderError("402 response missing payment header".to_string())
+                    CompletionError::ProviderError(
+                        "402 response missing payment header".to_string(),
+                    )
                 })?
                 .to_str()
                 .map_err(|_| CompletionError::ProviderError("Invalid payment header".to_string()))?
@@ -1150,21 +1075,34 @@ where
                     ))
                 })?;
 
-            self.client.ext().auth.create_payment(&payment_required)?
+            self.client.auth.create_payment(&payment_required)?
         } else {
             return Err(CompletionError::ProviderError(
                 "Expected 402 response for payment".to_string(),
             ));
         };
 
-        // Build the paid request using Rig's HTTP client for streaming support
-        let final_req = self
+        // Make the paid streaming request
+        let response = self
             .client
-            .post("/v1/chat/completions")?
+            .http_client
+            .post(&url)
+            .header("Content-Type", "application/json")
             .header("payment", &payment_payload)
             .header("x-payment", &payment_payload)
             .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
+            .send()
+            .await
+            .map_err(|e| CompletionError::ProviderError(format!("Paid request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let body = response.bytes().await.map_err(|e| {
+                CompletionError::ProviderError(format!("Failed to read error response: {}", e))
+            })?;
+            return Err(CompletionError::ProviderError(
+                String::from_utf8_lossy(&body).to_string(),
+            ));
+        }
 
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
@@ -1183,11 +1121,92 @@ where
             tracing::Span::current()
         };
 
-        tracing::Instrument::instrument(
-            send_streaming_request(self.client.clone(), final_req),
-            span,
-        )
-        .await
+        let _guard = span.enter();
+
+        let stream = stream! {
+            let mut final_usage = Usage::new();
+            let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
+            let mut byte_stream = response.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(chunk_result) = byte_stream.next().await {
+                let chunk = match chunk_result {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!("Stream error: {:?}", e);
+                        yield Err(CompletionError::ResponseError(e.to_string()));
+                        break;
+                    }
+                };
+
+                buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                // Process complete SSE events
+                while let Some(pos) = buffer.find("\n\n") {
+                    let event = buffer[..pos].to_string();
+                    buffer = buffer[pos + 2..].to_string();
+
+                    for line in event.lines() {
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data.trim().is_empty() || data == "[DONE]" {
+                                continue;
+                            }
+
+                            let parsed = serde_json::from_str::<StreamingCompletionChunk>(data);
+                            let Ok(chunk_data) = parsed else {
+                                let err = parsed.unwrap_err();
+                                tracing::debug!("Couldn't parse SSE payload: {:?}", err);
+                                continue;
+                            };
+
+                            if let Some(choice) = chunk_data.choices.first() {
+                                let delta = &choice.delta;
+
+                                for tool_call in &delta.tool_calls {
+                                    let function = &tool_call.function;
+
+                                    if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
+                                        let id = tool_call.id.clone().unwrap_or_default();
+                                        let name = function.name.clone().unwrap();
+                                        calls.insert(tool_call.index, (id, name, String::new()));
+                                    } else if let Some(arguments) = &function.arguments {
+                                        if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
+                                            let combined = format!("{}{}", existing_args, arguments);
+                                            calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
+                                        }
+                                    }
+                                }
+
+                                if let Some(content) = &delta.content {
+                                    yield Ok(rig::streaming::RawStreamingChoice::Message(content.clone()));
+                                }
+                            }
+
+                            if let Some(usage) = chunk_data.usage {
+                                final_usage = usage;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Flush accumulated tool calls
+            for (_index, (id, name, arguments)) in calls {
+                if let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments) {
+                    yield Ok(rig::streaming::RawStreamingChoice::ToolCall(
+                        rig::streaming::RawStreamingToolCall::new(id, name, arguments_json)
+                    ));
+                }
+            }
+
+            yield Ok(rig::streaming::RawStreamingChoice::FinalResponse(
+                StreamingCompletionResponse { usage: final_usage }
+            ));
+        };
+
+        Ok(rig::streaming::StreamingCompletionResponse::stream(
+            Box::pin(stream),
+        ))
     }
 }
 
@@ -1236,104 +1255,13 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
+    fn token_usage(&self) -> Option<completion::Usage> {
+        let mut usage = completion::Usage::new();
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.output_tokens = self.usage.completion_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
         Some(usage)
     }
-}
-
-async fn send_streaming_request<T>(
-    http_client: T,
-    req: Request<Vec<u8>>,
-) -> Result<crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    let mut event_source = GenericEventSource::new(http_client, req);
-
-    let stream = stream! {
-        let mut final_usage = Usage::new();
-        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-                Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() || message.data == "[DONE]" {
-                        continue;
-                    }
-
-                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
-                    let Ok(data) = parsed else {
-                        let err = parsed.unwrap_err();
-                        tracing::debug!("Couldn't parse SSE payload: {:?}", err);
-                        continue;
-                    };
-
-                    if let Some(choice) = data.choices.first() {
-                        let delta = &choice.delta;
-
-                        // Handle tool calls
-                        for tool_call in &delta.tool_calls {
-                            let function = &tool_call.function;
-
-                            if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false) {
-                                let id = tool_call.id.clone().unwrap_or_default();
-                                let name = function.name.clone().unwrap();
-                                calls.insert(tool_call.index, (id, name, String::new()));
-                            } else if let Some(arguments) = &function.arguments {
-                                if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                    let combined = format!("{}{}", existing_args, arguments);
-                                    calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
-                                }
-                            }
-                        }
-
-                        if let Some(content) = &delta.content {
-                            yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
-                        }
-                    }
-
-                    if let Some(usage) = data.usage {
-                        final_usage = usage;
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => {
-                    break;
-                }
-                Err(err) => {
-                    tracing::error!(?err, "SSE error");
-                    yield Err(CompletionError::ResponseError(err.to_string()));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-
-        // Flush accumulated tool calls
-        for (_index, (id, name, arguments)) in calls {
-            if let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments) {
-                yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                    crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-                ));
-            }
-        }
-
-        yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse { usage: final_usage }
-        ));
-    };
-
-    Ok(crate::streaming::StreamingCompletionResponse::stream(
-        Box::pin(stream),
-    ))
 }
 
 // ================================================================
@@ -1346,10 +1274,8 @@ mod tests {
 
     #[test]
     fn test_address_derivation() {
-        // Test vector: well-known test private key
         let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
         let auth = BlockRunAuth::new(private_key).unwrap();
-        // This is the first Hardhat/Anvil test account address
         assert_eq!(
             auth.address().to_lowercase(),
             "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
