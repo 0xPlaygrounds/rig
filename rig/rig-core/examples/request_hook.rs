@@ -1,4 +1,4 @@
-use rig::agent::{CancelSignal, HookAction, PromptHook, ToolCallHookAction};
+use rig::agent::{HookAction, PromptHook, ToolCallHookAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::{AssistantContent, UserContent};

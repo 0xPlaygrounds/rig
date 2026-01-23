@@ -399,13 +399,12 @@ where
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                             if is_text_response {
-                                if let Some(ref hook) = self.hook {
-                                    if let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
+                                if let Some(ref hook) = self.hook &&
+                                     let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
                                         yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
                                             reason
                                         ).into()));
                                     }
-                                }
 
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
                                 yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
