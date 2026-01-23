@@ -152,10 +152,10 @@ pub enum PromptError {
 }
 
 impl PromptError {
-    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>, reason: &str) -> Self {
+    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>, reason: impl Into<String>) -> Self {
         Self::PromptCancelled {
             chat_history: Box::new(chat_history),
-            reason: reason.to_string(),
+            reason: reason.into(),
         }
     }
 }
