@@ -449,9 +449,15 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let body = serde_json::to_vec(&json!({
+        let mut body = json!({
             "input": documents,
-        }))?;
+        });
+
+        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
+            body["dimensions"] = json!(self.ndims);
+        }
+
+        let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
@@ -1044,6 +1050,21 @@ mod azure_tests {
             .unwrap();
 
         tracing::info!("Azure embedding: {:?}", embeddings);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_azure_embedding_dimensions() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let ndims = 256;
+        let client = Client::<reqwest::Client>::from_env();
+        let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
+        let embedding = model.embed_text("Hello, world!").await.unwrap();
+
+        assert!(embedding.vec.len() == ndims);
+
+        tracing::info!("Azure dimensions embedding: {:?}", embedding);
     }
 
     #[tokio::test]
