@@ -104,7 +104,10 @@ where
 /// Describes a streaming tool call response (in its entirety)
 #[derive(Debug, Clone)]
 pub struct RawStreamingToolCall {
+    /// Provider-supplied tool call ID.
     pub id: String,
+    /// Rig-generated unique identifier for this tool call.
+    pub internal_call_id: String,
     pub call_id: Option<String>,
     pub name: String,
     pub arguments: serde_json::Value,
@@ -116,6 +119,7 @@ impl RawStreamingToolCall {
     pub fn empty() -> Self {
         Self {
             id: String::new(),
+            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             name: String::new(),
             arguments: serde_json::Value::Null,
@@ -127,6 +131,7 @@ impl RawStreamingToolCall {
     pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
         Self {
             id,
+            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             name,
             arguments,
@@ -155,6 +160,7 @@ impl From<RawStreamingToolCall> for ToolCall {
     fn from(tool_call: RawStreamingToolCall) -> Self {
         ToolCall {
             id: tool_call.id,
+            internal_call_id: tool_call.internal_call_id,
             call_id: tool_call.call_id,
             function: ToolFunction {
                 name: tool_call.name,

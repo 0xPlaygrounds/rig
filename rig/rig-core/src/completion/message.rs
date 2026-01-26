@@ -139,7 +139,12 @@ pub enum ToolResultContent {
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
+    /// Provider-supplied tool call ID. Required for API round-trips.
     pub id: String,
+    /// Rig-generated tool call ids. Useful for correlating tool calls with
+    /// other tool events (such as [`ToolResult`]), particularly with providers
+    /// that don't provide unique tool call ids (such as Gemini)
+    pub internal_call_id: String,
     pub call_id: Option<String>,
     pub function: ToolFunction,
     /// Optional cryptographic signature for the tool call.
@@ -160,6 +165,7 @@ impl ToolCall {
     pub fn new(id: String, function: ToolFunction) -> Self {
         Self {
             id,
+            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             function,
             signature: None,

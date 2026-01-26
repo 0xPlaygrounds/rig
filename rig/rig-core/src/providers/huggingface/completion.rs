@@ -110,6 +110,7 @@ impl From<ToolCall> for message::ToolCall {
     fn from(value: ToolCall) -> Self {
         message::ToolCall {
             id: value.id,
+            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             function: value.function.into(),
             signature: None,

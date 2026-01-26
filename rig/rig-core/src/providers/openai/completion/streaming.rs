@@ -201,6 +201,7 @@ where
                             // Get or create tool call entry
                             let existing_tool_call = tool_calls.entry(index).or_insert_with(|| ToolCall {
                                 id: String::new(),
+                                internal_call_id: nanoid::nanoid!(),
                                 call_id: None,
                                 function: ToolFunction {
                                     name: String::new(),
