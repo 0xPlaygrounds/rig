@@ -12,7 +12,6 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
-use crate::message::{ToolCall, ToolFunction};
 use crate::providers::openai::completion::{self, CompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
@@ -157,7 +156,7 @@ where
         let span = tracing::Span::current();
 
         // Accumulate tool calls by index while streaming
-        let mut tool_calls: HashMap<usize, ToolCall> = HashMap::new();
+        let mut tool_calls: HashMap<usize, streaming::RawStreamingToolCall> = HashMap::new();
         let mut text_content = String::new();
         let mut final_tool_calls: Vec<completion::ToolCall> = Vec::new();
         let mut final_usage = None;
@@ -199,17 +198,7 @@ where
                             let index = tool_call.index;
 
                             // Get or create tool call entry
-                            let existing_tool_call = tool_calls.entry(index).or_insert_with(|| ToolCall {
-                                id: String::new(),
-                                internal_call_id: nanoid::nanoid!(),
-                                call_id: None,
-                                function: ToolFunction {
-                                    name: String::new(),
-                                    arguments: serde_json::Value::Null,
-                                },
-                                signature: None,
-                                additional_params: None,
-                            });
+                            let existing_tool_call = tool_calls.entry(index).or_insert_with(streaming::RawStreamingToolCall::empty);
 
                             // Update fields if present
                             if let Some(id) = &tool_call.id && !id.is_empty() {
@@ -217,7 +206,7 @@ where
                             }
 
                             if let Some(name) = &tool_call.function.name && !name.is_empty() {
-                                    existing_tool_call.function.name = name.clone();
+                                    existing_tool_call.name = name.clone();
                                     yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                         id: existing_tool_call.id.clone(),
                                         internal_call_id: existing_tool_call.internal_call_id.clone(),
@@ -227,7 +216,7 @@ where
 
                                 // Convert current arguments to string if needed
                             if let Some(chunk) = &tool_call.function.arguments && !chunk.is_empty() {
-                                let current_args = match &existing_tool_call.function.arguments {
+                                let current_args = match &existing_tool_call.arguments {
                                     serde_json::Value::Null => String::new(),
                                     serde_json::Value::String(s) => s.clone(),
                                     v => v.to_string(),
@@ -239,11 +228,11 @@ where
                                 // Try to parse as JSON if it looks complete
                                 if combined.trim_start().starts_with('{') && combined.trim_end().ends_with('}') {
                                     match serde_json::from_str(&combined) {
-                                        Ok(parsed) => existing_tool_call.function.arguments = parsed,
-                                        Err(_) => existing_tool_call.function.arguments = serde_json::Value::String(combined),
+                                        Ok(parsed) => existing_tool_call.arguments = parsed,
+                                        Err(_) => existing_tool_call.arguments = serde_json::Value::String(combined),
                                     }
                                 } else {
-                                    existing_tool_call.function.arguments = serde_json::Value::String(combined);
+                                    existing_tool_call.arguments = serde_json::Value::String(combined);
                                 }
 
                                 // Emit the delta so UI can show progress
@@ -269,17 +258,11 @@ where
                                 id: tool_call.id.clone(),
                                 r#type: completion::ToolType::Function,
                                 function: completion::Function {
-                                    name: tool_call.function.name.clone(),
-                                    arguments: tool_call.function.arguments.clone(),
+                                    name: tool_call.name.clone(),
+                                    arguments: tool_call.arguments.clone(),
                                 },
                             });
-                            yield Ok(streaming::RawStreamingChoice::ToolCall(
-                                streaming::RawStreamingToolCall::new(
-                                    tool_call.id,
-                                    tool_call.function.name,
-                                    tool_call.function.arguments,
-                                )
-                            ));
+                            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
                         }
                         tool_calls = HashMap::new();
                     }
@@ -301,13 +284,7 @@ where
 
         // Flush any accumulated tool calls (that weren't emitted as ToolCall earlier)
         for (_idx, tool_call) in tool_calls.into_iter() {
-            yield Ok(streaming::RawStreamingChoice::ToolCall(
-                streaming::RawStreamingToolCall::new(
-                    tool_call.id,
-                    tool_call.function.name,
-                    tool_call.function.arguments,
-                )
-            ));
+            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
         }
 
         let final_usage = final_usage.unwrap_or_default();

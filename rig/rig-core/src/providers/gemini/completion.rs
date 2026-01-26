@@ -1914,7 +1914,6 @@ mod tests {
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
-            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             function: message::ToolFunction {
                 name: "test_function".to_string(),

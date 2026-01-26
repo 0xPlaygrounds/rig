@@ -523,6 +523,7 @@ where
                             let tool_name = &tool_call.function.name;
                             let args =
                                 json_utils::value_to_json_string(&tool_call.function.arguments);
+                            let internal_call_id = nanoid::nanoid!();
                             let tool_span = tracing::Span::current();
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
@@ -532,7 +533,7 @@ where
                                     .on_tool_call(
                                         tool_name,
                                         tool_call.call_id.clone(),
-                                        &tool_call.internal_call_id,
+                                        &internal_call_id,
                                         &args,
                                         cancel_sig1.clone(),
                                     )
@@ -575,7 +576,7 @@ where
                                 hook.on_tool_result(
                                     tool_name,
                                     tool_call.call_id.clone(),
-                                    &tool_call.internal_call_id,
+                                    &internal_call_id,
                                     &args,
                                     &output.to_string(),
                                     cancel_sig2.clone(),
