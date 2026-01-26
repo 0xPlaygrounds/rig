@@ -222,6 +222,7 @@ where
                                     existing_tool_call.name = name.clone();
                                     yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                         id: existing_tool_call.id.clone(),
+                                        internal_call_id: existing_tool_call.internal_call_id.clone(),
                                         content: streaming::ToolCallDeltaContent::Name(name.clone()),
                                     });
                             }
@@ -250,6 +251,7 @@ where
                                 // Emit the delta so UI can show progress
                                 yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                     id: existing_tool_call.id.clone(),
+                                    internal_call_id: existing_tool_call.internal_call_id.clone(),
                                     content: streaming::ToolCallDeltaContent::Delta(chunk.clone()),
                                 });
                             }

@@ -81,7 +81,10 @@ where
     ToolCall(RawStreamingToolCall),
     /// A tool call partial/delta
     ToolCallDelta {
+        /// Provider-supplied tool call ID.
         id: String,
+        /// Rig-generated unique identifier for this tool call.
+        internal_call_id: String,
         content: ToolCallDeltaContent,
     },
     /// A reasoning (in its entirety)
@@ -138,6 +141,11 @@ impl RawStreamingToolCall {
             signature: None,
             additional_params: None,
         }
+    }
+
+    pub fn with_internal_call_id(mut self, internal_call_id: String) -> Self {
+        self.internal_call_id = internal_call_id;
+        self
     }
 
     pub fn with_call_id(mut self, call_id: String) -> Self {
@@ -302,9 +310,10 @@ where
                     stream.text = format!("{}{}", stream.text, text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, content } => {
+                RawStreamingChoice::ToolCallDelta { id, internal_call_id, content } => {
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
                         id,
+                        internal_call_id,
                         content,
                     })))
                 }
@@ -416,8 +425,8 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, content } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, content })))
+                RawStreamingChoice::ToolCallDelta { id, internal_call_id, content } => {
+                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, internal_call_id, content })))
                 }
                 RawStreamingChoice::Reasoning {
                     id,
@@ -566,8 +575,8 @@ mod tests {
                     println!("\nTool Call: {tc:?}");
                     chunk_count += 1;
                 }
-                Ok(StreamedAssistantContent::ToolCallDelta { id, content }) => {
-                    println!("\nTool Call delta: id={id:?}, content={content:?}");
+                Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
+                    println!("\nTool Call delta: id={id:?}, internal_call_id={internal_call_id:?}, content={content:?}");
                     chunk_count += 1;
                 }
                 Ok(StreamedAssistantContent::Final(res)) => {
@@ -624,7 +633,10 @@ pub enum StreamedAssistantContent<R> {
     Text(Text),
     ToolCall(ToolCall),
     ToolCallDelta {
+        /// Provider-supplied tool call ID.
         id: String,
+        /// Rig-generated unique identifier for this tool call.
+        internal_call_id: String,
         content: ToolCallDeltaContent,
     },
     Reasoning(Reasoning),
