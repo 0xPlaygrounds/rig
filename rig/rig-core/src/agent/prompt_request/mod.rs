@@ -239,6 +239,7 @@ where
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
     ) -> impl Future<Output = ToolCallHookAction> + WasmCompatSend {
         async { ToolCallHookAction::cont() }
@@ -249,6 +250,7 @@ where
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
         _result: &str,
     ) -> impl Future<Output = HookAction> + WasmCompatSend {
@@ -503,7 +505,12 @@ where
                             tool_span.record("gen_ai.tool.call.arguments", &args);
                             if let Some(hook) = hook1 {
                                 let action = hook
-                                    .on_tool_call(tool_name, tool_call.call_id.clone(), &args)
+                                    .on_tool_call(
+                                        tool_name,
+                                        tool_call.call_id.clone(),
+                                        &tool_call.internal_call_id,
+                                        &args,
+                                    )
                                     .await;
 
                                 if let ToolCallHookAction::Terminate { reason } = action {
@@ -547,6 +554,7 @@ where
                                     .on_tool_result(
                                         tool_name,
                                         tool_call.call_id.clone(),
+                                        &tool_call.internal_call_id,
                                         &args,
                                         &output.to_string(),
                                     )

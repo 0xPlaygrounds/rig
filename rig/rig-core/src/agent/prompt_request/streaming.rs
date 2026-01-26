@@ -304,7 +304,7 @@ where
                                 let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
                                     let action = hook
-                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args)
+                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_call.internal_call_id,&tool_args)
                                         .await;
 
                                     if let ToolCallHookAction::Terminate { reason } = action {
@@ -347,6 +347,7 @@ where
                                     hook.on_tool_result(
                                         &tool_call.function.name,
                                         tool_call.call_id.clone(),
+                                        &tool_call.internal_call_id,
                                         &tool_args,
                                         &tool_result.to_string()
                                     )
@@ -604,6 +605,7 @@ where
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
     ) -> impl Future<Output = ToolCallHookAction> + Send {
         async { ToolCallHookAction::cont() }
@@ -614,6 +616,7 @@ where
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
         _result: &str,
     ) -> impl Future<Output = HookAction> + Send {
