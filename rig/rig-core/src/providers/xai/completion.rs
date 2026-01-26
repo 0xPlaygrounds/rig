@@ -1,22 +1,20 @@
-// ================================================================
 //! xAI Completion Integration
-//! From [xAI Reference](https://docs.x.ai/docs/api-reference#chat-completions)
-// ================================================================
+//!
+//! Uses the xAI Responses API: <https://docs.x.ai/docs/guides/chat>
 
-use crate::{
-    completion::{self, CompletionError},
-    http_client::HttpClientExt,
-    providers::openai::Message,
-};
-
-use super::client::{Client, xai_api_types::ApiResponse};
-use crate::completion::CompletionRequest;
-use crate::providers::openai;
-use crate::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, Level, enabled, info_span};
-use xai_api_types::{CompletionResponse, ToolDefinition};
+
+use super::api::{ApiResponse, Message, ToolDefinition};
+use super::client::Client;
+use crate::OneOrMany;
+use crate::completion::{self, CompletionError, CompletionRequest};
+use crate::http_client::HttpClientExt;
+use crate::providers::openai::completion::ToolChoice;
+use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
+use crate::providers::openai::responses_api::{Output, ResponsesUsage};
+use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
 
 /// xAI completion models as of 2025-06-04
 pub const GROK_2_1212: &str = "grok-2-1212";
@@ -28,16 +26,22 @@ pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
 pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
 pub const GROK_4: &str = "grok-4-0709";
 
+// ================================================================
+// Request Types
+// ================================================================
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct XAICompletionRequest {
     model: String,
-    pub messages: Vec<Message>,
+    pub input: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    tool_choice: Option<ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -46,48 +50,86 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
+        let mut input: Vec<Message> = req
+            .preamble
+            .as_ref()
+            .map_or_else(Vec::new, |p| vec![Message::system(p)]);
+
+        for msg in req.chat_history {
+            let msg: Vec<Message> = msg.try_into()?;
+            input.extend(msg);
         }
 
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        let tool_choice = req
-            .tool_choice
-            .clone()
-            .map(crate::providers::openrouter::ToolChoice::try_from)
-            .transpose()?;
+        let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
+        let tools = req.tools.into_iter().map(ToolDefinition::from).collect();
 
         Ok(Self {
             model: model.to_string(),
-            messages: full_history,
+            input,
             temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
+            max_output_tokens: req.max_tokens,
+            tools,
             tool_choice,
             additional_params: req.additional_params,
         })
     }
 }
+
+// ================================================================
+// Response Types
+// ================================================================
+
+/// Response from xAI Responses API
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CompletionResponse {
+    pub id: String,
+    pub model: String,
+    pub output: Vec<Output>,
+    #[serde(default)]
+    pub created: i64,
+    #[serde(default)]
+    pub object: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    pub usage: Option<ResponsesUsage>,
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+    type Error = CompletionError;
+
+    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+        let content: Vec<completion::AssistantContent> = response
+            .output
+            .iter()
+            .cloned()
+            .flat_map(<Vec<completion::AssistantContent>>::from)
+            .collect();
+
+        let choice = OneOrMany::many(content).map_err(|_| {
+            CompletionError::ResponseError("Response contained no output".to_owned())
+        })?;
+
+        let usage = response
+            .usage
+            .as_ref()
+            .map(|u| completion::Usage {
+                input_tokens: u.input_tokens,
+                output_tokens: u.output_tokens,
+                total_tokens: u.total_tokens,
+            })
+            .unwrap_or_default();
+
+        Ok(completion::CompletionResponse {
+            choice,
+            usage,
+            raw_response: response,
+        })
+    }
+}
+
+// ================================================================
+// Completion Model
+// ================================================================
 
 #[derive(Clone)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -109,7 +151,7 @@ where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
     type Response = CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
+    type StreamingResponse = StreamingCompletionResponse;
 
     type Client = Client<T>;
 
@@ -153,7 +195,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .post("/v1/chat/completions")?
+            .post("/v1/responses")?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
@@ -191,125 +233,7 @@ where
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        CompletionModel::stream(self, request).await
-    }
-}
-
-pub mod xai_api_types {
-    use serde::{Deserialize, Serialize};
-
-    use crate::OneOrMany;
-    use crate::completion::{self, CompletionError};
-    use crate::providers::openai::{AssistantContent, Message};
-
-    impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-        type Error = CompletionError;
-
-        fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-            let choice = response.choices.first().ok_or_else(|| {
-                CompletionError::ResponseError("Response contained no choices".to_owned())
-            })?;
-            let content = match &choice.message {
-                Message::Assistant {
-                    content,
-                    tool_calls,
-                    ..
-                } => {
-                    let mut content = content
-                        .iter()
-                        .map(|c| match c {
-                            AssistantContent::Text { text } => {
-                                completion::AssistantContent::text(text)
-                            }
-                            AssistantContent::Refusal { refusal } => {
-                                completion::AssistantContent::text(refusal)
-                            }
-                        })
-                        .collect::<Vec<_>>();
-
-                    content.extend(
-                        tool_calls
-                            .iter()
-                            .map(|call| {
-                                completion::AssistantContent::tool_call(
-                                    &call.id,
-                                    &call.function.name,
-                                    call.function.arguments.clone(),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    );
-                    Ok(content)
-                }
-                _ => Err(CompletionError::ResponseError(
-                    "Response did not contain a valid message or tool call".into(),
-                )),
-            }?;
-
-            let choice = OneOrMany::many(content).map_err(|_| {
-                CompletionError::ResponseError(
-                    "Response contained no message or tool call (empty)".to_owned(),
-                )
-            })?;
-
-            let usage = completion::Usage {
-                input_tokens: response.usage.prompt_tokens as u64,
-                output_tokens: response.usage.completion_tokens as u64,
-                total_tokens: response.usage.total_tokens as u64,
-            };
-
-            Ok(completion::CompletionResponse {
-                choice,
-                usage,
-                raw_response: response,
-            })
-        }
-    }
-
-    impl From<completion::ToolDefinition> for ToolDefinition {
-        fn from(tool: completion::ToolDefinition) -> Self {
-            Self {
-                r#type: "function".into(),
-                function: tool,
-            }
-        }
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ToolDefinition {
-        pub r#type: String,
-        pub function: completion::ToolDefinition,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Function {
-        pub name: String,
-        pub arguments: String,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct CompletionResponse {
-        pub id: String,
-        pub model: String,
-        pub choices: Vec<Choice>,
-        pub created: i64,
-        pub object: String,
-        pub system_fingerprint: String,
-        pub usage: Usage,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct Choice {
-        pub finish_reason: String,
-        pub index: i32,
-        pub message: Message,
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct Usage {
-        pub completion_tokens: i32,
-        pub prompt_tokens: i32,
-        pub total_tokens: i32,
+    ) -> Result<BaseStreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        self.stream(request).await
     }
 }
