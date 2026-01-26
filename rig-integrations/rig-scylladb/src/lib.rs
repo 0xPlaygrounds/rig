@@ -2,9 +2,10 @@ use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
+        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmBoxedFuture,
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -41,8 +42,48 @@ pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
     cache: Arc<RwLock<HashMap<u64, PreparedStatement>>>,
 }
 
-// NOTE: Cannot be used as a dynamic store due to CqlValue not impl'ing Serialize or Deserialize
-/// TODO: Write tests for this !
+/// Converts a `serde_json::Value` to a `CqlValue` for use in ScyllaDB queries.
+fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError> {
+    use scylla::value::CqlVarint;
+    use serde_json::Value;
+
+    match value {
+        Value::Bool(b) => Ok(CqlValue::Boolean(b)),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(CqlValue::BigInt(i))
+            } else if let Some(u) = n.as_u64() {
+                // u64 values that don't fit in i64 - use Varint with big-endian bytes
+                // Add a leading zero byte to ensure it's interpreted as positive
+                let mut bytes = vec![0u8];
+                bytes.extend_from_slice(&u.to_be_bytes());
+                Ok(CqlValue::Varint(CqlVarint::from_signed_bytes_be(bytes)))
+            } else if let Some(f) = n.as_f64() {
+                Ok(CqlValue::Double(f))
+            } else {
+                Err(FilterError::Expected {
+                    expected: "Valid number".into(),
+                    got: "Invalid number".into(),
+                })
+            }
+        }
+        Value::String(s) => Ok(CqlValue::Text(s)),
+        Value::Array(arr) => Ok(CqlValue::List(
+            arr.into_iter()
+                .map(cql_value_from_json)
+                .collect::<Result<_, _>>()?,
+        )),
+        Value::Object(map) => {
+            let pairs = map
+                .into_iter()
+                .map(|(k, v)| Ok((CqlValue::Text(k), cql_value_from_json(v)?)))
+                .collect::<Result<Vec<_>, FilterError>>()?;
+            Ok(CqlValue::Map(pairs))
+        }
+        Value::Null => Ok(CqlValue::Empty),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ScyllaSearchFilter {
     condition: String,
@@ -134,6 +175,20 @@ impl ScyllaSearchFilter {
         Self {
             condition: format!("{key} IN ({placeholders})"),
             params: values,
+        }
+    }
+}
+
+impl TryFrom<Filter<serde_json::Value>> for ScyllaSearchFilter {
+    type Error = FilterError;
+
+    fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
+        match value {
+            Filter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
+            Filter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),
+            Filter::Lt(k, val) => Ok(ScyllaSearchFilter::lt(k, cql_value_from_json(val)?)),
+            Filter::And(l, r) => Ok(Self::try_from(*l)?.and(Self::try_from(*r)?)),
+            Filter::Or(l, r) => Ok(Self::try_from(*l)?.or(Self::try_from(*r)?)),
         }
     }
 }
@@ -485,6 +540,33 @@ where
         candidates.truncate(req.samples() as usize);
 
         Ok(candidates)
+    }
+}
+
+impl<M> VectorStoreIndexDyn for ScyllaDbVectorStore<M>
+where
+    M: EmbeddingModel + Sync + Send,
+{
+    fn top_n<'a>(
+        &'a self,
+        req: VectorSearchRequest<Filter<serde_json::Value>>,
+    ) -> WasmBoxedFuture<'a, TopNResults> {
+        Box::pin(async move {
+            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
+            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
+            Ok(results)
+        })
+    }
+
+    fn top_n_ids<'a>(
+        &'a self,
+        req: VectorSearchRequest<Filter<serde_json::Value>>,
+    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+        Box::pin(async move {
+            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
+            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
+            Ok(results)
+        })
     }
 }
 
