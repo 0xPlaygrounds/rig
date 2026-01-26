@@ -307,7 +307,7 @@ where
                                 let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
                                     let action = hook
-                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, cancel_sig.clone())
+                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_call.internal_call_id, &tool_args, cancel_sig.clone())
                                         .await;
 
                                     if cancel_sig.is_cancelled() {
@@ -346,7 +346,7 @@ where
                                 tool_span.record("gen_ai.tool.call.result", &tool_result);
 
                                 if let Some(ref hook) = self.hook {
-                                    hook.on_tool_result(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, &tool_result.to_string(), cancel_sig.clone())
+                                    hook.on_tool_result(&tool_call.function.name, tool_call.call_id.clone(), &tool_call.internal_call_id, &tool_args, &tool_result.to_string(), cancel_sig.clone())
                                     .await;
 
                                     if cancel_sig.is_cancelled() {
@@ -598,6 +598,7 @@ where
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
+        internal_call_id: &str,
         args: &str,
         cancel_sig: CancelSignal,
     ) -> impl Future<Output = ToolCallHookAction> + Send {
@@ -610,6 +611,7 @@ where
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
+        internal_call_id: &str,
         args: &str,
         result: &str,
         cancel_sig: CancelSignal,

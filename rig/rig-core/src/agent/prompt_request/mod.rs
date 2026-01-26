@@ -247,6 +247,7 @@ where
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
+        internal_call_id: &str,
         args: &str,
         cancel_sig: CancelSignal,
     ) -> impl Future<Output = ToolCallHookAction> + WasmCompatSend {
@@ -259,6 +260,7 @@ where
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
+        internal_call_id: &str,
         args: &str,
         result: &str,
         cancel_sig: CancelSignal,
@@ -530,6 +532,7 @@ where
                                     .on_tool_call(
                                         tool_name,
                                         tool_call.call_id.clone(),
+                                        &tool_call.internal_call_id,
                                         &args,
                                         cancel_sig1.clone(),
                                     )
@@ -572,6 +575,7 @@ where
                                 hook.on_tool_result(
                                     tool_name,
                                     tool_call.call_id.clone(),
+                                    &tool_call.internal_call_id,
                                     &args,
                                     &output.to_string(),
                                     cancel_sig2.clone(),
