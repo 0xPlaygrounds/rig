@@ -367,7 +367,12 @@ where
 
                             match tc_result {
                                 Ok(text) => {
-                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: OneOrMany::one(ToolResultContent::Text(Text { text })) };
+                                    let tr = ToolResult {
+                                        id: tool_call.id,
+                                        internal_call_id: tool_call.internal_call_id,
+                                        call_id: tool_call.call_id,
+                                        content: OneOrMany::one(ToolResultContent::Text(Text { text }))
+                                    };
                                     yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tr)));
                                 }
                                 Err(e) => {
@@ -375,13 +380,13 @@ where
                                 }
                             }
                         },
-                        Ok(StreamedAssistantContent::ToolCallDelta { id, content }) => {
+                        Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
                             if let Some(ref hook) = self.hook {
                                 let (name, delta) = match &content {
                                     rig::streaming::ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
                                     rig::streaming::ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
                                 };
-                                hook.on_tool_call_delta(&id, name, delta, cancel_sig.clone())
+                                hook.on_tool_call_delta(&id, &internal_call_id, name, delta, cancel_sig.clone())
                                 .await;
 
                                 if cancel_sig.is_cancelled() {
@@ -564,6 +569,7 @@ where
     fn on_tool_call_delta(
         &self,
         tool_call_id: &str,
+        internal_call_id: &str,
         tool_name: Option<&str>,
         tool_call_delta: &str,
         cancel_sig: CancelSignal,
