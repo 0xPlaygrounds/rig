@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.29.0...rig-core-v0.29.1) - 2026-01-26
+
+### Added
+
+- *(agent)* allow on_tool_call hook to reject tool execution ([#1284](https://github.com/0xPlaygrounds/rig/pull/1284))
+
+### Fixed
+
+- *(rig-1156)* impl VectorStoreIndexDyn for mongodb and milvus ([#1300](https://github.com/0xPlaygrounds/rig/pull/1300))
+- *(rig-1154)* gemini API tools mismatch ([#1291](https://github.com/0xPlaygrounds/rig/pull/1291))
+- *(providers)* re-export gemini EmbeddingModel and constants at module root ([#1292](https://github.com/0xPlaygrounds/rig/pull/1292))
+
+### Other
+
+- *(rig-1163)* ollama stream tool calls get ignored ([#1309](https://github.com/0xPlaygrounds/rig/pull/1309))
+- Handle error for HTTP client response ([#1237](https://github.com/0xPlaygrounds/rig/pull/1237))
+- Add default type parameter T = reqwest::Client to ollama's EmbeddingModel for consistency with other providers ([#1293](https://github.com/0xPlaygrounds/rig/pull/1293))
+
 ## [0.29.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.28.0...rig-core-v0.29.0) - 2026-01-20
 
 ### Added
