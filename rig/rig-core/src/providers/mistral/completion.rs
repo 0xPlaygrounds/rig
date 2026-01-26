@@ -122,7 +122,6 @@ impl TryFrom<message::Message> for Vec<Message> {
                     match content_item {
                         message::UserContent::ToolResult(message::ToolResult {
                             id,
-                            internal_call_id: _,
                             call_id,
                             content: tool_content,
                         }) => {

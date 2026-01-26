@@ -599,7 +599,6 @@ impl From<ToolCall> for message::ToolCall {
     fn from(tool_call: ToolCall) -> Self {
         Self {
             id: tool_call.id,
-            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             function: message::ToolFunction {
                 name: tool_call.function.name,

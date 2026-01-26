@@ -168,7 +168,6 @@ impl From<RawStreamingToolCall> for ToolCall {
     fn from(tool_call: RawStreamingToolCall) -> Self {
         ToolCall {
             id: tool_call.id,
-            internal_call_id: tool_call.internal_call_id,
             call_id: tool_call.call_id,
             function: ToolFunction {
                 name: tool_call.name,
@@ -310,13 +309,15 @@ where
                     stream.text = format!("{}{}", stream.text, text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, internal_call_id, content } => {
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
-                        id,
-                        internal_call_id,
-                        content,
-                    })))
-                }
+                RawStreamingChoice::ToolCallDelta {
+                    id,
+                    internal_call_id,
+                    content,
+                } => Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
+                    id,
+                    internal_call_id,
+                    content,
+                }))),
                 RawStreamingChoice::Reasoning {
                     id,
                     reasoning,
@@ -335,12 +336,16 @@ where
                         reasoning,
                     })))
                 }
-                RawStreamingChoice::ToolCall(tool_call) => {
+                RawStreamingChoice::ToolCall(raw_tool_call) => {
                     // Keep track of each tool call to aggregate the final message later
                     // and pass it to the outer stream
-                    let tool_call: ToolCall = tool_call.into();
+                    let internal_call_id = raw_tool_call.internal_call_id.clone();
+                    let tool_call: ToolCall = raw_tool_call.into();
                     stream.tool_calls.push(tool_call.clone());
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall(tool_call))))
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
+                        tool_call,
+                        internal_call_id,
+                    })))
                 }
                 RawStreamingChoice::FinalResponse(response) => {
                     if stream
@@ -425,9 +430,15 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
                 RawStreamingChoice::Message(m) => {
                     Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
                 }
-                RawStreamingChoice::ToolCallDelta { id, internal_call_id, content } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta { id, internal_call_id, content })))
-                }
+                RawStreamingChoice::ToolCallDelta {
+                    id,
+                    internal_call_id,
+                    content,
+                } => Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta {
+                    id,
+                    internal_call_id,
+                    content,
+                }))),
                 RawStreamingChoice::Reasoning {
                     id,
                     reasoning,
@@ -472,7 +483,10 @@ where
                 print!("{}", text.text);
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
+            Ok(StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            }) => {
                 let res = agent
                     .tool_server_handle
                     .call_tool(
@@ -571,12 +585,21 @@ mod tests {
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                     chunk_count += 1;
                 }
-                Ok(StreamedAssistantContent::ToolCall(tc)) => {
-                    println!("\nTool Call: {tc:?}");
+                Ok(StreamedAssistantContent::ToolCall {
+                    tool_call,
+                    internal_call_id,
+                }) => {
+                    println!("\nTool Call: {tool_call:?}, internal_call_id={internal_call_id:?}");
                     chunk_count += 1;
                 }
-                Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
-                    println!("\nTool Call delta: id={id:?}, internal_call_id={internal_call_id:?}, content={content:?}");
+                Ok(StreamedAssistantContent::ToolCallDelta {
+                    id,
+                    internal_call_id,
+                    content,
+                }) => {
+                    println!(
+                        "\nTool Call delta: id={id:?}, internal_call_id={internal_call_id:?}, content={content:?}"
+                    );
                     chunk_count += 1;
                 }
                 Ok(StreamedAssistantContent::Final(res)) => {
@@ -631,7 +654,12 @@ mod tests {
 #[serde(untagged)]
 pub enum StreamedAssistantContent<R> {
     Text(Text),
-    ToolCall(ToolCall),
+    ToolCall {
+        tool_call: ToolCall,
+        /// Rig-generated unique identifier for this tool call.
+        /// Use this to correlate with ToolCallDelta events.
+        internal_call_id: String,
+    },
     ToolCallDelta {
         /// Provider-supplied tool call ID.
         id: String,
@@ -666,11 +694,20 @@ where
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum StreamedUserContent {
-    ToolResult(ToolResult),
+    ToolResult {
+        tool_result: ToolResult,
+        /// Rig-generated unique identifier for the tool call this result
+        /// belongs to. Use this to correlate with the originating
+        /// [`StreamedAssistantContent::ToolCall::internal_call_id`].
+        internal_call_id: String,
+    },
 }
 
 impl StreamedUserContent {
-    pub fn tool_result(tool_result: ToolResult) -> Self {
-        Self::ToolResult(tool_result)
+    pub fn tool_result(tool_result: ToolResult, internal_call_id: String) -> Self {
+        Self::ToolResult {
+            tool_result,
+            internal_call_id,
+        }
     }
 }

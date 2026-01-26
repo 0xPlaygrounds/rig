@@ -122,11 +122,7 @@ impl Reasoning {
 /// Tool result content containing information about a tool call and it's resulting content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
-    /// Provider-supplied tool call ID. Required for API round-trips.
     pub id: String,
-    /// Rig-generated unique identifier for the tool call this result belongs to.
-    /// Use this to correlate with the originating [`ToolCall::internal_call_id`].
-    pub internal_call_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
     pub content: OneOrMany<ToolResultContent>,
@@ -143,12 +139,7 @@ pub enum ToolResultContent {
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
-    /// Provider-supplied tool call ID. Required for API round-trips.
     pub id: String,
-    /// Rig-generated tool call ids. Useful for correlating tool calls with
-    /// other tool events (such as [`ToolResult`]), particularly with providers
-    /// that don't provide unique tool call ids (such as Gemini)
-    pub internal_call_id: String,
     pub call_id: Option<String>,
     pub function: ToolFunction,
     /// Optional cryptographic signature for the tool call.
@@ -169,7 +160,6 @@ impl ToolCall {
     pub fn new(id: String, function: ToolFunction) -> Self {
         Self {
             id,
-            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             function,
             signature: None,
@@ -493,7 +483,6 @@ impl Message {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
-                internal_call_id: nanoid::nanoid!(),
                 call_id: None,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
@@ -508,7 +497,6 @@ impl Message {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
-                internal_call_id: nanoid::nanoid!(),
                 call_id,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
@@ -624,7 +612,6 @@ impl UserContent {
     pub fn tool_result(id: impl Into<String>, content: OneOrMany<ToolResultContent>) -> Self {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
-            internal_call_id: nanoid::nanoid!(),
             call_id: None,
             content,
         })
@@ -638,7 +625,6 @@ impl UserContent {
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
-            internal_call_id: nanoid::nanoid!(),
             call_id: Some(call_id),
             content,
         })
@@ -1151,7 +1137,6 @@ impl From<ToolResultContent> for Message {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: String::new(),
-                internal_call_id: nanoid::nanoid!(),
                 call_id: None,
                 content: OneOrMany::one(tool_result_content),
             })),

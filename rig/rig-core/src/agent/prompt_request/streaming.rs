@@ -285,7 +285,7 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                             did_call_tool = false;
                         },
-                        Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
+                        Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
                             let tool_span = info_span!(
                                 parent: tracing::Span::current(),
                                 "execute_tool",
@@ -297,14 +297,14 @@ where
                                 gen_ai.tool.call.result = tracing::field::Empty
                             );
 
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall(tool_call.clone())));
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall { tool_call: tool_call.clone(), internal_call_id: internal_call_id.clone() }));
 
                             let tc_result = async {
                                 let tool_span = tracing::Span::current();
                                 let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
                                     let action = hook
-                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_call.internal_call_id,&tool_args)
+                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
                                         .await;
 
                                     if let ToolCallHookAction::Terminate { reason } = action {
@@ -347,7 +347,7 @@ where
                                     hook.on_tool_result(
                                         &tool_call.function.name,
                                         tool_call.call_id.clone(),
-                                        &tool_call.internal_call_id,
+                                        &internal_call_id,
                                         &tool_args,
                                         &tool_result.to_string()
                                     )
@@ -368,8 +368,8 @@ where
 
                             match tc_result {
                                 Ok(text) => {
-                                    let tr = ToolResult { id: tool_call.id, internal_call_id: tool_call.internal_call_id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
-                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tr)));
+                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
+                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult{ tool_result: tr, internal_call_id }));
                                 }
                                 Err(e) => {
                                     yield Err(e);
