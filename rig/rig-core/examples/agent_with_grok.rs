@@ -40,6 +40,7 @@ fn partial_agent() -> AgentBuilder<providers::xai::completion::CompletionModel> 
 /// This example creates a comedian agent with a preamble
 async fn basic() -> Result<(), anyhow::Error> {
     let comedian_agent = partial_agent()
+        .default_max_depth(32)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
     // Prompt the agent and print the response
@@ -56,6 +57,7 @@ async fn tools() -> Result<(), anyhow::Error> {
     let calculator_agent = partial_agent()
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
+        .default_max_depth(32)
         .tool(Adder)
         .tool(Subtract)
         .build();
@@ -105,6 +107,7 @@ async fn context() -> Result<(), anyhow::Error> {
         .context("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
         .context("Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
         .context("Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+        .default_max_depth(32)
         .build();
 
     // Prompt the agent and print the response
