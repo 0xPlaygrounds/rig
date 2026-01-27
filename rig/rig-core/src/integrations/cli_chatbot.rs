@@ -7,6 +7,7 @@ use crate::{
 };
 use futures::StreamExt;
 use std::io::{self, Write};
+use std::sync::{Arc, RwLock};
 
 pub struct NoImplProvided;
 
@@ -68,6 +69,7 @@ where
         prompt: &str,
         history: Vec<Message>,
     ) -> Result<String, PromptError> {
+        let history = Arc::new(RwLock::new(history));
         let mut response_stream = self
             .agent
             .stream_prompt(prompt)

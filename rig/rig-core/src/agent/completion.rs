@@ -12,13 +12,16 @@ use crate::{
     wasm_compat::WasmCompatSend,
 };
 use futures::{StreamExt, TryStreamExt, stream};
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
+use tokio::sync::RwLock as TokioRwLock;
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub type DynamicContextStore = Arc<
-    RwLock<
+    TokioRwLock<
         Vec<(
             usize,
             Box<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
@@ -275,7 +278,7 @@ where
     fn stream_chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
+        chat_history: Arc<RwLock<Vec<Message>>>,
     ) -> StreamingPromptRequest<M, ()> {
         let arc = Arc::new(self.clone());
         StreamingPromptRequest::new(arc, prompt).with_history(chat_history)
