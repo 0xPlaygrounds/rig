@@ -125,6 +125,7 @@ pub mod image_generation;
 pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
+pub mod model;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;

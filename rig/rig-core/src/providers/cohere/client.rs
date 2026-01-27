@@ -43,6 +43,7 @@ impl<H> Capabilities<H> for CohereExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 

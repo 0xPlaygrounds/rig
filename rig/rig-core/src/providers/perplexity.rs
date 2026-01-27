@@ -59,6 +59,7 @@ impl<H> Capabilities<H> for PerplexityExt {
     type Completion = Capable<CompletionModel<H>>;
     type Transcription = Nothing;
     type Embeddings = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 

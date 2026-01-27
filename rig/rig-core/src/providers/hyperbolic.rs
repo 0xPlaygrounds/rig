@@ -56,6 +56,7 @@ impl<H> Capabilities<H> for HyperbolicExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]

@@ -65,6 +65,7 @@ impl<H> Capabilities<H> for MoonshotExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]

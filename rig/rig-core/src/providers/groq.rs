@@ -72,6 +72,7 @@ impl<H> Capabilities<H> for GroqExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Capable<TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
