@@ -14,14 +14,14 @@ use crate::message::{Message as RigMessage, MimeType};
 // Request Types
 // ================================================================
 
-/// Input item for xAI Responses API - can be a message, function call, or function call output.
+/// Input item for xAI Responses API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 pub enum Message {
-    /// A regular message (user, assistant, or system)
+    /// A message
     Message { role: Role, content: Content },
-    /// A function call from the assistant (for including in history)
+    /// A function call from the assistant
     FunctionCall {
         call_id: String,
         name: String,
@@ -39,7 +39,6 @@ pub enum Role {
     Assistant,
 }
 
-/// Content can be a simple string or an array of content items (for multimodal).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Content {
@@ -288,7 +287,6 @@ impl TryFrom<RigMessage> for Vec<Message> {
     }
 }
 
-/// Tool definition for xAI API
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub r#type: String,
@@ -322,7 +320,6 @@ impl ApiError {
     }
 }
 
-/// Wrapper for API responses that may be errors
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {

@@ -79,7 +79,6 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
 // Response Types
 // ================================================================
 
-/// Response from xAI Responses API
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,

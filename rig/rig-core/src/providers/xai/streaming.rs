@@ -77,7 +77,7 @@ where
     }
 }
 
-/// Send streaming request using OpenAI Responses API format (xAI compatible)
+/// Send a streaming request
 pub(crate) async fn send_xai_streaming_request<T>(
     http_client: T,
     req: http::Request<Vec<u8>>,
