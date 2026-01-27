@@ -12,6 +12,7 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod interactions_api;
 pub mod streaming;
 pub mod transcription;
 
