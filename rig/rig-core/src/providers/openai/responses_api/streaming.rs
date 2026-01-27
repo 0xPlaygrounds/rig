@@ -45,6 +45,12 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.input_tokens;
         usage.output_tokens = self.usage.output_tokens;
         usage.total_tokens = self.usage.total_tokens;
+        usage.cached_input_tokens = self
+            .usage
+            .input_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens)
+            .unwrap_or(0);
         Some(usage)
     }
 }

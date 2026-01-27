@@ -436,6 +436,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             input_tokens: response.usage.prompt_tokens as u64,
             output_tokens: response.usage.completion_tokens as u64,
             total_tokens: response.usage.total_tokens as u64,
+            cached_input_tokens: response
+                .usage
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|d| d.cached_tokens)
+                .map(|c| c as u64)
+                .unwrap_or(0),
         };
 
         Ok(completion::CompletionResponse {
@@ -697,6 +704,13 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.output_tokens = self.usage.completion_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|d| d.cached_tokens)
+            .map(|c| c as u64)
+            .unwrap_or(0);
 
         Some(usage)
     }

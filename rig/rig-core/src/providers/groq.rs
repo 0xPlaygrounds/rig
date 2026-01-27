@@ -547,6 +547,12 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
         usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens as u64)
+            .unwrap_or(0);
 
         Some(usage)
     }
@@ -570,7 +576,8 @@ where
         let span = tracing::Span::current();
         let mut final_usage = Usage {
             prompt_tokens: 0,
-            total_tokens: 0
+            total_tokens: 0,
+            prompt_tokens_details: None,
         };
 
         let mut text_response = String::new();
