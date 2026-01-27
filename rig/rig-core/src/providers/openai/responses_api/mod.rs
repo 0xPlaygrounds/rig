@@ -82,7 +82,7 @@ impl CompletionRequest {
 }
 
 /// An input item for [`CompletionRequest`].
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct InputItem {
     /// The role of an input item/message.
     /// Input messages should be Some(Role::User), and output messages should be Some(Role::Assistant).
@@ -92,6 +92,30 @@ pub struct InputItem {
     /// The input content itself.
     #[serde(flatten)]
     input: InputContent,
+}
+
+impl Serialize for InputItem {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut value =
+            serde_json::to_value(&self.input).map_err(serde::ser::Error::custom)?;
+        let map = value.as_object_mut().ok_or_else(|| {
+            serde::ser::Error::custom("Input content must serialize to an object")
+        })?;
+
+        if let Some(role) = &self.role {
+            if !map.contains_key("role") {
+                map.insert(
+                    "role".to_string(),
+                    serde_json::to_value(role).map_err(serde::ser::Error::custom)?,
+                );
+            }
+        }
+
+        value.serialize(serializer)
+    }
 }
 
 /// Message roles. Used by OpenAI Responses API to determine who created a given message.
