@@ -371,14 +371,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             }
                         }
                         PartKind::FunctionCall(function_call) => {
+                            let call_id = uuid::Uuid::new_v4().to_string();
                             completion::AssistantContent::ToolCall(
-                                message::ToolCall::new(
-                                    function_call.name.clone(),
-                                    message::ToolFunction::new(
+                                message::ToolCall {
+                                    id: function_call.name.clone(),
+                                    call_id: None,
+                                    function: message::ToolFunction::new(
                                         function_call.name.clone(),
                                         function_call.args.clone(),
                                     ),
-                                )
+                                    signature: None,
+                                    additional_params: None,
+                                }
+                                .with_call_id(call_id)
                                 .with_signature(thought_signature.clone()),
                             )
                         }
@@ -1944,6 +1949,50 @@ mod tests {
         } else {
             panic!("Expected function call part");
         }
+    }
+
+    #[test]
+    fn test_response_function_call_sets_uuid_call_id() {
+        let response = GenerateContentResponse {
+            response_id: "resp_1".to_string(),
+            candidates: vec![gemini_api_types::ContentCandidate {
+                content: Some(Content {
+                    parts: vec![Part {
+                        thought: Some(false),
+                        thought_signature: None,
+                        part: PartKind::FunctionCall(gemini_api_types::FunctionCall {
+                            name: "add".to_string(),
+                            args: json!({"x": 1, "y": 2}),
+                        }),
+                        additional_params: None,
+                    }],
+                    role: Some(Role::Model),
+                }),
+                finish_reason: None,
+                safety_ratings: None,
+                citation_metadata: None,
+                token_count: None,
+                avg_logprobs: None,
+                logprobs_result: None,
+                index: Some(0),
+                finish_message: None,
+            }],
+            prompt_feedback: None,
+            usage_metadata: None,
+            model_version: None,
+        };
+
+        let completion: completion::CompletionResponse<GenerateContentResponse> =
+            response.try_into().unwrap();
+
+        let message::AssistantContent::ToolCall(tool_call) = completion.choice.first_ref() else {
+            panic!("Expected tool call content");
+        };
+
+        assert_eq!(tool_call.id, "add");
+        let call_id = tool_call.call_id.as_ref().expect("call_id should exist");
+        assert_ne!(call_id, "add");
+        uuid::Uuid::parse_str(call_id).expect("call_id should be a valid UUID");
     }
 
     #[test]
