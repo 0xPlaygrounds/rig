@@ -595,7 +595,7 @@ impl From<message::ToolCall> for ToolCall {
 impl From<ToolCall> for message::ToolCall {
     fn from(tool_call: ToolCall) -> Self {
         Self {
-            id: tool_call.id,
+            id: tool_call.id.clone(),
             call_id: None,
             function: message::ToolFunction {
                 name: tool_call.function.name,
@@ -604,6 +604,7 @@ impl From<ToolCall> for message::ToolCall {
             signature: None,
             additional_params: None,
         }
+        .with_call_id(tool_call.id)
     }
 }
 
@@ -779,8 +780,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     tool_calls
                         .iter()
                         .map(|call| {
-                            completion::AssistantContent::tool_call(
+                            let call_id = call.id.clone();
+                            completion::AssistantContent::tool_call_with_call_id(
                                 &call.id,
+                                call_id,
                                 &call.function.name,
                                 call.function.arguments.clone(),
                             )
@@ -1206,5 +1209,29 @@ where
         CompletionError,
     > {
         Self::stream(self, request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_tool_call_conversion_sets_call_id() {
+        let provider_tool_call = ToolCall {
+            id: "call_123".to_string(),
+            r#type: ToolType::default(),
+            function: Function {
+                name: "add".to_string(),
+                arguments: json!({"x": 1, "y": 2}),
+            },
+        };
+
+        let tool_call: message::ToolCall = provider_tool_call.into();
+        assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
+        assert_eq!(tool_call.id, "call_123");
+        assert_eq!(tool_call.function.name, "add");
+        assert_eq!(tool_call.function.arguments, json!({"x": 1, "y": 2}));
     }
 }

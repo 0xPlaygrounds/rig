@@ -270,12 +270,14 @@ where
                                     arguments: tool_call.function.arguments.clone(),
                                 },
                             });
+                            let call_id = tool_call.id.clone();
                             yield Ok(streaming::RawStreamingChoice::ToolCall(
                                 streaming::RawStreamingToolCall::new(
                                     tool_call.id,
                                     tool_call.function.name,
                                     tool_call.function.arguments,
                                 )
+                                .with_call_id(call_id),
                             ));
                         }
                         tool_calls = HashMap::new();
@@ -298,12 +300,14 @@ where
 
         // Flush any accumulated tool calls (that weren't emitted as ToolCall earlier)
         for (_idx, tool_call) in tool_calls.into_iter() {
+            let call_id = tool_call.id.clone();
             yield Ok(streaming::RawStreamingChoice::ToolCall(
                 streaming::RawStreamingToolCall::new(
                     tool_call.id,
                     tool_call.function.name,
                     tool_call.function.arguments,
                 )
+                .with_call_id(call_id),
             ));
         }
 

@@ -414,7 +414,8 @@ fn handle_event(
                 };
                 match serde_json::from_str(json_str) {
                     Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
-                        RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value),
+                        RawStreamingToolCall::new(tool_call.id.clone(), tool_call.name, json_value)
+                            .with_call_id(tool_call.id),
                     ))),
                     Err(e) => Some(Err(CompletionError::from(e))),
                 }
@@ -716,11 +717,13 @@ mod tests {
         match final_result.unwrap().unwrap() {
             RawStreamingChoice::ToolCall(RawStreamingToolCall {
                 id,
+                call_id,
                 name,
                 arguments,
                 ..
             }) => {
                 assert_eq!(id, "tool_123");
+                assert_eq!(call_id.as_deref(), Some("tool_123"));
                 assert_eq!(name, "test_tool");
                 assert_eq!(
                     arguments.get("location").unwrap().as_str().unwrap(),

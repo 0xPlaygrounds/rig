@@ -578,9 +578,19 @@ impl TryFrom<Content> for message::AssistantContent {
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
             Content::Text { text, .. } => message::AssistantContent::text(text),
-            Content::ToolUse { id, name, input } => {
-                message::AssistantContent::tool_call(id, name, input)
-            }
+            Content::ToolUse { id, name, input } => message::AssistantContent::ToolCall(
+                message::ToolCall {
+                    id: id.clone(),
+                    call_id: None,
+                    function: message::ToolFunction {
+                        name,
+                        arguments: input,
+                    },
+                    signature: None,
+                    additional_params: None,
+                }
+                .with_call_id(id),
+            ),
             Content::Thinking {
                 thinking,
                 signature,
@@ -1344,9 +1354,13 @@ mod tests {
 
                 match content.first() {
                     message::AssistantContent::ToolCall(message::ToolCall {
-                        id, function, ..
+                        id,
+                        call_id,
+                        function,
+                        ..
                     }) => {
                         assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
+                        assert_eq!(call_id.as_deref(), Some(id.as_str()));
                         assert_eq!(function.name, "get_weather");
                         assert_eq!(function.arguments, json!({"location": "San Francisco, CA"}));
                     }
