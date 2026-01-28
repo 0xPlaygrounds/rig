@@ -399,6 +399,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning_content,
                 ..
             } => {
                 let mut content = if content.trim().is_empty() {
@@ -419,6 +420,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         })
                         .collect::<Vec<_>>(),
                 );
+
+                if let Some(reasoning_content) = reasoning_content {
+                    content.push(completion::AssistantContent::reasoning(reasoning_content));
+                }
+
                 Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
@@ -484,7 +490,28 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
             .flatten()
             .collect();
 
-        full_history.extend(chat_history);
+        let mut last_reasoning_content = None;
+        let mut last_assistant_idx = None;
+
+        for message in chat_history {
+            if let Message::Assistant { reasoning_content, .. } = &message {
+                if let Some(content) = reasoning_content {
+                    last_reasoning_content = Some(content.clone());
+                } else {
+                    last_assistant_idx = Some(full_history.len());
+                    full_history.push(message);
+                }
+            } else {
+                full_history.push(message);
+            }
+        }
+
+        // Merge last reasoning content into the last assistant message.
+        // Note that we only need to preserve the last reasoning content.
+        if let (Some(idx), Some(reasoning)) = (last_assistant_idx, last_reasoning_content)
+            && let Message::Assistant { ref mut reasoning_content, .. } = full_history[idx] {
+                *reasoning_content = Some(reasoning);
+        }
 
         let tool_choice = req
             .tool_choice
