@@ -3,6 +3,7 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
+use uuid::Uuid;
 
 use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
 use super::completion::{CompletionModel, create_request_body};
@@ -180,8 +181,10 @@ where
                                     thought_signature,
                                     ..
                                 } => {
+                                    let call_id = Uuid::new_v4().to_string();
                                     yield Ok(streaming::RawStreamingChoice::ToolCall(
                                         streaming::RawStreamingToolCall::new(function_call.name.clone(), function_call.name.clone(), function_call.args.clone())
+                                            .with_call_id(call_id)
                                             .with_signature(thought_signature)
                                     ));
                                 },

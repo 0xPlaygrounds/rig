@@ -131,3 +131,24 @@ async fn anthropic_prompt_tool_call_id() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "This test requires GEMINI_API_KEY"]
+async fn gemini_prompt_tool_call_id() -> Result<(), anyhow::Error> {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let agent = providers::gemini::Client::from_env()
+        .agent(providers::gemini::completion::GEMINI_2_5_FLASH)
+        .preamble("You are a calculator. Always call the `add` tool exactly once before replying.")
+        .max_tokens(1024)
+        .tool_choice(ToolChoice::Auto)
+        .tool(Adder)
+        .build();
+
+    let _res = agent
+        .prompt("What is 2 + 5? Use the tool.")
+        .multi_turn(1)
+        .with_hook(AssertToolCallIdHook)
+        .await?;
+
+    Ok(())
+}

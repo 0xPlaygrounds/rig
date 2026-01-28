@@ -148,3 +148,26 @@ async fn openai_streaming_tool_call_id() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "This test requires GEMINI_API_KEY"]
+async fn gemini_streaming_tool_call_id() -> Result<(), anyhow::Error> {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let agent = providers::gemini::Client::from_env()
+        .agent(providers::gemini::completion::GEMINI_2_5_FLASH)
+        .preamble("You are a calculator. Always call the `add` tool exactly once before replying.")
+        .max_tokens(1024)
+        .tool_choice(ToolChoice::Auto)
+        .tool(Adder)
+        .build();
+
+    let mut stream = agent
+        .stream_prompt("What is 2 + 5? Use the tool.")
+        .multi_turn(1)
+        .with_hook(AssertToolCallIdHook)
+        .await;
+
+    let _res = stream_to_stdout(&mut stream).await?;
+
+    Ok(())
+}
