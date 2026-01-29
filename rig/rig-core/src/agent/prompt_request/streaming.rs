@@ -95,7 +95,7 @@ pub enum StreamingError {
 /// If you expect to continuously call tools, you will want to ensure you use the `.multi_turn()`
 /// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
 /// attempting to await (which will send the prompt request) can potentially return
-/// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
+/// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
 pub struct StreamingPromptRequest<M, P>
 where
@@ -107,8 +107,8 @@ where
     /// Optional chat history to include with the prompt
     /// Note: chat history needs to outlive the agent as it might be used with other agents
     chat_history: Option<Vec<Message>>,
-    /// Maximum depth for multi-turn conversations (0 means no multi-turn)
-    max_depth: usize,
+    /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
+    max_turns: usize,
     /// The agent to use for execution
     agent: Arc<Agent<M>>,
     /// Optional per-request hook for events
@@ -126,16 +126,16 @@ where
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_depth: agent.default_max_depth.unwrap_or_default(),
+            max_turns: agent.default_max_turns.unwrap_or_default(),
             agent,
             hook: None,
         }
     }
 
-    /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
-    pub fn multi_turn(mut self, depth: usize) -> Self {
-        self.max_depth = depth;
+    /// Set the maximum Turns for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
+    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
+    pub fn multi_turn(mut self, turns: usize) -> Self {
+        self.max_turns = turns;
         self
     }
 
@@ -153,7 +153,7 @@ where
         StreamingPromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             hook: Some(hook),
         }
@@ -188,12 +188,12 @@ where
             Arc::new(RwLock::new(vec![]))
         };
 
-        let mut current_max_depth = 0;
+        let mut current_max_turns = 0;
         let mut last_prompt_error = String::new();
 
         let mut last_text_response = String::new();
         let mut is_text_response = false;
-        let mut max_depth_reached = false;
+        let mut max_turns_reached = false;
 
         let mut aggregated_usage = crate::completion::Usage::new();
 
@@ -210,19 +210,19 @@ where
             let mut did_call_tool = false;
 
             'outer: loop {
-                if current_max_depth > self.max_depth + 1 {
+                if current_max_turns > self.max_turns + 1 {
                     last_prompt_error = current_prompt.rag_text().unwrap_or_default();
-                    max_depth_reached = true;
+                    max_turns_reached = true;
                     break;
                 }
 
-                current_max_depth += 1;
+                current_max_turns += 1;
 
-                if self.max_depth > 1 {
+                if self.max_turns > 1 {
                     tracing::info!(
-                        "Current conversation depth: {}/{}",
-                        current_max_depth,
-                        self.max_depth
+                        "Current conversation Turns: {}/{}",
+                        current_max_turns,
+                        self.max_turns
                     );
                 }
 
@@ -468,9 +468,9 @@ where
                 }
             }
 
-            if max_depth_reached {
-                yield Err(Box::new(PromptError::MaxDepthError {
-                    max_depth: self.max_depth,
+            if max_turns_reached {
+                yield Err(Box::new(PromptError::MaxTurnsError {
+                    max_turns: self.max_turns,
                     chat_history: Box::new((*chat_history.read().await).clone()),
                     prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
