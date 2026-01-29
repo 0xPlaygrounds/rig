@@ -279,7 +279,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let resp = agent
         .prompt(prompt)
         .with_history(&mut chat_history)
-        .multi_turn(10)
+        .max_turns(10)
         .await?;
 
     println!("Chat history:");
