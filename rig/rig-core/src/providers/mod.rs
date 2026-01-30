@@ -64,3 +64,8 @@ pub mod perplexity;
 pub mod together;
 pub mod voyageai;
 pub mod xai;
+
+/// Mock provider for testing Rig integrations without consuming tokens.
+/// Only available when running tests.
+#[cfg(test)]
+pub mod mock;

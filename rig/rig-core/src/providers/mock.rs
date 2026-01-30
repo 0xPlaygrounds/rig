@@ -8,8 +8,8 @@
 //!
 //! # Example
 //! ```rust,ignore
-//! use rig::providers::mock::{self, Client, ErrorMode};
-//! use rig::client::{CompletionClient, Nothing};
+//! use crate::providers::mock::{self, Client, ErrorMode};
+//! use crate::client::{CompletionClient, Nothing};
 //!
 //! // Create a new mock client with default settings
 //! let client = Client::default();
@@ -31,20 +31,22 @@
 //!     .build()
 //!     .unwrap();
 //! ```
+//!
+//! FIX: This module is currently situated in `src/providers` as some parts of this currently conflict with the orphan rule. Should we try to figure out a way around this?
 
+use crate::OneOrMany;
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
 };
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage, Usage};
 use crate::message::{AssistantContent, Text, ToolCall, ToolFunction, UserContent};
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, StreamingResult};
-use crate::OneOrMany;
 use async_stream::stream;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ========== Configuration ==========
 
@@ -477,7 +479,7 @@ fn create_seed(prompt: &str, response_number: usize, model: &str) -> u64 {
 /// This provides deterministic "randomness" - same seed always gives same result
 fn should_include_tool_call(seed: u64) -> bool {
     // Use the seed to determine if we include a tool call (50/50 based on last bit)
-    seed % 2 == 0
+    seed.is_multiple_of(2)
 }
 
 /// Create a mock tool call for non-streaming responses
@@ -1103,7 +1105,10 @@ mod tests {
                 .context("The capital of Germany is Berlin.")
                 .build();
 
-            let response = agent.prompt("What is the capital of France?").await.unwrap();
+            let response = agent
+                .prompt("What is the capital of France?")
+                .await
+                .unwrap();
             assert!(response.contains("Response #0"));
         }
 
@@ -1166,9 +1171,7 @@ mod tests {
             let client = Client::default();
             let model = client.completion_model("mock-model");
 
-            let extractor = ExtractorBuilder::<_, Person>::new(model)
-                .retries(2)
-                .build();
+            let extractor = ExtractorBuilder::<_, Person>::new(model).retries(2).build();
 
             // The mock provider doesn't call the submit tool, so extraction will fail
             // But this verifies the retry logic works without crashing
@@ -1260,9 +1263,9 @@ mod tests {
             let handles: Vec<_> = (0..5)
                 .map(|i| {
                     let agent = Arc::clone(&agent);
-                    tokio::spawn(async move {
-                        agent.prompt(format!("Concurrent prompt {}", i)).await
-                    })
+                    tokio::spawn(
+                        async move { agent.prompt(format!("Concurrent prompt {}", i)).await },
+                    )
                 })
                 .collect();
 
@@ -1387,11 +1390,7 @@ mod tests {
             response_numbers.sort();
 
             // Check all numbers are unique
-            let unique_count = response_numbers
-                .windows(2)
-                .filter(|w| w[0] != w[1])
-                .count()
-                + 1;
+            let unique_count = response_numbers.windows(2).filter(|w| w[0] != w[1]).count() + 1;
             assert_eq!(unique_count, 5);
         }
 
@@ -1409,8 +1408,7 @@ mod tests {
                         let agent = AgentBuilder::new(model).build();
 
                         // Each client has its own counter, so all should start at 0
-                        let response = agent.prompt(format!("Client {} prompt", i)).await.unwrap();
-                        response
+                        agent.prompt(format!("Client {} prompt", i)).await.unwrap()
                     })
                 })
                 .collect();
@@ -1450,12 +1448,18 @@ mod tests {
             let mut history = vec![];
 
             // First exchange
-            let response1 = agent.chat("My name is Alice", history.clone()).await.unwrap();
+            let response1 = agent
+                .chat("My name is Alice", history.clone())
+                .await
+                .unwrap();
             history.push(crate::message::Message::user("My name is Alice"));
             history.push(crate::message::Message::assistant(&response1));
 
             // Second exchange
-            let response2 = agent.chat("What is my name?", history.clone()).await.unwrap();
+            let response2 = agent
+                .chat("What is my name?", history.clone())
+                .await
+                .unwrap();
             history.push(crate::message::Message::user("What is my name?"));
             history.push(crate::message::Message::assistant(&response2));
 
