@@ -100,7 +100,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent(openai::GPT_4O)
+        .agent("gpt-5.2")
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 
@@ -115,7 +115,7 @@ async fn main() -> Result<(), anyhow::Error> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples each crate's `examples` (ie. [`rig-core/examples`](./rig-core/examples)) directory. More detailed use cases walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation [(docs.rig.rs)](http://docs.rig.rs).
+You can find more examples each crate's `examples` (ie. [`rig/rig-core/examples`](./rig/rig-core/examples)) directory. More detailed use cases walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation [(docs.rig.rs)](http://docs.rig.rs).
 
 ## Supported Integrations
 
