@@ -412,7 +412,10 @@ mod tests {
     use crate::{
         completion::ToolDefinition,
         tool::{Tool, ToolSet, server::ToolServer},
-        vector_store::{VectorStoreError, VectorStoreIndex, request::{Filter, VectorSearchRequest}},
+        vector_store::{
+            VectorStoreError, VectorStoreIndex,
+            request::{Filter, VectorSearchRequest},
+        },
         wasm_compat::WasmCompatSend,
     };
 
@@ -561,9 +564,11 @@ mod tests {
         };
 
         // Build server with static tool "add" and dynamic tools from the mock index
-        let server = ToolServer::new()
-            .tool(Adder)
-            .dynamic_tools(1, mock_index, ToolSet::from_tools(vec![Subtractor]));
+        let server = ToolServer::new().tool(Adder).dynamic_tools(
+            1,
+            mock_index,
+            ToolSet::from_tools(vec![Subtractor]),
+        );
 
         let handle = server.run();
 
@@ -573,7 +578,10 @@ mod tests {
         assert_eq!(res[0].name, "add");
 
         // Test with Some prompt - should return both static and dynamic tools
-        let res = handle.get_tool_defs(Some("calculate difference".to_string())).await.unwrap();
+        let res = handle
+            .get_tool_defs(Some("calculate difference".to_string()))
+            .await
+            .unwrap();
         assert_eq!(res.len(), 2);
 
         // Check that both tools are present (order may vary)
@@ -597,7 +605,10 @@ mod tests {
         let handle = server.run();
 
         // Test with Some prompt - should only return static tool since dynamic tool is missing
-        let res = handle.get_tool_defs(Some("some query".to_string())).await.unwrap();
+        let res = handle
+            .get_tool_defs(Some("some query".to_string()))
+            .await
+            .unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].name, "add");
     }
