@@ -145,6 +145,9 @@ required-features = ["derive"]
 name = "agent_with_moonshot"
 
 [[example]]
+name = "agent_with_zhipu"
+
+[[example]]
 name = "pdf_agent"
 required-features = ["derive", "pdf"]
 
