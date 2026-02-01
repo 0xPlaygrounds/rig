@@ -494,7 +494,10 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
         let mut last_assistant_idx = None;
 
         for message in chat_history {
-            if let Message::Assistant { reasoning_content, .. } = &message {
+            if let Message::Assistant {
+                reasoning_content, ..
+            } = &message
+            {
                 if let Some(content) = reasoning_content {
                     last_reasoning_content = Some(content.clone());
                 } else {
@@ -509,8 +512,12 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
         // Merge last reasoning content into the last assistant message.
         // Note that we only need to preserve the last reasoning content.
         if let (Some(idx), Some(reasoning)) = (last_assistant_idx, last_reasoning_content)
-            && let Message::Assistant { ref mut reasoning_content, .. } = full_history[idx] {
-                *reasoning_content = Some(reasoning);
+            && let Message::Assistant {
+                ref mut reasoning_content,
+                ..
+            } = full_history[idx]
+        {
+            *reasoning_content = Some(reasoning);
         }
 
         let tool_choice = req
