@@ -804,7 +804,8 @@ pub mod gemini_api_types {
                             }
                             _ => {
                                 return Err(MessageError::ConversionError(
-                                    "Text-based documents must be String or Base64 encoded".to_string(),
+                                    "Text-based documents must be String or Base64 encoded"
+                                        .to_string(),
                                 ));
                             }
                         };
@@ -2142,7 +2143,10 @@ mod tests {
             assert!(text.contains("Note: test.md"));
             assert!(text.contains("Hello World!"));
         } else {
-            panic!("Expected text part for TXT document, got: {:?}", content.parts[0]);
+            panic!(
+                "Expected text part for TXT document, got: {:?}",
+                content.parts[0]
+            );
         }
     }
 
@@ -2182,9 +2186,9 @@ mod tests {
     #[test]
     fn test_create_request_body_with_documents() {
         // Test that documents are injected into chat history
+        use crate::OneOrMany;
         use crate::completion::request::{CompletionRequest, Document};
         use crate::message::Message;
-        use crate::OneOrMany;
 
         let documents = vec![
             Document {
@@ -2259,9 +2263,9 @@ mod tests {
     #[test]
     fn test_create_request_body_without_documents() {
         // Test backward compatibility: requests without documents work as before
+        use crate::OneOrMany;
         use crate::completion::request::CompletionRequest;
         use crate::message::Message;
-        use crate::OneOrMany;
 
         let completion_request = CompletionRequest {
             preamble: Some("You are a helpful assistant".to_string()),
