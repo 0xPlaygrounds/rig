@@ -187,6 +187,12 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
     let mut full_history = Vec::new();
+
+    // Add documents as a user message at the beginning if present
+    if let Some(documents_message) = completion_request.normalized_documents() {
+        full_history.push(documents_message);
+    }
+
     full_history.extend(completion_request.chat_history);
 
     let additional_params = completion_request
@@ -763,7 +769,53 @@ pub mod gemini_api_types {
                         ));
                     };
 
-                    if !media_type.is_code() {
+                    // For text/plain documents (RAG context), convert to plain text
+                    if matches!(
+                        media_type,
+                        message::DocumentMediaType::TXT
+                            | message::DocumentMediaType::RTF
+                            | message::DocumentMediaType::HTML
+                            | message::DocumentMediaType::CSS
+                            | message::DocumentMediaType::MARKDOWN
+                            | message::DocumentMediaType::CSV
+                            | message::DocumentMediaType::XML
+                            | message::DocumentMediaType::Javascript
+                            | message::DocumentMediaType::Python
+                    ) {
+                        use base64::Engine;
+                        let text = match data {
+                            DocumentSourceKind::String(text) => text.clone(),
+                            DocumentSourceKind::Base64(data) => {
+                                // Decode base64 if needed
+                                String::from_utf8(
+                                    base64::engine::general_purpose::STANDARD
+                                        .decode(&data)
+                                        .map_err(|e| {
+                                            MessageError::ConversionError(format!(
+                                                "Failed to decode base64: {e}"
+                                            ))
+                                        })?,
+                                )
+                                .map_err(|e| {
+                                    MessageError::ConversionError(format!(
+                                        "Invalid UTF-8 in document: {e}"
+                                    ))
+                                })?
+                            }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "Text-based documents must be String or Base64 encoded"
+                                        .to_string(),
+                                ));
+                            }
+                        };
+
+                        Ok(Part {
+                            thought: Some(false),
+                            part: PartKind::Text(text),
+                            ..Default::default()
+                        })
+                    } else if !media_type.is_code() {
                         let mime_type = media_type.to_mime_type().to_string();
 
                         let part = match data {
@@ -2061,6 +2113,185 @@ mod tests {
 
             assert_eq!(items.r#type, "object");
             assert!(items.properties.is_some());
+        }
+    }
+
+    #[test]
+    fn test_txt_document_conversion_to_text_part() {
+        // Test that TXT documents are converted to plain text parts, not inline data
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "Note: test.md\nPath: /test.md\nContent: Hello World!",
+            Some(DocumentMediaType::TXT),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert!(text.contains("Note: test.md"));
+            assert!(text.contains("Hello World!"));
+        } else {
+            panic!(
+                "Expected text part for TXT document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
+    fn test_markdown_document_conversion_to_text_part() {
+        // Test that MARKDOWN documents are converted to plain text parts
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "# Heading\n\n* List item",
+            Some(DocumentMediaType::MARKDOWN),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert_eq!(text, "# Heading\n\n* List item");
+        } else {
+            panic!(
+                "Expected text part for MARKDOWN document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_with_documents() {
+        // Test that documents are injected into chat history
+        use crate::OneOrMany;
+        use crate::completion::request::{CompletionRequest, Document};
+        use crate::message::Message;
+
+        let documents = vec![
+            Document {
+                id: "doc1".to_string(),
+                text: "Note: first.md\nContent: First note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+            Document {
+                id: "doc2".to_string(),
+                text: "Note: second.md\nContent: Second note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+        ];
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("What are my notes about?")),
+            documents: documents.clone(),
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have 2 contents: 1 for documents, 1 for user message
+        assert_eq!(
+            request.contents.len(),
+            2,
+            "Expected 2 contents (documents + user message)"
+        );
+
+        // First content should be documents with role User
+        assert_eq!(request.contents[0].role, Some(Role::User));
+        assert_eq!(
+            request.contents[0].parts.len(),
+            2,
+            "Expected 2 document parts"
+        );
+
+        // Check that documents are text parts
+        for part in &request.contents[0].parts {
+            if let Part {
+                part: PartKind::Text(text),
+                ..
+            } = part
+            {
+                assert!(
+                    text.contains("Note:") && text.contains("Content:"),
+                    "Document should contain note metadata"
+                );
+            } else {
+                panic!("Document parts should be text, not {:?}", part);
+            }
+        }
+
+        // Second content should be the user message
+        assert_eq!(request.contents[1].role, Some(Role::User));
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[1].parts[0]
+        {
+            assert_eq!(text, "What are my notes about?");
+        } else {
+            panic!("Expected user message to be text");
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_without_documents() {
+        // Test backward compatibility: requests without documents work as before
+        use crate::OneOrMany;
+        use crate::completion::request::CompletionRequest;
+        use crate::message::Message;
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("Hello")),
+            documents: vec![], // No documents
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have only 1 content (the user message)
+        assert_eq!(request.contents.len(), 1, "Expected only user message");
+        assert_eq!(request.contents[0].role, Some(Role::User));
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[0].parts[0]
+        {
+            assert_eq!(text, "Hello");
+        } else {
+            panic!("Expected user message to be text");
         }
     }
 }
