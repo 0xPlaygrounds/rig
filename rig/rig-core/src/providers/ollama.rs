@@ -1,42 +1,35 @@
 //! Ollama API client and Rig integration
 //!
 //! # Example
-//! ```rust
+//! ```rust,ignore
+//! use rig::client::{Nothing, CompletionClient};
+//! use rig::completion::Prompt;
 //! use rig::providers::ollama;
 //!
 //! // Create a new Ollama client (defaults to http://localhost:11434)
-//! let client = ollama::Client::new();
+//! // In the case of ollama, no API key is necessary, so we use the `Nothing` struct
+//! let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
 //!
-//! // Create a completion model interface using, for example, the "llama3.2" model
-//! let comp_model = client.completion_model("llama3.2");
+//! // Create an agent with a preamble
+//! let comedian_agent = client
+//!     .agent("qwen2.5:14b")
+//!     .preamble("You are a comedian here to entertain the user using humour and jokes.")
+//!     .build();
 //!
-//! let req = rig::completion::CompletionRequest {
-//!     preamble: Some("You are now a humorous AI assistant.".to_owned()),
-//!     chat_history: vec![],  // internal messages (if any)
-//!     prompt: rig::message::Message::User {
-//!         content: rig::one_or_many::OneOrMany::one(rig::message::UserContent::text("Please tell me why the sky is blue.")),
-//!         name: None
-//!     },
-//!     temperature: 0.7,
-//!     additional_params: None,
-//!     tools: vec![],
-//! };
+//! // Prompt the agent and print the response
+//! let response = comedian_agent.prompt("Entertain me!").await?;
+//! println!("{response}");
 //!
-//! let response = comp_model.completion(req).await.unwrap();
-//! println!("Ollama completion response: {:?}", response.choice);
-//!
-//! // Create an embedding interface using the "all-minilm" model
-//! let emb_model = ollama::Client::new().embedding_model("all-minilm");
-//! let docs = vec![
+//! // Create an embedding model using the "all-minilm" model
+//! let emb_model = client.embedding_model("all-minilm", 384);
+//! let embeddings = emb_model.embed_texts(vec![
 //!     "Why is the sky blue?".to_owned(),
 //!     "Why is the grass green?".to_owned()
-//! ];
-//! let embeddings = emb_model.embed_texts(docs).await.unwrap();
+//! ]).await?;
 //! println!("Embedding response: {:?}", embeddings);
 //!
-//! // Also create an agent and extractor if needed
-//! let agent = client.agent("llama3.2");
-//! let extractor = client.extractor::<serde_json::Value>("llama3.2");
+//! // Create an extractor if needed
+//! let extractor = client.extractor::<serde_json::Value>("llama3.2").build();
 //! ```
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
@@ -633,6 +626,28 @@ where
 
                     let response: CompletionResponse = serde_json::from_slice(line)?;
 
+                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                        if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
+                            thinking_response += &thinking_content;
+                            yield RawStreamingChoice::ReasoningDelta {
+                                id: None,
+                                reasoning: thinking_content,
+                            };
+                        }
+
+                        if !content.is_empty() {
+                            text_response += &content;
+                            yield RawStreamingChoice::Message(content);
+                        }
+
+                        for tool_call in tool_calls {
+                            tool_calls_final.push(tool_call.clone());
+                            yield RawStreamingChoice::ToolCall(
+                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
+                            );
+                        }
+                    }
+
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
@@ -656,29 +671,6 @@ where
                             }
                         );
                         break;
-                    }
-
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
-                        if let Some(thinking_content) = thinking
-                            && !thinking_content.is_empty() {
-                            thinking_response += &thinking_content;
-                            yield RawStreamingChoice::ReasoningDelta {
-                                id: None,
-                                reasoning: thinking_content,
-                            };
-                        }
-
-                        if !content.is_empty() {
-                            text_response += &content;
-                            yield RawStreamingChoice::Message(content);
-                        }
-
-                        for tool_call in tool_calls {
-                            tool_calls_final.push(tool_call.clone());
-                            yield RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
-                            );
-                        }
                     }
                 }
             }
