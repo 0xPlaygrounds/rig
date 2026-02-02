@@ -391,11 +391,35 @@ mod tests {
     use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
     use serde_json;
 
-    use crate::tool::ToolError;
+    use crate::{
+        completion::ToolDefinition,
+        tool::{Tool, ToolError},
+    };
 
-    #[rig::tool_macro]
-    async fn example_tool() -> Result<String, ToolError> {
-        Ok("Example answer".to_string())
+    struct ExampleTool;
+
+    impl Tool for ExampleTool {
+        type Args = ();
+        type Error = ToolError;
+        type Output = String;
+        const NAME: &'static str = "example_tool";
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: self.name(),
+                description: "A tool that returns some example text.".to_string(),
+                parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                }),
+            }
+        }
+
+        async fn call(&self, _input: Self::Args) -> Result<Self::Output, Self::Error> {
+            let result = "Example answer".to_string();
+            Ok(result)
+        }
     }
 
     // requires `derive` rig-core feature due to using tool macro
