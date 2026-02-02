@@ -415,6 +415,12 @@ Before considering code complete:
 
 ---
 
+## Commits
+
+DO NOT MAKE COMMITS UNLESS THE USER HAS ASKED YOU TO DO SO. Users should be able to manually verify that what you have done has worked before proceeding with a commit, and may also want to write their own commit messages.
+
+All PR messages must contain a list of public API items that have broken and what the migration path is.
+
 ## What Will Be Rejected
 
 PRs will be rejected if they contain:
