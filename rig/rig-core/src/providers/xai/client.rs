@@ -6,10 +6,6 @@ use crate::{
     http_client,
 };
 
-// ================================================================
-// xAI Client
-// ================================================================
-
 #[derive(Debug, Default, Clone, Copy)]
 pub struct XAiExt;
 #[derive(Debug, Default, Clone, Copy)]
@@ -66,28 +62,5 @@ impl ProviderClient for Client {
 
     fn from_val(input: Self::Input) -> Self {
         Self::new(&input).unwrap()
-    }
-}
-
-pub mod xai_api_types {
-    use serde::Deserialize;
-
-    impl ApiErrorResponse {
-        pub fn message(&self) -> String {
-            format!("Code `{}`: {}", self.code, self.error)
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ApiErrorResponse {
-        pub error: String,
-        pub code: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    pub enum ApiResponse<T> {
-        Ok(T),
-        Error(ApiErrorResponse),
     }
 }

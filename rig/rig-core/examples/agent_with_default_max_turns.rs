@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
         .tool(Subtract)
         .tool(Multiply)
         .tool(Divide)
-        .default_max_depth(20)
+        .default_max_turns(20)
         .build();
 
     // Prompt the agent and print the response

@@ -50,7 +50,7 @@ impl<M: CompletionModel> Prompt for ReasoningAgent<M> {
             .executor
             .prompt(reasoning_prompt.as_str())
             .with_history(&mut chat_history)
-            .multi_turn(20)
+            .max_turns(20)
             .await?;
         tracing::info!(
             "full chat history generated: {}",

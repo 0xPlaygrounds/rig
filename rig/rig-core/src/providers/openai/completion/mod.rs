@@ -385,11 +385,14 @@ impl TryFrom<message::ToolResult> for Message {
         let text = value
             .content
             .into_iter()
-            .map(|content| match content {
+            .map(|content| {
+                match content {
                 message::ToolResultContent::Text(message::Text { text }) => Ok(text),
-                _ => Err(message::MessageError::ConversionError(
-                    "Tool result content does not support non-text".into(),
+                message::ToolResultContent::Image(_) => Err(message::MessageError::ConversionError(
+                    "OpenAI does not support images in tool results. Tool results must be text."
+                        .into(),
                 )),
+            }
             })
             .collect::<Result<Vec<_>, _>>()?
             .join("\n");

@@ -91,7 +91,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Spin up a CLI chatbot using the multi-agent system
     let chatbot = ChatBotBuilder::new()
         .agent(multi_agent_system)
-        .multi_turn_depth(1)
+        .max_turns(1)
         .build();
 
     chatbot.run().await?;
