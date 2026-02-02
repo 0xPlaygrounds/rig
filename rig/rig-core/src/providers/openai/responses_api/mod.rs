@@ -99,8 +99,7 @@ impl Serialize for InputItem {
     where
         S: serde::Serializer,
     {
-        let mut value =
-            serde_json::to_value(&self.input).map_err(serde::ser::Error::custom)?;
+        let mut value = serde_json::to_value(&self.input).map_err(serde::ser::Error::custom)?;
         let map = value.as_object_mut().ok_or_else(|| {
             serde::ser::Error::custom("Input content must serialize to an object")
         })?;
