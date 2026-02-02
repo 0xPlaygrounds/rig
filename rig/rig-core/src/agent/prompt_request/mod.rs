@@ -17,7 +17,6 @@ use crate::{
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
     json_utils,
     message::{AssistantContent, ToolResultContent, UserContent},
-    tool::ToolSetError,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
