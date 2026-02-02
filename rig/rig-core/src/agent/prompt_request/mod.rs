@@ -19,7 +19,7 @@ use crate::{
     OneOrMany,
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
     json_utils,
-    message::{AssistantContent, UserContent},
+    message::{AssistantContent, ToolResultContent, UserContent},
     tool::ToolSetError,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -590,12 +590,12 @@ where
                                 Ok(UserContent::tool_result_with_call_id(
                                     tool_call.id.clone(),
                                     call_id,
-                                    OneOrMany::one(output.into()),
+                                    ToolResultContent::from_tool_output(output),
                                 ))
                             } else {
                                 Ok(UserContent::tool_result(
                                     tool_call.id.clone(),
-                                    OneOrMany::one(output.into()),
+                                    ToolResultContent::from_tool_output(output),
                                 ))
                             }
                         } else {
