@@ -10131,6 +10131,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
+ "nanoid",
  "reqwest 0.12.24",
  "rig-core 0.29.0",
  "rig-derive",
