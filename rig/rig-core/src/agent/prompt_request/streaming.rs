@@ -268,6 +268,7 @@ where
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
+                let mut accumulated_reasoning: Option<rig::message::Reasoning> = None;
 
                 while let Some(content) = stream.next().await {
                     match content {
@@ -392,6 +393,18 @@ where
                             }
                         }
                         Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })) => {
+                            // Accumulate reasoning for inclusion in chat history with tool calls.
+                            // OpenAI Responses API requires reasoning items to be sent back
+                            // alongside function_call items in multi-turn conversations.
+                            if let Some(ref mut existing) = accumulated_reasoning {
+                                existing.reasoning.extend(reasoning.clone());
+                            } else {
+                                accumulated_reasoning = Some(rig::message::Reasoning {
+                                    reasoning: reasoning.clone(),
+                                    id: id.clone(),
+                                    signature: signature.clone(),
+                                });
+                            }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })));
                             did_call_tool = false;
                         },
@@ -424,12 +437,24 @@ where
                     }
                 }
 
-                // Add (parallel) tool calls to chat history
-                if !tool_calls.is_empty() {
-                    chat_history.write().await.push(Message::Assistant {
-                        id: None,
-                        content: OneOrMany::many(tool_calls.clone()).expect("Impossible EmptyListError"),
-                    });
+                // Add reasoning and tool calls to chat history.
+                // OpenAI Responses API requires reasoning items to precede function_call items.
+                if !tool_calls.is_empty() || accumulated_reasoning.is_some() {
+                    let mut content_items: Vec<rig::message::AssistantContent> = vec![];
+
+                    // Reasoning must come before tool calls (OpenAI requirement)
+                    if let Some(reasoning) = accumulated_reasoning.take() {
+                        content_items.push(rig::message::AssistantContent::Reasoning(reasoning));
+                    }
+
+                    content_items.extend(tool_calls.clone());
+
+                    if !content_items.is_empty() {
+                        chat_history.write().await.push(Message::Assistant {
+                            id: None,
+                            content: OneOrMany::many(content_items).expect("Should have at least one item"),
+                        });
+                    }
                 }
 
                 // Add tool results to chat history
