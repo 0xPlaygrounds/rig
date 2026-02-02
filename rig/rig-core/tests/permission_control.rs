@@ -111,6 +111,7 @@ impl<M: CompletionModel> PromptHook<M> for PermissionHook {
         &self,
         tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
     ) -> ToolCallHookAction {
         let count = self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -132,6 +133,7 @@ impl<M: CompletionModel> PromptHook<M> for PermissionHook {
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
         result: &str,
     ) -> HookAction {
@@ -149,6 +151,7 @@ impl<M: CompletionModel> StreamingPromptHook<M> for PermissionHook {
         &self,
         tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
     ) -> ToolCallHookAction {
         let count = self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -170,6 +173,7 @@ impl<M: CompletionModel> StreamingPromptHook<M> for PermissionHook {
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
         result: &str,
     ) -> HookAction {
