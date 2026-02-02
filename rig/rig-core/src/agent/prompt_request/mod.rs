@@ -90,7 +90,7 @@ impl HookAction {
 /// If you expect to continuously call tools, you will want to ensure you use the `.multi_turn()`
 /// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
 /// attempting to await (which will send the prompt request) can potentially return
-/// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
+/// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
 pub struct PromptRequest<'a, S, M, P>
 where
@@ -104,7 +104,7 @@ where
     /// Note: chat history needs to outlive the agent as it might be used with other agents
     chat_history: Option<&'a mut Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
-    max_depth: usize,
+    max_turns: usize,
     /// The agent to use for execution
     agent: &'a Agent<M>,
     /// Phantom data to track the type of the request
@@ -124,7 +124,7 @@ where
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_depth: agent.default_max_depth.unwrap_or_default(),
+            max_turns: agent.default_max_turns.unwrap_or_default(),
             agent,
             state: PhantomData,
             hook: None,
@@ -148,20 +148,20 @@ where
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
         }
     }
-    /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, S, M, P> {
+    /// Set the maximum number of turns for multi-turn conversations. A given agent may require multiple turns for tool-calling before giving an answer.
+    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
+    pub fn max_turns(self, depth: usize) -> PromptRequest<'a, S, M, P> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: depth,
+            max_turns: depth,
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
@@ -181,7 +181,7 @@ where
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
@@ -197,7 +197,7 @@ where
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             state: PhantomData,
             hook: Some(hook),
@@ -356,17 +356,17 @@ where
                 .cloned()
                 .expect("there should always be at least one message in the chat history");
 
-            if current_max_depth > self.max_depth + 1 {
+            if current_max_turns > self.max_turns + 1 {
                 break prompt;
             }
 
-            current_max_depth += 1;
+            current_max_turns += 1;
 
-            if self.max_depth > 1 {
+            if self.max_turns > 1 {
                 tracing::info!(
                     "Current conversation depth: {}/{}",
-                    current_max_depth,
-                    self.max_depth
+                    current_max_turns,
+                    self.max_turns
                 );
             }
 
@@ -449,8 +449,8 @@ where
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                if self.max_depth > 1 {
-                    tracing::info!("Depth reached: {}/{}", current_max_depth, self.max_depth);
+                if self.max_turns > 1 {
+                    tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
                 }
 
                 agent_span.record("gen_ai.completion", &merged_texts);
@@ -594,8 +594,8 @@ where
         };
 
         // If we reach here, we never resolved the final tool call. We need to do ... something.
-        Err(PromptError::MaxDepthError {
-            max_depth: self.max_depth,
+        Err(PromptError::MaxTurnsError {
+            max_turns: self.max_turns,
             chat_history: Box::new(chat_history.clone()),
             prompt: Box::new(last_prompt),
         })

@@ -136,9 +136,9 @@ pub enum PromptError {
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
     /// or increase the amount of turns given in `.multi_turn()`.
-    #[error("MaxDepthError: (reached limit: {max_depth})")]
-    MaxDepthError {
-        max_depth: usize,
+    #[error("MaxTurnError: (reached max turn limit: {max_turns})")]
+    MaxTurnsError {
+        max_turns: usize,
         chat_history: Box<Vec<Message>>,
         prompt: Box<Message>,
     },

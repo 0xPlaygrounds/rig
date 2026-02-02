@@ -66,7 +66,7 @@ where
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
     /// Default maximum depth for multi-turn agent calls
-    default_max_depth: Option<usize>,
+    default_max_turns: Option<usize>,
 }
 
 impl<M> AgentBuilder<M>
@@ -86,7 +86,7 @@ where
             dynamic_context: vec![],
             tool_server_handle: None,
             tool_choice: None,
-            default_max_depth: None,
+            default_max_turns: None,
         }
     }
 
@@ -154,7 +154,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 
@@ -178,7 +178,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 
@@ -213,7 +213,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 
@@ -252,7 +252,7 @@ where
             temperature: self.temperature,
             tools,
             tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 
@@ -274,8 +274,8 @@ where
     }
 
     /// Set the default maximum depth that an agent will use for multi-turn.
-    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
-        self.default_max_depth = Some(default_max_depth);
+    pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
+        self.default_max_turns = Some(default_max_turns);
         self
     }
 
@@ -304,7 +304,7 @@ where
             temperature: self.temperature,
             tools: toolset,
             tool_choice: self.tool_choice,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 
@@ -346,7 +346,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 }
@@ -403,7 +403,7 @@ where
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
     /// Default maximum depth for multi-turn agent calls
-    default_max_depth: Option<usize>,
+    default_max_turns: Option<usize>,
 }
 
 impl<M> AgentBuilderSimple<M>
@@ -425,7 +425,7 @@ where
             dynamic_tools: vec![],
             tools: ToolSet::default(),
             tool_choice: None,
-            default_max_depth: None,
+            default_max_turns: None,
         }
     }
 
@@ -525,8 +525,8 @@ where
     }
 
     /// Set the default maximum depth that an agent will use for multi-turn.
-    pub fn default_max_depth(mut self, default_max_depth: usize) -> Self {
-        self.default_max_depth = Some(default_max_depth);
+    pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
+        self.default_max_turns = Some(default_max_turns);
         self
     }
 
@@ -581,7 +581,7 @@ where
             tool_choice: self.tool_choice,
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
-            default_max_depth: self.default_max_depth,
+            default_max_turns: self.default_max_turns,
         }
     }
 }
