@@ -1,6 +1,6 @@
 use crate::{
     OneOrMany,
-    agent::CancelSignal,
+    agent::prompt_request::HookAction,
     completion::GetTokenUsage,
     json_utils,
     message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
@@ -197,8 +197,6 @@ where
 
         let mut aggregated_usage = crate::completion::Usage::new();
 
-        let cancel_sig = CancelSignal::new();
-
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
         // span context leaking to other concurrent tasks. Using span.enter() inside
         // async_stream::stream! holds the guard across yield points, which causes
@@ -228,12 +226,11 @@ where
 
                 if let Some(ref hook) = self.hook {
                     let reader = chat_history.read().await;
-                    hook.on_completion_call(&current_prompt, &reader.to_vec(), cancel_sig.clone())
-                        .await;
+                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &reader.to_vec())
+                        .await {
 
-                    if cancel_sig.is_cancelled() {
                         yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                            cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
+                            reason
                         ).into()));
                     }
                 }
@@ -268,6 +265,7 @@ where
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
+                let mut accumulated_reasoning: Option<rig::message::Reasoning> = None;
 
                 while let Some(content) = stream.next().await {
                     match content {
@@ -277,14 +275,13 @@ where
                                 is_text_response = true;
                             }
                             last_text_response.push_str(&text.text);
-                            if let Some(ref hook) = self.hook {
-                                hook.on_text_delta(&text.text, &last_text_response, cancel_sig.clone()).await;
-                                if cancel_sig.is_cancelled() {
+                            if let Some(ref hook) = self.hook &&
+                                let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
                                     yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                        cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
+                                        reason
                                     ).into()));
                                 }
-                            }
+
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                             did_call_tool = false;
                         },
@@ -307,12 +304,12 @@ where
                                 let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
                                     let action = hook
-                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, cancel_sig.clone())
+                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &tool_args)
                                         .await;
 
-                                    if cancel_sig.is_cancelled() {
+                                    if let ToolCallHookAction::Terminate { reason } = action {
                                         return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
+                                            reason
                                         ).into()));
                                     }
 
@@ -345,16 +342,19 @@ where
 
                                 tool_span.record("gen_ai.tool.call.result", &tool_result);
 
-                                if let Some(ref hook) = self.hook {
-                                    hook.on_tool_result(&tool_call.function.name, tool_call.call_id.clone(), &tool_args, &tool_result.to_string(), cancel_sig.clone())
-                                    .await;
-
-                                    if cancel_sig.is_cancelled() {
+                                if let Some(ref hook) = self.hook &&
+                                    let HookAction::Terminate { reason } =
+                                    hook.on_tool_result(
+                                        &tool_call.function.name,
+                                        tool_call.call_id.clone(),
+                                        &tool_args,
+                                        &tool_result.to_string()
+                                    )
+                                    .await {
                                         return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
+                                            reason
                                         ).into()));
                                     }
-                                }
 
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
 
@@ -367,7 +367,7 @@ where
 
                             match tc_result {
                                 Ok(text) => {
-                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: OneOrMany::one(ToolResultContent::Text(Text { text })) };
+                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
                                     yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult(tr)));
                                 }
                                 Err(e) => {
@@ -381,17 +381,27 @@ where
                                     rig::streaming::ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
                                     rig::streaming::ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
                                 };
-                                hook.on_tool_call_delta(&id, name, delta, cancel_sig.clone())
-                                .await;
-
-                                if cancel_sig.is_cancelled() {
+                                if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, name, delta)
+                                .await {
                                     yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                        cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
+                                        reason
                                     ).into()));
                                 }
                             }
                         }
                         Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })) => {
+                            // Accumulate reasoning for inclusion in chat history with tool calls.
+                            // OpenAI Responses API requires reasoning items to be sent back
+                            // alongside function_call items in multi-turn conversations.
+                            if let Some(ref mut existing) = accumulated_reasoning {
+                                existing.reasoning.extend(reasoning.clone());
+                            } else {
+                                accumulated_reasoning = Some(rig::message::Reasoning {
+                                    reasoning: reasoning.clone(),
+                                    id: id.clone(),
+                                    signature: signature.clone(),
+                                });
+                            }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })));
                             did_call_tool = false;
                         },
@@ -402,15 +412,12 @@ where
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                             if is_text_response {
-                                if let Some(ref hook) = self.hook {
-                                    hook.on_stream_completion_response_finish(&prompt, &final_resp, cancel_sig.clone()).await;
-
-                                    if cancel_sig.is_cancelled() {
+                                if let Some(ref hook) = self.hook &&
+                                     let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
                                         yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            cancel_sig.cancel_reason().unwrap_or("<no reason given>"),
+                                            reason
                                         ).into()));
                                     }
-                                }
 
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
                                 yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
@@ -424,12 +431,24 @@ where
                     }
                 }
 
-                // Add (parallel) tool calls to chat history
-                if !tool_calls.is_empty() {
-                    chat_history.write().await.push(Message::Assistant {
-                        id: None,
-                        content: OneOrMany::many(tool_calls.clone()).expect("Impossible EmptyListError"),
-                    });
+                // Add reasoning and tool calls to chat history.
+                // OpenAI Responses API requires reasoning items to precede function_call items.
+                if !tool_calls.is_empty() || accumulated_reasoning.is_some() {
+                    let mut content_items: Vec<rig::message::AssistantContent> = vec![];
+
+                    // Reasoning must come before tool calls (OpenAI requirement)
+                    if let Some(reasoning) = accumulated_reasoning.take() {
+                        content_items.push(rig::message::AssistantContent::Reasoning(reasoning));
+                    }
+
+                    content_items.extend(tool_calls.clone());
+
+                    if !content_items.is_empty() {
+                        chat_history.write().await.push(Message::Assistant {
+                            id: None,
+                            content: OneOrMany::many(content_items).expect("Should have at least one item"),
+                        });
+                    }
                 }
 
                 // Add tool results to chat history
@@ -536,53 +555,44 @@ pub trait StreamingPromptHook<M>: Clone + Send + Sync
 where
     M: CompletionModel,
 {
-    #[allow(unused_variables)]
     /// Called before the prompt is sent to the model
     fn on_completion_call(
         &self,
-        prompt: &Message,
-        history: &[Message],
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
+        _prompt: &Message,
+        _history: &[Message],
+    ) -> impl Future<Output = HookAction> + Send {
+        async { HookAction::cont() }
     }
 
-    #[allow(unused_variables)]
     /// Called when receiving a text delta
     fn on_text_delta(
         &self,
-        text_delta: &str,
-        aggregated_text: &str,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
+        _text_delta: &str,
+        _aggregated_text: &str,
+    ) -> impl Future<Output = HookAction> + Send {
+        async { HookAction::cont() }
     }
 
-    #[allow(unused_variables)]
     /// Called when receiving a tool call delta.
     /// `tool_name` is Some on the first delta for a tool call, None on subsequent deltas.
     fn on_tool_call_delta(
         &self,
-        tool_call_id: &str,
-        tool_name: Option<&str>,
-        tool_call_delta: &str,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
+        _tool_call_id: &str,
+        _tool_name: Option<&str>,
+        _tool_call_delta: &str,
+    ) -> impl Future<Output = HookAction> + Send {
+        async { HookAction::cont() }
     }
 
-    #[allow(unused_variables)]
     /// Called after the model provider has finished streaming a text response from their completion API to the client.
     fn on_stream_completion_response_finish(
         &self,
-        prompt: &Message,
-        response: &<M as CompletionModel>::StreamingResponse,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
+        _prompt: &Message,
+        _response: &<M as CompletionModel>::StreamingResponse,
+    ) -> impl Future<Output = HookAction> + Send {
+        async { HookAction::cont() }
     }
 
-    #[allow(unused_variables)]
     /// Called before a tool is invoked.
     ///
     /// # Returns
@@ -590,25 +600,22 @@ where
     /// - `ToolCallHookAction::Skip { reason }` - Reject tool execution; `reason` will be returned to the LLM as the tool result
     fn on_tool_call(
         &self,
-        tool_name: &str,
-        tool_call_id: Option<String>,
-        args: &str,
-        cancel_sig: CancelSignal,
+        _tool_name: &str,
+        _tool_call_id: Option<String>,
+        _args: &str,
     ) -> impl Future<Output = ToolCallHookAction> + Send {
-        async { ToolCallHookAction::Continue }
+        async { ToolCallHookAction::cont() }
     }
 
-    #[allow(unused_variables)]
     /// Called after a tool is invoked (and a result has been returned).
     fn on_tool_result(
         &self,
-        tool_name: &str,
-        tool_call_id: Option<String>,
-        args: &str,
-        result: &str,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
+        _tool_name: &str,
+        _tool_call_id: Option<String>,
+        _args: &str,
+        _result: &str,
+    ) -> impl Future<Output = HookAction> + Send {
+        async { HookAction::cont() }
     }
 }
 

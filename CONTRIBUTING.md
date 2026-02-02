@@ -90,3 +90,11 @@ Make sure to test against the test suite before making a pull request.
 ```bash
 cargo test
 ```
+
+### Claude Code
+
+If you're using Claude Code, don't forget to symlink AGENTS.md to CLAUDE.md:
+
+```bash
+ln -s AGENTS.md CLAUDE.md
+```
