@@ -7,9 +7,9 @@
 //! let openai_client = rig::providers::openai::Client::from_env();
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
 //! ```
+use super::InputAudio;
 use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
-use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
@@ -114,6 +114,20 @@ impl Serialize for InputItem {
         }
 
         value.serialize(serializer)
+    }
+}
+
+impl InputItem {
+    pub fn system_message(content: impl Into<String>) -> Self {
+        Self {
+            role: Some(Role::System),
+            input: InputContent::Message(Message::System {
+                content: OneOrMany::one(SystemContent::InputText {
+                    text: content.into(),
+                }),
+                name: None,
+            }),
+        }
     }
 }
 
@@ -626,7 +640,13 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             partial_history.extend(req.chat_history);
 
             // Initialize full history with preamble (or empty if non-existent)
-            let mut full_history: Vec<InputItem> = Vec::new();
+            // Some "Responses API compatible" providers don't support `instructions` field
+            // so we need to add a system message until further notice
+            let mut full_history: Vec<InputItem> = if let Some(content) = req.preamble {
+                vec![InputItem::system_message(content)]
+            } else {
+                Vec::new()
+            };
 
             // Convert and extend the rest of the history
             full_history.extend(
@@ -663,7 +683,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
         Ok(Self {
             input,
             model,
-            instructions: req.preamble,
+            instructions: None, // is currently None due to lack of support in compliant providers
             max_output_tokens: req.max_tokens,
             stream,
             tool_choice,
@@ -1256,6 +1276,30 @@ pub enum AssistantContentType {
     Text(AssistantContent),
     ToolCall(OutputFunctionCall),
     Reasoning(OpenAIReasoning),
+}
+
+/// System content for the OpenAI Responses API.
+/// Uses `input_text` type to match the Responses API format.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SystemContent {
+    InputText { text: String },
+}
+
+impl From<String> for SystemContent {
+    fn from(s: String) -> Self {
+        SystemContent::InputText { text: s }
+    }
+}
+
+impl std::str::FromStr for SystemContent {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SystemContent::InputText {
+            text: s.to_string(),
+        })
+    }
 }
 
 /// Different types of user content.
