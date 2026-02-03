@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+<<<<<<< Updated upstream
+=======
+- *(providers)* expose cached_input_tokens in Usage struct ([#1299](https://github.com/0xPlaygrounds/rig/pull/1299))
+- *(tools)* adds internal tool call id (breaking) ([#1311](https://github.com/0xPlaygrounds/rig/pull/1311))
+>>>>>>> Stashed changes
 - *(rig-1160)* encode control flow directly in type signature for hooks (breaking) ([#1305](https://github.com/0xPlaygrounds/rig/pull/1305))
 - *(rig-1126)* tool image result support for gemini ([#1329](https://github.com/0xPlaygrounds/rig/pull/1329))
 - support xhigh reasoning effort ([#1319](https://github.com/0xPlaygrounds/rig/pull/1319))
@@ -18,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+<<<<<<< Updated upstream
+=======
+- *(rig-1178)* not all responses APIs support instructions ([#1347](https://github.com/0xPlaygrounds/rig/pull/1347))
+>>>>>>> Stashed changes
 - avoid duplicate role in responses input ([#1314](https://github.com/0xPlaygrounds/rig/pull/1314))
 - *(providers)* fixed azure openai embedding dimension ([#1303](https://github.com/0xPlaygrounds/rig/pull/1303))
 - *(rig-1174)* openai responses requires reasoning in history ([#1335](https://github.com/0xPlaygrounds/rig/pull/1335))

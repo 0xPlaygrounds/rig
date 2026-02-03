@@ -9,9 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.12](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.11...rig-bedrock-v0.3.12) - 2026-02-03
 
+<<<<<<< Updated upstream
 ### Other
 
 - updated the following local packages: rig-core
+=======
+### Added
+
+- *(providers)* expose cached_input_tokens in Usage struct ([#1299](https://github.com/0xPlaygrounds/rig/pull/1299))
+- *(tools)* adds internal tool call id (breaking) ([#1311](https://github.com/0xPlaygrounds/rig/pull/1311))
+>>>>>>> Stashed changes
 
 ## [0.3.11](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.10...rig-bedrock-v0.3.11) - 2026-01-20
 
