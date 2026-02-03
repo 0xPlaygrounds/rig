@@ -345,7 +345,7 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
-        let mut current_max_depth = 0;
+        let mut current_max_turns = 0;
         let mut usage = Usage::new();
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
