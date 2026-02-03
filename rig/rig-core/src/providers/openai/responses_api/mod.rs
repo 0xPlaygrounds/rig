@@ -104,13 +104,13 @@ impl Serialize for InputItem {
             serde::ser::Error::custom("Input content must serialize to an object")
         })?;
 
-        if let Some(role) = &self.role {
-            if !map.contains_key("role") {
-                map.insert(
-                    "role".to_string(),
-                    serde_json::to_value(role).map_err(serde::ser::Error::custom)?,
-                );
-            }
+        if let Some(role) = &self.role
+            && !map.contains_key("role")
+        {
+            map.insert(
+                "role".to_string(),
+                serde_json::to_value(role).map_err(serde::ser::Error::custom)?,
+            );
         }
 
         value.serialize(serializer)
