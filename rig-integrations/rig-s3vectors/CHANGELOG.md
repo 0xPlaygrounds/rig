@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.18...rig-s3vectors-v0.1.19) - 2026-02-03
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.18](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.17...rig-s3vectors-v0.1.18) - 2026-01-20
 
 ### Added

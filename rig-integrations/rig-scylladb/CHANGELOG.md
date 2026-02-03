@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.21...rig-scylladb-v0.1.22) - 2026-02-03
+
+### Added
+
+- *(1159)* impl VectorStoreIndexDyn for scyllaDB integration ([#1302](https://github.com/0xPlaygrounds/rig/pull/1302))
+
 ## [0.1.21](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.20...rig-scylladb-v0.1.21) - 2026-01-20
 
 ### Added

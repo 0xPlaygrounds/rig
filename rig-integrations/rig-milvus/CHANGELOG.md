@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.22](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.21...rig-milvus-v0.1.22) - 2026-02-03
+
+### Fixed
+
+- *(rig-1156)* impl VectorStoreIndexDyn for mongodb and milvus ([#1300](https://github.com/0xPlaygrounds/rig/pull/1300))
+
 ## [0.1.21](https://github.com/0xPlaygrounds/rig/compare/rig-milvus-v0.1.20...rig-milvus-v0.1.21) - 2026-01-20
 
 ### Added
