@@ -29,7 +29,10 @@ async fn main() -> Result<(), anyhow::Error> {
                         std::io::Write::flush(&mut std::io::stdout())?;
                         chunk_count += 1;
                     }
-                    rig::streaming::StreamedAssistantContent::ToolCall(tool_call) => {
+                    rig::streaming::StreamedAssistantContent::ToolCall {
+                        tool_call,
+                        internal_call_id: _,
+                    } => {
                         println!("\n[Tool Call: {}]", tool_call.function.name);
                         chunk_count += 1;
                     }

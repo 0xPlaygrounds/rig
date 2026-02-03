@@ -371,6 +371,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "my_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -388,6 +389,7 @@ mod tests {
         let state = ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_abc".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -401,6 +403,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "get_weather".to_string(),
             id: "call_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -414,6 +417,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "search".to_string(),
             id: "call_xyz".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -432,6 +436,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "analyze_data".to_string(),
             id: "call_456".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 

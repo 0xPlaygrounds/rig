@@ -98,7 +98,7 @@ where
                         yield Ok(Text { text: text.text });
                         did_call_tool = false;
                     },
-                    Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
+                    Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id: _ }) => {
                         let tool_result =
                             agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_call.function.arguments.to_string()).await
                             .map_err(|x| StreamingError::Tool(ToolSetError::ToolCallError(ToolError::ToolCallError(x.into()))))?;
