@@ -14,10 +14,11 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
+        internal_call_id: &str,
         args: &str,
     ) -> ToolCallHookAction {
         println!(
-            "[Session {}] Calling tool: {} with call ID: {tool_call_id} with args: {}",
+            "[Session {}] Calling tool: {} with call ID: {tool_call_id} (internal: {internal_call_id}) with args: {}",
             self.session_id,
             tool_name,
             args,
@@ -30,6 +31,7 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         &self,
         tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         args: &str,
         result: &str,
     ) -> HookAction {

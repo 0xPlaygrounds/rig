@@ -45,6 +45,12 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.input_tokens;
         usage.output_tokens = self.usage.output_tokens;
         usage.total_tokens = self.usage.total_tokens;
+        usage.cached_input_tokens = self
+            .usage
+            .input_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens)
+            .unwrap_or(0);
         Some(usage)
     }
 }
@@ -256,6 +262,7 @@ where
             let mut final_usage = ResponsesUsage::new();
 
             let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
+            let mut tool_call_internal_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
             let mut combined_text = String::new();
             let span = tracing::Span::current();
 
@@ -284,8 +291,13 @@ where
                             match &chunk.data {
                                 ItemChunkKind::OutputItemAdded(message) => {
                                     if let StreamingItemDoneOutput { item: Output::FunctionCall(func), .. } = message {
+                                        let internal_call_id = tool_call_internal_ids
+                                            .entry(func.id.clone())
+                                            .or_insert_with(|| nanoid::nanoid!())
+                                            .clone();
                                         yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                             id: func.id.clone(),
+                                            internal_call_id,
                                             content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
                                         });
                                     }
@@ -293,14 +305,18 @@ where
                                 ItemChunkKind::OutputItemDone(message) => {
                                     match message {
                                         StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
-                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall(
-                                                streaming::RawStreamingToolCall::new(
-                                                    func.id.clone(),
-                                                    func.name.clone(),
-                                                    func.arguments.clone(),
-                                                )
-                                                .with_call_id(func.call_id.clone())
-                                            ));
+                                            let internal_id = tool_call_internal_ids
+                                                .entry(func.id.clone())
+                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .clone();
+                                            let raw_tool_call = streaming::RawStreamingToolCall::new(
+                                                func.id.clone(),
+                                                func.name.clone(),
+                                                func.arguments.clone(),
+                                            )
+                                                .with_internal_call_id(internal_id)
+                                                .with_call_id(func.call_id.clone());
+                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall(raw_tool_call));
                                         }
 
                                         StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {
@@ -333,7 +349,15 @@ where
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone()) })
+                                    let internal_call_id = tool_call_internal_ids
+                                        .entry(delta.item_id.clone())
+                                        .or_insert_with(|| nanoid::nanoid!())
+                                        .clone();
+                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                        id: delta.item_id.clone(),
+                                        internal_call_id,
+                                        content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
+                                    })
                                 }
 
                                 _ => { continue }

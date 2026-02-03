@@ -91,6 +91,7 @@ where
     let stream = stream! {
         let span = tracing::Span::current();
         let mut final_usage = ResponsesUsage::new();
+        let mut tool_call_internal_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -118,8 +119,13 @@ where
                                 item: Output::FunctionCall(func),
                                 ..
                             }) => {
+                                let internal_call_id = tool_call_internal_ids
+                                    .entry(func.id.clone())
+                                    .or_insert_with(|| nanoid::nanoid!())
+                                    .clone();
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
                                     id: func.id.clone(),
+                                    internal_call_id,
                                     content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
                                 });
                             }
@@ -128,6 +134,10 @@ where
                                 item: Output::FunctionCall(func),
                                 ..
                             }) => {
+                                let internal_id = tool_call_internal_ids
+                                    .entry(func.id.clone())
+                                    .or_insert_with(|| nanoid::nanoid!())
+                                    .clone();
                                 // Yield immediately so users can execute tools while stream continues
                                 yield Ok(RawStreamingChoice::ToolCall(
                                     streaming::RawStreamingToolCall::new(
@@ -135,6 +145,7 @@ where
                                         func.name.clone(),
                                         func.arguments.clone(),
                                     )
+                                    .with_internal_call_id(internal_id)
                                     .with_call_id(func.call_id.clone()),
                                 ));
                             }
@@ -170,8 +181,13 @@ where
                             }
 
                             ItemChunkKind::FunctionCallArgsDelta(delta) => {
+                                let internal_call_id = tool_call_internal_ids
+                                    .entry(delta.item_id.clone())
+                                    .or_insert_with(|| nanoid::nanoid!())
+                                    .clone();
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
                                     id: delta.item_id.clone(),
+                                    internal_call_id,
                                     content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone()),
                                 });
                             }

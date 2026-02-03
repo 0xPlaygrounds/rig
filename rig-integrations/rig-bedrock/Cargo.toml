@@ -18,6 +18,7 @@ base64 = { workspace = true }
 rig-core = { path = "../../rig/rig-core", version = "0.30.0", default-features = false, features = [
   "image",
 ] }
+nanoid = { workspace = true }
 rig-derive = { path = "../../rig/rig-derive", version = "0.1.10" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
