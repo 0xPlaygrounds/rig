@@ -384,3 +384,68 @@ where
         )))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use futures::StreamExt;
+    use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
+    use serde_json;
+
+    use crate::{
+        completion::ToolDefinition,
+        tool::{Tool, ToolError},
+    };
+
+    struct ExampleTool;
+
+    impl Tool for ExampleTool {
+        type Args = ();
+        type Error = ToolError;
+        type Output = String;
+        const NAME: &'static str = "example_tool";
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: self.name(),
+                description: "A tool that returns some example text.".to_string(),
+                parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                }),
+            }
+        }
+
+        async fn call(&self, _input: Self::Args) -> Result<Self::Output, Self::Error> {
+            let result = "Example answer".to_string();
+            Ok(result)
+        }
+    }
+
+    // requires `derive` rig-core feature due to using tool macro
+    #[tokio::test]
+    #[ignore = "requires API key"]
+    async fn test_openai_streaming_tools_reasoning() {
+        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
+        let client: openai::Client<rig::http_client::ReqwestClient> =
+            openai::Client::new(&api_key).expect("Failed to build client");
+        let agent = client
+            .agent("gpt-5.2")
+            .max_tokens(8192)
+            .tool(ExampleTool)
+            .additional_params(serde_json::json!({
+                "reasoning": {"effort": "high"}
+            }))
+            .build();
+
+        let chat_history = Vec::new();
+        let mut stream = agent
+            .stream_chat("Call my example tool", chat_history)
+            .multi_turn(5)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            println!("Got item: {item:?}");
+        }
+    }
+}

@@ -28,7 +28,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let prompt = "I need to plan a dinner party for 8 people, including 2 vegetarians and 1 person with a gluten allergy. \
                  Can you help me create a menu that everyone can enjoy? Consider appetizers, main courses, and desserts.";
 
-    let resp = agent.prompt(prompt).multi_turn(10).await?;
+    let resp = agent.prompt(prompt).max_turns(10).await?;
 
     println!("{}", resp);
 

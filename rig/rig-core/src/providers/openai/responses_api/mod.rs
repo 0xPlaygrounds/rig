@@ -912,6 +912,7 @@ pub enum ReasoningEffort {
     #[default]
     Medium,
     High,
+    Xhigh,
 }
 
 /// The amount of effort that will go into a reasoning summary by a given model.
