@@ -105,7 +105,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: nextest
-          args: run --all-features
+          args: run --all-features --retries 2
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
