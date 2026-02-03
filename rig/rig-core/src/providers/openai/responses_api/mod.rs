@@ -7,9 +7,9 @@
 //! let openai_client = rig::providers::openai::Client::from_env();
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
 //! ```
+use super::InputAudio;
 use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
-use super::InputAudio;
 use crate::completion::CompletionError;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
