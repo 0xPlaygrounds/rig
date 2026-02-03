@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.36](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.35...rig-qdrant-v0.1.36) - 2026-02-03
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.1.35](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.34...rig-qdrant-v0.1.35) - 2026-01-20
 
 ### Added

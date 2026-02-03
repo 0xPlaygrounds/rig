@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.12](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.11...rig-bedrock-v0.3.12) - 2026-02-03
+
+### Added
+
+- *(tools)* adds internal tool call id (breaking) ([#1311](https://github.com/0xPlaygrounds/rig/pull/1311))
+
 ## [0.3.11](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.10...rig-bedrock-v0.3.11) - 2026-01-20
 
 ### Other
