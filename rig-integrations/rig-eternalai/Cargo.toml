@@ -6,6 +6,7 @@ license = "MIT"
 readme = "README.md"
 description = "EternalAI model provider Rig integration."
 repository = "https://github.com/0xPlaygrounds/rig"
+publish = false
 
 [lints]
 workspace = true
