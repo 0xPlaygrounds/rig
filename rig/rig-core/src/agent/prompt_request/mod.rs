@@ -1,7 +1,7 @@
+pub mod hooks;
 pub mod streaming;
 
-pub use streaming::StreamingPromptHook;
-
+use hooks::{HookAction, PromptHook, ToolCallHookAction};
 use std::{
     future::IntoFuture,
     marker::PhantomData,
@@ -17,7 +17,7 @@ use crate::{
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
     json_utils,
     message::{AssistantContent, ToolResultContent, UserContent},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::WasmBoxedFuture,
 };
 
 use super::Agent;
@@ -28,61 +28,6 @@ pub struct Extended;
 
 impl PromptType for Standard {}
 impl PromptType for Extended {}
-
-/// Control flow action for tool call hooks. This is different from the regular [`HookAction`] in that tool call executions may be skipped for one or more reasons.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToolCallHookAction {
-    /// Continue tool execution as normal.
-    Continue,
-    /// Skip tool execution and return the provided reason as the tool result.
-    Skip { reason: String },
-    /// Terminate agent loop early
-    Terminate { reason: String },
-}
-
-impl ToolCallHookAction {
-    /// Continue the agentic loop as normal
-    pub fn cont() -> Self {
-        Self::Continue
-    }
-
-    /// Skip a given tool call (with a provided reason).
-    pub fn skip(reason: impl Into<String>) -> Self {
-        Self::Skip {
-            reason: reason.into(),
-        }
-    }
-
-    /// Terminates the agentic loop entirely.
-    pub fn terminate(reason: impl Into<String>) -> Self {
-        Self::Terminate {
-            reason: reason.into(),
-        }
-    }
-}
-
-/// Control flow action for hooks.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HookAction {
-    /// Continue agentic loop execution as normal.
-    Continue,
-    /// Terminate agent loop early
-    Terminate { reason: String },
-}
-
-impl HookAction {
-    /// Continue the agentic loop as normal
-    pub fn cont() -> Self {
-        Self::Continue
-    }
-
-    /// Terminates the agentic loop entirely.
-    pub fn terminate(reason: impl Into<String>) -> Self {
-        Self::Terminate {
-            reason: reason.into(),
-        }
-    }
-}
 
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
@@ -205,60 +150,6 @@ where
         }
     }
 }
-
-// dead code allowed because of functions being left empty to allow for users to not have to implement every single function
-/// Trait for per-request hooks to observe tool call events.
-pub trait PromptHook<M>: Clone + WasmCompatSend + WasmCompatSync
-where
-    M: CompletionModel,
-{
-    /// Called before the prompt is sent to the model
-    fn on_completion_call(
-        &self,
-        _prompt: &Message,
-        _history: &[Message],
-    ) -> impl Future<Output = HookAction> + WasmCompatSend {
-        async { HookAction::cont() }
-    }
-
-    /// Called after the prompt is sent to the model and a response is received.
-    fn on_completion_response(
-        &self,
-        _prompt: &Message,
-        _response: &crate::completion::CompletionResponse<M::Response>,
-    ) -> impl Future<Output = HookAction> + WasmCompatSend {
-        async { HookAction::cont() }
-    }
-
-    /// Called before a tool is invoked.
-    ///
-    /// # Returns
-    /// - `ToolCallHookAction::Continue` - Allow tool execution to proceed
-    /// - `ToolCallHookAction::Skip { reason }` - Reject tool execution; `reason` will be returned to the LLM as the tool result
-    fn on_tool_call(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-    ) -> impl Future<Output = ToolCallHookAction> + WasmCompatSend {
-        async { ToolCallHookAction::cont() }
-    }
-
-    /// Called after a tool is invoked (and a result has been returned).
-    fn on_tool_result(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-        _result: &str,
-    ) -> impl Future<Output = HookAction> + WasmCompatSend {
-        async { HookAction::cont() }
-    }
-}
-
-impl<M> PromptHook<M> for () where M: CompletionModel {}
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`

@@ -1,6 +1,6 @@
 use crate::{
     OneOrMany,
-    agent::prompt_request::HookAction,
+    agent::prompt_request::{HookAction, hooks::PromptHook},
     completion::GetTokenUsage,
     json_utils,
     message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
@@ -100,7 +100,7 @@ pub enum StreamingError {
 pub struct StreamingPromptRequest<M, P>
 where
     M: CompletionModel,
-    P: StreamingPromptHook<M> + 'static,
+    P: PromptHook<M> + 'static,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -119,7 +119,7 @@ impl<M, P> StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
-    P: StreamingPromptHook<M>,
+    P: PromptHook<M>,
 {
     /// Create a new PromptRequest with the given prompt and model
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
@@ -148,7 +148,7 @@ where
     /// Attach a per-request hook for tool call events
     pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
     where
-        P2: StreamingPromptHook<M>,
+        P2: PromptHook<M>,
     {
         StreamingPromptRequest {
             prompt: self.prompt,
@@ -506,7 +506,7 @@ impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
-    P: StreamingPromptHook<M> + 'static,
+    P: PromptHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -550,81 +550,6 @@ pub async fn stream_to_stdout<R>(
 
     Ok(final_res)
 }
-
-// dead code allowed because of functions being left empty to allow for users to not have to implement every single function
-/// Trait for per-request hooks to observe tool call events.
-pub trait StreamingPromptHook<M>: Clone + Send + Sync
-where
-    M: CompletionModel,
-{
-    /// Called before the prompt is sent to the model
-    fn on_completion_call(
-        &self,
-        _prompt: &Message,
-        _history: &[Message],
-    ) -> impl Future<Output = HookAction> + Send {
-        async { HookAction::cont() }
-    }
-
-    /// Called when receiving a text delta
-    fn on_text_delta(
-        &self,
-        _text_delta: &str,
-        _aggregated_text: &str,
-    ) -> impl Future<Output = HookAction> + Send {
-        async { HookAction::cont() }
-    }
-
-    /// Called when receiving a tool call delta.
-    /// `tool_name` is Some on the first delta for a tool call, None on subsequent deltas.
-    fn on_tool_call_delta(
-        &self,
-        _tool_call_id: &str,
-        _internal_call_id: &str,
-        _tool_name: Option<&str>,
-        _tool_call_delta: &str,
-    ) -> impl Future<Output = HookAction> + Send {
-        async { HookAction::cont() }
-    }
-
-    /// Called after the model provider has finished streaming a text response from their completion API to the client.
-    fn on_stream_completion_response_finish(
-        &self,
-        _prompt: &Message,
-        _response: &<M as CompletionModel>::StreamingResponse,
-    ) -> impl Future<Output = HookAction> + Send {
-        async { HookAction::cont() }
-    }
-
-    /// Called before a tool is invoked.
-    ///
-    /// # Returns
-    /// - `ToolCallHookAction::Continue` - Allow tool execution to proceed
-    /// - `ToolCallHookAction::Skip { reason }` - Reject tool execution; `reason` will be returned to the LLM as the tool result
-    fn on_tool_call(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-    ) -> impl Future<Output = ToolCallHookAction> + Send {
-        async { ToolCallHookAction::cont() }
-    }
-
-    /// Called after a tool is invoked (and a result has been returned).
-    fn on_tool_result(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        _args: &str,
-        _result: &str,
-    ) -> impl Future<Output = HookAction> + Send {
-        async { HookAction::cont() }
-    }
-}
-
-impl<M> StreamingPromptHook<M> for () where M: CompletionModel {}
 
 #[cfg(test)]
 mod tests {
