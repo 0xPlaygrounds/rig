@@ -47,6 +47,7 @@ tracing-futures = { version = "0.2.5", features = ["futures-03"] }
 serenity = { version = "0.12.4", optional = true }
 fastrand = "2.3.0"
 nanoid = { workspace = true }
+getrandom = { version = "0.2", optional = true }
 eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
@@ -101,7 +102,7 @@ discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-wasm = ["dep:wasm-bindgen-futures", "futures-timer/wasm-bindgen"]
+wasm = ["dep:wasm-bindgen-futures", "futures-timer/wasm-bindgen", "getrandom/js"]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 reqwest-tls = ["reqwest/default"]

@@ -10184,6 +10184,7 @@ dependencies = [
  "fastrand",
  "futures",
  "futures-timer",
+ "getrandom 0.2.16",
  "glob",
  "http 1.3.1",
  "hyper-util",
