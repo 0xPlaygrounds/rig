@@ -369,7 +369,7 @@ mod tests {
         ) -> impl std::future::Future<
             Output = Result<CompletionResponse<Self::Response>, CompletionError>,
         > + WasmCompatSend {
-            async { Err(CompletionError::ProviderError("test".to_string())) }
+            std::future::ready(Err(CompletionError::ProviderError("test".to_string())))
         }
 
         fn stream(
@@ -378,7 +378,7 @@ mod tests {
         ) -> impl std::future::Future<
             Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
         > + WasmCompatSend {
-            async { Err(CompletionError::ProviderError("test".to_string())) }
+            std::future::ready(Err(CompletionError::ProviderError("test".to_string())))
         }
     }
 
