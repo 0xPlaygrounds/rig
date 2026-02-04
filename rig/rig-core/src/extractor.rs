@@ -326,3 +326,75 @@ where
         Ok(data)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::completion::{
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, GetTokenUsage,
+        Usage,
+    };
+    use crate::streaming::StreamingCompletionResponse;
+    use crate::wasm_compat::WasmCompatSend;
+    use schemars::JsonSchema;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone)]
+    struct TestModel;
+
+    #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+    struct TestRawResponse;
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct TestStreamingRawResponse;
+
+    impl GetTokenUsage for TestStreamingRawResponse {
+        fn token_usage(&self) -> Option<Usage> {
+            None
+        }
+    }
+
+    impl CompletionModel for TestModel {
+        type Response = TestRawResponse;
+        type StreamingResponse = TestStreamingRawResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self
+        }
+
+        fn completion(
+            &self,
+            _: CompletionRequest,
+        ) -> impl std::future::Future<
+            Output = Result<CompletionResponse<Self::Response>, CompletionError>,
+        > + WasmCompatSend {
+            async { Err(CompletionError::ProviderError("test".to_string())) }
+        }
+
+        fn stream(
+            &self,
+            _: CompletionRequest,
+        ) -> impl std::future::Future<
+            Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
+        > + WasmCompatSend {
+            async { Err(CompletionError::ProviderError("test".to_string())) }
+        }
+    }
+
+    #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+    struct TestExtraction {
+        value: String,
+    }
+
+    #[tokio::test]
+    async fn extractor_builder_with_agent_builder_applies_config() {
+        let extractor = ExtractorBuilder::<TestModel, TestExtraction>::new(TestModel)
+            .with_agent_builder(|agent| agent.temperature(0.123).max_tokens(42))
+            .build();
+
+        let agent = extractor.get_inner().await;
+        assert_eq!(agent.temperature, Some(0.123));
+        assert_eq!(agent.max_tokens, Some(42));
+    }
+}
