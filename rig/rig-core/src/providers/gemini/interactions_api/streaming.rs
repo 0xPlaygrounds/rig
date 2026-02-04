@@ -102,14 +102,15 @@ where
                             continue;
                         }
 
-                        let data = serde_json::from_str::<InteractionSseEvent>(&message.data);
-
-                        let Ok(data) = data else {
-                            let err = data.unwrap_err();
-                            tracing::debug!(
-                                "Failed to deserialize interactions SSE event: {err}"
-                            );
-                            continue;
+                        let data = match serde_json::from_str::<InteractionSseEvent>(&message.data)
+                        {
+                            Ok(data) => data,
+                            Err(err) => {
+                                tracing::debug!(
+                                    "Failed to deserialize interactions SSE event: {err}"
+                                );
+                                continue;
+                            }
                         };
 
                         match data {

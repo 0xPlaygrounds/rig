@@ -51,9 +51,6 @@ pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
 pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
 /// Gemini Interactions API client.
 pub type InteractionsClient<H = reqwest::Client> = client::Client<GeminiInteractionsExt, H>;
-/// Builder for the Gemini Interactions API client.
-pub type InteractionsClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<GeminiInteractionsBuilder, GeminiApiKey, H>;
 
 impl ApiKey for GeminiApiKey {}
 
