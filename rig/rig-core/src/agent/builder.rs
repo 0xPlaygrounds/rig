@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
 use crate::{
+    agent::prompt_request::hooks::PromptHook,
     completion::{CompletionModel, Document},
     message::ToolChoice,
     tool::{
@@ -39,9 +40,10 @@ use super::Agent;
 ///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
 /// ```
-pub struct AgentBuilder<M>
+pub struct AgentBuilder<M, P = ()>
 where
     M: CompletionModel,
+    P: PromptHook<M>,
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
@@ -67,9 +69,11 @@ where
     tool_choice: Option<ToolChoice>,
     /// Default maximum depth for multi-turn agent calls
     default_max_turns: Option<usize>,
+    /// Default hook for the agent
+    hook: Option<P>,
 }
 
-impl<M> AgentBuilder<M>
+impl<M> AgentBuilder<M, ()>
 where
     M: CompletionModel,
 {
@@ -87,9 +91,16 @@ where
             tool_server_handle: None,
             tool_choice: None,
             default_max_turns: None,
+            hook: None,
         }
     }
+}
 
+impl<M, P> AgentBuilder<M, P>
+where
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
@@ -135,7 +146,7 @@ where
     }
 
     /// Add a static tool to the agent
-    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilderSimple<M> {
+    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilderSimple<M, P> {
         let toolname = tool.name();
         let tools = ToolSet::from_tools(vec![tool]);
         let static_tools = vec![toolname];
@@ -155,12 +166,13 @@ where
             tools,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 
     /// Add a vector of boxed static tools to the agent
     /// This is useful when you need to dynamically add static tools to the agent
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilderSimple<M> {
+    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilderSimple<M, P> {
         let static_tools = tools.iter().map(|tool| tool.name()).collect();
         let tools = ToolSet::from_tools_boxed(tools);
 
@@ -179,6 +191,7 @@ where
             tools,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 
@@ -194,7 +207,7 @@ where
         self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilderSimple<M> {
+    ) -> AgentBuilderSimple<M, P> {
         let toolname = tool.name.clone().to_string();
         let tools = ToolSet::from_tools(vec![RmcpTool::from_mcp_server(tool, client)]);
         let static_tools = vec![toolname];
@@ -214,6 +227,7 @@ where
             tools,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 
@@ -224,7 +238,7 @@ where
         self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilderSimple<M> {
+    ) -> AgentBuilderSimple<M, P> {
         let (static_tools, tools) = tools.into_iter().fold(
             (Vec::new(), Vec::new()),
             |(mut toolnames, mut toolset), tool| {
@@ -253,6 +267,7 @@ where
             tools,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 
@@ -286,7 +301,7 @@ where
         sample: usize,
         dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
-    ) -> AgentBuilderSimple<M> {
+    ) -> AgentBuilderSimple<M, P> {
         let thing: Box<dyn VectorStoreIndexDyn + Send + Sync + 'static> = Box::new(dynamic_tools);
         let dynamic_tools = vec![(sample, thing)];
 
@@ -305,6 +320,7 @@ where
             tools: toolset,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 
@@ -326,8 +342,33 @@ where
         self
     }
 
+    /// Set the default hook for the agent.
+    ///
+    /// This hook will be used for all prompt requests unless overridden
+    /// via `.with_hook()` on the request.
+    pub fn hook<P2>(self, hook: P2) -> AgentBuilder<M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_server_handle: self.tool_server_handle,
+            tool_choice: self.tool_choice,
+            default_max_turns: self.default_max_turns,
+            hook: Some(hook),
+        }
+    }
+
     /// Build the agent
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent<M, P> {
         let tool_server_handle = if let Some(handle) = self.tool_server_handle {
             handle
         } else {
@@ -347,6 +388,7 @@ where
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 }
@@ -372,9 +414,10 @@ where
 ///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
 /// ```
-pub struct AgentBuilderSimple<M>
+pub struct AgentBuilderSimple<M, P = ()>
 where
     M: CompletionModel,
+    P: PromptHook<M>,
 {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
@@ -404,9 +447,11 @@ where
     tool_choice: Option<ToolChoice>,
     /// Default maximum depth for multi-turn agent calls
     default_max_turns: Option<usize>,
+    /// Default hook for the agent
+    hook: Option<P>,
 }
 
-impl<M> AgentBuilderSimple<M>
+impl<M> AgentBuilderSimple<M, ()>
 where
     M: CompletionModel,
 {
@@ -426,9 +471,16 @@ where
             tools: ToolSet::default(),
             tool_choice: None,
             default_max_turns: None,
+            hook: None,
         }
     }
+}
 
+impl<M, P> AgentBuilderSimple<M, P>
+where
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
@@ -561,8 +613,35 @@ where
         self
     }
 
+    /// Set the default hook for the agent.
+    ///
+    /// This hook will be used for all prompt requests unless overridden
+    /// via `.with_hook()` on the request.
+    pub fn hook<P2>(self, hook: P2) -> AgentBuilderSimple<M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        AgentBuilderSimple {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            static_tools: self.static_tools,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            dynamic_tools: self.dynamic_tools,
+            temperature: self.temperature,
+            tools: self.tools,
+            tool_choice: self.tool_choice,
+            default_max_turns: self.default_max_turns,
+            hook: Some(hook),
+        }
+    }
+
     /// Build the agent
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent<M, P> {
         let tool_server_handle = ToolServer::new()
             .static_tool_names(self.static_tools)
             .add_tools(self.tools)
@@ -582,6 +661,7 @@ where
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 }
