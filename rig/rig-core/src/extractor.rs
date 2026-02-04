@@ -237,6 +237,14 @@ where
         }
     }
 
+    pub fn with_agent_builder<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(AgentBuilderSimple<M>) -> AgentBuilderSimple<M>,
+    {
+        self.agent_builder = f(self.agent_builder);
+        self
+    }
+
     /// Add additional preamble to the extractor
     pub fn preamble(mut self, preamble: &str) -> Self {
         self.agent_builder = self.agent_builder.append_preamble(&format!(

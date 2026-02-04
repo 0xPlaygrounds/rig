@@ -28,7 +28,7 @@ epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
 lopdf = { workspace = true, optional = true }
-mime_guess.workspace = true
+mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
@@ -142,6 +142,10 @@ required-features = ["derive"]
 [[example]]
 name = "gemini_embeddings"
 required-features = ["derive"]
+
+ [[example]]
+ name = "gemini_rag"
+ required-features = ["derive"]
 
 [[example]]
 name = "agent_with_moonshot"
