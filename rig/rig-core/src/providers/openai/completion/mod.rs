@@ -1266,7 +1266,7 @@ where
     S: Serializer,
 {
     if value.is_empty() {
-        serializer.serialize_none()
+        serializer.serialize_str("")
     } else {
         value.serialize(serializer)
     }
