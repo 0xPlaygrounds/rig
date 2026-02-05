@@ -18,10 +18,6 @@ use crate::tool::rmcp::McpTool as RmcpTool;
 
 use super::Agent;
 
-// ============================================================================
-// Typestate marker types
-// ============================================================================
-
 /// Marker type indicating no tool configuration has been set yet.
 ///
 /// This is the default state for a new `AgentBuilder`. From this state,
@@ -50,10 +46,6 @@ pub struct WithBuilderTools {
     tools: ToolSet,
     dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
 }
-
-// ============================================================================
-// AgentBuilder struct
-// ============================================================================
 
 /// A builder for creating an agent
 ///
@@ -109,10 +101,6 @@ where
     /// Tool configuration state (typestate pattern)
     tool_state: ToolState,
 }
-
-// ============================================================================
-// Methods available on ALL states (generic over ToolState)
-// ============================================================================
 
 impl<M, ToolState> AgentBuilder<M, ToolState>
 where
@@ -200,10 +188,6 @@ where
         self
     }
 }
-
-// ============================================================================
-// NoToolConfig state: constructor, transitions, and build
-// ============================================================================
 
 impl<M> AgentBuilder<M, NoToolConfig>
 where
@@ -435,10 +419,6 @@ where
     }
 }
 
-// ============================================================================
-// WithToolServerHandle state: build only (no tool-adding methods)
-// ============================================================================
-
 impl<M> AgentBuilder<M, WithToolServerHandle>
 where
     M: CompletionModel,
@@ -461,10 +441,6 @@ where
         }
     }
 }
-
-// ============================================================================
-// WithBuilderTools state: tool chaining and build
-// ============================================================================
 
 impl<M> AgentBuilder<M, WithBuilderTools>
 where
