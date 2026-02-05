@@ -147,7 +147,12 @@ pub enum Message {
         name: Option<String>,
     },
     Assistant {
-        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        #[serde(
+            default,
+            deserialize_with = "json_utils::string_or_vec",
+            skip_serializing_if = "Vec::is_empty",
+            serialize_with = "serialize_assistant_content_vec"
+        )]
         content: Vec<AssistantContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
@@ -1250,5 +1255,19 @@ where
         CompletionError,
     > {
         Self::stream(self, request).await
+    }
+}
+
+fn serialize_assistant_content_vec<S>(
+    value: &Vec<AssistantContent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if value.is_empty() {
+        serializer.serialize_none()
+    } else {
+        value.serialize(serializer)
     }
 }
