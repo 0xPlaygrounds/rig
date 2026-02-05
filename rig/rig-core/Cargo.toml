@@ -69,6 +69,13 @@ tokio-test = { workspace = true }
 redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
+reqwest-retry = { version = "0.8" }
+reqwest-middleware = { version = "0.4.2", features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
@@ -102,7 +109,11 @@ discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-wasm = ["dep:wasm-bindgen-futures", "futures-timer/wasm-bindgen", "getrandom/js"]
+wasm = [
+  "dep:wasm-bindgen-futures",
+  "futures-timer/wasm-bindgen",
+  "getrandom/js",
+]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
 reqwest-tls = ["reqwest/default"]
@@ -126,6 +137,10 @@ required-features = ["derive"]
 [[example]]
 name = "rag"
 required-features = ["derive"]
+
+[[example]]
+name = "reqwest_middleware"
+required-features = ["reqwest-middleware"]
 
 [[example]]
 name = "rag_ollama"

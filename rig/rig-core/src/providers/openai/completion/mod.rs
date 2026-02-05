@@ -16,7 +16,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
 use tracing::{Instrument, Level, enabled, info_span};
@@ -24,6 +24,23 @@ use tracing::{Instrument, Level, enabled, info_span};
 use std::str::FromStr;
 
 pub mod streaming;
+
+/// Serializes user content as a plain string when there's a single text item,
+/// otherwise as an array of content parts.
+fn serialize_user_content<S>(
+    content: &OneOrMany<UserContent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if content.len() == 1
+        && let UserContent::Text { text } = content.first_ref()
+    {
+        return serializer.serialize_str(text);
+    }
+    content.serialize(serializer)
+}
 
 /// `gpt-5.1` completion model
 pub const GPT_5_1: &str = "gpt-5.1";
@@ -121,7 +138,10 @@ pub enum Message {
         name: Option<String>,
     },
     User {
-        #[serde(deserialize_with = "string_or_one_or_many")]
+        #[serde(
+            deserialize_with = "string_or_one_or_many",
+            serialize_with = "serialize_user_content"
+        )]
         content: OneOrMany<UserContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
