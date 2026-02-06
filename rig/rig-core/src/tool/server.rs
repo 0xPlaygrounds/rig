@@ -5,6 +5,7 @@ use tokio::sync::{
     RwLock,
     mpsc::{Sender, error::SendError},
 };
+use tracing::Instrument;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
@@ -155,38 +156,44 @@ impl ToolServer {
                     .send(ToolServerResponse::ToolDeleted)
                     .unwrap();
             }
-            ToolServerRequestMessageKind::CallTool { name, args } => {
+            ToolServerRequestMessageKind::CallTool { name, args, span } => {
                 let toolset = Arc::clone(&self.toolset);
 
                 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-                tokio::spawn(async move {
-                    match toolset.read().await.call(&name, args.clone()).await {
-                        Ok(result) => {
-                            let _ =
-                                callback_channel.send(ToolServerResponse::ToolExecuted { result });
-                        }
-                        Err(err) => {
-                            let _ = callback_channel.send(ToolServerResponse::ToolError {
-                                error: err.to_string(),
-                            });
+                tokio::spawn(
+                    async move {
+                        match toolset.read().await.call(&name, args.clone()).await {
+                            Ok(result) => {
+                                let _ = callback_channel
+                                    .send(ToolServerResponse::ToolExecuted { result });
+                            }
+                            Err(err) => {
+                                let _ = callback_channel.send(ToolServerResponse::ToolError {
+                                    error: err.to_string(),
+                                });
+                            }
                         }
                     }
-                });
+                    .instrument(span),
+                );
 
                 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-                wasm_bindgen_futures::spawn_local(async move {
-                    match toolset.read().await.call(&name, args.clone()).await {
-                        Ok(result) => {
-                            let _ =
-                                callback_channel.send(ToolServerResponse::ToolExecuted { result });
-                        }
-                        Err(err) => {
-                            let _ = callback_channel.send(ToolServerResponse::ToolError {
-                                error: err.to_string(),
-                            });
+                wasm_bindgen_futures::spawn_local(
+                    async move {
+                        match toolset.read().await.call(&name, args.clone()).await {
+                            Ok(result) => {
+                                let _ = callback_channel
+                                    .send(ToolServerResponse::ToolExecuted { result });
+                            }
+                            Err(err) => {
+                                let _ = callback_channel.send(ToolServerResponse::ToolError {
+                                    error: err.to_string(),
+                                });
+                            }
                         }
                     }
-                });
+                    .instrument(span),
+                );
             }
             ToolServerRequestMessageKind::GetToolDefs { prompt } => {
                 let res = self.get_tool_definitions(prompt).await.unwrap();
@@ -330,6 +337,7 @@ impl ToolServerHandle {
                 data: ToolServerRequestMessageKind::CallTool {
                     name: tool_name.to_string(),
                     args: args.to_string(),
+                    span: tracing::Span::current(),
                 },
             })
             .await?;
@@ -376,9 +384,17 @@ pub struct ToolServerRequest {
 pub enum ToolServerRequestMessageKind {
     AddTool(Box<dyn ToolDyn>),
     AppendToolset(ToolSet),
-    RemoveTool { tool_name: String },
-    CallTool { name: String, args: String },
-    GetToolDefs { prompt: Option<String> },
+    RemoveTool {
+        tool_name: String,
+    },
+    CallTool {
+        name: String,
+        args: String,
+        span: tracing::Span,
+    },
+    GetToolDefs {
+        prompt: Option<String>,
+    },
 }
 
 #[derive(PartialEq, Debug)]

@@ -763,10 +763,7 @@ mod tests {
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{
-                            "type": "text",
-                            "text": "Hello world!"
-                        }]
+                        "content": "Hello world!"
                     }
                 ],
                 "stream": false,
