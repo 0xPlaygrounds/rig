@@ -22,16 +22,12 @@ use tracing::{Instrument, Level, enabled, info_span};
 // Anthropic Completion API
 // ================================================================
 
-/// `claude-opus-4-0` completion model
-pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
-/// `claude-sonnet-4-0` completion model
-pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-/// `claude-3-7-sonnet-latest` completion model
-pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
-/// `claude-3-5-sonnet-latest` completion model
-pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
+/// `claude-opus-4-6` completion model (latest Opus)
+pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
+/// `claude-sonnet-4-5-20250929` completion model (latest Sonnet)
+pub const CLAUDE_SONNET_4_5: &str = "claude-sonnet-4-5-20250929";
+/// `claude-haiku-4-5-20251001` completion model (latest Haiku)
+pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5-20251001";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";

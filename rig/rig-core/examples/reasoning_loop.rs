@@ -71,12 +71,12 @@ async fn main() -> anyhow::Result<()> {
     let anthropic_client = anthropic::Client::from_env();
     let agent = ReasoningAgent {
         chain_of_thought_extractor: anthropic_client
-            .extractor(anthropic::completion::CLAUDE_3_5_SONNET)
+            .extractor(anthropic::completion::CLAUDE_SONNET_4_5)
             .preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
         executor: anthropic_client
-            .agent(anthropic::completion::CLAUDE_3_5_SONNET)
+            .agent(anthropic::completion::CLAUDE_SONNET_4_5)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

@@ -85,7 +85,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create specialized research agent that will be used as a tool
     let research_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_3_7_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_5)
         .preamble(
             "You are a specialized research agent focused on environmental science and sustainability.
             Your role is to provide detailed, accurate information about climate change, renewable energy,
@@ -97,7 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a data analysis agent that will be used as a tool
     let analysis_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_3_7_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_5)
         .preamble(
             "You are a data analysis agent specialized in interpreting environmental and sustainability data.
             When given data or statistics, you analyze trends, identify patterns, and draw meaningful conclusions.
@@ -109,7 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a recommendation agent that will be used as a tool
     let recommendation_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_3_7_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_5)
         .preamble(
             "You are a recommendation agent specialized in suggesting practical sustainability solutions.
             Based on research findings and analysis, you provide actionable recommendations for individuals,
@@ -122,7 +122,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create the main orchestrator agent that will use all the tools
     let orchestrator_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_3_7_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_5)
         .preamble(
             "You are an environmental sustainability advisor that helps users understand complex environmental issues
             and find practical solutions. You have access to several specialized tools:

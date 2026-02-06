@@ -6,7 +6,7 @@
 //!
 //! let client = anthropic::Anthropic::new("YOUR_API_KEY");
 //!
-//! let sonnet = client.completion_model(anthropic::CLAUDE_3_5_SONNET);
+//! let sonnet = client.completion_model(anthropic::CLAUDE_SONNET_4_5);
 //! ```
 
 pub mod client;

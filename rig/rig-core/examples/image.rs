@@ -25,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let agent = client
-        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_5)
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

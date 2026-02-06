@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::providers::anthropic::completion::CLAUDE_3_5_SONNET;
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_5;
 use rig::providers::openai::GPT_4O;
 use rig::{
     completion::{Prompt, ToolDefinition},
@@ -54,7 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a calculator agent with tools
     let calculator_agent = client
-        .agent(CLAUDE_3_5_SONNET)
+        .agent(CLAUDE_SONNET_4_5)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .tool(Adder)
