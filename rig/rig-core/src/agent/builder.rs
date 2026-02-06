@@ -102,12 +102,14 @@ where
     default_max_turns: Option<usize>,
     /// Tool configuration state (typestate pattern)
     tool_state: ToolState,
+    /// Prompt hook
+    hook: Option<P>,
 }
 
-impl<M, ToolState> AgentBuilder<M, P, ToolState>
+impl<M, P, ToolState> AgentBuilder<M, P, ToolState>
 where
     M: CompletionModel,
-    P: PromptHook<M>
+    P: PromptHook<M>,
 {
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
@@ -192,7 +194,7 @@ where
     }
 }
 
-impl<M> AgentBuilder<M, NoToolConfig>
+impl<M> AgentBuilder<M, (), NoToolConfig>
 where
     M: CompletionModel,
 {
@@ -211,9 +213,16 @@ where
             tool_choice: None,
             default_max_turns: None,
             tool_state: NoToolConfig,
+            hook: None,
         }
     }
+}
 
+impl<M, P> AgentBuilder<M, P, NoToolConfig>
+where
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
     /// Set a pre-existing ToolServerHandle for the agent.
     ///
     /// After calling this method, tool-adding methods (`.tool()`, `.tools()`, etc.)
@@ -222,7 +231,7 @@ where
     pub fn tool_server_handle(
         self,
         handle: ToolServerHandle,
-    ) -> AgentBuilder<M, WithToolServerHandle> {
+    ) -> AgentBuilder<M, P, WithToolServerHandle> {
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -235,14 +244,8 @@ where
             temperature: self.temperature,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
-            hook: self.hook,
-        }
-    }
-
-    /// Add a vector of boxed static tools to the agent
-    /// This is useful when you need to dynamically add static tools to the agent
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilderSimple<M, P> {
             tool_state: WithToolServerHandle { handle },
+            hook: self.hook,
         }
     }
 
@@ -250,7 +253,7 @@ where
     ///
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
-    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, WithBuilderTools> {
+    pub fn tool(self, tool: impl Tool + 'static) -> AgentBuilder<M, P, WithBuilderTools> {
         let toolname = tool.name();
         AgentBuilder {
             name: self.name,
@@ -269,6 +272,7 @@ where
                 tools: ToolSet::from_tools(vec![tool]),
                 dynamic_tools: vec![],
             },
+            hook: self.hook,
         }
     }
 
@@ -276,7 +280,7 @@ where
     ///
     /// This is useful when you need to dynamically add static tools to the agent.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, WithBuilderTools> {
+    pub fn tools(self, tools: Vec<Box<dyn ToolDyn>>) -> AgentBuilder<M, P, WithBuilderTools> {
         let static_tools = tools.iter().map(|tool| tool.name()).collect();
         let tools = ToolSet::from_tools_boxed(tools);
 
@@ -402,32 +406,19 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            tool_state: WithBuilderTools {
+                static_tools: vec![],
+                tools: toolset,
+                dynamic_tools: vec![(sample, Box::new(dynamic_tools))],
+            },
         }
-    }
-
-    /// Set the temperature of the model
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Set the maximum number of tokens for the completion
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Set additional parameters to be passed to the model
-    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-        self.additional_params = Some(params);
-        self
     }
 
     /// Set the default hook for the agent.
     ///
     /// This hook will be used for all prompt requests unless overridden
     /// via `.with_hook()` on the request.
-    pub fn hook<P2>(self, hook: P2) -> AgentBuilder<M, P2>
+    pub fn hook<P2>(self, hook: P2) -> AgentBuilder<M, P2, NoToolConfig>
     where
         P2: PromptHook<M>,
     {
@@ -441,25 +432,10 @@ where
             max_tokens: self.max_tokens,
             dynamic_context: self.dynamic_context,
             temperature: self.temperature,
-            tool_server_handle: self.tool_server_handle,
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
+            tool_state: self.tool_state,
             hook: Some(hook),
-        }
-    }
-
-    /// Build the agent
-    pub fn build(self) -> Agent<M, P> {
-        let tool_server_handle = if let Some(handle) = self.tool_server_handle {
-            handle
-        } else {
-            ToolServer::new().run()
-        };
-            tool_state: WithBuilderTools {
-                static_tools: vec![],
-                tools: toolset,
-                dynamic_tools: vec![(sample, Box::new(dynamic_tools))],
-            },
         }
     }
 
@@ -493,7 +469,7 @@ where
     P: PromptHook<M>,
 {
     /// Build the agent using the pre-configured ToolServerHandle.
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent<M, P> {
         Agent {
             name: self.name,
             description: self.description,
@@ -507,13 +483,15 @@ where
             dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
             tool_server_handle: self.tool_state.handle,
             default_max_turns: self.default_max_turns,
+            hook: self.hook,
         }
     }
 }
 
-impl<M> AgentBuilder<M, WithBuilderTools>
+impl<M, P> AgentBuilder<M, P, WithBuilderTools>
 where
     M: CompletionModel,
+    P: PromptHook<M>,
 {
     /// Add another static tool to the agent.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
@@ -569,7 +547,7 @@ where
     ///
     /// A new `ToolServer` will be created containing all tools added via
     /// `.tool()`, `.tools()`, `.dynamic_tools()`, etc.
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent<M, P> {
         let tool_server_handle = ToolServer::new()
             .static_tool_names(self.tool_state.static_tools)
             .add_tools(self.tool_state.tools)

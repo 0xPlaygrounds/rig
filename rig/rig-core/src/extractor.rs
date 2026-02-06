@@ -211,7 +211,7 @@ where
     M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    agent_builder: AgentBuilder<M, WithBuilderTools>,
+    agent_builder: AgentBuilder<M, (), WithBuilderTools>,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
