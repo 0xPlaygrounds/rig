@@ -140,6 +140,14 @@ enum ApiResponse<T> {
 pub const ALL_MINILM: &str = "all-minilm";
 pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
 
+fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        ALL_MINILM => Some(384),
+        NOMIC_EMBED_TEXT => Some(768),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub model: String,
@@ -201,7 +209,11 @@ where
     type Client = Client<T>;
 
     fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims.unwrap())
+        let model = model.into();
+        let dims = dims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+        Self::new(client.clone(), model, dims)
     }
 
     const MAX_DOCUMENTS: usize = 1024;
