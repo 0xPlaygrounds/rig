@@ -112,11 +112,11 @@ pub(crate) mod prompt_request;
 mod tool;
 
 pub use crate::message::Text;
-pub use builder::{AgentBuilder, AgentBuilderSimple};
+pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use prompt_request::hooks::{HookAction, PromptHook, ToolCallHookAction};
 pub use prompt_request::streaming::{
     FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
     stream_to_stdout,
 };
-pub use prompt_request::{CancelSignal, PromptRequest, PromptResponse};
-pub use prompt_request::{PromptHook, StreamingPromptHook};
+pub use prompt_request::{PromptRequest, PromptResponse};

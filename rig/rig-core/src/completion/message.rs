@@ -736,6 +736,95 @@ impl ToolResultContent {
             additional_params: None,
         })
     }
+
+    /// Parse a tool output string into appropriate ToolResultContent(s).
+    ///
+    /// Supports three formats:
+    /// 1. Simple text: Any string → `OneOrMany::one(Text)`
+    /// 2. Image JSON: `{"type": "image", "data": "...", "mimeType": "..."}` → `OneOrMany::one(Image)`
+    /// 3. Hybrid JSON: `{"response": {...}, "parts": [...]}` → `OneOrMany::many([Text, Image, ...])`
+    ///
+    /// If JSON parsing fails, treats the entire string as text.
+    pub fn from_tool_output(output: impl Into<String>) -> OneOrMany<ToolResultContent> {
+        let output_str = output.into();
+
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&output_str) {
+            if json.get("response").is_some() || json.get("parts").is_some() {
+                let mut results: Vec<ToolResultContent> = Vec::new();
+
+                if let Some(response) = json.get("response") {
+                    results.push(ToolResultContent::Text(Text {
+                        text: response.to_string(),
+                    }));
+                }
+
+                if let Some(parts) = json.get("parts").and_then(|p| p.as_array()) {
+                    for part in parts {
+                        let is_image = part
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .is_some_and(|t| t == "image");
+
+                        if !is_image {
+                            continue;
+                        }
+
+                        if let (Some(data), Some(mime_type)) = (
+                            part.get("data").and_then(|v| v.as_str()),
+                            part.get("mimeType").and_then(|v| v.as_str()),
+                        ) {
+                            let data_kind =
+                                if data.starts_with("http://") || data.starts_with("https://") {
+                                    DocumentSourceKind::Url(data.to_string())
+                                } else {
+                                    DocumentSourceKind::Base64(data.to_string())
+                                };
+
+                            results.push(ToolResultContent::Image(Image {
+                                data: data_kind,
+                                media_type: ImageMediaType::from_mime_type(mime_type),
+                                detail: None,
+                                additional_params: None,
+                            }));
+                        }
+                    }
+                }
+
+                if !results.is_empty() {
+                    return OneOrMany::many(results).unwrap_or_else(|_| {
+                        OneOrMany::one(ToolResultContent::Text(output_str.into()))
+                    });
+                }
+            }
+
+            let is_image = json
+                .get("type")
+                .and_then(|v| v.as_str())
+                .is_some_and(|t| t == "image");
+
+            if is_image
+                && let (Some(data), Some(mime_type)) = (
+                    json.get("data").and_then(|v| v.as_str()),
+                    json.get("mimeType").and_then(|v| v.as_str()),
+                )
+            {
+                let data_kind = if data.starts_with("http://") || data.starts_with("https://") {
+                    DocumentSourceKind::Url(data.to_string())
+                } else {
+                    DocumentSourceKind::Base64(data.to_string())
+                };
+
+                return OneOrMany::one(ToolResultContent::Image(Image {
+                    data: data_kind,
+                    media_type: ImageMediaType::from_mime_type(mime_type),
+                    detail: None,
+                    additional_params: None,
+                }));
+            }
+        }
+
+        OneOrMany::one(ToolResultContent::Text(output_str.into()))
+    }
 }
 
 /// Trait for converting between MIME types and media types.

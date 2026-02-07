@@ -1,42 +1,35 @@
 //! Ollama API client and Rig integration
 //!
 //! # Example
-//! ```rust
+//! ```rust,ignore
+//! use rig::client::{Nothing, CompletionClient};
+//! use rig::completion::Prompt;
 //! use rig::providers::ollama;
 //!
 //! // Create a new Ollama client (defaults to http://localhost:11434)
-//! let client = ollama::Client::new();
+//! // In the case of ollama, no API key is necessary, so we use the `Nothing` struct
+//! let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
 //!
-//! // Create a completion model interface using, for example, the "llama3.2" model
-//! let comp_model = client.completion_model("llama3.2");
+//! // Create an agent with a preamble
+//! let comedian_agent = client
+//!     .agent("qwen2.5:14b")
+//!     .preamble("You are a comedian here to entertain the user using humour and jokes.")
+//!     .build();
 //!
-//! let req = rig::completion::CompletionRequest {
-//!     preamble: Some("You are now a humorous AI assistant.".to_owned()),
-//!     chat_history: vec![],  // internal messages (if any)
-//!     prompt: rig::message::Message::User {
-//!         content: rig::one_or_many::OneOrMany::one(rig::message::UserContent::text("Please tell me why the sky is blue.")),
-//!         name: None
-//!     },
-//!     temperature: 0.7,
-//!     additional_params: None,
-//!     tools: vec![],
-//! };
+//! // Prompt the agent and print the response
+//! let response = comedian_agent.prompt("Entertain me!").await?;
+//! println!("{response}");
 //!
-//! let response = comp_model.completion(req).await.unwrap();
-//! println!("Ollama completion response: {:?}", response.choice);
-//!
-//! // Create an embedding interface using the "all-minilm" model
-//! let emb_model = ollama::Client::new().embedding_model("all-minilm");
-//! let docs = vec![
+//! // Create an embedding model using the "all-minilm" model
+//! let emb_model = client.embedding_model("all-minilm", 384);
+//! let embeddings = emb_model.embed_texts(vec![
 //!     "Why is the sky blue?".to_owned(),
 //!     "Why is the grass green?".to_owned()
-//! ];
-//! let embeddings = emb_model.embed_texts(docs).await.unwrap();
+//! ]).await?;
 //! println!("Embedding response: {:?}", embeddings);
 //!
-//! // Also create an agent and extractor if needed
-//! let agent = client.agent("llama3.2");
-//! let extractor = client.extractor::<serde_json::Value>("llama3.2");
+//! // Create an extractor if needed
+//! let extractor = client.extractor::<serde_json::Value>("llama3.2").build();
 //! ```
 use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
@@ -147,6 +140,14 @@ enum ApiResponse<T> {
 pub const ALL_MINILM: &str = "all-minilm";
 pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
 
+fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+    match identifier {
+        ALL_MINILM => Some(384),
+        NOMIC_EMBED_TEXT => Some(768),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub model: String,
@@ -177,7 +178,7 @@ impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, Embeddin
 // ---------- Embedding Model ----------
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -208,7 +209,11 @@ where
     type Client = Client<T>;
 
     fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims.unwrap())
+        let model = model.into();
+        let dims = dims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+        Self::new(client.clone(), model, dims)
     }
 
     const MAX_DOCUMENTS: usize = 1024;
@@ -342,6 +347,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         input_tokens: prompt_tokens,
                         output_tokens: completion_tokens,
                         total_tokens: prompt_tokens + completion_tokens,
+                        cached_input_tokens: 0,
                     },
                     raw_response,
                 })
@@ -365,6 +371,8 @@ pub(super) struct OllamaCompletionRequest {
     think: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keep_alive: Option<String>,
     options: serde_json::Value,
 }
 
@@ -400,14 +408,33 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         );
 
         let mut think = false;
+        let mut keep_alive: Option<String> = None;
 
-        // TODO: Fix this up to include the full range of ollama options
         let options = if let Some(mut extra) = req.additional_params {
-            if extra.get("think").is_some() {
-                think = extra["think"].take().as_bool().ok_or_else(|| {
-                    CompletionError::RequestError("`think` must be a bool".into())
-                })?;
+            // Extract top-level parameters that should not be in `options`
+            if let Some(obj) = extra.as_object_mut() {
+                // Extract `think` parameter
+                if let Some(think_val) = obj.remove("think") {
+                    think = think_val.as_bool().ok_or_else(|| {
+                        CompletionError::RequestError("`think` must be a bool".into())
+                    })?;
+                }
+
+                // Extract `keep_alive` parameter
+                if let Some(keep_alive_val) = obj.remove("keep_alive") {
+                    keep_alive = Some(
+                        keep_alive_val
+                            .as_str()
+                            .ok_or_else(|| {
+                                CompletionError::RequestError(
+                                    "`keep_alive` must be a string".into(),
+                                )
+                            })?
+                            .to_string(),
+                    );
+                }
             }
+
             json_utils::merge(json!({ "temperature": req.temperature }), extra)
         } else {
             json!({ "temperature": req.temperature })
@@ -420,6 +447,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
             max_tokens: req.max_tokens,
             stream: false,
             think,
+            keep_alive,
             tools: req
                 .tools
                 .clone()
@@ -633,6 +661,28 @@ where
 
                     let response: CompletionResponse = serde_json::from_slice(line)?;
 
+                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                        if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
+                            thinking_response += &thinking_content;
+                            yield RawStreamingChoice::ReasoningDelta {
+                                id: None,
+                                reasoning: thinking_content,
+                            };
+                        }
+
+                        if !content.is_empty() {
+                            text_response += &content;
+                            yield RawStreamingChoice::Message(content);
+                        }
+
+                        for tool_call in tool_calls {
+                            tool_calls_final.push(tool_call.clone());
+                            yield RawStreamingChoice::ToolCall(
+                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
+                            );
+                        }
+                    }
+
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
@@ -656,29 +706,6 @@ where
                             }
                         );
                         break;
-                    }
-
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
-                        if let Some(thinking_content) = thinking
-                            && !thinking_content.is_empty() {
-                            thinking_response += &thinking_content;
-                            yield RawStreamingChoice::ReasoningDelta {
-                                id: None,
-                                reasoning: thinking_content,
-                            };
-                        }
-
-                        if !content.is_empty() {
-                            text_response += &content;
-                            yield RawStreamingChoice::Message(content);
-                        }
-
-                        for tool_call in tool_calls {
-                            tool_calls_final.push(tool_call.clone());
-                            yield RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
-                            );
-                        }
                     }
                 }
             }
@@ -1386,5 +1413,126 @@ mod tests {
         } else {
             panic!("Expected Assistant message with thinking and tool calls");
         }
+    }
+
+    // Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
+    #[test]
+    fn test_completion_request_with_think_param() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant.".to_string()),
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "What is 2 + 2?".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: Some(0.7),
+            max_tokens: Some(1024),
+            tool_choice: None,
+            additional_params: Some(json!({
+                "think": true,
+                "keep_alive": "-1m",
+                "num_ctx": 4096
+            })),
+        };
+
+        // Convert to OllamaCompletionRequest
+        let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
+            .expect("Failed to create Ollama request");
+
+        // Serialize to JSON
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        // Assert equality with expected JSON
+        // - "tools" is skipped when empty (skip_serializing_if)
+        // - "think" should be a top-level boolean, NOT in options
+        // - "keep_alive" should be a top-level string, NOT in options
+        // - "num_ctx" should be in options (it's a model parameter)
+        let expected = json!({
+            "model": "qwen3:8b",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant."
+                },
+                {
+                    "role": "user",
+                    "content": "What is 2 + 2?"
+                }
+            ],
+            "temperature": 0.7,
+            "stream": false,
+            "think": true,
+            "max_tokens": 1024,
+            "keep_alive": "-1m",
+            "options": {
+                "temperature": 0.7,
+                "num_ctx": 4096
+            }
+        });
+
+        assert_eq!(serialized, expected);
+    }
+
+    // Test that `think` defaults to false when not specified
+    #[test]
+    fn test_completion_request_with_think_false_default() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        // Create a CompletionRequest WITHOUT "think" in additional_params
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant.".to_string()),
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "Hello!".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: Some(0.5),
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        // Convert to OllamaCompletionRequest
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
+            .expect("Failed to create Ollama request");
+
+        // Serialize to JSON
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        // Assert that "think" defaults to false and "keep_alive" is not present
+        let expected = json!({
+            "model": "llama3.2",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant."
+                },
+                {
+                    "role": "user",
+                    "content": "Hello!"
+                }
+            ],
+            "temperature": 0.5,
+            "stream": false,
+            "think": false,
+            "options": {
+                "temperature": 0.5
+            }
+        });
+
+        assert_eq!(serialized, expected);
     }
 }

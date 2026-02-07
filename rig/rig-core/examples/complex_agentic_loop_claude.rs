@@ -173,7 +173,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = orchestrator_agent
         .prompt(query)
         .with_history(&mut chat_history)
-        .multi_turn(15) // Allow multiple turns to demonstrate the complex loop
+        .max_turns(15) // Allow multiple turns to demonstrate the complex loop
         .await?;
 
     // Print the final response

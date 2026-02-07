@@ -267,7 +267,7 @@ async fn main() -> anyhow::Result<()> {
         .rmcp_tools(tools, client.peer().to_owned())
         .build();
 
-    let res = agent.prompt("What is 2+5?").multi_turn(2).await.unwrap();
+    let res = agent.prompt("What is 2+5?").max_turns(2).await.unwrap();
 
     println!("GPT-4o: {res}");
 

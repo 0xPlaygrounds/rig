@@ -18,6 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await;
 
     let _ = stream_to_stdout(&mut stream).await?;
+    println!();
 
     Ok(())
 }

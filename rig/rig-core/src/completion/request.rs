@@ -136,9 +136,9 @@ pub enum PromptError {
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
     /// or increase the amount of turns given in `.multi_turn()`.
-    #[error("MaxDepthError: (reached limit: {max_depth})")]
-    MaxDepthError {
-        max_depth: usize,
+    #[error("MaxTurnError: (reached max turn limit: {max_turns})")]
+    MaxTurnsError {
+        max_turns: usize,
         chat_history: Box<Vec<Message>>,
         prompt: Box<Message>,
     },
@@ -152,10 +152,10 @@ pub enum PromptError {
 }
 
 impl PromptError {
-    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>, reason: &str) -> Self {
+    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>, reason: impl Into<String>) -> Self {
         Self::PromptCancelled {
             chat_history: Box::new(chat_history),
-            reason: reason.to_string(),
+            reason: reason.into(),
         }
     }
 }
@@ -303,6 +303,8 @@ pub struct Usage {
     pub output_tokens: u64,
     /// We store this separately as some providers may only report one number
     pub total_tokens: u64,
+    /// The number of cached input tokens (from prompt caching). 0 if not reported by provider.
+    pub cached_input_tokens: u64,
 }
 
 impl Usage {
@@ -312,6 +314,7 @@ impl Usage {
             input_tokens: 0,
             output_tokens: 0,
             total_tokens: 0,
+            cached_input_tokens: 0,
         }
     }
 }
@@ -330,6 +333,7 @@ impl Add for Usage {
             input_tokens: self.input_tokens + other.input_tokens,
             output_tokens: self.output_tokens + other.output_tokens,
             total_tokens: self.total_tokens + other.total_tokens,
+            cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
         }
     }
 }
@@ -339,6 +343,7 @@ impl AddAssign for Usage {
         self.input_tokens += other.input_tokens;
         self.output_tokens += other.output_tokens;
         self.total_tokens += other.total_tokens;
+        self.cached_input_tokens += other.cached_input_tokens;
     }
 }
 

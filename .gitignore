@@ -8,6 +8,7 @@ target/
 # env
 .env
 .envrc
+.direnv
 
 # nodejs stuff
 node_modules/
