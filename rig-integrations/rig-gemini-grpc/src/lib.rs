@@ -44,6 +44,7 @@ impl rig::completion::GetTokenUsage for proto::GenerateContentResponse {
                 input_tokens: u.prompt_token_count as u64,
                 output_tokens: u.candidates_token_count as u64,
                 total_tokens: u.total_token_count as u64,
+                cached_input_tokens: u.cached_content_token_count as u64,
             })
     }
 }
