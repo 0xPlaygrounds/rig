@@ -29,6 +29,283 @@ pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
 /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
 pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
 
+// ================================================================
+// Provider Selection and Prioritization
+// ================================================================
+
+/// Data collection policy for providers.
+///
+/// Controls whether providers are allowed to collect and store request data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DataCollection {
+    /// Allow providers that may collect data
+    #[default]
+    Allow,
+    /// Only use providers with zero data retention policies
+    Deny,
+}
+
+/// Model quantization levels supported by OpenRouter.
+///
+/// Different quantization levels offer trade-offs between model quality and cost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Quantization {
+    /// 4-bit integer quantization
+    #[serde(rename = "int4")]
+    Int4,
+    /// 8-bit integer quantization
+    #[serde(rename = "int8")]
+    Int8,
+    /// 16-bit floating point
+    #[serde(rename = "fp16")]
+    Fp16,
+    /// Brain floating point 16-bit
+    #[serde(rename = "bf16")]
+    Bf16,
+    /// 32-bit floating point (full precision)
+    #[serde(rename = "fp32")]
+    Fp32,
+    /// 8-bit floating point
+    #[serde(rename = "fp8")]
+    Fp8,
+    /// Unknown or custom quantization level
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+/// Ordering/sorting strategy for providers.
+///
+/// Determines how providers should be prioritized when multiple are available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderSort {
+    /// Sort by quality (default)
+    Quality,
+    /// Sort by price (cheapest first)
+    Price,
+    /// Sort by throughput (fastest first)
+    Throughput,
+    /// Sort by latency (lowest latency first)
+    Latency,
+}
+
+/// Requirements that providers must satisfy.
+///
+/// These requirements filter providers based on their capabilities and policies.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ProviderRequire {
+    /// Data collection policy requirement
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_collection: Option<DataCollection>,
+
+    /// Required quantization levels (providers must support at least one)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantization: Option<Vec<Quantization>>,
+}
+
+impl ProviderRequire {
+    /// Create a new empty requirements struct
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Require providers with zero data retention
+    pub fn deny_data_collection(mut self) -> Self {
+        self.data_collection = Some(DataCollection::Deny);
+        self
+    }
+
+    /// Allow providers that may collect data
+    pub fn allow_data_collection(mut self) -> Self {
+        self.data_collection = Some(DataCollection::Allow);
+        self
+    }
+
+    /// Require specific quantization levels
+    pub fn quantization(mut self, quantization: impl IntoIterator<Item = Quantization>) -> Self {
+        self.quantization = Some(quantization.into_iter().collect());
+        self
+    }
+
+    /// Require 8-bit integer quantization
+    pub fn int8(mut self) -> Self {
+        self.quantization = Some(vec![Quantization::Int8]);
+        self
+    }
+
+    /// Require 4-bit integer quantization
+    pub fn int4(mut self) -> Self {
+        self.quantization = Some(vec![Quantization::Int4]);
+        self
+    }
+
+    /// Require full precision (fp32)
+    pub fn fp32(mut self) -> Self {
+        self.quantization = Some(vec![Quantization::Fp32]);
+        self
+    }
+
+    /// Require 16-bit floating point
+    pub fn fp16(mut self) -> Self {
+        self.quantization = Some(vec![Quantization::Fp16]);
+        self
+    }
+}
+
+/// Provider preferences for OpenRouter routing.
+///
+/// This struct allows you to control which providers are used and how they are prioritized
+/// when making requests through OpenRouter.
+///
+/// # Example
+///
+/// ```rust
+/// use rig::providers::openrouter::{ProviderPreferences, ProviderSort, ProviderRequire};
+///
+/// // Create preferences for zero data retention providers, sorted by throughput
+/// let prefs = ProviderPreferences::new()
+///     .sort(ProviderSort::Throughput)
+///     .require(ProviderRequire::new().deny_data_collection().int8())
+///     .allow(["Anthropic", "OpenAI"]);
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ProviderPreferences {
+    /// Explicit ordering of providers by name (highest priority first)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<Vec<String>>,
+
+    /// Providers to allow (whitelist)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow: Option<Vec<String>>,
+
+    /// Providers to ignore/exclude (blacklist)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ignore: Option<Vec<String>>,
+
+    /// Requirements that providers must satisfy
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require: Option<ProviderRequire>,
+
+    /// How to sort/prioritize providers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<ProviderSort>,
+}
+
+impl ProviderPreferences {
+    /// Create a new empty provider preferences struct
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set explicit provider ordering (highest priority first)
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .order(["Anthropic", "OpenAI", "Google"]);
+    /// ```
+    pub fn order(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.order = Some(providers.into_iter().map(|p| p.into()).collect());
+        self
+    }
+
+    /// Set allowed providers (whitelist)
+    ///
+    /// Only these providers will be used. Cannot be combined with `ignore`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .allow(["Anthropic", "OpenAI"]);
+    /// ```
+    pub fn allow(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.allow = Some(providers.into_iter().map(|p| p.into()).collect());
+        self
+    }
+
+    /// Set providers to ignore (blacklist)
+    ///
+    /// These providers will be excluded. Cannot be combined with `allow`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .ignore(["SomeProvider"]);
+    /// ```
+    pub fn ignore(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.ignore = Some(providers.into_iter().map(|p| p.into()).collect());
+        self
+    }
+
+    /// Set requirements that providers must satisfy
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::{ProviderPreferences, ProviderRequire};
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .require(ProviderRequire::new().deny_data_collection());
+    /// ```
+    pub fn require(mut self, require: ProviderRequire) -> Self {
+        self.require = Some(require);
+        self
+    }
+
+    /// Set the sorting strategy for providers
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::{ProviderPreferences, ProviderSort};
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .sort(ProviderSort::Throughput);
+    /// ```
+    pub fn sort(mut self, sort: ProviderSort) -> Self {
+        self.sort = Some(sort);
+        self
+    }
+
+    /// Convenience method: Only use providers with zero data retention
+    pub fn zero_data_retention(self) -> Self {
+        self.require(ProviderRequire::new().deny_data_collection())
+    }
+
+    /// Convenience method: Sort by throughput (fastest providers first)
+    pub fn fastest(self) -> Self {
+        self.sort(ProviderSort::Throughput)
+    }
+
+    /// Convenience method: Sort by price (cheapest providers first)
+    pub fn cheapest(self) -> Self {
+        self.sort(ProviderSort::Price)
+    }
+
+    /// Convenience method: Sort by latency (lowest latency first)
+    pub fn lowest_latency(self) -> Self {
+        self.sort(ProviderSort::Latency)
+    }
+
+    /// Convert to JSON value for use in additional_params
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "provider": self
+        })
+    }
+}
+
 /// A openrouter completion object.
 ///
 /// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
@@ -672,5 +949,227 @@ mod tests {
             }
             _ => panic!("Expected Assistant message"),
         }
+    }
+
+    // ================================================================
+    // Provider Selection Tests
+    // ================================================================
+
+    #[test]
+    fn test_data_collection_serialization() {
+        assert_eq!(
+            serde_json::to_string(&DataCollection::Allow).unwrap(),
+            r#""allow""#
+        );
+        assert_eq!(
+            serde_json::to_string(&DataCollection::Deny).unwrap(),
+            r#""deny""#
+        );
+    }
+
+    #[test]
+    fn test_quantization_serialization() {
+        assert_eq!(
+            serde_json::to_string(&Quantization::Int4).unwrap(),
+            r#""int4""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Int8).unwrap(),
+            r#""int8""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Fp16).unwrap(),
+            r#""fp16""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Bf16).unwrap(),
+            r#""bf16""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Fp32).unwrap(),
+            r#""fp32""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Fp8).unwrap(),
+            r#""fp8""#
+        );
+    }
+
+    #[test]
+    fn test_provider_sort_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ProviderSort::Quality).unwrap(),
+            r#""quality""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProviderSort::Price).unwrap(),
+            r#""price""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProviderSort::Throughput).unwrap(),
+            r#""throughput""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProviderSort::Latency).unwrap(),
+            r#""latency""#
+        );
+    }
+
+    #[test]
+    fn test_provider_require_builder() {
+        let require = ProviderRequire::new()
+            .deny_data_collection()
+            .int8();
+
+        assert_eq!(require.data_collection, Some(DataCollection::Deny));
+        assert_eq!(require.quantization, Some(vec![Quantization::Int8]));
+    }
+
+    #[test]
+    fn test_provider_require_multiple_quantizations() {
+        let require = ProviderRequire::new()
+            .quantization([Quantization::Int8, Quantization::Fp16]);
+
+        assert_eq!(
+            require.quantization,
+            Some(vec![Quantization::Int8, Quantization::Fp16])
+        );
+    }
+
+    #[test]
+    fn test_provider_require_serialization() {
+        let require = ProviderRequire::new()
+            .deny_data_collection()
+            .int8();
+
+        let json = serde_json::to_value(&require).unwrap();
+        assert_eq!(json["data_collection"], "deny");
+        assert_eq!(json["quantization"], json!(["int8"]));
+    }
+
+    #[test]
+    fn test_provider_preferences_builder() {
+        let prefs = ProviderPreferences::new()
+            .order(["Anthropic", "OpenAI"])
+            .allow(["Anthropic", "OpenAI", "Google"])
+            .sort(ProviderSort::Throughput)
+            .require(ProviderRequire::new().deny_data_collection());
+
+        assert_eq!(
+            prefs.order,
+            Some(vec!["Anthropic".to_string(), "OpenAI".to_string()])
+        );
+        assert_eq!(
+            prefs.allow,
+            Some(vec![
+                "Anthropic".to_string(),
+                "OpenAI".to_string(),
+                "Google".to_string()
+            ])
+        );
+        assert_eq!(prefs.sort, Some(ProviderSort::Throughput));
+        assert!(prefs.require.is_some());
+    }
+
+    #[test]
+    fn test_provider_preferences_ignore() {
+        let prefs = ProviderPreferences::new()
+            .ignore(["SomeProvider"]);
+
+        assert_eq!(prefs.ignore, Some(vec!["SomeProvider".to_string()]));
+    }
+
+    #[test]
+    fn test_provider_preferences_convenience_methods() {
+        let prefs = ProviderPreferences::new()
+            .zero_data_retention()
+            .fastest();
+
+        assert_eq!(prefs.sort, Some(ProviderSort::Throughput));
+        assert!(prefs.require.is_some());
+        let require = prefs.require.unwrap();
+        assert_eq!(require.data_collection, Some(DataCollection::Deny));
+    }
+
+    #[test]
+    fn test_provider_preferences_to_json() {
+        let prefs = ProviderPreferences::new()
+            .order(["Anthropic"])
+            .sort(ProviderSort::Throughput)
+            .require(ProviderRequire::new().deny_data_collection().int8());
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["order"], json!(["Anthropic"]));
+        assert_eq!(provider["sort"], "throughput");
+        assert_eq!(provider["require"]["data_collection"], "deny");
+        assert_eq!(provider["require"]["quantization"], json!(["int8"]));
+    }
+
+    #[test]
+    fn test_provider_preferences_serialization_skips_none() {
+        let prefs = ProviderPreferences::new()
+            .sort(ProviderSort::Price);
+
+        let json = serde_json::to_value(&prefs).unwrap();
+
+        // Only sort should be present
+        assert_eq!(json["sort"], "price");
+        assert!(json.get("order").is_none());
+        assert!(json.get("allow").is_none());
+        assert!(json.get("ignore").is_none());
+        assert!(json.get("require").is_none());
+    }
+
+    #[test]
+    fn test_provider_preferences_deserialization() {
+        let json = json!({
+            "order": ["Anthropic", "OpenAI"],
+            "sort": "throughput",
+            "require": {
+                "data_collection": "deny",
+                "quantization": ["int8", "fp16"]
+            }
+        });
+
+        let prefs: ProviderPreferences = serde_json::from_value(json).unwrap();
+
+        assert_eq!(
+            prefs.order,
+            Some(vec!["Anthropic".to_string(), "OpenAI".to_string()])
+        );
+        assert_eq!(prefs.sort, Some(ProviderSort::Throughput));
+
+        let require = prefs.require.unwrap();
+        assert_eq!(require.data_collection, Some(DataCollection::Deny));
+        assert_eq!(
+            require.quantization,
+            Some(vec![Quantization::Int8, Quantization::Fp16])
+        );
+    }
+
+    #[test]
+    fn test_provider_preferences_full_integration() {
+        // Test a complete provider preferences object that would be sent to OpenRouter
+        let prefs = ProviderPreferences::new()
+            .order(["Anthropic", "OpenAI"])
+            .allow(["Anthropic", "OpenAI", "Google"])
+            .sort(ProviderSort::Throughput)
+            .require(ProviderRequire::new().deny_data_collection().int8());
+
+        let json = prefs.to_json();
+
+        // Verify the structure matches OpenRouter's expected format
+        assert!(json.get("provider").is_some());
+        let provider = &json["provider"];
+        assert_eq!(provider["order"], json!(["Anthropic", "OpenAI"]));
+        assert_eq!(
+            provider["allow"],
+            json!(["Anthropic", "OpenAI", "Google"])
+        );
+        assert_eq!(provider["sort"], "throughput");
+        assert_eq!(provider["require"]["data_collection"], "deny");
+        assert_eq!(provider["require"]["quantization"], json!(["int8"]));
     }
 }
