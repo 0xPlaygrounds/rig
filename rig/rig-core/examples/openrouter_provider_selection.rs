@@ -1,17 +1,20 @@
 //! This example demonstrates how to use OpenRouter's provider selection and prioritization feature.
 //!
 //! Provider selection allows you to:
-//! - Select specific providers (allow/ignore)
+//! - Select specific providers (only/ignore)
 //! - Prioritize providers by order
-//! - Sort providers by throughput, price, latency, or quality
+//! - Sort providers by throughput, price, or latency
 //! - Require specific capabilities (zero data retention, specific quantization levels)
+//! - Set throughput and latency thresholds
+//! - Set maximum price ceilings
 //!
 //! For more information, see: https://openrouter.ai/docs/guides/routing/provider-selection
 
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openrouter::{
-    self, ProviderPreferences, ProviderRequire, ProviderSort, Quantization,
+    self, DataCollection, MaxPrice, PercentileThresholds, ProviderPreferences,
+    ProviderSortStrategy, Quantization, ThroughputThreshold,
 };
 use serde_json::json;
 
@@ -20,14 +23,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize the OpenRouter client
     let client = openrouter::Client::from_env();
 
-    // Example 1: Zero Data Retention with Throughput Sorting
-    // This configuration only uses providers with zero data retention policies
-    // and sorts them by throughput (fastest providers first)
-    println!("=== Example 1: Zero Data Retention + Throughput Sorting ===\n");
+    // Example 1: Prefer specific providers, but allow fallbacks
+    println!("=== Example 1: Provider Order with Fallbacks ===\n");
 
     let preferences = ProviderPreferences::new()
-        .zero_data_retention()
-        .fastest();
+        .order(["anthropic", "openai"])
+        .allow_fallbacks(true);
 
     let agent = client
         .agent(openrouter::GEMINI_FLASH_2_0)
@@ -38,37 +39,35 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Say hello in one sentence.").await?;
     println!("Response: {}\n", response);
 
-    // Example 2: Specific Provider Order with Quantization Requirements
-    // This prioritizes Anthropic and OpenAI providers, requiring INT8 quantization
-    println!("=== Example 2: Provider Order + Quantization Requirements ===\n");
+    // Example 2: Only use a fixed allowlist (no other providers)
+    // This demonstrates using `only` for a hard allowlist - request will fail
+    // if none of the specified providers support the model
+    println!("=== Example 2: Fixed Allowlist (No Fallbacks) ===\n");
 
     let preferences = ProviderPreferences::new()
-        .order(["Anthropic", "OpenAI", "Google"])
-        .require(
-            ProviderRequire::new()
-                .quantization([Quantization::Int8, Quantization::Fp16]),
-        )
-        .sort(ProviderSort::Price);
+        .only(["azure", "together"])
+        .allow_fallbacks(false);
 
     let agent = client
-        .agent(openrouter::CLAUDE_3_7_SONNET)
+        .agent(openrouter::GEMINI_FLASH_2_0)
         .preamble("You are a helpful assistant.")
         .additional_params(preferences.to_json())
         .build();
 
-    let response = agent.prompt("What's 2+2? Answer briefly.").await?;
-    println!("Response: {}\n", response);
+    // This might fail if neither provider supports the model - demonstrating
+    // the fail-closed behavior when allow_fallbacks is false
+    match agent.prompt("What's 2+2?").await {
+        Ok(response) => println!("Response: {}\n", response),
+        Err(e) => println!("Expected error (no matching provider): {}\n", e),
+    }
 
-    // Example 3: Allow-list only specific providers
-    // Only use Anthropic and OpenAI providers
-    println!("=== Example 3: Provider Allow-list ===\n");
+    // Example 3: Exclude specific providers
+    println!("=== Example 3: Provider Blocklist ===\n");
 
-    let preferences = ProviderPreferences::new()
-        .allow(["Anthropic", "OpenAI"])
-        .sort(ProviderSort::Quality);
+    let preferences = ProviderPreferences::new().ignore(["deepinfra"]);
 
     let agent = client
-        .agent(openrouter::CLAUDE_3_7_SONNET)
+        .agent(openrouter::GEMINI_FLASH_2_0)
         .preamble("You are a helpful assistant.")
         .additional_params(preferences.to_json())
         .build();
@@ -76,13 +75,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Name one planet.").await?;
     println!("Response: {}\n", response);
 
-    // Example 4: Using ignore-list to exclude providers
-    // Exclude certain providers from selection
-    println!("=== Example 4: Provider Ignore-list ===\n");
+    // Example 4: Deterministic routing by lowest latency
+    println!("=== Example 4: Sort by Latency ===\n");
 
-    let preferences = ProviderPreferences::new()
-        .ignore(["SomeProviderToAvoid"])
-        .lowest_latency();
+    let preferences = ProviderPreferences::new().sort(ProviderSortStrategy::Latency);
 
     let agent = client
         .agent(openrouter::GEMINI_FLASH_2_0)
@@ -93,14 +89,92 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Say 'hello' in French.").await?;
     println!("Response: {}\n", response);
 
-    // Example 5: Combining with other additional_params
-    // You can combine provider preferences with other OpenRouter-specific parameters
-    println!("=== Example 5: Combined with Other Parameters ===\n");
+    // Example 5: Prefer cheap providers, but push slow ones to the end
+    println!("=== Example 5: Price Sort with Throughput Threshold ===\n");
+
+    let preferences = ProviderPreferences::new()
+        .sort(ProviderSortStrategy::Price)
+        .preferred_min_throughput(ThroughputThreshold::Percentile(
+            PercentileThresholds::new().p90(50.0),
+        ));
+
+    let agent = client
+        .agent(openrouter::GEMINI_FLASH_2_0)
+        .preamble("You are a helpful assistant.")
+        .additional_params(preferences.to_json())
+        .build();
+
+    let response = agent.prompt("Count to 3.").await?;
+    println!("Response: {}\n", response);
+
+    // Example 6: Require strict parameter support
+    println!("=== Example 6: Require Parameter Support ===\n");
+
+    let preferences = ProviderPreferences::new().require_parameters(true);
+
+    let agent = client
+        .agent(openrouter::GEMINI_FLASH_2_0)
+        .preamble("You are a helpful assistant.")
+        .additional_params(preferences.to_json())
+        .build();
+
+    let response = agent.prompt("What color is the sky?").await?;
+    println!("Response: {}\n", response);
+
+    // Example 7: Enforce data policy and ZDR (Zero Data Retention)
+    println!("=== Example 7: Data Policy and ZDR ===\n");
+
+    let preferences = ProviderPreferences::new()
+        .data_collection(DataCollection::Deny)
+        .zdr(true);
+
+    let agent = client
+        .agent(openrouter::GEMINI_FLASH_2_0)
+        .preamble("You are a helpful assistant.")
+        .additional_params(preferences.to_json())
+        .build();
+
+    let response = agent.prompt("Name a fruit.").await?;
+    println!("Response: {}\n", response);
+
+    // Example 8: Quantization requirements
+    println!("=== Example 8: Quantization Filter ===\n");
+
+    let preferences = ProviderPreferences::new()
+        .quantizations([Quantization::Int8, Quantization::Fp16]);
+
+    let agent = client
+        .agent(openrouter::GEMINI_FLASH_2_0)
+        .preamble("You are a helpful assistant.")
+        .additional_params(preferences.to_json())
+        .build();
+
+    let response = agent.prompt("Name an animal.").await?;
+    println!("Response: {}\n", response);
+
+    // Example 9: Maximum price ceiling
+    println!("=== Example 9: Maximum Price Ceiling ===\n");
+
+    let preferences = ProviderPreferences::new()
+        .max_price(MaxPrice::new().prompt(0.001).completion(0.002));
+
+    let agent = client
+        .agent(openrouter::GEMINI_FLASH_2_0)
+        .preamble("You are a helpful assistant.")
+        .additional_params(preferences.to_json())
+        .build();
+
+    let response = agent.prompt("Name a country.").await?;
+    println!("Response: {}\n", response);
+
+    // Example 10: Combining with other additional_params
+    println!("=== Example 10: Combined Configuration ===\n");
 
     let combined_params = json!({
         "provider": ProviderPreferences::new()
-            .order(["Google"])
-            .sort(ProviderSort::Throughput),
+            .order(["google"])
+            .sort(ProviderSortStrategy::Throughput)
+            .zdr(true),
         "transforms": ["middle-out"]  // Other OpenRouter-specific parameter
     });
 
@@ -110,7 +184,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .additional_params(combined_params)
         .build();
 
-    let response = agent.prompt("Count to 3.").await?;
+    let response = agent.prompt("Say goodbye.").await?;
     println!("Response: {}\n", response);
 
     println!("All examples completed successfully!");
