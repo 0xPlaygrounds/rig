@@ -2,7 +2,7 @@
 
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, BatchRequestItem, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
     one_or_many::string_or_one_or_many,
@@ -790,6 +790,20 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
     }
 }
 
+/// A request to Anthropic's Batch API.
+/// Reference: <https://platform.claude.com/docs/en/build-with-claude/batch-processing>
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AnthropicBatchCompletionRequest {
+    requests: Vec<AnthropicBatchCompletionRequestItem>,
+}
+
+/// A request item in `BatchAnthropicCompletionRequest`.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AnthropicBatchCompletionRequestItem {
+    custom_id: String,
+    params: AnthropicCompletionRequest,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct AnthropicCompletionRequest {
     model: String,
@@ -917,6 +931,122 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             additional_params: req.additional_params,
         })
     }
+}
+
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+{
+    pub async fn batch_completion<I>(
+        &self,
+        batch: Vec<I>,
+    ) -> Result<AnthropicBatchCompletionResponse, CompletionError>
+    where
+        I: Into<BatchRequestItem>,
+    {
+        let batch: Vec<BatchRequestItem> = batch.into_iter().map(|x| x.into()).collect();
+
+        let requests = batch
+            .into_iter()
+            .map(|item| {
+                let params = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+                    model: &self.model,
+                    request: item.params(),
+                    prompt_caching: self.prompt_caching,
+                })?;
+
+                Ok(AnthropicBatchCompletionRequestItem {
+                    custom_id: item.id(),
+                    params,
+                })
+            })
+            .collect::<Result<Vec<AnthropicBatchCompletionRequestItem>, CompletionError>>()?;
+
+        let request = AnthropicBatchCompletionRequest { requests };
+
+        let request: Vec<u8> = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post("/v1/messages/batches")?
+            .body(request)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
+
+        let response = self
+            .client
+            .send::<_, Bytes>(req)
+            .await
+            .map_err(CompletionError::HttpError)?;
+
+        if response.status().is_success() {
+            Ok(serde_json::from_slice::<AnthropicBatchCompletionResponse>(
+                response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?
+                    .to_vec()
+                    .as_slice(),
+            )?)
+        } else {
+            let text: String = String::from_utf8_lossy(
+                &response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?,
+            )
+            .into();
+            Err(CompletionError::ProviderError(text))
+        }
+    }
+}
+
+/// Anthropic's batch API response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnthropicBatchCompletionResponse {
+    /// The ID of the response
+    pub id: String,
+    /// RFC-3339 datetime string showing when the batch was archived. Only exists if the batch was archived.
+    pub archived_at: Option<String>,
+    /// RFC-3339 datetime string showing when the batch was canceled. Only exists if the batch was canceled.
+    pub cancel_initiated_at: Option<String>,
+    /// RFC-3339 datetime string showing when the batch was created.
+    pub created_at: String,
+    /// When the batch processing has finished. Only exists if the batch has been ended.
+    pub ended_at: Option<String>,
+    /// When the batch processing will expire (typically 24h after creation)
+    pub expires_at: Option<String>,
+    /// The current status of the batch being processed
+    pub processing_status: AnthropicBatchProcessingStatus,
+    /// The stat count for a given batch.
+    pub request_counts: AnthropicBatchRequestCounts,
+    /// The results of a given batch. URL is a link to a `.jsonl` file. Only available when batch finishes.
+    pub results_url: Option<String>,
+    /// The kind of message. This should only ever be `AnthropicBatchMessageKind::MessageBatch`.
+    #[serde(rename = "type")]
+    pub kind: AnthropicBatchMessageKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AnthropicBatchMessageKind {
+    #[serde(rename_all = "snake_case")]
+    MessageBatch,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnthropicBatchRequestCounts {
+    canceled: u32,
+    errored: u32,
+    expired: u32,
+    processing: u32,
+    succeeded: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnthropicBatchProcessingStatus {
+    InProgress,
+    Canceling,
+    Ended,
 }
 
 impl<T> completion::CompletionModel for CompletionModel<T>

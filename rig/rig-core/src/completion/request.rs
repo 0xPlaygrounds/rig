@@ -731,6 +731,39 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 }
 
+/// A batch request item. Used for Batch APIs.
+#[derive(Debug, Clone)]
+pub struct BatchRequestItem {
+    custom_id: String,
+    params: CompletionRequest,
+}
+
+impl BatchRequestItem {
+    fn new(custom_id: impl Into<String>, params: CompletionRequest) -> Self {
+        Self {
+            custom_id: custom_id.into(),
+            params,
+        }
+    }
+
+    pub fn id(&self) -> String {
+        self.custom_id.clone()
+    }
+
+    pub fn params(&self) -> CompletionRequest {
+        self.params.clone()
+    }
+}
+
+impl<T> From<(T, CompletionRequest)> for BatchRequestItem
+where
+    T: Into<String>,
+{
+    fn from((custom_id, params): (T, CompletionRequest)) -> Self {
+        BatchRequestItem::new(custom_id, params)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
