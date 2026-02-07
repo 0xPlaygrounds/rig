@@ -9,7 +9,7 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 ```toml
 [dependencies]
 rig-gemini-grpc = "0.1.0"
-rig-core = "0.28.0"
+rig-core = "0.30.0"
 ```
 
 You can also run `cargo add rig-gemini-grpc rig-core` to add the most recent versions of the dependencies to your project.
@@ -53,29 +53,3 @@ async fn main() -> Result<(), anyhow::Error> {
 - Tool calling support
 - Reasoning and thought signatures
 - Image input support
-
-## Migrating from rig-core's gemini_grpc
-
-If you were using the gemini_grpc provider from rig-core, update your code:
-
-**Before** (rig-core 0.28.0):
-```rust
-use rig::providers::gemini_grpc;
-
-let client = gemini_grpc::Client::from_env();
-let model = client.completion_model(gemini_grpc::completion::GEMINI_2_5_FLASH);
-```
-
-**After** (rig-gemini-grpc 0.1.0):
-```toml
-# Add to Cargo.toml
-[dependencies]
-rig-gemini-grpc = "0.1.0"
-```
-
-```rust
-use rig_gemini_grpc::{Client, completion::GEMINI_2_5_FLASH};
-
-let client = Client::from_env();
-let model = client.completion_model(GEMINI_2_5_FLASH);
-```

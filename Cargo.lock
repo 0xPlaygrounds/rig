@@ -10263,7 +10263,7 @@ dependencies = [
  "futures",
  "prost",
  "protoc-bin-vendored",
- "rig-core 0.28.0",
+ "rig-core 0.29.0",
  "serde",
  "serde_json",
  "tokio",
