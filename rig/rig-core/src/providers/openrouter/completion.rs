@@ -1213,10 +1213,6 @@ mod tests {
         }
     }
 
-    // ================================================================
-    // Provider Selection Tests
-    // ================================================================
-
     #[test]
     fn test_data_collection_serialization() {
         assert_eq!(
@@ -1227,6 +1223,11 @@ mod tests {
             serde_json::to_string(&DataCollection::Deny).unwrap(),
             r#""deny""#
         );
+    }
+
+    #[test]
+    fn test_data_collection_default() {
+        assert_eq!(DataCollection::default(), DataCollection::Allow);
     }
 
     #[test]
@@ -1255,6 +1256,10 @@ mod tests {
             serde_json::to_string(&Quantization::Fp8).unwrap(),
             r#""fp8""#
         );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Unknown).unwrap(),
+            r#""unknown""#
+        );
     }
 
     #[test]
@@ -1270,6 +1275,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ProviderSortStrategy::Latency).unwrap(),
             r#""latency""#
+        );
+    }
+
+    #[test]
+    fn test_sort_partition_serialization() {
+        assert_eq!(
+            serde_json::to_string(&SortPartition::Model).unwrap(),
+            r#""model""#
+        );
+        assert_eq!(
+            serde_json::to_string(&SortPartition::None).unwrap(),
+            r#""none""#
         );
     }
 
@@ -1292,16 +1309,52 @@ mod tests {
     }
 
     #[test]
+    fn test_provider_sort_complex_without_partition() {
+        let sort = ProviderSort::Complex(
+            ProviderSortConfig::new(ProviderSortStrategy::Throughput),
+        );
+        let json = serde_json::to_value(&sort).unwrap();
+        assert_eq!(json["by"], "throughput");
+        assert!(json.get("partition").is_none());
+    }
+
+    #[test]
+    fn test_provider_sort_from_strategy() {
+        let sort: ProviderSort = ProviderSortStrategy::Price.into();
+        assert_eq!(sort, ProviderSort::Simple(ProviderSortStrategy::Price));
+    }
+
+    #[test]
+    fn test_provider_sort_from_config() {
+        let config = ProviderSortConfig::new(ProviderSortStrategy::Latency);
+        let sort: ProviderSort = config.into();
+        match sort {
+            ProviderSort::Complex(c) => assert_eq!(c.by, ProviderSortStrategy::Latency),
+            _ => panic!("Expected Complex variant"),
+        }
+    }
+
+    #[test]
     fn test_percentile_thresholds_builder() {
         let thresholds = PercentileThresholds::new()
             .p50(10.0)
+            .p75(25.0)
             .p90(50.0)
             .p99(100.0);
 
         assert_eq!(thresholds.p50, Some(10.0));
-        assert_eq!(thresholds.p75, None);
+        assert_eq!(thresholds.p75, Some(25.0));
         assert_eq!(thresholds.p90, Some(50.0));
         assert_eq!(thresholds.p99, Some(100.0));
+    }
+
+    #[test]
+    fn test_percentile_thresholds_default() {
+        let thresholds = PercentileThresholds::default();
+        assert_eq!(thresholds.p50, None);
+        assert_eq!(thresholds.p75, None);
+        assert_eq!(thresholds.p90, None);
+        assert_eq!(thresholds.p99, None);
     }
 
     #[test]
@@ -1321,6 +1374,23 @@ mod tests {
     }
 
     #[test]
+    fn test_latency_threshold_simple() {
+        let threshold = LatencyThreshold::Simple(0.5);
+        let json = serde_json::to_value(&threshold).unwrap();
+        assert_eq!(json, 0.5);
+    }
+
+    #[test]
+    fn test_latency_threshold_percentile() {
+        let threshold = LatencyThreshold::Percentile(
+            PercentileThresholds::new().p50(0.1).p99(1.0)
+        );
+        let json = serde_json::to_value(&threshold).unwrap();
+        assert_eq!(json["p50"], 0.1);
+        assert_eq!(json["p99"], 1.0);
+    }
+
+    #[test]
     fn test_max_price_builder() {
         let price = MaxPrice::new()
             .prompt(0.001)
@@ -1333,8 +1403,48 @@ mod tests {
     }
 
     #[test]
+    fn test_max_price_all_fields() {
+        let price = MaxPrice::new()
+            .prompt(0.001)
+            .completion(0.002)
+            .request(0.01)
+            .image(0.05);
+
+        let json = serde_json::to_value(&price).unwrap();
+        assert_eq!(json["prompt"], 0.001);
+        assert_eq!(json["completion"], 0.002);
+        assert_eq!(json["request"], 0.01);
+        assert_eq!(json["image"], 0.05);
+    }
+
+    #[test]
+    fn test_max_price_default() {
+        let price = MaxPrice::default();
+        assert_eq!(price.prompt, None);
+        assert_eq!(price.completion, None);
+        assert_eq!(price.request, None);
+        assert_eq!(price.image, None);
+    }
+
+    #[test]
+    fn test_provider_preferences_default() {
+        let prefs = ProviderPreferences::default();
+        assert!(prefs.order.is_none());
+        assert!(prefs.only.is_none());
+        assert!(prefs.ignore.is_none());
+        assert!(prefs.allow_fallbacks.is_none());
+        assert!(prefs.require_parameters.is_none());
+        assert!(prefs.data_collection.is_none());
+        assert!(prefs.zdr.is_none());
+        assert!(prefs.sort.is_none());
+        assert!(prefs.preferred_min_throughput.is_none());
+        assert!(prefs.preferred_max_latency.is_none());
+        assert!(prefs.max_price.is_none());
+        assert!(prefs.quantizations.is_none());
+    }
+
+    #[test]
     fn test_provider_preferences_order_with_fallbacks() {
-        // Example 1 from docs: Prefer specific providers, but allow fallbacks
         let prefs = ProviderPreferences::new()
             .order(["anthropic", "openai"])
             .allow_fallbacks(true);
@@ -1348,7 +1458,6 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_only_allowlist() {
-        // Example 2 from docs: Only use a fixed allowlist (no other providers)
         let prefs = ProviderPreferences::new()
             .only(["azure", "together"])
             .allow_fallbacks(false);
@@ -1362,7 +1471,6 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_ignore() {
-        // Example 3 from docs: Exclude specific providers
         let prefs = ProviderPreferences::new()
             .ignore(["deepinfra"]);
 
@@ -1374,7 +1482,6 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_sort_latency() {
-        // Example 4 from docs: Deterministic routing by lowest latency
         let prefs = ProviderPreferences::new()
             .sort(ProviderSortStrategy::Latency);
 
@@ -1386,7 +1493,6 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_price_with_throughput() {
-        // Example 5 from docs: Prefer cheap providers, but push slow ones to the end
         let prefs = ProviderPreferences::new()
             .sort(ProviderSortStrategy::Price)
             .preferred_min_throughput(ThroughputThreshold::Percentile(
@@ -1402,7 +1508,6 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_require_parameters() {
-        // Example 6 from docs: Require strict parameter support
         let prefs = ProviderPreferences::new()
             .require_parameters(true);
 
@@ -1414,7 +1519,6 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_data_policy_and_zdr() {
-        // Example 7 from docs: Enforce data policy and ZDR
         let prefs = ProviderPreferences::new()
             .data_collection(DataCollection::Deny)
             .zdr(true);
@@ -1445,6 +1549,12 @@ mod tests {
 
         assert_eq!(prefs.zdr, Some(true));
         assert_eq!(prefs.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Throughput)));
+
+        let prefs2 = ProviderPreferences::new().cheapest();
+        assert_eq!(prefs2.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Price)));
+
+        let prefs3 = ProviderPreferences::new().lowest_latency();
+        assert_eq!(prefs3.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Latency)));
     }
 
     #[test]
@@ -1454,7 +1564,6 @@ mod tests {
 
         let json = serde_json::to_value(&prefs).unwrap();
 
-        // Only sort should be present
         assert_eq!(json["sort"], "price");
         assert!(json.get("order").is_none());
         assert!(json.get("only").is_none());
@@ -1488,8 +1597,27 @@ mod tests {
     }
 
     #[test]
+    fn test_provider_preferences_deserialization_complex_sort() {
+        let json = json!({
+            "sort": {
+                "by": "latency",
+                "partition": "model"
+            }
+        });
+
+        let prefs: ProviderPreferences = serde_json::from_value(json).unwrap();
+
+        match prefs.sort {
+            Some(ProviderSort::Complex(config)) => {
+                assert_eq!(config.by, ProviderSortStrategy::Latency);
+                assert_eq!(config.partition, Some(SortPartition::Model));
+            }
+            _ => panic!("Expected Complex sort variant"),
+        }
+    }
+
+    #[test]
     fn test_provider_preferences_full_integration() {
-        // Test a complete provider preferences object that would be sent to OpenRouter
         let prefs = ProviderPreferences::new()
             .order(["anthropic", "openai"])
             .only(["anthropic", "openai", "google"])
@@ -1501,7 +1629,6 @@ mod tests {
 
         let json = prefs.to_json();
 
-        // Verify the structure matches OpenRouter's expected format
         assert!(json.get("provider").is_some());
         let provider = &json["provider"];
         assert_eq!(provider["order"], json!(["anthropic", "openai"]));
@@ -1526,5 +1653,29 @@ mod tests {
 
         assert_eq!(provider["max_price"]["prompt"], 0.001);
         assert_eq!(provider["max_price"]["completion"], 0.002);
+    }
+
+    #[test]
+    fn test_provider_preferences_preferred_max_latency() {
+        let prefs = ProviderPreferences::new()
+            .preferred_max_latency(LatencyThreshold::Simple(0.5));
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["preferred_max_latency"], 0.5);
+    }
+
+    #[test]
+    fn test_provider_preferences_empty_arrays() {
+        let prefs = ProviderPreferences::new()
+            .order(Vec::<String>::new())
+            .quantizations(Vec::<Quantization>::new());
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["order"], json!([]));
+        assert_eq!(provider["quantizations"], json!([]));
     }
 }

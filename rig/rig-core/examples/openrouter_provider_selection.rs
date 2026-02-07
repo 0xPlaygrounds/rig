@@ -20,10 +20,8 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize the OpenRouter client
     let client = openrouter::Client::from_env();
 
-    // Example 1: Prefer specific providers, but allow fallbacks
     println!("=== Example 1: Provider Order with Fallbacks ===\n");
 
     let preferences = ProviderPreferences::new()
@@ -39,9 +37,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Say hello in one sentence.").await?;
     println!("Response: {}\n", response);
 
-    // Example 2: Only use a fixed allowlist (no other providers)
-    // This demonstrates using `only` for a hard allowlist - request will fail
-    // if none of the specified providers support the model
     println!("=== Example 2: Fixed Allowlist (No Fallbacks) ===\n");
 
     let preferences = ProviderPreferences::new()
@@ -54,14 +49,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .additional_params(preferences.to_json())
         .build();
 
-    // This might fail if neither provider supports the model - demonstrating
-    // the fail-closed behavior when allow_fallbacks is false
     match agent.prompt("What's 2+2?").await {
         Ok(response) => println!("Response: {}\n", response),
         Err(e) => println!("Expected error (no matching provider): {}\n", e),
     }
 
-    // Example 3: Exclude specific providers
     println!("=== Example 3: Provider Blocklist ===\n");
 
     let preferences = ProviderPreferences::new().ignore(["deepinfra"]);
@@ -75,7 +67,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Name one planet.").await?;
     println!("Response: {}\n", response);
 
-    // Example 4: Deterministic routing by lowest latency
     println!("=== Example 4: Sort by Latency ===\n");
 
     let preferences = ProviderPreferences::new().sort(ProviderSortStrategy::Latency);
@@ -89,7 +80,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Say 'hello' in French.").await?;
     println!("Response: {}\n", response);
 
-    // Example 5: Prefer cheap providers, but push slow ones to the end
     println!("=== Example 5: Price Sort with Throughput Threshold ===\n");
 
     let preferences = ProviderPreferences::new()
@@ -107,7 +97,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Count to 3.").await?;
     println!("Response: {}\n", response);
 
-    // Example 6: Require strict parameter support
     println!("=== Example 6: Require Parameter Support ===\n");
 
     let preferences = ProviderPreferences::new().require_parameters(true);
@@ -121,7 +110,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("What color is the sky?").await?;
     println!("Response: {}\n", response);
 
-    // Example 7: Enforce data policy and ZDR (Zero Data Retention)
     println!("=== Example 7: Data Policy and ZDR ===\n");
 
     let preferences = ProviderPreferences::new()
@@ -137,7 +125,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Name a fruit.").await?;
     println!("Response: {}\n", response);
 
-    // Example 8: Quantization requirements
     println!("=== Example 8: Quantization Filter ===\n");
 
     let preferences = ProviderPreferences::new()
@@ -152,7 +139,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Name an animal.").await?;
     println!("Response: {}\n", response);
 
-    // Example 9: Maximum price ceiling
     println!("=== Example 9: Maximum Price Ceiling ===\n");
 
     let preferences = ProviderPreferences::new()
@@ -167,7 +153,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = agent.prompt("Name a country.").await?;
     println!("Response: {}\n", response);
 
-    // Example 10: Combining with other additional_params
     println!("=== Example 10: Combined Configuration ===\n");
 
     let combined_params = json!({
@@ -175,7 +160,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .order(["google"])
             .sort(ProviderSortStrategy::Throughput)
             .zdr(true),
-        "transforms": ["middle-out"]  // Other OpenRouter-specific parameter
+        "transforms": ["middle-out"]
     });
 
     let agent = client
