@@ -10,7 +10,7 @@ use rig::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, postgres::PgArguments, query::QueryAs};
 use uuid::Uuid;
 
 pub struct PostgresVectorStore<Model: EmbeddingModel> {
@@ -50,7 +50,7 @@ impl Display for PgVectorDistanceFunction {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct PgSearchFilter {
     condition: String,
     values: Vec<serde_json::Value>,
@@ -59,23 +59,23 @@ pub struct PgSearchFilter {
 impl SearchFilter for PgSearchFilter {
     type Value = serde_json::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} = $"),
+            condition: format!("{} = $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} > $"),
+            condition: format!("{} > $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{key} < $"),
+            condition: format!("{} < $", key.as_ref()),
             values: vec![value],
         }
     }
@@ -179,6 +179,45 @@ impl PgSearchFilter {
     }
 }
 
+fn bind_value<S>(
+    builder: QueryAs<'_, Postgres, S, PgArguments>,
+    value: Value,
+) -> QueryAs<'_, Postgres, S, PgArguments> {
+    match value {
+        Value::Null => unreachable!(),
+        Value::Bool(b) => builder.bind(b),
+        Value::Number(num) => {
+            if let Some(n) = num.as_f64() {
+                builder.bind(n)
+            } else if let Some(n) = num.as_i64() {
+                builder.bind(n)
+            } else {
+                unreachable!()
+            }
+        }
+        Value::String(s) => builder.bind(s),
+        Value::Array(xs) => {
+            if let Some(xs) = xs
+                .iter()
+                .map(|v| v.as_str().map(str::to_string))
+                .collect::<Option<Vec<_>>>()
+            {
+                builder.bind(xs)
+            } else if let Some(xs) = xs.iter().map(Value::as_f64).collect::<Option<Vec<_>>>() {
+                builder.bind(xs)
+            } else if let Some(xs) = xs.iter().map(Value::as_i64).collect::<Option<Vec<_>>>() {
+                builder.bind(xs)
+            } else if let Some(xs) = xs.iter().map(Value::as_bool).collect::<Option<Vec<_>>>() {
+                builder.bind(xs)
+            } else {
+                builder.bind(Value::Array(xs))
+            }
+        }
+        // Will always be JSONB
+        object => builder.bind(object),
+    }
+}
+
 #[derive(Debug, Deserialize, sqlx::FromRow)]
 pub struct SearchResult {
     id: Uuid,
@@ -246,7 +285,7 @@ where
 
         let thresh = req
             .threshold()
-            .map(|t| PgSearchFilter::gt("distance".into(), t.into()));
+            .map(|t| PgSearchFilter::gt("distance", t.into()));
         let filter = match (thresh, req.filter()) {
             (Some(thresh), Some(filt)) => Some(thresh.and(filt.clone())),
             (Some(thresh), _) => Some(thresh),
@@ -366,9 +405,7 @@ where
             .bind(embedded_query)
             .bind(req.samples() as i64);
 
-        let builder = params
-            .iter()
-            .fold(builder, |builder, param| builder.bind(param));
+        let builder = params.iter().cloned().fold(builder, bind_value);
 
         let rows = builder
             .fetch_all(&self.pg_pool)
@@ -412,9 +449,7 @@ where
             .bind(embedded_query)
             .bind(req.samples() as i64);
 
-        let builder = params
-            .iter()
-            .fold(builder, |builder, param| builder.bind(param));
+        let builder = params.iter().cloned().fold(builder, bind_value);
 
         let rows: Vec<SearchResultOnlyId> = builder
             .fetch_all(&self.pg_pool)

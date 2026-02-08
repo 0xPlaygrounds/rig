@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.29.0...rig-core-v0.30.0) - 2026-02-03
+
+### Added
+
+- *(rig-1160)* encode control flow directly in type signature for hooks (breaking) ([#1305](https://github.com/0xPlaygrounds/rig/pull/1305))
+- *(rig-1126)* tool image result support for gemini ([#1329](https://github.com/0xPlaygrounds/rig/pull/1329))
+- support xhigh reasoning effort ([#1319](https://github.com/0xPlaygrounds/rig/pull/1319))
+- *(agent)* allow on_tool_call hook to reject tool execution ([#1284](https://github.com/0xPlaygrounds/rig/pull/1284))
+
+### Fixed
+
+- avoid duplicate role in responses input ([#1314](https://github.com/0xPlaygrounds/rig/pull/1314))
+- *(providers)* fixed azure openai embedding dimension ([#1303](https://github.com/0xPlaygrounds/rig/pull/1303))
+- *(rig-1174)* openai responses requires reasoning in history ([#1335](https://github.com/0xPlaygrounds/rig/pull/1335))
+- *(rig-1170)* concurrent tool execution ([#1326](https://github.com/0xPlaygrounds/rig/pull/1326))
+- *(rig-1167)* fix deepseek-reasoner v3.2 invoke ([#1333](https://github.com/0xPlaygrounds/rig/pull/1333))
+- *(rig-1156)* impl VectorStoreIndexDyn for mongodb and milvus ([#1300](https://github.com/0xPlaygrounds/rig/pull/1300))
+- *(rig-1154)* gemini API tools mismatch ([#1291](https://github.com/0xPlaygrounds/rig/pull/1291))
+- *(providers)* re-export gemini EmbeddingModel and constants at module root ([#1292](https://github.com/0xPlaygrounds/rig/pull/1292))
+
+### Other
+
+- *(rig-1164)* rename max_depth & related to max_turns (BREAKING) ([#1323](https://github.com/0xPlaygrounds/rig/pull/1323))
+- remove unnecessary feature requirement for test ([#1341](https://github.com/0xPlaygrounds/rig/pull/1341))
+- *(rig-1157)* Update xAI to Responses API ([#1316](https://github.com/0xPlaygrounds/rig/pull/1316))
+- *(rig-1171)* update ollama docs ([#1327](https://github.com/0xPlaygrounds/rig/pull/1327))
+- *(rig-1163)* ollama stream tool calls get ignored ([#1309](https://github.com/0xPlaygrounds/rig/pull/1309))
+- Handle error for HTTP client response ([#1237](https://github.com/0xPlaygrounds/rig/pull/1237))
+- Add default type parameter T = reqwest::Client to ollama's EmbeddingModel for consistency with other providers ([#1293](https://github.com/0xPlaygrounds/rig/pull/1293))
+
+## [0.29.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.28.0...rig-core-v0.29.0) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+- *(rig-1142)* include agent names in tracing ([#1270](https://github.com/0xPlaygrounds/rig/pull/1270))
+- *(rig-1144)* deepseek reasoning content (non-streaming) ([#1269](https://github.com/0xPlaygrounds/rig/pull/1269))
+- *(rig-1147)* re-export reqwest client ([#1277](https://github.com/0xPlaygrounds/rig/pull/1277))
+- add custom vector store backend example ([#1252](https://github.com/0xPlaygrounds/rig/pull/1252))
+- add default max depth to agents ([#1253](https://github.com/0xPlaygrounds/rig/pull/1253))
+- Add the `user` parameter to openai-embedding. ([#1254](https://github.com/0xPlaygrounds/rig/pull/1254))
+- *(rig-1135)* Agentic loop early termination reason ([#1248](https://github.com/0xPlaygrounds/rig/pull/1248))
+- Add the ```encoding_format``` parameter to openai-embedding. ([#1203](https://github.com/0xPlaygrounds/rig/pull/1203))
+
+### Fixed
+
+- *(agent)* fix CancelSignal cancellation and reason sharing bugs ([#1282](https://github.com/0xPlaygrounds/rig/pull/1282))
+- *(rig-1140)* do not prepend a forward slash to blank base URLs ([#1275](https://github.com/0xPlaygrounds/rig/pull/1275))
+
+### Other
+
+- bump dependencies ([#1257](https://github.com/0xPlaygrounds/rig/pull/1257))
+- *(rig-1145)* update code snippet ([#1268](https://github.com/0xPlaygrounds/rig/pull/1268))
+- fix gemini streaming ([#1262](https://github.com/0xPlaygrounds/rig/pull/1262))
+- Add `AgentBuilder::tools` for adding static tools dynamically ([#1236](https://github.com/0xPlaygrounds/rig/pull/1236))
+- *(rig-core)* Fix gemini doc example with wrong imports ([#1238](https://github.com/0xPlaygrounds/rig/pull/1238))
+
+## [0.28.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.27.0...rig-core-v0.28.0) - 2026-01-06
+
+### Added
+
+- *(agent)* export StreamingError to public API ([#1200](https://github.com/0xPlaygrounds/rig/pull/1200))
+
+### Fixed
+
+- some completion providers send usage chunks with 0 completion choices causing 0 reported usage ([#1211](https://github.com/0xPlaygrounds/rig/pull/1211))
+- *(rig-1109)* export agent StreamingResult type ([#1220](https://github.com/0xPlaygrounds/rig/pull/1220))
+- docs typo ([#1219](https://github.com/0xPlaygrounds/rig/pull/1219))
+- missing json header on send_streaming ([#1196](https://github.com/0xPlaygrounds/rig/pull/1196))
+- *(rig-1113)* `calculate_max_tokens` assumes known model (anthropic) ([#1216](https://github.com/0xPlaygrounds/rig/pull/1216))
+- add headers to get call ([#1178](https://github.com/0xPlaygrounds/rig/pull/1178))
+- deepseek stream_prompt Invalid status code 415 ([#1170](https://github.com/0xPlaygrounds/rig/pull/1170))
+- *(openrouter)* add default serde attr to reasoning_details for optional field deserialization ([#1173](https://github.com/0xPlaygrounds/rig/pull/1173))
+
+### Other
+
+- add tool name to tool call delta streaming events ([#1222](https://github.com/0xPlaygrounds/rig/pull/1222))
+- *(deps)* update rmcp dependency to 0.12.0 ([#1182](https://github.com/0xPlaygrounds/rig/pull/1182))
+- *(deps)* upgrade rmcp dependency to 0.11 ([#1165](https://github.com/0xPlaygrounds/rig/pull/1165))
+- Respect custom http headers for outgoing client requests ([#1166](https://github.com/0xPlaygrounds/rig/pull/1166))
+
 ## [0.27.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.26.0...rig-core-v0.27.0) - 2025-12-15
 
 ### Added

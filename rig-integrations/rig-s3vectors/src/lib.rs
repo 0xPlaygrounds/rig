@@ -24,21 +24,25 @@ pub struct CreateRecord {
     embedded_text: String,
 }
 
+// NOTE: Cannot be used in dynamic store due to aws_smithy_types::Document not impl'ing Serialize or Deserialize
 #[derive(Clone, Debug)]
 pub struct S3SearchFilter(aws_smithy_types::Document);
 
 impl SearchFilter for S3SearchFilter {
     type Value = aws_smithy_types::Document;
 
-    fn eq(key: String, value: Self::Value) -> Self {
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
         Self(document!({ key: { "$eq": value } }))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
         Self(document!({ key: { "$gt": value } }))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        let key = key.as_ref().to_owned();
         Self(document!({ key: { "$lt": value } }))
     }
 

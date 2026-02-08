@@ -5,7 +5,7 @@ use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     AssistantContent, CohereCompletionRequest, Message, ToolCall, ToolCallFunction, ToolType, Usage,
 };
-use crate::streaming::{RawStreamingChoice, RawStreamingToolCall};
+use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
@@ -138,7 +138,7 @@ where
         let mut event_source = GenericEventSource::new(self.client.clone(), req);
 
         let stream = stream! {
-            let mut current_tool_call: Option<(String, String, String)> = None;
+            let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut text_response = String::new();
             let mut tool_calls = Vec::new();
             let mut final_usage = None;
@@ -199,7 +199,14 @@ where
                                 let Some(name) = function.name.clone() else { continue; };
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
-                                current_tool_call = Some((id, name, arguments));
+                                let internal_call_id = nanoid::nanoid!();
+                                current_tool_call = Some((id.clone(), internal_call_id.clone(), name.clone(), arguments));
+
+                                yield Ok(RawStreamingChoice::ToolCallDelta {
+                                    id,
+                                    internal_call_id,
+                                    content: ToolCallDeltaContent::Name(name),
+                                });
                             },
 
                             StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
@@ -209,31 +216,32 @@ where
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
                                 let Some(tc) = current_tool_call.clone() else { continue; };
-                                current_tool_call = Some((tc.0.clone(), tc.1, format!("{}{}", tc.2, arguments)));
+                                current_tool_call = Some((tc.0.clone(), tc.1.clone(), tc.2, format!("{}{}", tc.3, arguments)));
 
                                 // Emit the delta so UI can show progress
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
                                     id: tc.0,
-                                    delta: arguments,
+                                    internal_call_id: tc.1,
+                                    content: ToolCallDeltaContent::Delta(arguments),
                                 });
                             },
 
                             StreamingEvent::ToolCallEnd => {
                                 let Some(tc) = current_tool_call.clone() else { continue; };
-                                let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.2) else { continue; };
+                                let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.3) else { continue; };
 
                                 tool_calls.push(ToolCall {
                                     id: Some(tc.0.clone()),
                                     r#type: Some(ToolType::Function),
                                     function: Some(ToolCallFunction {
-                                        name: tc.1.clone(),
+                                        name: tc.2.clone(),
                                         arguments: args.clone()
                                     })
                                 });
 
-                                yield Ok(RawStreamingChoice::ToolCall(
-                                    RawStreamingToolCall::new(tc.0, tc.1, args)
-                                ));
+                                let raw_tool_call = RawStreamingToolCall::new(tc.0, tc.2, args)
+                                    .with_internal_call_id(tc.1);
+                                yield Ok(RawStreamingChoice::ToolCall(raw_tool_call));
 
                                 current_tool_call = None;
                             },

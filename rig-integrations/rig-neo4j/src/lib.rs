@@ -93,7 +93,7 @@ use rig::{
     embeddings::EmbeddingModel,
     vector_store::{VectorStoreError, request::SearchFilter},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
 pub struct Neo4jClient {
@@ -104,22 +104,22 @@ fn neo4j_to_rig_error(e: neo4rs::Error) -> VectorStoreError {
     VectorStoreError::DatastoreError(Box::new(e))
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Neo4jSearchFilter(String);
 
 impl SearchFilter for Neo4jSearchFilter {
     type Value = serde_json::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
-        Self(format!("n.{} = {}", key, serialize_cypher(value)))
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("n.{} = {}", key.as_ref(), serialize_cypher(value)))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
-        Self(format!("n.{key} > {}", serialize_cypher(value)))
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("n.{} > {}", key.as_ref(), serialize_cypher(value)))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
-        Self(format!("n.{key} < {}", serialize_cypher(value)))
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("n.{} < {}", key.as_ref(), serialize_cypher(value)))
     }
 
     fn and(self, rhs: Self) -> Self {

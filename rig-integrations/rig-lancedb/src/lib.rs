@@ -156,16 +156,16 @@ fn zip_result(
 impl SearchFilter for LanceDBFilter {
     type Value = serde_json::Value;
 
-    fn eq(key: String, value: Self::Value) -> Self {
-        Self(escape_value(value).map(|s| format!("{key} = {s}")))
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(escape_value(value).map(|s| format!("{} = {s}", key.as_ref())))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
-        Self(escape_value(value).map(|s| format!("{key} > {s}")))
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(escape_value(value).map(|s| format!("{} > {s}", key.as_ref())))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
-        Self(escape_value(value).map(|s| format!("{key} < {s}")))
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(escape_value(value).map(|s| format!("{} < {s}", key.as_ref())))
     }
 
     fn and(self, rhs: Self) -> Self {

@@ -3,11 +3,21 @@
 //! # Example
 //! ```
 //! use rig::providers::azure;
+//! use rig::client::CompletionClient;
 //!
-//! let client = azure::Client::new("YOUR_API_KEY", "YOUR_API_VERSION", "YOUR_ENDPOINT");
+//! let client: azure::Client<reqwest::Client> = azure::Client::builder()
+//!     .api_key("test")
+//!     .azure_endpoint("test".to_string()) // add your endpoint here!
+//!     .build()?;
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
 //! ```
+//!
+//! ## Authentication
+//! The authentication type used for the `azure` module is [`AzureOpenAIAuth`].
+//!
+//! By default, using a type that implements `Into<String>` as the input for the client builder will turn the type into a bearer auth token.
+//! If you want to use an API key, you need to use the type specifically.
 
 use std::fmt::Debug;
 
@@ -166,6 +176,8 @@ impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
     }
 }
 
+/// The authentication type for Azure OpenAI. Can either be an API key or a token.
+/// String types will automatically be coerced to a bearer auth token by default.
 #[derive(Clone)]
 pub enum AzureOpenAIAuth {
     ApiKey(String),
@@ -437,9 +449,15 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let body = serde_json::to_vec(&json!({
+        let mut body = json!({
             "input": documents,
-        }))?;
+        });
+
+        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
+            body["dimensions"] = json!(self.ndims);
+        }
+
+        let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
@@ -678,7 +696,7 @@ where
             .map_err(http_client::Error::from)?;
 
         async move {
-            let response = self.client.send::<_, Bytes>(req).await.unwrap();
+            let response = self.client.send::<_, Bytes>(req).await?;
 
             let status = response.status();
             let response_body = response.into_body().into_future().await?.to_vec();
@@ -1032,6 +1050,21 @@ mod azure_tests {
             .unwrap();
 
         tracing::info!("Azure embedding: {:?}", embeddings);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_azure_embedding_dimensions() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let ndims = 256;
+        let client = Client::<reqwest::Client>::from_env();
+        let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
+        let embedding = model.embed_text("Hello, world!").await.unwrap();
+
+        assert!(embedding.vec.len() == ndims);
+
+        tracing::info!("Azure dimensions embedding: {:?}", embedding);
     }
 
     #[tokio::test]

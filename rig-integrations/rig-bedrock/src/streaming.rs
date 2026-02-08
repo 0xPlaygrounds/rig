@@ -6,7 +6,7 @@ use rig::completion::GetTokenUsage;
 use rig::streaming::StreamingCompletionResponse;
 use rig::{
     completion::CompletionError,
-    streaming::{RawStreamingChoice, RawStreamingToolCall},
+    streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,7 @@ impl GetTokenUsage for BedrockStreamingResponse {
             input_tokens: u.input_tokens as u64,
             output_tokens: u.output_tokens as u64,
             total_tokens: u.total_tokens as u64,
+            cached_input_tokens: 0, // unsupported at time of adding this
         })
     }
 }
@@ -36,6 +37,7 @@ impl GetTokenUsage for BedrockStreamingResponse {
 struct ToolCallState {
     name: String,
     id: String,
+    internal_call_id: String,
     input_json: String,
 }
 
@@ -94,7 +96,8 @@ impl CompletionModel {
                                     // Emit the delta so UI can show progress
                                     yield Ok(RawStreamingChoice::ToolCallDelta {
                                         id: tool_call.id.clone(),
-                                        delta,
+                                        internal_call_id: tool_call.internal_call_id.clone(),
+                                        content: ToolCallDeltaContent::Delta(delta),
                                     });
                                 }
                             },
@@ -134,10 +137,17 @@ impl CompletionModel {
                     aws_bedrock::ConverseStreamOutput::ContentBlockStart(event) => {
                         match event.start.ok_or(CompletionError::ProviderError("ContentBlockStart has no data".into()))? {
                             aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
+                                let internal_call_id = nanoid::nanoid!();
                                 current_tool_call = Some(ToolCallState {
-                                    name: tool_use.name,
-                                    id: tool_use.tool_use_id,
+                                    name: tool_use.name.clone(),
+                                    id: tool_use.tool_use_id.clone(),
+                                    internal_call_id: internal_call_id.clone(),
                                     input_json: String::new(),
+                                });
+                                yield Ok(RawStreamingChoice::ToolCallDelta {
+                                    id: tool_use.tool_use_id,
+                                    internal_call_id,
+                                    content: ToolCallDeltaContent::Name(tool_use.name),
                                 });
                             },
                             _ => yield Err(CompletionError::ProviderError("Stream is empty".into()))
@@ -163,7 +173,10 @@ impl CompletionModel {
                                     } else {
                                         serde_json::from_str(tool_call.input_json.as_str())?
                                     };
-                                    yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)));
+                                    yield Ok(RawStreamingChoice::ToolCall(
+                                        RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
+                                            .with_internal_call_id(tool_call.internal_call_id)
+                                    ));
                                 } else {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
@@ -359,6 +372,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "my_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -376,6 +390,7 @@ mod tests {
         let state = ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_abc".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -389,6 +404,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "get_weather".to_string(),
             id: "call_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -402,6 +418,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "search".to_string(),
             id: "call_xyz".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 
@@ -420,6 +437,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "analyze_data".to_string(),
             id: "call_456".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         };
 

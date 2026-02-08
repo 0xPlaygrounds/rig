@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.27.0"
+version = "0.30.0"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -40,18 +40,25 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { version = "0.12", optional = true, features = ["client"] }
+rmcp = { version = "0.13", optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = "1.3.1"
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
 serenity = { version = "0.12.4", optional = true }
 fastrand = "2.3.0"
+nanoid = { workspace = true }
+getrandom = { version = "0.2", optional = true }
 eventsource-stream = "0.2.3"
 pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
 mime = "0.3.17"
-reqwest-middleware = { version = "0.4.2", optional = true, features = ["json", "multipart", "charset", "http2"] }
+reqwest-middleware = { version = "0.5.1", optional = true, features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -59,12 +66,20 @@ assert_fs = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
+redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
+reqwest-retry = { version = "0.8" }
+reqwest-middleware = { version = "0.5.1", features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.12", features = [
+rmcp = { version = "0.13", features = [
   "client",
   "macros",
   "reqwest",                                  # required for some strange reason
@@ -98,6 +113,7 @@ rayon = ["dep:rayon"]
 wasm = [
   "dep:wasm-bindgen-futures",
   "futures-timer/wasm-bindgen",
+  "getrandom/js",
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
@@ -113,8 +129,8 @@ reqwest-rustls = [
 # WARNING: reqwest-middleware features are temporarily incompatible with reqwest 0.13
 # See: https://github.com/TrueLayer/reqwest-middleware/issues/265
 # Uncomment when reqwest-middleware 0.5+ is available
-# reqwest-middleware = ["dep:reqwest-middleware"]
-# reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls-tls"]
+reqwest-middleware = ["dep:reqwest-middleware"]
+reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
 
 [[test]]
 name = "embed_macro"
@@ -123,6 +139,10 @@ required-features = ["derive"]
 [[example]]
 name = "rag"
 required-features = ["derive"]
+
+[[example]]
+name = "reqwest_middleware"
+required-features = ["reqwest-middleware"]
 
 [[example]]
 name = "rag_ollama"
@@ -181,3 +201,6 @@ name = "request_hook"
 [[example]]
 name = "discord_bot"
 required-features = ["discord-bot"]
+
+[[example]]
+name = "custom_vector_store"

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.33](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.32...rig-lancedb-v0.2.33) - 2026-02-03
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.32](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.31...rig-lancedb-v0.2.32) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+
+## [0.2.31](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.30...rig-lancedb-v0.2.31) - 2026-01-06
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.2.30](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.29...rig-lancedb-v0.2.30) - 2025-12-15
 
 ### Other

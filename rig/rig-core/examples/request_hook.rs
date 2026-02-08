@@ -1,4 +1,4 @@
-use rig::agent::{CancelSignal, PromptHook};
+use rig::agent::{HookAction, PromptHook, ToolCallHookAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::{AssistantContent, UserContent};
@@ -14,37 +14,36 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         &self,
         tool_name: &str,
         tool_call_id: Option<String>,
+        internal_call_id: &str,
         args: &str,
-        _cancel_sig: CancelSignal,
-    ) {
+    ) -> ToolCallHookAction {
         println!(
-            "[Session {}] Calling tool: {} with call ID: {tool_call_id} with args: {}",
+            "[Session {}] Calling tool: {} with call ID: {tool_call_id} (internal: {internal_call_id}) with args: {}",
             self.session_id,
             tool_name,
             args,
             tool_call_id = tool_call_id.unwrap_or("<no call ID provided>".to_string()),
         );
+        ToolCallHookAction::Continue
     }
+
     async fn on_tool_result(
         &self,
         tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         args: &str,
         result: &str,
-        _cancel_sig: CancelSignal,
-    ) {
+    ) -> HookAction {
         println!(
             "[Session {}] Tool result for {} (args: {}): {}",
             self.session_id, tool_name, args, result
         );
+
+        HookAction::cont()
     }
 
-    async fn on_completion_call(
-        &self,
-        prompt: &Message,
-        _history: &[Message],
-        _cancel_sig: CancelSignal,
-    ) {
+    async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) -> HookAction {
         println!(
             "[Session {}] Sending prompt: {}",
             self.session_id,
@@ -71,14 +70,15 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
                     .join("\n"),
             }
         );
+
+        HookAction::cont()
     }
 
     async fn on_completion_response(
         &self,
         _prompt: &Message,
         response: &CompletionResponse<M::Response>,
-        _cancel_sig: CancelSignal,
-    ) {
+    ) -> HookAction {
         if let Ok(resp) = serde_json::to_string(&response.raw_response) {
             println!("[Session {}] Received response: {}", self.session_id, resp);
         } else {
@@ -87,6 +87,8 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
                 self.session_id
             );
         }
+
+        HookAction::cont()
     }
 }
 

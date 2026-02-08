@@ -13,7 +13,9 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
-use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, StreamingResult};
+use crate::streaming::{
+    self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
+};
 use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize)]
@@ -91,6 +93,7 @@ impl GetTokenUsage for PartialUsage {
 struct ToolCallState {
     name: String,
     id: String,
+    internal_call_id: String,
     input_json: String,
 }
 
@@ -336,7 +339,8 @@ fn handle_event(
                     // Emit the delta so UI can show progress
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
                         id: tool_call.id.clone(),
-                        delta: partial_json.clone(),
+                        internal_call_id: tool_call.internal_call_id.clone(),
+                        content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
                 None
@@ -370,12 +374,18 @@ fn handle_event(
         },
         StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
             Content::ToolUse { id, name, .. } => {
+                let internal_call_id = nanoid::nanoid!();
                 *current_tool_call = Some(ToolCallState {
                     name: name.clone(),
                     id: id.clone(),
+                    internal_call_id: internal_call_id.clone(),
                     input_json: String::new(),
                 });
-                None
+                Some(Ok(RawStreamingChoice::ToolCallDelta {
+                    id: id.clone(),
+                    internal_call_id,
+                    content: ToolCallDeltaContent::Name(name.clone()),
+                }))
             }
             Content::Thinking { .. } => {
                 *current_thinking = Some(ThinkingState::default());
@@ -408,9 +418,12 @@ fn handle_event(
                     &tool_call.input_json
                 };
                 match serde_json::from_str(json_str) {
-                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
-                        RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value),
-                    ))),
+                    Ok(json_value) => {
+                        let raw_tool_call =
+                            RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value)
+                                .with_internal_call_id(tool_call.internal_call_id);
+                        Some(Ok(RawStreamingChoice::ToolCall(raw_tool_call)))
+                    }
                     Err(e) => Some(Err(CompletionError::from(e))),
                 }
             } else {
@@ -597,6 +610,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
@@ -629,6 +643,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
@@ -640,9 +655,16 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::ToolCallDelta { id, delta } => {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content,
+            } => {
                 assert_eq!(id, "tool_123");
-                assert_eq!(delta, "{\"arg\":\"value");
+                match content {
+                    ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
+                    _ => panic!("Expected Delta content"),
+                }
             }
             _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
         }
@@ -658,6 +680,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         });
         let mut thinking_state = None;

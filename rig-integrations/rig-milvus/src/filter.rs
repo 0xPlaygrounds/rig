@@ -1,4 +1,5 @@
-use rig::vector_store::request::SearchFilter;
+use rig::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
+use serde::{Deserialize, Serialize};
 
 pub enum MilvusValue {
     Number(f64),
@@ -56,6 +57,32 @@ impl From<String> for MilvusValue {
     }
 }
 
+impl TryFrom<serde_json::Value> for MilvusValue {
+    type Error = FilterError;
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        match value {
+            serde_json::Value::Bool(b) => Ok(MilvusValue::Bool(b)),
+            serde_json::Value::Number(n) => {
+                Ok(MilvusValue::Number(n.as_f64().ok_or_else(|| {
+                    FilterError::Expected {
+                        expected: "Valid 64-bit float".into(),
+                        got: "Invalid 64-bit float".into(),
+                    }
+                })?))
+            }
+            serde_json::Value::String(s) => Ok(MilvusValue::String(s)),
+            serde_json::Value::Array(arr) => Ok(MilvusValue::Array(
+                arr.into_iter()
+                    .map(MilvusValue::try_from)
+                    .collect::<Result<_, _>>()?,
+            )),
+            serde_json::Value::Null | serde_json::Value::Object(_) => Err(FilterError::TypeError(
+                "Milvus filter does not currently support null values or objects".into(),
+            )),
+        }
+    }
+}
+
 impl<T> From<Vec<T>> for MilvusValue
 where
     Self: From<T>,
@@ -84,22 +111,22 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filter(String);
 
 impl SearchFilter for Filter {
     type Value = MilvusValue;
 
-    fn eq(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} == {}", value.escaped()))
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} == {}", key.as_ref(), value.escaped()))
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} > {}", value.escaped()))
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} > {}", key.as_ref(), value.escaped()))
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
-        Self(format!("{key} < {}", value.escaped()))
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self(format!("{} < {}", key.as_ref(), value.escaped()))
     }
 
     fn and(self, rhs: Self) -> Self {
@@ -182,5 +209,20 @@ impl Filter {
 
     pub fn into_inner(self) -> String {
         self.0
+    }
+}
+
+impl TryFrom<CoreFilter<serde_json::Value>> for Filter {
+    type Error = FilterError;
+    fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
+        let value = match value {
+            CoreFilter::Eq(k, val) => Filter::eq(k, val.try_into()?),
+            CoreFilter::Gt(k, val) => Filter::gt(k, val.try_into()?),
+            CoreFilter::Lt(k, val) => Filter::lt(k, val.try_into()?),
+            CoreFilter::And(l, r) => Self::try_from(*l)?.and(Self::try_from(*r)?),
+            CoreFilter::Or(l, r) => Self::try_from(*l)?.or(Self::try_from(*r)?),
+        };
+
+        Ok(value)
     }
 }

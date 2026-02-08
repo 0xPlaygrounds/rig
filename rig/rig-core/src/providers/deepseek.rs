@@ -201,6 +201,9 @@ pub enum Message {
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
+        /// only exists on `deepseek-reasoner` model at time of addition
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -295,22 +298,29 @@ impl TryFrom<message::Message> for Vec<Message> {
             }
             message::Message::Assistant { content, .. } => {
                 let mut messages: Vec<Message> = vec![];
+                let mut text_content = String::new();
+                let mut reasoning_content = String::new();
 
-                // extract text
-                let text_content = content
-                    .clone()
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::Text(text) => Some(Message::Assistant {
-                            content: text.text,
-                            name: None,
-                            tool_calls: vec![],
-                        }),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
+                content.iter().for_each(|content| match content {
+                    message::AssistantContent::Text(text) => {
+                        text_content.push_str(text.text());
+                    }
+                    message::AssistantContent::Reasoning(reasoning) => {
+                        reasoning_content.push_str(&reasoning.reasoning.join("\n"));
+                    }
+                    _ => {}
+                });
 
-                messages.extend(text_content);
+                messages.push(Message::Assistant {
+                    content: text_content,
+                    name: None,
+                    tool_calls: vec![],
+                    reasoning_content: if reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(reasoning_content)
+                    },
+                });
 
                 // extract tool calls
                 let tool_calls = content
@@ -330,6 +340,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         content: "".to_string(),
                         name: None,
                         tool_calls,
+                        reasoning_content: None,
                     });
                 }
 
@@ -388,6 +399,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning_content,
                 ..
             } => {
                 let mut content = if content.trim().is_empty() {
@@ -408,6 +420,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         })
                         .collect::<Vec<_>>(),
                 );
+
+                if let Some(reasoning_content) = reasoning_content {
+                    content.push(completion::AssistantContent::reasoning(reasoning_content));
+                }
+
                 Ok(content)
             }
             _ => Err(CompletionError::ResponseError(
@@ -425,6 +442,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             input_tokens: response.usage.prompt_tokens as u64,
             output_tokens: response.usage.completion_tokens as u64,
             total_tokens: response.usage.total_tokens as u64,
+            cached_input_tokens: response
+                .usage
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|d| d.cached_tokens)
+                .map(|c| c as u64)
+                .unwrap_or(0),
         };
 
         Ok(completion::CompletionResponse {
@@ -473,7 +497,35 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
             .flatten()
             .collect();
 
-        full_history.extend(chat_history);
+        let mut last_reasoning_content = None;
+        let mut last_assistant_idx = None;
+
+        for message in chat_history {
+            if let Message::Assistant {
+                reasoning_content, ..
+            } = &message
+            {
+                if let Some(content) = reasoning_content {
+                    last_reasoning_content = Some(content.clone());
+                } else {
+                    last_assistant_idx = Some(full_history.len());
+                    full_history.push(message);
+                }
+            } else {
+                full_history.push(message);
+            }
+        }
+
+        // Merge last reasoning content into the last assistant message.
+        // Note that we only need to preserve the last reasoning content.
+        if let (Some(idx), Some(reasoning)) = (last_assistant_idx, last_reasoning_content)
+            && let Message::Assistant {
+                ref mut reasoning_content,
+                ..
+            } = full_history[idx]
+        {
+            *reasoning_content = Some(reasoning);
+        }
 
         let tool_choice = req
             .tool_choice
@@ -686,6 +738,13 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.output_tokens = self.usage.completion_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .and_then(|d| d.cached_tokens)
+            .map(|c| c as u64)
+            .unwrap_or(0);
 
         Some(usage)
     }
@@ -701,7 +760,6 @@ pub async fn send_compatible_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    let span = tracing::Span::current();
     let mut event_source = GenericEventSource::new(http_client, req);
 
     let stream = stream! {
@@ -823,14 +881,6 @@ where
                 crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
             ));
         }
-
-        let message = Message::Assistant {
-            content: text_response,
-            name: None,
-            tool_calls
-        };
-
-        span.record("gen_ai.output.messages", serde_json::to_string(&message).unwrap());
 
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse { usage: final_usage.clone() }
@@ -994,6 +1044,7 @@ mod tests {
                     index: 0,
                     r#type: ToolType::Function,
                 }],
+                reasoning_content: None,
             },
         };
 

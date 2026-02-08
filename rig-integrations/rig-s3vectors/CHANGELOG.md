@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.18...rig-s3vectors-v0.1.19) - 2026-02-03
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.18](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.17...rig-s3vectors-v0.1.18) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+- make integration filters available to be used as rig agent rag store ([#1249](https://github.com/0xPlaygrounds/rig/pull/1249))
+
+## [0.1.17](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.16...rig-s3vectors-v0.1.17) - 2026-01-06
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.16](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.1.15...rig-s3vectors-v0.1.16) - 2025-12-15
 
 ### Other

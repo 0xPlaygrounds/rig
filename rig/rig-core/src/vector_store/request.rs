@@ -1,19 +1,28 @@
+//! Types for constructing vector search queries.
+//!
+//! - [`VectorSearchRequest`]: Query parameters (text, result count, threshold, filters).
+//! - [`SearchFilter`]: Trait for backend-agnostic filter expressions.
+//! - [`Filter`]: Canonical, serializable filter representation.
+
 use serde::{Deserialize, Serialize};
 
 use super::VectorStoreError;
 
-/// A vector search request - used in the [`super::VectorStoreIndex`] trait.
+/// A vector search request for querying a [`super::VectorStoreIndex`].
+///
+/// The type parameter `F` specifies the filter type (defaults to [`Filter<serde_json::Value>`]).
+/// Use [`VectorSearchRequest::builder()`] to construct instances.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
-    /// The query to be embedded and used in similarity search.
+    /// The query text to embed and search with.
     query: String,
-    /// The maximum number of samples that may be returned. If adding a similarity search threshold, you may receive less than the inputted number if there aren't enough results that satisfy the threshold.
+    /// Maximum number of results to return.
     samples: u64,
-    /// Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result.
+    /// Minimum similarity score for results.
     threshold: Option<f64>,
-    /// Any additional parameters that are required by the vector store.
+    /// Backend-specific parameters as a JSON object.
     additional_params: Option<serde_json::Value>,
-    /// An expression used to filter samples
+    /// Filter expression to narrow results by metadata.
     filter: Option<F>,
 }
 
@@ -28,19 +37,25 @@ impl<Filter> VectorSearchRequest<Filter> {
         &self.query
     }
 
-    /// The maximum number of samples that may be returned. If adding a similarity search threshold, you may receive less than the inputted number if there aren't enough results that satisfy the threshold.
+    /// Returns the maximum number of results to return.
     pub fn samples(&self) -> u64 {
         self.samples
     }
 
+    /// Returns the optional similarity threshold.
     pub fn threshold(&self) -> Option<f64> {
         self.threshold
     }
 
+    /// Returns a reference to the optional filter expression.
     pub fn filter(&self) -> &Option<Filter> {
         &self.filter
     }
 
+    /// Transforms the filter type using the provided function.
+    ///
+    /// This is useful for converting between filter representations, such as
+    /// translating the canonical [`super::request::Filter`] to a backend-specific filter type.
     pub fn map_filter<T, F>(self, f: F) -> VectorSearchRequest<T>
     where
         F: Fn(Filter) -> T,
@@ -53,37 +68,65 @@ impl<Filter> VectorSearchRequest<Filter> {
             filter: self.filter.map(f),
         }
     }
+
+    /// Transforms the filter type using a provided function which can additionally return a result.
+    ///
+    /// Useful for converting between filter representations where the conversion can potentially fail (eg, unrepresentable or invalid values).
+    pub fn try_map_filter<T, F>(self, f: F) -> Result<VectorSearchRequest<T>, FilterError>
+    where
+        F: Fn(Filter) -> Result<T, FilterError>,
+    {
+        let filter = self.filter.map(f).transpose()?;
+
+        Ok(VectorSearchRequest {
+            query: self.query,
+            samples: self.samples,
+            threshold: self.threshold,
+            additional_params: self.additional_params,
+            filter,
+        })
+    }
 }
 
+/// Errors from constructing or converting filter expressions.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum FilterError {
     #[error("Expected: {expected}, got: {got}")]
     Expected { expected: String, got: String },
+
     #[error("Cannot compile '{0}' to the backend's filter type")]
     TypeError(String),
+
     #[error("Missing field '{0}'")]
     MissingField(String),
+
     #[error("'{0}' must {1}")]
     Must(String, String),
-    // NOTE: @FayCarsons - string because `serde_json::Error` is not `Clone`
-    // and we need this to be `Clone`
+
+    // NOTE: Uses String because `serde_json::Error` is not `Clone`.
     #[error("Filter serialization failed: {0}")]
     Serialization(String),
 }
 
+/// Trait for constructing filter expressions in vector search queries.
+///
+/// Uses [tagless final](https://nrinaudo.github.io/articles/tagless_final.html) encoding
+/// for backend-agnostic filters. Use `SearchFilter::eq(...)` etc. directly and let
+/// type inference resolve the concrete filter type.
 pub trait SearchFilter {
     type Value;
 
-    fn eq(key: String, value: Self::Value) -> Self;
-    fn gt(key: String, value: Self::Value) -> Self;
-    fn lt(key: String, value: Self::Value) -> Self;
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self;
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self;
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self;
     fn and(self, rhs: Self) -> Self;
     fn or(self, rhs: Self) -> Self;
 }
 
-/// A canonical, serializable retpresentation of filter expressions.
-/// This serves as an intermediary form whenever you need to inspect,
-/// store, or translate between specific vector store backends
+/// Canonical, serializable filter representation.
+///
+/// Use for serialization, runtime inspection, or translating between backends via
+/// [`Filter::interpret`]. Prefer [`SearchFilter`] trait methods for writing queries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Filter<V>
@@ -103,22 +146,27 @@ where
 {
     type Value = V;
 
-    fn eq(key: String, value: Self::Value) -> Self {
-        Self::Eq(key, value)
+    /// Select values where the entry at `key` is equal to `value`
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self::Eq(key.as_ref().to_owned(), value)
     }
 
-    fn gt(key: String, value: Self::Value) -> Self {
-        Self::Gt(key, value)
+    /// Select values where the entry at `key` is greater than `value`
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self::Gt(key.as_ref().to_owned(), value)
     }
 
-    fn lt(key: String, value: Self::Value) -> Self {
-        Self::Lt(key, value)
+    /// Select values where the entry at `key` is less than `value`
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        Self::Lt(key.as_ref().to_owned(), value)
     }
 
+    /// Select values where the entry satisfies `self` *and* `rhs`
     fn and(self, rhs: Self) -> Self {
         Self::And(self.into(), rhs.into())
     }
 
+    /// Select values where the entry satisfies `self` *or* `rhs`
     fn or(self, rhs: Self) -> Self {
         Self::Or(self.into(), rhs.into())
     }
@@ -128,6 +176,7 @@ impl<V> Filter<V>
 where
     V: std::fmt::Debug + Clone,
 {
+    /// Converts this filter into a backend-specific filter type.
     pub fn interpret<F>(self) -> F
     where
         F: SearchFilter<Value = V>,
@@ -143,6 +192,7 @@ where
 }
 
 impl Filter<serde_json::Value> {
+    /// Tests whether a JSON value satisfies this filter.
     pub fn satisfies(&self, value: &serde_json::Value) -> bool {
         use Filter::*;
         use serde_json::{Value, Value::*, json};
@@ -177,7 +227,7 @@ impl Filter<serde_json::Value> {
     }
 }
 
-/// The builder struct to instantiate [`VectorSearchRequest`].
+/// Builder for [`VectorSearchRequest`]. Requires `query` and `samples`.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct VectorSearchRequestBuilder<F = Filter<serde_json::Value>> {
     query: Option<String>,
@@ -203,7 +253,7 @@ impl<F> VectorSearchRequestBuilder<F>
 where
     F: SearchFilter,
 {
-    /// Set the query (that will then be embedded )
+    /// Sets the query text. Required.
     pub fn query<T>(mut self, query: T) -> Self
     where
         T: Into<String>,
@@ -212,16 +262,19 @@ where
         self
     }
 
+    /// Sets the maximum number of results. Required.
     pub fn samples(mut self, samples: u64) -> Self {
         self.samples = Some(samples);
         self
     }
 
+    /// Sets the minimum similarity threshold.
     pub fn threshold(mut self, threshold: f64) -> Self {
         self.threshold = Some(threshold);
         self
     }
 
+    /// Sets backend-specific parameters.
     pub fn additional_params(
         mut self,
         params: serde_json::Value,
@@ -230,11 +283,13 @@ where
         Ok(self)
     }
 
+    /// Sets a filter expression.
     pub fn filter(mut self, filter: F) -> Self {
         self.filter = Some(filter);
         self
     }
 
+    /// Builds the request, returning an error if required fields are missing.
     pub fn build(self) -> Result<VectorSearchRequest<F>, VectorStoreError> {
         let Some(query) = self.query else {
             return Err(VectorStoreError::BuilderError(

@@ -160,16 +160,20 @@ where
                                     thought: Some(true),
                                     ..
                                 } => {
-                                    yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                        id: None,
-                                        reasoning: text,
-                                    });
+                                    if !text.is_empty() {
+                                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                            id: None,
+                                            reasoning: text,
+                                        });
+                                    }
                                 },
                                 Part {
                                     part: PartKind::Text(text),
                                     ..
                                 } => {
-                                    yield Ok(streaming::RawStreamingChoice::Message(text));
+                                    if !text.is_empty() {
+                                        yield Ok(streaming::RawStreamingChoice::Message(text));
+                                    }
                                 },
                                 Part {
                                     part: PartKind::FunctionCall(function_call),

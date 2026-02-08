@@ -7,9 +7,9 @@
 //! let openai_client = rig::providers::openai::Client::from_env();
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
 //! ```
+use super::InputAudio;
 use super::completion::ToolChoice;
 use super::{Client, responses_api::streaming::StreamingCompletionResponse};
-use super::{InputAudio, SystemContent};
 use crate::completion::CompletionError;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
@@ -82,7 +82,7 @@ impl CompletionRequest {
 }
 
 /// An input item for [`CompletionRequest`].
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct InputItem {
     /// The role of an input item/message.
     /// Input messages should be Some(Role::User), and output messages should be Some(Role::Assistant).
@@ -92,6 +92,43 @@ pub struct InputItem {
     /// The input content itself.
     #[serde(flatten)]
     input: InputContent,
+}
+
+impl Serialize for InputItem {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut value = serde_json::to_value(&self.input).map_err(serde::ser::Error::custom)?;
+        let map = value.as_object_mut().ok_or_else(|| {
+            serde::ser::Error::custom("Input content must serialize to an object")
+        })?;
+
+        if let Some(role) = &self.role
+            && !map.contains_key("role")
+        {
+            map.insert(
+                "role".to_string(),
+                serde_json::to_value(role).map_err(serde::ser::Error::custom)?,
+            );
+        }
+
+        value.serialize(serializer)
+    }
+}
+
+impl InputItem {
+    pub fn system_message(content: impl Into<String>) -> Self {
+        Self {
+            role: Some(Role::System),
+            input: InputContent::Message(Message::System {
+                content: OneOrMany::one(SystemContent::InputText {
+                    text: content.into(),
+                }),
+                name: None,
+            }),
+        }
+    }
 }
 
 /// Message roles. Used by OpenAI Responses API to determine who created a given message.
@@ -603,7 +640,13 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             partial_history.extend(req.chat_history);
 
             // Initialize full history with preamble (or empty if non-existent)
-            let mut full_history: Vec<InputItem> = Vec::new();
+            // Some "Responses API compatible" providers don't support `instructions` field
+            // so we need to add a system message until further notice
+            let mut full_history: Vec<InputItem> = if let Some(content) = req.preamble {
+                vec![InputItem::system_message(content)]
+            } else {
+                Vec::new()
+            };
 
             // Convert and extend the rest of the history
             full_history.extend(
@@ -640,7 +683,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
         Ok(Self {
             input,
             model,
-            instructions: req.preamble,
+            instructions: None, // is currently None due to lack of support in compliant providers
             max_output_tokens: req.max_tokens,
             stream,
             tool_choice,
@@ -889,6 +932,7 @@ pub enum ReasoningEffort {
     #[default]
     Medium,
     High,
+    Xhigh,
 }
 
 /// The amount of effort that will go into a reasoning summary by a given model.
@@ -1138,6 +1182,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 input_tokens: usage.input_tokens,
                 output_tokens: usage.output_tokens,
                 total_tokens: usage.total_tokens,
+                cached_input_tokens: usage
+                    .input_tokens_details
+                    .as_ref()
+                    .map(|d| d.cached_tokens)
+                    .unwrap_or(0),
             })
             .unwrap_or_default();
 
@@ -1227,6 +1276,30 @@ pub enum AssistantContentType {
     Text(AssistantContent),
     ToolCall(OutputFunctionCall),
     Reasoning(OpenAIReasoning),
+}
+
+/// System content for the OpenAI Responses API.
+/// Uses `input_text` type to match the Responses API format.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SystemContent {
+    InputText { text: String },
+}
+
+impl From<String> for SystemContent {
+    fn from(s: String) -> Self {
+        SystemContent::InputText { text: s }
+    }
+}
+
+impl std::str::FromStr for SystemContent {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SystemContent::InputText {
+            text: s.to_string(),
+        })
+    }
 }
 
 /// Different types of user content.

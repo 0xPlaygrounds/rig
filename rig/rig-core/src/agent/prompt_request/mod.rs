@@ -1,14 +1,11 @@
+pub mod hooks;
 pub mod streaming;
 
-pub use streaming::StreamingPromptHook;
-
+use hooks::{HookAction, PromptHook, ToolCallHookAction};
 use std::{
     future::IntoFuture,
     marker::PhantomData,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
-    },
+    sync::atomic::{AtomicU64, Ordering},
 };
 use tracing::{Instrument, span::Id};
 
@@ -19,9 +16,8 @@ use crate::{
     OneOrMany,
     completion::{Completion, CompletionModel, Message, PromptError, Usage},
     json_utils,
-    message::{AssistantContent, UserContent},
-    tool::ToolSetError,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    message::{AssistantContent, ToolResultContent, UserContent},
+    wasm_compat::WasmBoxedFuture,
 };
 
 use super::Agent;
@@ -39,7 +35,7 @@ impl PromptType for Extended {}
 /// If you expect to continuously call tools, you will want to ensure you use the `.multi_turn()`
 /// argument to add more turns as by default, it is 0 (meaning only 1 tool round-trip). Otherwise,
 /// attempting to await (which will send the prompt request) can potentially return
-/// [`crate::completion::request::PromptError::MaxDepthError`] if the agent decides to call tools
+/// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
 pub struct PromptRequest<'a, S, M, P>
 where
@@ -53,7 +49,7 @@ where
     /// Note: chat history needs to outlive the agent as it might be used with other agents
     chat_history: Option<&'a mut Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
-    max_depth: usize,
+    max_turns: usize,
     /// The agent to use for execution
     agent: &'a Agent<M>,
     /// Phantom data to track the type of the request
@@ -73,7 +69,7 @@ where
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_depth: 0,
+            max_turns: agent.default_max_turns.unwrap_or_default(),
             agent,
             state: PhantomData,
             hook: None,
@@ -97,20 +93,20 @@ where
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
         }
     }
-    /// Set the maximum depth for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
-    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxDepthError`].
-    pub fn multi_turn(self, depth: usize) -> PromptRequest<'a, S, M, P> {
+    /// Set the maximum number of turns for multi-turn conversations. A given agent may require multiple turns for tool-calling before giving an answer.
+    /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
+    pub fn max_turns(self, depth: usize) -> PromptRequest<'a, S, M, P> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: depth,
+            max_turns: depth,
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
@@ -130,7 +126,7 @@ where
         PromptRequest {
             prompt: self.prompt,
             chat_history: Some(history),
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             state: PhantomData,
             hook: self.hook,
@@ -146,7 +142,7 @@ where
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
-            max_depth: self.max_depth,
+            max_turns: self.max_turns,
             agent: self.agent,
             state: PhantomData,
             hook: Some(hook),
@@ -154,84 +150,6 @@ where
         }
     }
 }
-
-pub struct CancelSignal(Arc<AtomicBool>);
-
-impl CancelSignal {
-    fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
-    }
-
-    pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
-    }
-
-    fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-}
-
-impl Clone for CancelSignal {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-// dead code allowed because of functions being left empty to allow for users to not have to implement every single function
-/// Trait for per-request hooks to observe tool call events.
-pub trait PromptHook<M>: Clone + WasmCompatSend + WasmCompatSync
-where
-    M: CompletionModel,
-{
-    #[allow(unused_variables)]
-    /// Called before the prompt is sent to the model
-    fn on_completion_call(
-        &self,
-        prompt: &Message,
-        history: &[Message],
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + WasmCompatSend {
-        async {}
-    }
-
-    #[allow(unused_variables)]
-    /// Called after the prompt is sent to the model and a response is received.
-    fn on_completion_response(
-        &self,
-        prompt: &Message,
-        response: &crate::completion::CompletionResponse<M::Response>,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + WasmCompatSend {
-        async {}
-    }
-
-    #[allow(unused_variables)]
-    /// Called before a tool is invoked.
-    fn on_tool_call(
-        &self,
-        tool_name: &str,
-        tool_call_id: Option<String>,
-        args: &str,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + WasmCompatSend {
-        async {}
-    }
-
-    #[allow(unused_variables)]
-    /// Called after a tool is invoked (and a result has been returned).
-    fn on_tool_result(
-        &self,
-        tool_name: &str,
-        tool_call_id: Option<String>,
-        args: &str,
-        result: &str,
-        cancel_sig: CancelSignal,
-    ) -> impl Future<Output = ()> + WasmCompatSend {
-        async {}
-    }
-}
-
-impl<M> PromptHook<M> for () where M: CompletionModel {}
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
@@ -320,9 +238,7 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
-        let cancel_sig = CancelSignal::new();
-
-        let mut current_max_depth = 0;
+        let mut current_max_turns = 0;
         let mut usage = Usage::new();
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
@@ -333,37 +249,35 @@ where
                 .cloned()
                 .expect("there should always be at least one message in the chat history");
 
-            if current_max_depth > self.max_depth + 1 {
+            if current_max_turns > self.max_turns + 1 {
                 break prompt;
             }
 
-            current_max_depth += 1;
+            current_max_turns += 1;
 
-            if self.max_depth > 1 {
+            if self.max_turns > 1 {
                 tracing::info!(
                     "Current conversation depth: {}/{}",
-                    current_max_depth,
-                    self.max_depth
+                    current_max_turns,
+                    self.max_turns
                 );
             }
 
-            if let Some(ref hook) = self.hook {
-                hook.on_completion_call(
-                    &prompt,
-                    &chat_history[..chat_history.len() - 1],
-                    cancel_sig.clone(),
-                )
-                .await;
-                if cancel_sig.is_cancelled() {
-                    return Err(PromptError::prompt_cancelled(chat_history.to_vec()));
-                }
+            if let Some(ref hook) = self.hook
+                && let HookAction::Terminate { reason } = hook
+                    .on_completion_call(&prompt, &chat_history[..chat_history.len() - 1])
+                    .await
+            {
+                return Err(PromptError::prompt_cancelled(chat_history.to_vec(), reason));
             }
+
             let span = tracing::Span::current();
             let chat_span = info_span!(
                 target: "rig::agent_chat",
                 parent: &span,
                 "chat",
                 gen_ai.operation.name = "chat",
+                gen_ai.agent.name = self.agent.name(),
                 gen_ai.system_instructions = self.agent.preamble,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
@@ -398,12 +312,11 @@ where
 
             usage += resp.usage;
 
-            if let Some(ref hook) = self.hook {
-                hook.on_completion_response(&prompt, &resp, cancel_sig.clone())
-                    .await;
-                if cancel_sig.is_cancelled() {
-                    return Err(PromptError::prompt_cancelled(chat_history.to_vec()));
-                }
+            if let Some(ref hook) = self.hook
+                && let HookAction::Terminate { reason } =
+                    hook.on_completion_response(&prompt, &resp).await
+            {
+                return Err(PromptError::prompt_cancelled(chat_history.to_vec(), reason));
             }
 
             let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
@@ -429,8 +342,8 @@ where
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                if self.max_depth > 1 {
-                    tracing::info!("Depth reached: {}/{}", current_max_depth, self.max_depth);
+                if self.max_turns > 1 {
+                    tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
                 }
 
                 agent_span.record("gen_ai.completion", &merged_texts);
@@ -448,9 +361,6 @@ where
                 .map(|choice| {
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
-
-                    let cancel_sig1 = cancel_sig.clone();
-                    let cancel_sig2 = cancel_sig.clone();
 
                     let tool_span = info_span!(
                         "execute_tool",
@@ -473,25 +383,54 @@ where
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
+                    let cloned_chat_history = chat_history.clone().to_vec();
+
                     async move {
                         if let AssistantContent::ToolCall(tool_call) = choice {
                             let tool_name = &tool_call.function.name;
                             let args =
                                 json_utils::value_to_json_string(&tool_call.function.arguments);
+                            let internal_call_id = nanoid::nanoid!();
                             let tool_span = tracing::Span::current();
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
                             if let Some(hook) = hook1 {
-                                hook.on_tool_call(
-                                    tool_name,
-                                    tool_call.call_id.clone(),
-                                    &args,
-                                    cancel_sig1.clone(),
-                                )
-                                .await;
-                                if cancel_sig1.is_cancelled() {
-                                    return Err(ToolSetError::Interrupted);
+                                let action = hook
+                                    .on_tool_call(
+                                        tool_name,
+                                        tool_call.call_id.clone(),
+                                        &internal_call_id,
+                                        &args,
+                                    )
+                                    .await;
+
+                                if let ToolCallHookAction::Terminate { reason } = action {
+                                    return Err(PromptError::prompt_cancelled(
+                                        cloned_chat_history,
+                                        reason,
+                                    ));
+                                }
+
+                                if let ToolCallHookAction::Skip { reason } = action {
+                                    // Tool execution rejected, return rejection message as tool result
+                                    tracing::info!(
+                                        tool_name = tool_name,
+                                        reason = reason,
+                                        "Tool call rejected"
+                                    );
+                                    if let Some(call_id) = tool_call.call_id.clone() {
+                                        return Ok(UserContent::tool_result_with_call_id(
+                                            tool_call.id.clone(),
+                                            call_id,
+                                            OneOrMany::one(reason.into()),
+                                        ));
+                                    } else {
+                                        return Ok(UserContent::tool_result(
+                                            tool_call.id.clone(),
+                                            OneOrMany::one(reason.into()),
+                                        ));
+                                    }
                                 }
                             }
                             let output =
@@ -502,20 +441,23 @@ where
                                         e.to_string()
                                     }
                                 };
-                            if let Some(hook) = hook2 {
-                                hook.on_tool_result(
-                                    tool_name,
-                                    tool_call.call_id.clone(),
-                                    &args,
-                                    &output.to_string(),
-                                    cancel_sig2.clone(),
-                                )
-                                .await;
-
-                                if cancel_sig2.is_cancelled() {
-                                    return Err(ToolSetError::Interrupted);
-                                }
+                            if let Some(hook) = hook2
+                                && let HookAction::Terminate { reason } = hook
+                                    .on_tool_result(
+                                        tool_name,
+                                        tool_call.call_id.clone(),
+                                        &internal_call_id,
+                                        &args,
+                                        &output.to_string(),
+                                    )
+                                    .await
+                            {
+                                return Err(PromptError::prompt_cancelled(
+                                    cloned_chat_history,
+                                    reason,
+                                ));
                             }
+
                             tool_span.record("gen_ai.tool.call.result", &output);
                             tracing::info!(
                                 "executed tool {tool_name} with args {args}. result: {output}"
@@ -524,12 +466,12 @@ where
                                 Ok(UserContent::tool_result_with_call_id(
                                     tool_call.id.clone(),
                                     call_id,
-                                    OneOrMany::one(output.into()),
+                                    ToolResultContent::from_tool_output(output),
                                 ))
                             } else {
                                 Ok(UserContent::tool_result(
                                     tool_call.id.clone(),
-                                    OneOrMany::one(output.into()),
+                                    ToolResultContent::from_tool_output(output),
                                 ))
                             }
                         } else {
@@ -541,17 +483,10 @@ where
                     .instrument(tool_span)
                 })
                 .buffer_unordered(self.concurrency)
-                .collect::<Vec<Result<UserContent, ToolSetError>>>()
+                .collect::<Vec<Result<UserContent, PromptError>>>()
                 .await
                 .into_iter()
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| {
-                    if matches!(e, ToolSetError::Interrupted) {
-                        PromptError::prompt_cancelled(chat_history.to_vec())
-                    } else {
-                        e.into()
-                    }
-                })?;
+                .collect::<Result<Vec<_>, _>>()?;
 
             chat_history.push(Message::User {
                 content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),
@@ -559,8 +494,8 @@ where
         };
 
         // If we reach here, we never resolved the final tool call. We need to do ... something.
-        Err(PromptError::MaxDepthError {
-            max_depth: self.max_depth,
+        Err(PromptError::MaxTurnsError {
+            max_turns: self.max_turns,
             chat_history: Box::new(chat_history.clone()),
             prompt: Box::new(last_prompt),
         })
