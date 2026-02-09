@@ -117,18 +117,12 @@ wasm = [
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
-# Enable native-tls backend (for users who specifically need OpenSSL/native TLS)
 reqwest-native-tls = ["reqwest/native-tls"]
-# Enable rustls backend explicitly (rustls is the default in reqwest 0.13)
-# This adds charset, http2 for full feature parity
 reqwest-rustls = [
   "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",
 ]
-# WARNING: reqwest-middleware features are temporarily incompatible with reqwest 0.13
-# See: https://github.com/TrueLayer/reqwest-middleware/issues/265
-# Uncomment when reqwest-middleware 0.5+ is available
 reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
 
