@@ -3,7 +3,7 @@ use rig::{
     OneOrMany,
     completion::Prompt,
     message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent},
-    providers::anthropic::{self, completion::CLAUDE_3_5_SONNET},
+    providers::anthropic,
 };
 
 #[tokio::main]
