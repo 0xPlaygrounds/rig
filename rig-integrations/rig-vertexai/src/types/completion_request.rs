@@ -111,6 +111,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         }
     }
 

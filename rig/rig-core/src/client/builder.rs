@@ -535,6 +535,7 @@ impl DynClientBuilder {
             additional_params: None,
             tool_choice: None,
             chat_history: crate::OneOrMany::one(prompt.into()),
+            output_schema: None,
         };
 
         completion.stream(request).await.map_err(Error::Completion)
@@ -565,6 +566,7 @@ impl DynClientBuilder {
             tool_choice: None,
             chat_history: OneOrMany::many(history)
                 .unwrap_or_else(|_| OneOrMany::one(Message::user(""))),
+            output_schema: None,
         };
 
         completion.stream(request).await.map_err(Error::Completion)

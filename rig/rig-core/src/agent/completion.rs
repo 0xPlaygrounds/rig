@@ -41,6 +41,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
+    output_schema: Option<&schemars::Schema>,
 ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
@@ -57,6 +58,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         .temperature_opt(temperature)
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params.cloned())
+        .output_schema_opt(output_schema.cloned())
         .documents(static_context.to_vec());
 
     let completion_request = if let Some(preamble) = preamble {
@@ -185,6 +187,9 @@ where
     pub default_max_turns: Option<usize>,
     /// Default hook for this agent, used when no per-request hook is provided
     pub hook: Option<P>,
+    /// Optional JSON Schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    pub output_schema: Option<schemars::Schema>,
 }
 
 impl<M, P> Agent<M, P>
@@ -220,6 +225,7 @@ where
             self.tool_choice.as_ref(),
             &self.tool_server_handle,
             &self.dynamic_context,
+            self.output_schema.as_ref(),
         )
         .await
     }

@@ -481,9 +481,25 @@ pub struct CompletionRequest {
     pub tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
+    /// Optional JSON Schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    pub output_schema: Option<schemars::Schema>,
 }
 
 impl CompletionRequest {
+    /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
+    /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
+    pub fn output_schema_name(&self) -> Option<String> {
+        self.output_schema.as_ref().map(|schema| {
+            schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string()
+        })
+    }
+
     /// Returns documents normalized into a message (if any).
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     ///  `Message` so that it can be incorporated into `chat_history` as a
@@ -568,6 +584,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     max_tokens: Option<u64>,
     tool_choice: Option<ToolChoice>,
     additional_params: Option<serde_json::Value>,
+    output_schema: Option<schemars::Schema>,
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
@@ -583,6 +600,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         }
     }
 
@@ -695,6 +713,19 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Sets the output schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Sets the output schema for structured output from an optional value.
+    pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
+        self.output_schema = schema;
+        self
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         let chat_history = OneOrMany::many([self.chat_history, vec![self.prompt]].concat())
@@ -709,6 +740,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             max_tokens: self.max_tokens,
             tool_choice: self.tool_choice,
             additional_params: self.additional_params,
+            output_schema: self.output_schema,
         }
     }
 
@@ -792,6 +824,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let expected = Message::User {
@@ -822,6 +855,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         assert_eq!(request.normalized_documents(), None);

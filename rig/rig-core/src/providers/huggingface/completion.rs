@@ -631,6 +631,9 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Huggingface");
+        }
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],

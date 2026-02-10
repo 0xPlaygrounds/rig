@@ -381,6 +381,9 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Ollama");
+        }
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
@@ -1441,6 +1444,7 @@ mod tests {
                 "keep_alive": "-1m",
                 "num_ctx": 4096
             })),
+            output_schema: None,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1503,6 +1507,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         // Convert to OllamaCompletionRequest

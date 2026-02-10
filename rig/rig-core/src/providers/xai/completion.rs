@@ -50,6 +50,9 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for xAI");
+        }
         let mut input: Vec<Message> = req
             .preamble
             .as_ref()

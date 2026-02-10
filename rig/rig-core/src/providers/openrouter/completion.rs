@@ -421,6 +421,10 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             strict_tools,
         } = params;
 
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for OpenRouter");
+        }
+
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],

@@ -1084,6 +1084,7 @@ mod azure_tests {
                 tools: vec![],
                 tool_choice: None,
                 additional_params: None,
+                output_schema: None,
             })
             .await
             .unwrap();

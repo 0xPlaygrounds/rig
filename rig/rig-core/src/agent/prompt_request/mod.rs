@@ -86,6 +86,8 @@ where
     hook: Option<P>,
     /// How many tools should be executed at the same time (1 by default).
     concurrency: usize,
+    /// Optional JSON Schema for structured output
+    output_schema: Option<schemars::Schema>,
 }
 
 impl<'a, M, P> PromptRequest<'a, Standard, M, P>
@@ -112,6 +114,7 @@ where
             state: PhantomData,
             hook: agent.hook.clone(),
             concurrency: 1,
+            output_schema: agent.output_schema.clone(),
         }
     }
 }
@@ -145,6 +148,7 @@ where
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
+            output_schema: self.output_schema,
         }
     }
 
@@ -191,6 +195,7 @@ where
             state: PhantomData,
             hook: Some(hook),
             concurrency: self.concurrency,
+            output_schema: self.output_schema,
         }
     }
 }
@@ -364,6 +369,7 @@ where
                 self.tool_choice.as_ref(),
                 &self.tool_server_handle,
                 &self.dynamic_context,
+                self.output_schema.as_ref(),
             )
             .await?
             .send()
