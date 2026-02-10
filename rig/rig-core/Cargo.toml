@@ -99,7 +99,7 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-default = []
+default = ["reqwest-rustls"]
 all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
