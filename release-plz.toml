@@ -7,45 +7,57 @@ name = "rig-derive"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-bedrock"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-fastembed"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-helixdb"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-lancedb"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-milvus"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-mongodb"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-neo4j"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-postgres"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-qdrant"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-s3vectors"
 version_group = "rig-version"
 
 [[package]]
-name = "rig-core"
+name = "rig-scylladb"
+version_group = "rig-version"
+
+[[package]]
+name = "rig-sqlite"
+version_group = "rig-version"
+
+[[package]]
+name = "rig-surrealdb"
+version_group = "rig-version"
+
+[[package]]
+name = "rig-vertexai"
 version_group = "rig-version"
