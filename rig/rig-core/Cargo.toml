@@ -32,7 +32,7 @@ mime_guess.workspace = true
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["json", "stream", "multipart", "charset", "http2", "form", "query"] }
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 rig-derive = { version = "0.1.10", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -99,7 +99,6 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-# No TLS by default - rustls is now the default in reqwest 0.13
 default = []
 all = ["derive", "pdf", "rayon"]
 audio = []
