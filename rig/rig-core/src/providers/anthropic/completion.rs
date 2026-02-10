@@ -877,8 +877,13 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
             || obj.get("type") == Some(&Value::String("number".to_string()));
 
         if is_numeric_schema {
-            for key in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"]
-            {
+            for key in [
+                "minimum",
+                "maximum",
+                "exclusiveMinimum",
+                "exclusiveMaximum",
+                "multipleOf",
+            ] {
                 obj.remove(key);
             }
         }
@@ -921,9 +926,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum OutputFormat {
     /// Constrains the model's response to conform to the provided JSON schema.
-    JsonSchema {
-        schema: serde_json::Value,
-    },
+    JsonSchema { schema: serde_json::Value },
 }
 
 /// Configuration for the model's output format.

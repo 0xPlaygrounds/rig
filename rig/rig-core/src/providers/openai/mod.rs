@@ -213,8 +213,13 @@ mod tests {
 
         sanitize_schema(&mut schema);
 
-        assert_eq!(schema["properties"]["inner"]["additionalProperties"], json!(false));
-        let inner_required = schema["properties"]["inner"]["required"].as_array().unwrap();
+        assert_eq!(
+            schema["properties"]["inner"]["additionalProperties"],
+            json!(false)
+        );
+        let inner_required = schema["properties"]["inner"]["required"]
+            .as_array()
+            .unwrap();
         assert!(inner_required.contains(&json!("value")));
     }
 }
