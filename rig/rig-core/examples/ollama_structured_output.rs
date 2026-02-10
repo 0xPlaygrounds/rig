@@ -1,7 +1,4 @@
-use hyper_util::client::legacy::Client;
-use rig::client::Nothing;
 use rig::prelude::*;
-use rig::providers::ollama::OllamaExt;
 use rig::{completion::Prompt, providers::ollama};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
