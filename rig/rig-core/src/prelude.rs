@@ -1,6 +1,7 @@
 pub use crate::client::ProviderClient;
 pub use crate::client::completion::CompletionClient;
 pub use crate::client::embeddings::EmbeddingsClient;
+pub use crate::client::model_listing::ModelListingClient;
 pub use crate::client::transcription::TranscriptionClient;
 pub use crate::client::verify::{VerifyClient, VerifyError};
 

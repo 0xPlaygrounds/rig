@@ -1,8 +1,6 @@
-#[cfg(feature = "image")]
-use crate::client::Nothing;
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
-    Transport,
+    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient, Transport,
 };
 use crate::http_client;
 use serde::Deserialize;
@@ -82,6 +80,7 @@ impl<H> Capabilities<H> for GeminiExt {
     type Completion = Capable<super::completion::CompletionModel>;
     type Embeddings = Capable<super::embedding::EmbeddingModel>;
     type Transcription = Capable<super::transcription::TranscriptionModel>;
+    type ModelListing = Nothing;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;

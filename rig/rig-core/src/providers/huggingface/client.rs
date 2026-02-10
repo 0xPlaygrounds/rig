@@ -131,6 +131,7 @@ impl<H> Capabilities<H> for HuggingFaceExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
 

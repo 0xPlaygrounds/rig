@@ -38,6 +38,7 @@ impl<H> Capabilities<H> for TogetherExt {
     type Embeddings = Capable<super::EmbeddingModel<H>>;
 
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
