@@ -4,7 +4,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, Reasoning},
+    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
     telemetry::{ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
@@ -305,11 +305,27 @@ pub struct ImageSource {
     pub r#type: SourceType,
 }
 
+/// The source of a document content block.
+///
+/// Anthropic supports multiple source types for documents. Currently implemented:
+/// - `Base64`: Base64-encoded document data (used for PDFs)
+/// - `Text`: Plain text document data
+///
+/// Future variants (not yet implemented):
+/// - URL-based PDF sources
+/// - Content block sources
+/// - File API sources
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct DocumentSource {
-    pub data: String,
-    pub media_type: DocumentFormat,
-    pub r#type: SourceType,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DocumentSource {
+    Base64 {
+        data: String,
+        media_type: DocumentFormat,
+    },
+    Text {
+        data: String,
+        media_type: PlainTextMediaType,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -325,9 +341,12 @@ pub enum ImageFormat {
     WEBP,
 }
 
-/// The document format to be used.
+/// The media type for base64-encoded documents.
 ///
-/// Currently, Anthropic only supports PDF for text documents over the API (within a message). You can find more information about this here: <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>
+/// Used with the `DocumentSource::Base64` variant. Currently only PDF is supported
+/// for base64-encoded document sources.
+///
+/// See: <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocumentFormat {
@@ -335,11 +354,23 @@ pub enum DocumentFormat {
     PDF,
 }
 
+/// The media type for plain text document sources.
+///
+/// Used with the `DocumentSource::Text` variant.
+///
+/// See: <https://docs.anthropic.com/en/api/messages>
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub enum PlainTextMediaType {
+    #[serde(rename = "text/plain")]
+    Plain,
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceType {
     BASE64,
     URL,
+    TEXT,
 }
 
 impl From<String> for Content {
@@ -364,9 +395,7 @@ impl TryFrom<message::ContentFormat> for SourceType {
         match format {
             message::ContentFormat::Base64 => Ok(SourceType::BASE64),
             message::ContentFormat::Url => Ok(SourceType::URL),
-            message::ContentFormat::String => Err(MessageError::ConversionError(
-                "ContentFormat::String is deprecated, use ContentFormat::Url for URLs".into(),
-            )),
+            message::ContentFormat::String => Ok(SourceType::TEXT),
         }
     }
 }
@@ -376,6 +405,7 @@ impl From<SourceType> for message::ContentFormat {
         match source_type {
             SourceType::BASE64 => message::ContentFormat::Base64,
             SourceType::URL => message::ContentFormat::Url,
+            SourceType::TEXT => message::ContentFormat::String,
         }
     }
 }
@@ -412,13 +442,13 @@ impl From<ImageFormat> for message::ImageMediaType {
 impl TryFrom<DocumentMediaType> for DocumentFormat {
     type Error = MessageError;
     fn try_from(value: DocumentMediaType) -> Result<Self, Self::Error> {
-        if !matches!(value, DocumentMediaType::PDF) {
-            return Err(MessageError::ConversionError(
-                "Anthropic only supports PDF documents".to_string(),
-            ));
-        };
-
-        Ok(DocumentFormat::PDF)
+        match value {
+            DocumentMediaType::PDF => Ok(DocumentFormat::PDF),
+            other => Err(MessageError::ConversionError(format!(
+                "DocumentFormat only supports PDF for base64 sources, got: {}",
+                other.to_mime_type()
+            ))),
+        }
     }
 }
 
@@ -535,22 +565,45 @@ impl TryFrom<message::Message> for Message {
                             "Document media type is required".to_string(),
                         ))?;
 
-                        let data = match data {
-                            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
-                                data
+                        let source = match media_type {
+                            DocumentMediaType::PDF => {
+                                let data = match data {
+                                    DocumentSourceKind::Base64(data)
+                                    | DocumentSourceKind::String(data) => data,
+                                    _ => {
+                                        return Err(MessageError::ConversionError(
+                                            "Only base64 encoded data is supported for PDF documents".into(),
+                                        ));
+                                    }
+                                };
+                                DocumentSource::Base64 {
+                                    data,
+                                    media_type: DocumentFormat::PDF,
+                                }
                             }
-                            _ => {
-                                return Err(MessageError::ConversionError(
-                                    "Only base64 encoded documents currently supported".into(),
-                                ));
+                            DocumentMediaType::TXT => {
+                                let data = match data {
+                                    DocumentSourceKind::String(data)
+                                    | DocumentSourceKind::Base64(data) => data,
+                                    _ => {
+                                        return Err(MessageError::ConversionError(
+                                            "Only string or base64 data is supported for plain text documents".into(),
+                                        ));
+                                    }
+                                };
+                                DocumentSource::Text {
+                                    data,
+                                    media_type: PlainTextMediaType::Plain,
+                                }
+                            }
+                            other => {
+                                return Err(MessageError::ConversionError(format!(
+                                    "Anthropic only supports PDF and plain text documents, got: {}",
+                                    other.to_mime_type()
+                                )));
                             }
                         };
 
-                        let source = DocumentSource {
-                            data,
-                            media_type: media_type.try_into()?,
-                            r#type: SourceType::BASE64,
-                        };
                         Ok(Content::Document {
                             source,
                             cache_control: None,
@@ -635,10 +688,18 @@ impl TryFrom<Message> for message::Message {
                                 additional_params: None,
                             })
                         }
-                        Content::Document { source, .. } => message::UserContent::document(
-                            source.data,
-                            Some(message::DocumentMediaType::PDF),
-                        ),
+                        Content::Document { source, .. } => match source {
+                            DocumentSource::Base64 { data, media_type } => {
+                                let rig_media_type = match media_type {
+                                    DocumentFormat::PDF => message::DocumentMediaType::PDF,
+                                };
+                                message::UserContent::document(data, Some(rig_media_type))
+                            }
+                            DocumentSource::Text { data, .. } => message::UserContent::document(
+                                data,
+                                Some(message::DocumentMediaType::TXT),
+                            ),
+                        },
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
@@ -1382,14 +1443,11 @@ mod tests {
         let content_format: ContentFormat = SourceType::BASE64.into();
         assert_eq!(content_format, ContentFormat::Base64);
 
-        let result: Result<SourceType, _> = ContentFormat::String.try_into();
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("ContentFormat::String is deprecated")
-        );
+        let source_type: SourceType = ContentFormat::String.try_into().unwrap();
+        assert_eq!(source_type, SourceType::TEXT);
+
+        let content_format: ContentFormat = SourceType::TEXT.into();
+        assert_eq!(content_format, ContentFormat::String);
     }
 
     #[test]
@@ -1463,6 +1521,313 @@ mod tests {
             if let Content::Text { cache_control, .. } = content {
                 assert!(cache_control.is_some());
             }
+        }
+    }
+
+    #[test]
+    fn test_plaintext_document_serialization() {
+        let content = Content::Document {
+            source: DocumentSource::Text {
+                data: "Hello, world!".to_string(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            cache_control: None,
+        };
+
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "document");
+        assert_eq!(json["source"]["type"], "text");
+        assert_eq!(json["source"]["media_type"], "text/plain");
+        assert_eq!(json["source"]["data"], "Hello, world!");
+    }
+
+    #[test]
+    fn test_plaintext_document_deserialization() {
+        let json = r#"
+        {
+            "type": "document",
+            "source": {
+                "type": "text",
+                "media_type": "text/plain",
+                "data": "Hello, world!"
+            }
+        }
+        "#;
+
+        let content: Content = serde_json::from_str(json).unwrap();
+        match content {
+            Content::Document {
+                source,
+                cache_control,
+            } => {
+                assert_eq!(
+                    source,
+                    DocumentSource::Text {
+                        data: "Hello, world!".to_string(),
+                        media_type: PlainTextMediaType::Plain,
+                    }
+                );
+                assert_eq!(cache_control, None);
+            }
+            _ => panic!("Expected Document content"),
+        }
+    }
+
+    #[test]
+    fn test_base64_pdf_document_serialization() {
+        let content = Content::Document {
+            source: DocumentSource::Base64 {
+                data: "base64data".to_string(),
+                media_type: DocumentFormat::PDF,
+            },
+            cache_control: None,
+        };
+
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "document");
+        assert_eq!(json["source"]["type"], "base64");
+        assert_eq!(json["source"]["media_type"], "application/pdf");
+        assert_eq!(json["source"]["data"], "base64data");
+    }
+
+    #[test]
+    fn test_base64_pdf_document_deserialization() {
+        let json = r#"
+        {
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": "base64data"
+            }
+        }
+        "#;
+
+        let content: Content = serde_json::from_str(json).unwrap();
+        match content {
+            Content::Document { source, .. } => {
+                assert_eq!(
+                    source,
+                    DocumentSource::Base64 {
+                        data: "base64data".to_string(),
+                        media_type: DocumentFormat::PDF,
+                    }
+                );
+            }
+            _ => panic!("Expected Document content"),
+        }
+    }
+
+    #[test]
+    fn test_plaintext_rig_to_anthropic_conversion() {
+        use crate::completion::message as msg;
+
+        let rig_message = msg::Message::User {
+            content: OneOrMany::one(msg::UserContent::document(
+                "Some plain text content".to_string(),
+                Some(msg::DocumentMediaType::TXT),
+            )),
+        };
+
+        let anthropic_message: Message = rig_message.try_into().unwrap();
+        assert_eq!(anthropic_message.role, Role::User);
+
+        let mut iter = anthropic_message.content.into_iter();
+        match iter.next().unwrap() {
+            Content::Document { source, .. } => {
+                assert_eq!(
+                    source,
+                    DocumentSource::Text {
+                        data: "Some plain text content".to_string(),
+                        media_type: PlainTextMediaType::Plain,
+                    }
+                );
+            }
+            other => panic!("Expected Document content, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_plaintext_anthropic_to_rig_conversion() {
+        use crate::completion::message as msg;
+
+        let anthropic_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Some plain text content".to_string(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                cache_control: None,
+            }),
+        };
+
+        let rig_message: msg::Message = anthropic_message.try_into().unwrap();
+        match rig_message {
+            msg::Message::User { content } => {
+                let mut iter = content.into_iter();
+                match iter.next().unwrap() {
+                    msg::UserContent::Document(msg::Document {
+                        data, media_type, ..
+                    }) => {
+                        assert_eq!(
+                            data,
+                            DocumentSourceKind::String("Some plain text content".into())
+                        );
+                        assert_eq!(media_type, Some(msg::DocumentMediaType::TXT));
+                    }
+                    other => panic!("Expected Document content, got: {other:?}"),
+                }
+            }
+            _ => panic!("Expected User message"),
+        }
+    }
+
+    #[test]
+    fn test_plaintext_roundtrip_rig_to_anthropic_and_back() {
+        use crate::completion::message as msg;
+
+        let original = msg::Message::User {
+            content: OneOrMany::one(msg::UserContent::document(
+                "Round trip text".to_string(),
+                Some(msg::DocumentMediaType::TXT),
+            )),
+        };
+
+        let anthropic: Message = original.clone().try_into().unwrap();
+        let back: msg::Message = anthropic.try_into().unwrap();
+
+        match (&original, &back) {
+            (
+                msg::Message::User {
+                    content: orig_content,
+                },
+                msg::Message::User {
+                    content: back_content,
+                },
+            ) => match (orig_content.first(), back_content.first()) {
+                (
+                    msg::UserContent::Document(msg::Document {
+                        media_type: orig_mt,
+                        ..
+                    }),
+                    msg::UserContent::Document(msg::Document {
+                        media_type: back_mt,
+                        ..
+                    }),
+                ) => {
+                    assert_eq!(orig_mt, back_mt);
+                }
+                _ => panic!("Expected Document content in both"),
+            },
+            _ => panic!("Expected User messages"),
+        }
+    }
+
+    #[test]
+    fn test_unsupported_document_type_returns_error() {
+        use crate::completion::message as msg;
+
+        let rig_message = msg::Message::User {
+            content: OneOrMany::one(msg::UserContent::Document(msg::Document {
+                data: DocumentSourceKind::String("data".into()),
+                media_type: Some(msg::DocumentMediaType::HTML),
+                additional_params: None,
+            })),
+        };
+
+        let result: Result<Message, _> = rig_message.try_into();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Anthropic only supports PDF and plain text documents"),
+            "Unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_plaintext_document_url_source_returns_error() {
+        use crate::completion::message as msg;
+
+        let rig_message = msg::Message::User {
+            content: OneOrMany::one(msg::UserContent::Document(msg::Document {
+                data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
+                media_type: Some(msg::DocumentMediaType::TXT),
+                additional_params: None,
+            })),
+        };
+
+        let result: Result<Message, _> = rig_message.try_into();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Only string or base64 data is supported for plain text documents"),
+            "Unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_plaintext_document_with_cache_control() {
+        let content = Content::Document {
+            source: DocumentSource::Text {
+                data: "cached text".to_string(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            cache_control: Some(CacheControl::Ephemeral),
+        };
+
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["source"]["type"], "text");
+        assert_eq!(json["source"]["media_type"], "text/plain");
+        assert_eq!(json["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_message_with_plaintext_document_deserialization() {
+        let json = r#"
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "text",
+                        "media_type": "text/plain",
+                        "data": "Hello from a text file"
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "Summarize this document."
+                }
+            ]
+        }
+        "#;
+
+        let message: Message = serde_json::from_str(json).unwrap();
+        assert_eq!(message.role, Role::User);
+        assert_eq!(message.content.len(), 2);
+
+        let mut iter = message.content.into_iter();
+
+        match iter.next().unwrap() {
+            Content::Document { source, .. } => {
+                assert_eq!(
+                    source,
+                    DocumentSource::Text {
+                        data: "Hello from a text file".to_string(),
+                        media_type: PlainTextMediaType::Plain,
+                    }
+                );
+            }
+            _ => panic!("Expected Document content"),
+        }
+
+        match iter.next().unwrap() {
+            Content::Text { text, .. } => {
+                assert_eq!(text, "Summarize this document.");
+            }
+            _ => panic!("Expected Text content"),
         }
     }
 }
