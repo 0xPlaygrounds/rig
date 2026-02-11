@@ -537,6 +537,8 @@ where
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {
+    /// Optional model override for this request.
+    pub model: Option<String>,
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
@@ -649,6 +651,7 @@ impl CompletionRequest {
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
     prompt: Message,
+    request_model: Option<String>,
     preamble: Option<String>,
     chat_history: Vec<Message>,
     documents: Vec<Document>,
@@ -665,6 +668,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         Self {
             model,
             prompt: prompt.into(),
+            request_model: None,
             preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
@@ -680,6 +684,18 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
         self.preamble = Some(preamble);
+        self
+    }
+
+    /// Overrides the model used for this request.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.request_model = Some(model.into());
+        self
+    }
+
+    /// Overrides the model used for this request.
+    pub fn model_opt(mut self, model: Option<String>) -> Self {
+        self.request_model = model;
         self
     }
 
@@ -813,6 +829,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             .expect("There will always be atleast the prompt");
 
         CompletionRequest {
+            model: self.request_model,
             preamble: self.preamble,
             chat_history,
             documents: self.documents,
@@ -897,6 +914,7 @@ mod tests {
         };
 
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: vec![doc1, doc2],
@@ -928,6 +946,7 @@ mod tests {
     #[test]
     fn test_normalize_documents_without_documents() {
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: Vec::new(),

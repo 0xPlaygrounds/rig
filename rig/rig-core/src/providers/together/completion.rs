@@ -150,6 +150,7 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for TogetherAI");
         }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],

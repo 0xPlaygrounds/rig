@@ -266,6 +266,7 @@ impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
             tracing::warn!("Structured outputs currently not supported for Hyperbolic");
         }
 
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
         }

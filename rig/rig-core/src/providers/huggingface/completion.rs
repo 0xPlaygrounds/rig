@@ -634,6 +634,7 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Huggingface");
         }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -710,13 +711,17 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "huggingface",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -727,7 +732,7 @@ where
             tracing::Span::current()
         };
 
-        let model = self.client.subprovider().model_identifier(&self.model);
+        let model = self.client.subprovider().model_identifier(&request_model);
         let request = HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
         if enabled!(Level::TRACE) {
@@ -740,7 +745,10 @@ where
 
         let request = serde_json::to_vec(&request)?;
 
-        let path = self.client.subprovider().completion_endpoint(&self.model);
+        let path = self
+            .client
+            .subprovider()
+            .completion_endpoint(&request_model);
         let request = self
             .client
             .post(&path)?
@@ -805,6 +813,48 @@ where
 mod tests {
     use super::*;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn test_huggingface_request_uses_request_model_override() {
+        let request = CompletionRequest {
+            model: Some("meta-llama/Meta-Llama-3.1-8B-Instruct".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let hf_request = HuggingfaceCompletionRequest::try_from(("mistralai/Mistral-7B", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(hf_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "meta-llama/Meta-Llama-3.1-8B-Instruct");
+    }
+
+    #[test]
+    fn test_huggingface_request_uses_default_model_when_override_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let hf_request = HuggingfaceCompletionRequest::try_from(("mistralai/Mistral-7B", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(hf_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "mistralai/Mistral-7B");
+    }
 
     #[test]
     fn test_deserialize_message() {

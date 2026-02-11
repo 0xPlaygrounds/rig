@@ -1039,6 +1039,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             partial_history.push(docs);
         }
         let CoreCompletionRequest {
+            model: request_model,
             preamble,
             chat_history,
             tools,
@@ -1111,7 +1112,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         };
 
         let res = Self {
-            model,
+            model: request_model.unwrap_or(model),
             messages: full_history,
             tools,
             tool_choice,
@@ -1298,5 +1299,64 @@ where
         serializer.serialize_str("")
     } else {
         value.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CompletionRequest, OpenAIRequestParams};
+
+    #[test]
+    fn test_openai_request_uses_request_model_override() {
+        let request = crate::completion::CompletionRequest {
+            model: Some("gpt-4.1".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "gpt-4.1");
+    }
+
+    #[test]
+    fn test_openai_request_uses_default_model_when_override_unset() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "gpt-4o-mini");
     }
 }

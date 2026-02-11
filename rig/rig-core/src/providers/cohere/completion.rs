@@ -551,6 +551,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
             tracing::warn!("Structured outputs currently not supported for Cohere");
         }
 
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);

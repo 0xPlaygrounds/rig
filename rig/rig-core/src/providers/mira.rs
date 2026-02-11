@@ -223,6 +223,7 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Mira");
         }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut messages = Vec::new();
 
         if let Some(content) = &req.preamble {

@@ -481,6 +481,7 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for DeepSeek");
         }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],

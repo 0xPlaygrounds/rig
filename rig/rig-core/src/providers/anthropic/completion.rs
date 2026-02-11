@@ -1094,13 +1094,17 @@ where
         &self,
         mut completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "anthropic",
-                gen_ai.request.model = &self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -1123,7 +1127,7 @@ where
         }
 
         let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-            model: &self.model,
+            model: &request_model,
             request: completion_request,
             prompt_caching: self.prompt_caching,
         })?;

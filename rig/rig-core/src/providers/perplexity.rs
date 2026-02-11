@@ -219,6 +219,7 @@ impl TryFrom<(&str, CompletionRequest)> for PerplexityCompletionRequest {
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Perplexity");
         }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);

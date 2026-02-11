@@ -383,6 +383,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
@@ -1428,6 +1429,7 @@ mod tests {
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
+            model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text {
@@ -1495,6 +1497,7 @@ mod tests {
 
         // Create a CompletionRequest WITHOUT "think" in additional_params
         let completion_request = CompletionRequest {
+            model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text {
