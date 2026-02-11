@@ -672,12 +672,27 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             .unwrap_or(Value::Null)
             .as_bool();
 
-        let additional_parameters = if let Some(map) = req.additional_params {
+        let mut additional_parameters = if let Some(map) = req.additional_params {
             serde_json::from_value::<AdditionalParameters>(map).expect("Converting additional parameters to AdditionalParameters should never fail as every field is an Option")
         } else {
             // If there's no additional parameters, initialise an empty object
             AdditionalParameters::default()
         };
+
+        // Apply output_schema as structured output if not already configured via additional_params
+        if additional_parameters.text.is_none()
+            && let Some(schema) = req.output_schema
+        {
+            let name = schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            super::sanitize_schema(&mut schema_value);
+            additional_parameters.text = Some(TextConfig::structured_output(name, schema_value));
+        }
 
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
 

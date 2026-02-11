@@ -220,6 +220,9 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Mira");
+        }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut messages = Vec::new();
 

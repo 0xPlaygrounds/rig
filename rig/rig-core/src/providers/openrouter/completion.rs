@@ -422,6 +422,10 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         } = params;
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for OpenRouter");
+        }
+
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -633,6 +637,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let openrouter_request =
@@ -656,6 +661,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let openrouter_request =

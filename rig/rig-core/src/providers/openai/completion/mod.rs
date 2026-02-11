@@ -1046,6 +1046,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             temperature,
             additional_params,
             tool_choice,
+            output_schema,
             ..
         } = req;
 
@@ -1081,6 +1082,34 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 if strict_tools { def.with_strict() } else { def }
             })
             .collect();
+
+        // Map output_schema to OpenAI's response_format and merge into additional_params
+        let additional_params = if let Some(schema) = output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            super::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value
+                    }
+                }
+            });
+            Some(match additional_params {
+                Some(existing) => json_utils::merge(existing, response_format),
+                None => response_format,
+            })
+        } else {
+            additional_params
+        };
 
         let res = Self {
             model: request_model.unwrap_or(model),
@@ -1289,6 +1318,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -1316,6 +1346,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {

@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use schemars::{JsonSchema, Schema, schema_for};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -104,6 +105,8 @@ where
     tool_state: ToolState,
     /// Prompt hook
     hook: Option<P>,
+    /// Optional JSON Schema for structured output
+    output_schema: Option<schemars::Schema>,
 }
 
 impl<M, P, ToolState> AgentBuilder<M, P, ToolState>
@@ -192,6 +195,22 @@ where
         self.additional_params = Some(params);
         self
     }
+
+    /// Set the output schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    pub fn output_schema<T>(mut self) -> Self
+    where
+        T: JsonSchema,
+    {
+        self.output_schema = Some(schema_for!(T));
+        self
+    }
+
+    /// Set the output schema for structured output. In comparison to `AgentBuilder::schema()` which requires type annotation, you can put in any schema you'd like here.
+    pub fn output_schema_raw(mut self, schema: Schema) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
 }
 
 impl<M> AgentBuilder<M, (), NoToolConfig>
@@ -214,6 +233,7 @@ where
             default_max_turns: None,
             tool_state: NoToolConfig,
             hook: None,
+            output_schema: None,
         }
     }
 }
@@ -246,6 +266,7 @@ where
             default_max_turns: self.default_max_turns,
             tool_state: WithToolServerHandle { handle },
             hook: self.hook,
+            output_schema: self.output_schema,
         }
     }
 
@@ -273,6 +294,7 @@ where
                 dynamic_tools: vec![],
             },
             hook: self.hook,
+            output_schema: self.output_schema,
         }
     }
 
@@ -297,6 +319,7 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
@@ -331,6 +354,7 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
                 tools,
@@ -375,6 +399,7 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
@@ -406,6 +431,7 @@ where
             tool_choice: self.tool_choice,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
             tool_state: WithBuilderTools {
                 static_tools: vec![],
                 tools: toolset,
@@ -436,6 +462,7 @@ where
             default_max_turns: self.default_max_turns,
             tool_state: self.tool_state,
             hook: Some(hook),
+            output_schema: self.output_schema,
         }
     }
 
@@ -459,6 +486,7 @@ where
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
         }
     }
 }
@@ -484,6 +512,7 @@ where
             tool_server_handle: self.tool_state.handle,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
         }
     }
 }
@@ -568,6 +597,7 @@ where
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
+            output_schema: self.output_schema,
         }
     }
 }

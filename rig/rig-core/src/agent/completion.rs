@@ -41,6 +41,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
+    output_schema: Option<&schemars::Schema>,
 ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
@@ -57,6 +58,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         .temperature_opt(temperature)
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params.cloned())
+        .output_schema_opt(output_schema.cloned())
         .documents(static_context.to_vec());
 
     let completion_request = if let Some(preamble) = preamble {
@@ -185,6 +187,9 @@ where
     pub default_max_turns: Option<usize>,
     /// Default hook for this agent, used when no per-request hook is provided
     pub hook: Option<P>,
+    /// Optional JSON Schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    pub output_schema: Option<schemars::Schema>,
 }
 
 impl<M, P> Agent<M, P>
@@ -220,6 +225,7 @@ where
             self.tool_choice.as_ref(),
             &self.tool_server_handle,
             &self.dynamic_context,
+            self.output_schema.as_ref(),
         )
         .await
     }
@@ -325,5 +331,87 @@ where
         chat_history: Vec<Message>,
     ) -> StreamingPromptRequest<M, P> {
         StreamingPromptRequest::<M, P>::from_agent(self, prompt).with_history(chat_history)
+    }
+}
+
+use crate::{agent::prompt_request::TypedPromptRequest, completion::TypedPrompt};
+use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
+
+#[allow(refining_impl_trait)]
+impl<M, P> TypedPrompt for Agent<M, P>
+where
+    M: CompletionModel,
+    P: PromptHook<M> + 'static,
+{
+    type TypedRequest<'a, T>
+        = TypedPromptRequest<'a, T, M, P>
+    where
+        Self: 'a,
+        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+
+    /// Send a prompt and receive a typed structured response.
+    ///
+    /// The JSON schema for `T` is automatically generated and sent to the provider.
+    /// Providers that support native structured outputs will constrain the model's
+    /// response to match this schema.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// use rig::prelude::*;
+    /// use schemars::JsonSchema;
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Debug, Deserialize, JsonSchema)]
+    /// struct WeatherForecast {
+    ///     city: String,
+    ///     temperature_f: f64,
+    ///     conditions: String,
+    /// }
+    ///
+    /// let agent = client.agent("gpt-4o").build();
+    ///
+    /// // Type inferred from variable
+    /// let forecast: WeatherForecast = agent
+    ///     .prompt_typed("What's the weather in NYC?")
+    ///     .await?;
+    ///
+    /// // Or explicit turbofish syntax
+    /// let forecast = agent
+    ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
+    ///     .max_turns(3)
+    ///     .await?;
+    /// ```
+    fn prompt_typed<T>(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> TypedPromptRequest<'_, T, M, P>
+    where
+        T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    {
+        TypedPromptRequest::from_agent(self, prompt)
+    }
+}
+
+#[allow(refining_impl_trait)]
+impl<M, P> TypedPrompt for &Agent<M, P>
+where
+    M: CompletionModel,
+    P: PromptHook<M> + 'static,
+{
+    type TypedRequest<'a, T>
+        = TypedPromptRequest<'a, T, M, P>
+    where
+        Self: 'a,
+        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+
+    fn prompt_typed<T>(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> TypedPromptRequest<'_, T, M, P>
+    where
+        T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    {
+        TypedPromptRequest::from_agent(*self, prompt)
     }
 }

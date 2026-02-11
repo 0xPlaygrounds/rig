@@ -119,4 +119,4 @@ pub use prompt_request::streaming::{
     FinalResponse, MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
     stream_to_stdout,
 };
-pub use prompt_request::{PromptRequest, PromptResponse};
+pub use prompt_request::{PromptRequest, PromptResponse, TypedPromptRequest};

@@ -184,6 +184,9 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Groq");
+        }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];

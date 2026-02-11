@@ -137,7 +137,8 @@ where
     dynamic_context: DynamicContextStore,
     /// Tool choice setting
     tool_choice: Option<ToolChoice>,
-
+    /// Optional JSON Schema for structured output
+    output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
 }
@@ -165,6 +166,7 @@ where
             tool_server_handle: agent.tool_server_handle.clone(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
+            output_schema: agent.output_schema.clone(),
             hook: None,
         }
     }
@@ -191,6 +193,7 @@ where
             tool_server_handle: agent.tool_server_handle.clone(),
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
+            output_schema: agent.output_schema.clone(),
             hook: agent.hook.clone(),
         }
     }
@@ -232,6 +235,7 @@ where
             tool_server_handle: self.tool_server_handle,
             dynamic_context: self.dynamic_context,
             tool_choice: self.tool_choice,
+            output_schema: self.output_schema,
             hook: Some(hook),
         }
     }
@@ -281,6 +285,7 @@ where
         let mut last_text_response = String::new();
         let mut is_text_response = false;
         let mut max_turns_reached = false;
+        let output_schema = self.output_schema;
 
         let mut aggregated_usage = crate::completion::Usage::new();
 
@@ -352,6 +357,7 @@ where
                         tool_choice.as_ref(),
                         &tool_server_handle,
                         &dynamic_context,
+                        output_schema.as_ref(),
                     )
                     .await?
                     .stream(), chat_stream_span

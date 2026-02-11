@@ -33,8 +33,8 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
-    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse, Part, PartKind,
-    Role, Tool,
+    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
+    GenerationConfig, Part, PartKind, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -198,6 +198,13 @@ pub(crate) fn create_request_body(
         mut generation_config,
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
+
+    // Apply output_schema to generation_config, creating one if needed
+    if let Some(schema) = completion_request.output_schema {
+        let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
+        cfg.response_mime_type = Some("application/json".to_string());
+        cfg.response_json_schema = Some(schema.to_value());
+    }
 
     generation_config = generation_config.map(|mut cfg| {
         if let Some(temp) = completion_request.temperature {
@@ -1855,6 +1862,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let request_model = resolve_request_model("gemini-2.0-flash", &request);
@@ -1881,6 +1889,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         assert_eq!(

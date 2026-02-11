@@ -374,6 +374,8 @@ pub(super) struct OllamaCompletionRequest {
     max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     keep_alive: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<schemars::Schema>,
     options: serde_json::Value,
 }
 
@@ -450,6 +452,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
             stream: false,
             think,
             keep_alive,
+            format: req.output_schema,
             tools: req
                 .tools
                 .clone()
@@ -1443,6 +1446,7 @@ mod tests {
                 "keep_alive": "-1m",
                 "num_ctx": 4096
             })),
+            output_schema: None,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1506,6 +1510,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1538,5 +1543,95 @@ mod tests {
         });
 
         assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_completion_request_with_output_schema() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let schema: schemars::Schema = serde_json::from_value(json!({
+            "type": "object",
+            "properties": {
+                "age": { "type": "integer" },
+                "available": { "type": "boolean" }
+            },
+            "required": ["age", "available"]
+        }))
+        .expect("Failed to parse schema");
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "How old is Ollama?".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: Some(schema),
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        let format = serialized
+            .get("format")
+            .expect("format field should be present");
+        assert_eq!(
+            *format,
+            json!({
+                "type": "object",
+                "properties": {
+                    "age": { "type": "integer" },
+                    "available": { "type": "boolean" }
+                },
+                "required": ["age", "available"]
+            })
+        );
+    }
+
+    #[test]
+    fn test_completion_request_without_output_schema() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "Hello!".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert!(
+            serialized.get("format").is_none(),
+            "format field should be absent when output_schema is None"
+        );
     }
 }
