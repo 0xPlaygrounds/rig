@@ -72,6 +72,7 @@ impl<H> Capabilities<H> for GroqExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Capable<TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -183,6 +184,10 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Groq");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
@@ -763,10 +768,7 @@ mod tests {
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{
-                            "type": "text",
-                            "text": "Hello world!"
-                        }]
+                        "content": "Hello world!"
                     }
                 ],
                 "stream": false,

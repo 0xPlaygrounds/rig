@@ -7,6 +7,7 @@ pub mod builder;
 pub mod completion;
 pub mod embeddings;
 pub mod image_generation;
+pub mod model_listing;
 pub mod transcription;
 pub mod verify;
 
@@ -14,6 +15,7 @@ use bytes::Bytes;
 pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
+pub use model_listing::{ModelLister, ModelListingClient};
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
@@ -223,6 +225,7 @@ pub trait Capabilities<H = reqwest::Client> {
     type Completion: Capability;
     type Embeddings: Capability;
     type Transcription: Capability;
+    type ModelListing: Capability;
     #[cfg(feature = "image")]
     type ImageGeneration: Capability;
     #[cfg(feature = "audio")]
@@ -683,5 +686,21 @@ where
 
     fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
         M::make(self, model)
+    }
+}
+
+impl<M, Ext, H> ModelListingClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, ModelListing = Capable<M>> + Clone,
+    M: ModelLister<H, Client = Self> + Send + Sync + Clone + 'static,
+    H: Send + Sync + Clone,
+{
+    fn list_models(
+        &self,
+    ) -> impl std::future::Future<
+        Output = Result<crate::model::ModelList, crate::model::ModelListingError>,
+    > + WasmCompatSend {
+        let lister = M::new(self.clone());
+        async move { lister.list_all().await }
     }
 }

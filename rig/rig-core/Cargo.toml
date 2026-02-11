@@ -53,7 +53,7 @@ pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
 mime = "0.3.17"
-reqwest-middleware = { version = "0.4.2", optional = true, features = [
+reqwest-middleware = { version = "0.5.1", optional = true, features = [
   "json",
   "multipart",
   "charset",
@@ -69,6 +69,13 @@ tokio-test = { workspace = true }
 redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
+reqwest-retry = { version = "0.9" }
+reqwest-middleware = { version = "0.5", features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
@@ -92,7 +99,7 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-default = ["reqwest-tls"]
+default = ["reqwest-rustls"]
 all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
@@ -102,22 +109,21 @@ discord-bot = ["dep:serenity"]
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-wasm = ["dep:wasm-bindgen-futures", "futures-timer/wasm-bindgen", "getrandom/js"]
+wasm = [
+  "dep:wasm-bindgen-futures",
+  "futures-timer/wasm-bindgen",
+  "getrandom/js",
+]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
-reqwest-tls = ["reqwest/default"]
-# Replace "default-tls" with "rustls-tls" in "reqwest/default"
+reqwest-native-tls = ["reqwest/native-tls"]
 reqwest-rustls = [
-  "reqwest/rustls-tls",
+  "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",
-  "reqwest/macos-system-configuration",
 ]
 reqwest-middleware = ["dep:reqwest-middleware"]
-reqwest-middleware-rustls = [
-  "reqwest-middleware",
-  "reqwest-middleware/rustls-tls",
-]
+reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
 
 [[test]]
 name = "embed_macro"
@@ -126,6 +132,10 @@ required-features = ["derive"]
 [[example]]
 name = "rag"
 required-features = ["derive"]
+
+[[example]]
+name = "reqwest_middleware"
+required-features = ["reqwest-middleware"]
 
 [[example]]
 name = "rag_ollama"

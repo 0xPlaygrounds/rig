@@ -16,7 +16,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
 use tracing::{Instrument, Level, enabled, info_span};
@@ -24,6 +24,23 @@ use tracing::{Instrument, Level, enabled, info_span};
 use std::str::FromStr;
 
 pub mod streaming;
+
+/// Serializes user content as a plain string when there's a single text item,
+/// otherwise as an array of content parts.
+fn serialize_user_content<S>(
+    content: &OneOrMany<UserContent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if content.len() == 1
+        && let UserContent::Text { text } = content.first_ref()
+    {
+        return serializer.serialize_str(text);
+    }
+    content.serialize(serializer)
+}
 
 /// `gpt-5.1` completion model
 pub const GPT_5_1: &str = "gpt-5.1";
@@ -121,13 +138,21 @@ pub enum Message {
         name: Option<String>,
     },
     User {
-        #[serde(deserialize_with = "string_or_one_or_many")]
+        #[serde(
+            deserialize_with = "string_or_one_or_many",
+            serialize_with = "serialize_user_content"
+        )]
         content: OneOrMany<UserContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
     Assistant {
-        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        #[serde(
+            default,
+            deserialize_with = "json_utils::string_or_vec",
+            skip_serializing_if = "Vec::is_empty",
+            serialize_with = "serialize_assistant_content_vec"
+        )]
         content: Vec<AssistantContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
@@ -1014,12 +1039,14 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             partial_history.push(docs);
         }
         let CoreCompletionRequest {
+            model: request_model,
             preamble,
             chat_history,
             tools,
             temperature,
             additional_params,
             tool_choice,
+            output_schema,
             ..
         } = req;
 
@@ -1056,8 +1083,36 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             })
             .collect();
 
+        // Map output_schema to OpenAI's response_format and merge into additional_params
+        let additional_params = if let Some(schema) = output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            super::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value
+                    }
+                }
+            });
+            Some(match additional_params {
+                Some(existing) => json_utils::merge(existing, response_format),
+                None => response_format,
+            })
+        } else {
+            additional_params
+        };
+
         let res = Self {
-            model,
+            model: request_model.unwrap_or(model),
             messages: full_history,
             tools,
             tool_choice,
@@ -1230,5 +1285,80 @@ where
         CompletionError,
     > {
         Self::stream(self, request).await
+    }
+}
+
+fn serialize_assistant_content_vec<S>(
+    value: &Vec<AssistantContent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if value.is_empty() {
+        serializer.serialize_str("")
+    } else {
+        value.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CompletionRequest, OpenAIRequestParams};
+
+    #[test]
+    fn test_openai_request_uses_request_model_override() {
+        let request = crate::completion::CompletionRequest {
+            model: Some("gpt-4.1".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "gpt-4.1");
+    }
+
+    #[test]
+    fn test_openai_request_uses_default_model_when_override_unset() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "gpt-4o-mini");
     }
 }

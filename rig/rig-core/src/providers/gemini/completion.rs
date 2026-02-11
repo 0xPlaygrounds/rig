@@ -33,8 +33,8 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
-    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse, Part, PartKind,
-    Role, Tool,
+    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
+    GenerationConfig, Part, PartKind, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -85,13 +85,14 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+        let request_model = resolve_request_model(&self.model, &completion_request);
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "generate_content",
                 gen_ai.operation.name = "generate_content",
                 gen_ai.provider.name = "gcp.gemini",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -114,7 +115,7 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let path = format!("/v1beta/models/{}:generateContent", self.model);
+        let path = completion_endpoint(&request_model);
 
         let request = self
             .client
@@ -198,6 +199,13 @@ pub(crate) fn create_request_body(
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
 
+    // Apply output_schema to generation_config, creating one if needed
+    if let Some(schema) = completion_request.output_schema {
+        let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
+        cfg.response_mime_type = Some("application/json".to_string());
+        cfg.response_json_schema = Some(schema.to_value());
+    }
+
     generation_config = generation_config.map(|mut cfg| {
         if let Some(temp) = completion_request.temperature {
             cfg.temperature = Some(temp);
@@ -246,6 +254,24 @@ pub(crate) fn create_request_body(
     };
 
     Ok(request)
+}
+
+pub(crate) fn resolve_request_model(
+    default_model: &str,
+    completion_request: &CompletionRequest,
+) -> String {
+    completion_request
+        .model
+        .clone()
+        .unwrap_or_else(|| default_model.to_string())
+}
+
+pub(crate) fn completion_endpoint(model: &str) -> String {
+    format!("/v1beta/models/{model}:generateContent")
+}
+
+pub(crate) fn streaming_endpoint(model: &str) -> String {
+    format!("/v1beta/models/{model}:streamGenerateContent")
 }
 
 impl TryFrom<completion::ToolDefinition> for Tool {
@@ -1823,6 +1849,54 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_resolve_request_model_uses_override() {
+        let request = CompletionRequest {
+            model: Some("gemini-2.5-flash".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request_model = resolve_request_model("gemini-2.0-flash", &request);
+        assert_eq!(request_model, "gemini-2.5-flash");
+        assert_eq!(
+            completion_endpoint(&request_model),
+            "/v1beta/models/gemini-2.5-flash:generateContent"
+        );
+        assert_eq!(
+            streaming_endpoint(&request_model),
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent"
+        );
+    }
+
+    #[test]
+    fn test_resolve_request_model_uses_default_when_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        assert_eq!(
+            resolve_request_model("gemini-2.0-flash", &request),
+            "gemini-2.0-flash"
+        );
+    }
 
     #[test]
     fn test_deserialize_message_user() {

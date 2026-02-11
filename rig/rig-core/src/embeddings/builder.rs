@@ -168,15 +168,15 @@ mod tests {
     use super::EmbeddingsBuilder;
 
     #[derive(Clone)]
-    struct Model;
+    struct MockEmbeddingModel;
 
-    impl EmbeddingModel for Model {
+    impl EmbeddingModel for MockEmbeddingModel {
         const MAX_DOCUMENTS: usize = 5;
 
         type Client = Nothing;
 
         fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
+            Self {}
         }
 
         fn ndims(&self) -> usize {
@@ -274,7 +274,7 @@ mod tests {
     async fn test_build_multiple_text() {
         let fake_definitions = definitions_multiple_text();
 
-        let fake_model = Model;
+        let fake_model = MockEmbeddingModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -308,7 +308,7 @@ mod tests {
     async fn test_build_single_text() {
         let fake_definitions = definitions_single_text();
 
-        let fake_model = Model;
+        let fake_model = MockEmbeddingModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -343,7 +343,7 @@ mod tests {
         let fake_definitions = definitions_multiple_text();
         let fake_definitions_single = definitions_multiple_text_2();
 
-        let fake_model = Model;
+        let fake_model = MockEmbeddingModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
@@ -380,7 +380,7 @@ mod tests {
         let bindings = definitions_multiple_text();
         let fake_definitions = bindings.iter().map(|def| def.definitions.clone());
 
-        let fake_model = Model;
+        let fake_model = MockEmbeddingModel;
         let mut result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()

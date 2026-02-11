@@ -1,10 +1,14 @@
 use crate::{
     OneOrMany,
+    agent::completion::{DynamicContextStore, build_completion_request},
     agent::prompt_request::{HookAction, hooks::PromptHook},
-    completion::GetTokenUsage,
+    completion::{Document, GetTokenUsage},
     json_utils,
-    message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
-    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletion},
+    message::{
+        AssistantContent, Reasoning, ToolChoice, ToolResult, ToolResultContent, UserContent,
+    },
+    streaming::{StreamedAssistantContent, StreamedUserContent},
+    tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -89,6 +93,8 @@ pub enum StreamingError {
     Tool(#[from] ToolSetError),
 }
 
+const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
+
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
@@ -109,8 +115,30 @@ where
     chat_history: Option<Vec<Message>>,
     /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
-    /// The agent to use for execution
-    agent: Arc<Agent<M>>,
+
+    // Agent data (cloned from agent to allow hook type transitions):
+    /// The completion model
+    model: Arc<M>,
+    /// Agent name for logging
+    agent_name: Option<String>,
+    /// System prompt
+    preamble: Option<String>,
+    /// Static context documents
+    static_context: Vec<Document>,
+    /// Temperature setting
+    temperature: Option<f64>,
+    /// Max tokens setting
+    max_tokens: Option<u64>,
+    /// Additional model parameters
+    additional_params: Option<serde_json::Value>,
+    /// Tool server handle for tool execution
+    tool_server_handle: ToolServerHandle,
+    /// Dynamic context store
+    dynamic_context: DynamicContextStore,
+    /// Tool choice setting
+    tool_choice: Option<ToolChoice>,
+    /// Optional JSON Schema for structured output
+    output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
 }
@@ -121,15 +149,57 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
     P: PromptHook<M>,
 {
-    /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
-        Self {
+    /// Create a new StreamingPromptRequest with the given prompt and model.
+    /// Note: This creates a request without an agent hook. Use `from_agent` to include the agent's hook.
+    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
+        StreamingPromptRequest {
             prompt: prompt.into(),
             chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or_default(),
-            agent,
+            model: agent.model.clone(),
+            agent_name: agent.name.clone(),
+            preamble: agent.preamble.clone(),
+            static_context: agent.static_context.clone(),
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens,
+            additional_params: agent.additional_params.clone(),
+            tool_server_handle: agent.tool_server_handle.clone(),
+            dynamic_context: agent.dynamic_context.clone(),
+            tool_choice: agent.tool_choice.clone(),
+            output_schema: agent.output_schema.clone(),
             hook: None,
         }
+    }
+
+    /// Create a new StreamingPromptRequest from an agent, cloning the agent's data and default hook.
+    pub fn from_agent<P2>(
+        agent: &Agent<M, P2>,
+        prompt: impl Into<Message>,
+    ) -> StreamingPromptRequest<M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        StreamingPromptRequest {
+            prompt: prompt.into(),
+            chat_history: None,
+            max_turns: agent.default_max_turns.unwrap_or_default(),
+            model: agent.model.clone(),
+            agent_name: agent.name.clone(),
+            preamble: agent.preamble.clone(),
+            static_context: agent.static_context.clone(),
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens,
+            additional_params: agent.additional_params.clone(),
+            tool_server_handle: agent.tool_server_handle.clone(),
+            dynamic_context: agent.dynamic_context.clone(),
+            tool_choice: agent.tool_choice.clone(),
+            output_schema: agent.output_schema.clone(),
+            hook: agent.hook.clone(),
+        }
+    }
+
+    fn agent_name(&self) -> &str {
+        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
     /// Set the maximum Turns for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
@@ -145,7 +215,8 @@ where
         self
     }
 
-    /// Attach a per-request hook for tool call events
+    /// Attach a per-request hook for tool call events.
+    /// This overrides any default hook set on the agent.
     pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
     where
         P2: PromptHook<M>,
@@ -154,7 +225,17 @@ where
             prompt: self.prompt,
             chat_history: self.chat_history,
             max_turns: self.max_turns,
-            agent: self.agent,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
+            output_schema: self.output_schema,
             hook: Some(hook),
         }
     }
@@ -164,8 +245,8 @@ where
             info_span!(
                 "invoke_agent",
                 gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent.name(),
-                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.agent.name = self.agent_name(),
+                gen_ai.system_instructions = self.preamble,
                 gen_ai.prompt = tracing::field::Empty,
                 gen_ai.completion = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
@@ -180,7 +261,17 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
-        let agent = self.agent;
+        // Clone fields needed inside the stream
+        let model = self.model.clone();
+        let preamble = self.preamble.clone();
+        let static_context = self.static_context.clone();
+        let temperature = self.temperature;
+        let max_tokens = self.max_tokens;
+        let additional_params = self.additional_params.clone();
+        let tool_server_handle = self.tool_server_handle.clone();
+        let dynamic_context = self.dynamic_context.clone();
+        let tool_choice = self.tool_choice.clone();
+        let agent_name = self.agent_name.clone();
 
         let chat_history = if let Some(history) = self.chat_history {
             Arc::new(RwLock::new(history))
@@ -194,6 +285,7 @@ where
         let mut last_text_response = String::new();
         let mut is_text_response = false;
         let mut max_turns_reached = false;
+        let output_schema = self.output_schema;
 
         let mut aggregated_usage = crate::completion::Usage::new();
 
@@ -240,8 +332,8 @@ where
                     parent: tracing::Span::current(),
                     "chat_streaming",
                     gen_ai.operation.name = "chat",
-                    gen_ai.agent.name = &agent.name(),
-                    gen_ai.system_instructions = &agent.preamble,
+                    gen_ai.agent.name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                    gen_ai.system_instructions = preamble,
                     gen_ai.provider.name = tracing::field::Empty,
                     gen_ai.request.model = tracing::field::Empty,
                     gen_ai.response.id = tracing::field::Empty,
@@ -253,8 +345,20 @@ where
                 );
 
                 let mut stream = tracing::Instrument::instrument(
-                    agent
-                    .stream_completion(current_prompt.clone(), (*chat_history.read().await).clone())
+                    build_completion_request(
+                        &model,
+                        current_prompt.clone(),
+                        (*chat_history.read().await).clone(),
+                        preamble.as_deref(),
+                        &static_context,
+                        temperature,
+                        max_tokens,
+                        additional_params.as_ref(),
+                        tool_choice.as_ref(),
+                        &tool_server_handle,
+                        &dynamic_context,
+                        output_schema.as_ref(),
+                    )
                     .await?
                     .stream(), chat_stream_span
                 )
@@ -332,7 +436,7 @@ where
                                 tool_span.record("gen_ai.tool.call.arguments", &tool_args);
 
                                 let tool_result = match
-                                agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
+                                tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
                                     Ok(thing) => thing,
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");

@@ -22,10 +22,9 @@
 use std::fmt::Debug;
 
 use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
-#[cfg(feature = "image")]
-use crate::client::Nothing;
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
+    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::multipart::Part;
@@ -123,6 +122,7 @@ impl<H> Capabilities<H> for AzureExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Capable<TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -577,6 +577,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         //FIXME: Must fix!
         if req.tool_choice.is_some() {
             tracing::warn!(
@@ -1076,6 +1077,7 @@ mod azure_tests {
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
+                model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
                 chat_history: OneOrMany::one("Hello!".into()),
                 documents: vec![],
@@ -1084,6 +1086,7 @@ mod azure_tests {
                 tools: vec![],
                 tool_choice: None,
                 additional_params: None,
+                output_schema: None,
             })
             .await
             .unwrap();

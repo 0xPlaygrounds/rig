@@ -5,7 +5,10 @@ use hooks::{HookAction, PromptHook, ToolCallHookAction};
 use std::{
     future::IntoFuture,
     marker::PhantomData,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 use tracing::{Instrument, span::Id};
 
@@ -14,13 +17,17 @@ use tracing::info_span;
 
 use crate::{
     OneOrMany,
-    completion::{Completion, CompletionModel, Message, PromptError, Usage},
+    completion::{CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
-    message::{AssistantContent, ToolResultContent, UserContent},
-    wasm_compat::WasmBoxedFuture,
+    message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
+    tool::server::ToolServerHandle,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
-use super::Agent;
+use super::{
+    Agent,
+    completion::{DynamicContextStore, build_completion_request},
+};
 
 pub trait PromptType {}
 pub struct Standard;
@@ -50,30 +57,64 @@ where
     chat_history: Option<&'a mut Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
-    /// The agent to use for execution
-    agent: &'a Agent<M>,
+
+    // Agent data (cloned from agent to allow hook type transitions):
+    /// The completion model
+    model: Arc<M>,
+    /// Agent name for logging
+    agent_name: Option<String>,
+    /// System prompt
+    preamble: Option<String>,
+    /// Static context documents
+    static_context: Vec<Document>,
+    /// Temperature setting
+    temperature: Option<f64>,
+    /// Max tokens setting
+    max_tokens: Option<u64>,
+    /// Additional model parameters
+    additional_params: Option<serde_json::Value>,
+    /// Tool server handle for tool execution
+    tool_server_handle: ToolServerHandle,
+    /// Dynamic context store
+    dynamic_context: DynamicContextStore,
+    /// Tool choice setting
+    tool_choice: Option<ToolChoice>,
+
     /// Phantom data to track the type of the request
     state: PhantomData<S>,
     /// Optional per-request hook for events
     hook: Option<P>,
     /// How many tools should be executed at the same time (1 by default).
     concurrency: usize,
+    /// Optional JSON Schema for structured output
+    output_schema: Option<schemars::Schema>,
 }
 
-impl<'a, M> PromptRequest<'a, Standard, M, ()>
+impl<'a, M, P> PromptRequest<'a, Standard, M, P>
 where
     M: CompletionModel,
+    P: PromptHook<M>,
 {
-    /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: &'a Agent<M>, prompt: impl Into<Message>) -> Self {
-        Self {
+    /// Create a new PromptRequest from an agent, cloning the agent's data and default hook.
+    pub fn from_agent(agent: &Agent<M, P>, prompt: impl Into<Message>) -> Self {
+        PromptRequest {
             prompt: prompt.into(),
             chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or_default(),
-            agent,
+            model: agent.model.clone(),
+            agent_name: agent.name.clone(),
+            preamble: agent.preamble.clone(),
+            static_context: agent.static_context.clone(),
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens,
+            additional_params: agent.additional_params.clone(),
+            tool_server_handle: agent.tool_server_handle.clone(),
+            dynamic_context: agent.dynamic_context.clone(),
+            tool_choice: agent.tool_choice.clone(),
             state: PhantomData,
-            hook: None,
+            hook: agent.hook.clone(),
             concurrency: 1,
+            output_schema: agent.output_schema.clone(),
         }
     }
 }
@@ -94,24 +135,28 @@ where
             prompt: self.prompt,
             chat_history: self.chat_history,
             max_turns: self.max_turns,
-            agent: self.agent,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
             state: PhantomData,
             hook: self.hook,
             concurrency: self.concurrency,
+            output_schema: self.output_schema,
         }
     }
+
     /// Set the maximum number of turns for multi-turn conversations. A given agent may require multiple turns for tool-calling before giving an answer.
     /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
-    pub fn max_turns(self, depth: usize) -> PromptRequest<'a, S, M, P> {
-        PromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: depth,
-            agent: self.agent,
-            state: PhantomData,
-            hook: self.hook,
-            concurrency: self.concurrency,
-        }
+    pub fn max_turns(mut self, depth: usize) -> Self {
+        self.max_turns = depth;
+        self
     }
 
     /// Add concurrency to the prompt request.
@@ -122,19 +167,13 @@ where
     }
 
     /// Add chat history to the prompt request
-    pub fn with_history(self, history: &'a mut Vec<Message>) -> PromptRequest<'a, S, M, P> {
-        PromptRequest {
-            prompt: self.prompt,
-            chat_history: Some(history),
-            max_turns: self.max_turns,
-            agent: self.agent,
-            state: PhantomData,
-            hook: self.hook,
-            concurrency: self.concurrency,
-        }
+    pub fn with_history(mut self, history: &'a mut Vec<Message>) -> Self {
+        self.chat_history = Some(history);
+        self
     }
 
-    /// Attach a per-request hook for tool call events
+    /// Attach a per-request hook for tool call events.
+    /// This overrides any default hook set on the agent.
     pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<'a, S, M, P2>
     where
         P2: PromptHook<M>,
@@ -143,10 +182,20 @@ where
             prompt: self.prompt,
             chat_history: self.chat_history,
             max_turns: self.max_turns,
-            agent: self.agent,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
             state: PhantomData,
             hook: Some(hook),
             concurrency: self.concurrency,
+            output_schema: self.output_schema,
         }
     }
 }
@@ -156,7 +205,7 @@ where
 ///  directly via the associated type.
 impl<'a, M, P> IntoFuture for PromptRequest<'a, Standard, M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'a,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
@@ -169,7 +218,7 @@ where
 
 impl<'a, M, P> IntoFuture for PromptRequest<'a, Extended, M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'a,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
@@ -205,18 +254,24 @@ impl PromptResponse {
     }
 }
 
+const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
+
 impl<M, P> PromptRequest<'_, Extended, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    async fn send(self) -> Result<PromptResponse, PromptError> {
+    fn agent_name(&self) -> &str {
+        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+    }
+
+    async fn send(mut self) -> Result<PromptResponse, PromptError> {
         let agent_span = if tracing::Span::current().is_disabled() {
             info_span!(
                 "invoke_agent",
                 gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent.name(),
-                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.agent.name = self.agent_name(),
+                gen_ai.system_instructions = self.preamble,
                 gen_ai.prompt = tracing::field::Empty,
                 gen_ai.completion = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
@@ -226,17 +281,19 @@ where
             tracing::Span::current()
         };
 
-        let agent = self.agent;
-        let chat_history = if let Some(history) = self.chat_history {
+        if let Some(text) = self.prompt.rag_text() {
+            agent_span.record("gen_ai.prompt", text);
+        }
+
+        // Capture agent_name before borrowing chat_history
+        let agent_name_for_span = self.agent_name.clone();
+
+        let chat_history = if let Some(history) = self.chat_history.as_mut() {
             history.push(self.prompt.to_owned());
             history
         } else {
             &mut vec![self.prompt.to_owned()]
         };
-
-        if let Some(text) = self.prompt.rag_text() {
-            agent_span.record("gen_ai.prompt", text);
-        }
 
         let mut current_max_turns = 0;
         let mut usage = Usage::new();
@@ -277,8 +334,8 @@ where
                 parent: &span,
                 "chat",
                 gen_ai.operation.name = "chat",
-                gen_ai.agent.name = self.agent.name(),
-                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                gen_ai.system_instructions = self.preamble,
                 gen_ai.provider.name = tracing::field::Empty,
                 gen_ai.request.model = tracing::field::Empty,
                 gen_ai.response.id = tracing::field::Empty,
@@ -300,15 +357,24 @@ where
                 current_span_id.store(id.into_u64(), Ordering::SeqCst);
             };
 
-            let resp = agent
-                .completion(
-                    prompt.clone(),
-                    chat_history[..chat_history.len() - 1].to_vec(),
-                )
-                .await?
-                .send()
-                .instrument(chat_span.clone())
-                .await?;
+            let resp = build_completion_request(
+                &self.model,
+                prompt.clone(),
+                chat_history[..chat_history.len() - 1].to_vec(),
+                self.preamble.as_deref(),
+                &self.static_context,
+                self.temperature,
+                self.max_tokens,
+                self.additional_params.as_ref(),
+                self.tool_choice.as_ref(),
+                &self.tool_server_handle,
+                &self.dynamic_context,
+                self.output_schema.as_ref(),
+            )
+            .await?
+            .send()
+            .instrument(chat_span.clone())
+            .await?;
 
             usage += resp.usage;
 
@@ -355,12 +421,14 @@ where
             }
 
             let hook = self.hook.clone();
+            let tool_server_handle = self.tool_server_handle.clone();
 
             let tool_calls: Vec<AssistantContent> = tool_calls.into_iter().cloned().collect();
             let tool_content = stream::iter(tool_calls)
                 .map(|choice| {
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
+                    let tool_server_handle = tool_server_handle.clone();
 
                     let tool_span = info_span!(
                         "execute_tool",
@@ -433,14 +501,14 @@ where
                                     }
                                 }
                             }
-                            let output =
-                                match agent.tool_server_handle.call_tool(tool_name, &args).await {
-                                    Ok(res) => res,
-                                    Err(e) => {
-                                        tracing::warn!("Error while executing tool: {e}");
-                                        e.to_string()
-                                    }
-                                };
+                            let output = match tool_server_handle.call_tool(tool_name, &args).await
+                            {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    tracing::warn!("Error while executing tool: {e}");
+                                    e.to_string()
+                                }
+                            };
                             if let Some(hook) = hook2
                                 && let HookAction::Terminate { reason } = hook
                                     .on_tool_result(
@@ -499,5 +567,119 @@ where
             chat_history: Box::new(chat_history.clone()),
             prompt: Box::new(last_prompt),
         })
+    }
+}
+
+// ================================================================
+// TypedPromptRequest - for structured output with automatic deserialization
+// ================================================================
+
+use crate::completion::StructuredOutputError;
+use schemars::{JsonSchema, schema_for};
+use serde::de::DeserializeOwned;
+
+/// A builder for creating typed prompt requests that return deserialized structured output.
+///
+/// This struct wraps a standard `PromptRequest` and adds:
+/// - Automatic JSON schema generation from the target type `T`
+/// - Automatic deserialization of the response into `T`
+///
+/// # Example
+/// ```rust,ignore
+/// let forecast: WeatherForecast = agent
+///     .prompt_typed("What's the weather in NYC?")
+///     .max_turns(3)
+///     .await?;
+/// ```
+pub struct TypedPromptRequest<'a, T, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
+    inner: PromptRequest<'a, Standard, M, P>,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<'a, T, M, P> TypedPromptRequest<'a, T, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
+    /// Create a new TypedPromptRequest from an agent.
+    ///
+    /// This automatically sets the output schema based on the type parameter `T`.
+    pub fn from_agent(agent: &Agent<M, P>, prompt: impl Into<Message>) -> Self {
+        let mut inner = PromptRequest::from_agent(agent, prompt);
+        // Override the output schema with the schema for T
+        inner.output_schema = Some(schema_for!(T));
+        Self {
+            inner,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the maximum number of turns for multi-turn conversations.
+    ///
+    /// A given agent may require multiple turns for tool-calling before giving an answer.
+    /// If the maximum turn number is exceeded, it will return a
+    /// [`StructuredOutputError::PromptError`] wrapping a `MaxTurnsError`.
+    pub fn max_turns(mut self, depth: usize) -> Self {
+        self.inner = self.inner.max_turns(depth);
+        self
+    }
+
+    /// Add concurrency to the prompt request.
+    ///
+    /// This will cause the agent to execute tools concurrently.
+    pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
+        self.inner = self.inner.with_tool_concurrency(concurrency);
+        self
+    }
+
+    /// Add chat history to the prompt request.
+    pub fn with_history(mut self, history: &'a mut Vec<Message>) -> Self {
+        self.inner = self.inner.with_history(history);
+        self
+    }
+
+    /// Attach a per-request hook for tool call events.
+    ///
+    /// This overrides any default hook set on the agent.
+    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<'a, T, M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        TypedPromptRequest {
+            inner: self.inner.with_hook(hook),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Send the typed prompt request and deserialize the response.
+    async fn send(self) -> Result<T, StructuredOutputError> {
+        let response = self.inner.send().await?;
+
+        if response.is_empty() {
+            return Err(StructuredOutputError::EmptyResponse);
+        }
+
+        let parsed: T = serde_json::from_str(&response)?;
+        Ok(parsed)
+    }
+}
+
+impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a,
+    M: CompletionModel + 'a,
+    P: PromptHook<M> + 'static,
+{
+    type Output = Result<T, StructuredOutputError>;
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.send())
     }
 }

@@ -56,6 +56,7 @@ impl<H> Capabilities<H> for HyperbolicExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -261,6 +262,11 @@ impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Hyperbolic");
+        }
+
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
         }
