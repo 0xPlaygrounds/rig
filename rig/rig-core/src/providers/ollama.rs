@@ -84,6 +84,7 @@ impl<H> Capabilities<H> for OllamaExt {
     type Completion = Capable<CompletionModel<H>>;
     type Transcription = Nothing;
     type Embeddings = Capable<EmbeddingModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 

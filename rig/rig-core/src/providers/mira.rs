@@ -53,6 +53,7 @@ impl<H> Capabilities<H> for MiraExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
