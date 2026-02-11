@@ -147,6 +147,7 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],

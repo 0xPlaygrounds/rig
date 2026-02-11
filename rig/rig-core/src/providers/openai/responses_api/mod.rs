@@ -632,6 +632,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
     fn try_from(
         (model, req): (String, crate::completion::CompletionRequest),
     ) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or(model);
         let input = {
             let mut partial_history = vec![];
             if let Some(docs) = req.normalized_documents() {

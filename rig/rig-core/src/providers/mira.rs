@@ -220,6 +220,7 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut messages = Vec::new();
 
         if let Some(content) = &req.preamble {

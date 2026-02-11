@@ -141,6 +141,7 @@ mod tests {
     // Helper to create a minimal CompletionRequest for testing
     fn minimal_request() -> CompletionRequest {
         CompletionRequest {
+            model: None,
             preamble: None,
             chat_history: OneOrMany::one(Message::User {
                 content: OneOrMany::one(UserContent::Text(Text {
@@ -160,6 +161,7 @@ mod tests {
     fn test_tool_choice_auto_conversion() {
         // Test that rig's ToolChoice::Auto converts to AWS Auto
         let request = CompletionRequest {
+            model: None,
             tool_choice: Some(ToolChoice::Auto),
             tools: vec![ToolDefinition {
                 name: "test_tool".to_string(),
@@ -192,6 +194,7 @@ mod tests {
     fn test_tool_choice_required_conversion() {
         // Test that rig's ToolChoice::Required converts to AWS Any
         let request = CompletionRequest {
+            model: None,
             tool_choice: Some(ToolChoice::Required),
             tools: vec![ToolDefinition {
                 name: "test_tool".to_string(),
@@ -224,6 +227,7 @@ mod tests {
     fn test_tool_choice_none_conversion() {
         // Test that rig's ToolChoice::None results in no tool_choice set
         let request = CompletionRequest {
+            model: None,
             tool_choice: Some(ToolChoice::None),
             tools: vec![ToolDefinition {
                 name: "test_tool".to_string(),
@@ -251,6 +255,7 @@ mod tests {
     fn test_tool_choice_specific_conversion() {
         // Test that rig's ToolChoice::Specific converts to AWS Tool
         let request = CompletionRequest {
+            model: None,
             tool_choice: Some(ToolChoice::Specific {
                 function_names: vec!["specific_tool".to_string()],
             }),
@@ -285,6 +290,7 @@ mod tests {
     fn test_no_tool_choice_when_not_specified() {
         // Test that when tool_choice is None (not set), it defaults to None in AWS
         let request = CompletionRequest {
+            model: None,
             tool_choice: None, // Not set
             tools: vec![ToolDefinition {
                 name: "test_tool".to_string(),
@@ -312,6 +318,7 @@ mod tests {
     fn test_tool_with_empty_parameters() {
         // Test that tools with empty parameters (like document_list) work correctly
         let request = CompletionRequest {
+            model: None,
             tools: vec![ToolDefinition {
                 name: "document_list".to_string(),
                 description: "Lists all documents".to_string(),
@@ -346,6 +353,7 @@ mod tests {
     fn test_tool_with_parameters() {
         // Test that tools with parameters work correctly
         let request = CompletionRequest {
+            model: None,
             tools: vec![ToolDefinition {
                 name: "get_weather".to_string(),
                 description: "Get weather for a location".to_string(),
