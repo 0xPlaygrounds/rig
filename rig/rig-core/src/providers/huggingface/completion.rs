@@ -826,6 +826,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let hf_request = HuggingfaceCompletionRequest::try_from(("mistralai/Mistral-7B", request))
@@ -847,6 +848,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let hf_request = HuggingfaceCompletionRequest::try_from(("mistralai/Mistral-7B", request))

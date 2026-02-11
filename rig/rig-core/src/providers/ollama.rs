@@ -1562,6 +1562,7 @@ mod tests {
         .expect("Failed to parse schema");
 
         let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text {
@@ -1606,6 +1607,7 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text {

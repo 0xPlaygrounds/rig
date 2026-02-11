@@ -1862,6 +1862,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let request_model = resolve_request_model("gemini-2.0-flash", &request);
@@ -1888,6 +1889,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         assert_eq!(
