@@ -160,6 +160,22 @@ impl PromptError {
     }
 }
 
+/// Errors that can occur when using typed structured output via [`TypedPrompt::prompt_typed`].
+#[derive(Debug, Error)]
+pub enum StructuredOutputError {
+    /// An error occurred during the prompt execution.
+    #[error("PromptError: {0}")]
+    PromptError(#[from] PromptError),
+
+    /// Failed to deserialize the model's response into the target type.
+    #[error("DeserializationError: {0}")]
+    DeserializationError(#[from] serde_json::Error),
+
+    /// The model returned an empty response.
+    #[error("EmptyResponse: model returned no content")]
+    EmptyResponse,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Document {
     pub id: String,
@@ -231,6 +247,63 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
+}
+
+/// Trait defining a high-level typed prompt interface for structured output.
+///
+/// This trait provides an ergonomic way to get typed responses from an LLM by automatically
+/// generating a JSON schema from the target type and deserializing the response.
+///
+/// # Example
+/// ```rust,ignore
+/// use rig::prelude::*;
+/// use schemars::JsonSchema;
+/// use serde::Deserialize;
+///
+/// #[derive(Debug, Deserialize, JsonSchema)]
+/// struct WeatherForecast {
+///     city: String,
+///     temperature_f: f64,
+///     conditions: String,
+/// }
+///
+/// let agent = client.agent("gpt-4o").build();
+/// let forecast: WeatherForecast = agent
+///     .prompt_typed("What's the weather in NYC?")
+///     .await?;
+/// ```
+pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
+    /// The type of the typed prompt request returned by `prompt_typed`.
+    type TypedRequest<'a, T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
+    where
+        Self: 'a,
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+
+    /// Send a prompt and receive a typed structured response.
+    ///
+    /// The JSON schema for `T` is automatically generated and sent to the provider.
+    /// Providers that support native structured outputs will constrain the model's
+    /// response to match this schema.
+    ///
+    /// # Type Parameters
+    /// * `T` - The target type to deserialize the response into. Must implement
+    ///   `JsonSchema` (for schema generation), `DeserializeOwned` (for deserialization),
+    ///   and `WasmCompatSend` (for async compatibility).
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // Type can be inferred
+    /// let forecast: WeatherForecast = agent.prompt_typed("What's the weather?").await?;
+    ///
+    /// // Or specified explicitly with turbofish
+    /// let forecast = agent.prompt_typed::<WeatherForecast>("What's the weather?").await?;
+    /// ```
+    fn prompt_typed<T>(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> Self::TypedRequest<'_, T>
+    where
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
 
 /// Trait defining a low-level LLM completion interface
@@ -715,12 +788,20 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Sets the output schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
+    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
+    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
+    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
+    /// to still be able to leverage structured outputs.
     pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
         self.output_schema = Some(schema);
         self
     }
 
     /// Sets the output schema for structured output from an optional value.
+    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
+    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
+    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
+    /// to still be able to leverage structured outputs.
     pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
         self.output_schema = schema;
         self

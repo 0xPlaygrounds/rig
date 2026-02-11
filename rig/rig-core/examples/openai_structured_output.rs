@@ -1,3 +1,20 @@
+//! This example demonstrates structured output with automatic type inference.
+//!
+//! Rig provides two ways to get structured output from an LLM:
+//!
+//! 1. **`prompt_typed<T>()`** (recommended) - Ergonomic API that automatically handles
+//!    schema generation and deserialization:
+//!    ```ignore
+//!    let forecast: WeatherForecast = agent.prompt_typed("...").await?;
+//!    ```
+//!
+//! 2. **`output_schema::<T>()` on builder** - Set schema at build time, manually deserialize:
+//!    ```ignore
+//!    let agent = client.agent("gpt-4o").output_schema::<WeatherForecast>().build();
+//!    let response = agent.prompt("...").await?;
+//!    let forecast: WeatherForecast = serde_json::from_str(&response)?;
+//!    ```
+
 use rig::prelude::*;
 use rig::{completion::Prompt, providers::openai};
 use schemars::JsonSchema;
@@ -53,21 +70,46 @@ struct DayForecast {
 async fn main() -> Result<(), anyhow::Error> {
     let client = openai::Client::from_env();
 
-    // Build an agent with a structured output schema.
-    // The provider will constrain the model's response to valid JSON matching the schema.
     let agent = client
-        .agent("gpt-5.2")
+        .agent("gpt-4o")
+        .preamble("You are a helpful weather assistant. Respond with realistic weather data.")
+        .build();
+
+    // Type can be inferred from the variable binding
+    let forecast: WeatherForecast = agent
+        .prompt_typed("What's the weather forecast for New York City today?")
+        .await?;
+
+    println!("=== Method 1: prompt_typed<T>() ===");
+    println!("{}", serde_json::to_string_pretty(&forecast)?);
+
+    // Or use turbofish syntax for explicit type specification
+    let forecast = agent
+        .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
+        .await?;
+
+    println!("\n=== With turbofish syntax ===");
+    println!("{}", serde_json::to_string_pretty(&forecast)?);
+
+    // This approach sets the schema at agent build time. The response is a
+    // JSON string that you must manually deserialize.
+    // This method is more suited towards agent being used as tools
+    // where you might still want to send the output to a parent agent,
+    // as the LLM can still use the raw data in that case (a raw JSON string is still a string)
+    let agent_with_schema = client
+        .agent("gpt-4o")
         .preamble("You are a helpful weather assistant. Respond with realistic weather data.")
         .output_schema::<WeatherForecast>()
         .build();
 
-    let response = agent
-        .prompt("What's the weather forecast for New York City today?")
+    let response = agent_with_schema
+        .prompt("What's the weather forecast for Chicago?")
         .await?;
 
-    // The response is a JSON string conforming to the WeatherForecast schema.
+    // Manual deserialization required
     let forecast: WeatherForecast = serde_json::from_str(&response)?;
 
+    println!("\n=== Method 2: output_schema on builder ===");
     println!("{}", serde_json::to_string_pretty(&forecast)?);
 
     Ok(())

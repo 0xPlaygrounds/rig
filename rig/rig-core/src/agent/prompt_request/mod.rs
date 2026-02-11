@@ -21,7 +21,7 @@ use crate::{
     json_utils,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
     tool::server::ToolServerHandle,
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
 use super::{
@@ -567,5 +567,119 @@ where
             chat_history: Box::new(chat_history.clone()),
             prompt: Box::new(last_prompt),
         })
+    }
+}
+
+// ================================================================
+// TypedPromptRequest - for structured output with automatic deserialization
+// ================================================================
+
+use crate::completion::StructuredOutputError;
+use schemars::{JsonSchema, schema_for};
+use serde::de::DeserializeOwned;
+
+/// A builder for creating typed prompt requests that return deserialized structured output.
+///
+/// This struct wraps a standard `PromptRequest` and adds:
+/// - Automatic JSON schema generation from the target type `T`
+/// - Automatic deserialization of the response into `T`
+///
+/// # Example
+/// ```rust,ignore
+/// let forecast: WeatherForecast = agent
+///     .prompt_typed("What's the weather in NYC?")
+///     .max_turns(3)
+///     .await?;
+/// ```
+pub struct TypedPromptRequest<'a, T, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
+    inner: PromptRequest<'a, Standard, M, P>,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<'a, T, M, P> TypedPromptRequest<'a, T, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
+    /// Create a new TypedPromptRequest from an agent.
+    ///
+    /// This automatically sets the output schema based on the type parameter `T`.
+    pub fn from_agent(agent: &Agent<M, P>, prompt: impl Into<Message>) -> Self {
+        let mut inner = PromptRequest::from_agent(agent, prompt);
+        // Override the output schema with the schema for T
+        inner.output_schema = Some(schema_for!(T));
+        Self {
+            inner,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the maximum number of turns for multi-turn conversations.
+    ///
+    /// A given agent may require multiple turns for tool-calling before giving an answer.
+    /// If the maximum turn number is exceeded, it will return a
+    /// [`StructuredOutputError::PromptError`] wrapping a `MaxTurnsError`.
+    pub fn max_turns(mut self, depth: usize) -> Self {
+        self.inner = self.inner.max_turns(depth);
+        self
+    }
+
+    /// Add concurrency to the prompt request.
+    ///
+    /// This will cause the agent to execute tools concurrently.
+    pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
+        self.inner = self.inner.with_tool_concurrency(concurrency);
+        self
+    }
+
+    /// Add chat history to the prompt request.
+    pub fn with_history(mut self, history: &'a mut Vec<Message>) -> Self {
+        self.inner = self.inner.with_history(history);
+        self
+    }
+
+    /// Attach a per-request hook for tool call events.
+    ///
+    /// This overrides any default hook set on the agent.
+    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<'a, T, M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        TypedPromptRequest {
+            inner: self.inner.with_hook(hook),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Send the typed prompt request and deserialize the response.
+    async fn send(self) -> Result<T, StructuredOutputError> {
+        let response = self.inner.send().await?;
+
+        if response.is_empty() {
+            return Err(StructuredOutputError::EmptyResponse);
+        }
+
+        let parsed: T = serde_json::from_str(&response)?;
+        Ok(parsed)
+    }
+}
+
+impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a,
+    M: CompletionModel + 'a,
+    P: PromptHook<M> + 'static,
+{
+    type Output = Result<T, StructuredOutputError>;
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.send())
     }
 }
