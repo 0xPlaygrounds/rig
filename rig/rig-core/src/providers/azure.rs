@@ -577,6 +577,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         //FIXME: Must fix!
         if req.tool_choice.is_some() {
             tracing::warn!(
@@ -1076,6 +1077,7 @@ mod azure_tests {
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
+                model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
                 chat_history: OneOrMany::one("Hello!".into()),
                 documents: vec![],

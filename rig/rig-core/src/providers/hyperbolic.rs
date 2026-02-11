@@ -262,6 +262,7 @@ impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
         }

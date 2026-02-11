@@ -527,6 +527,7 @@ impl DynClientBuilder {
         let completion = self.completion(provider_name.into(), model)?;
 
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             tools: vec![],
             documents: vec![],
@@ -556,6 +557,7 @@ impl DynClientBuilder {
 
         history.push(prompt.into());
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             tools: vec![],
             documents: vec![],

@@ -420,6 +420,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             request: req,
             strict_tools,
         } = params;
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
@@ -459,7 +460,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             .collect();
 
         Ok(Self {
-            model: model.to_string(),
+            model,
             messages: full_history,
             temperature: req.temperature,
             tools,
@@ -473,8 +474,9 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
-            model,
+            model: &model,
             request: req,
             strict_tools: false,
         })
@@ -530,9 +532,13 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let preamble = completion_request.preamble.clone();
         let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
-            model: self.model.as_ref(),
+            model: request_model.as_ref(),
             request: completion_request,
             strict_tools: self.strict_tools,
         })?;
@@ -551,7 +557,7 @@ where
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "openrouter",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -614,6 +620,52 @@ where
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_openrouter_request_uses_request_model_override() {
+        let request = CompletionRequest {
+            model: Some("google/gemini-2.5-flash".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let openrouter_request =
+            OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
+                .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "google/gemini-2.5-flash");
+    }
+
+    #[test]
+    fn test_openrouter_request_uses_default_model_when_override_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let openrouter_request =
+            OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
+                .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "openai/gpt-4o-mini");
+    }
 
     #[test]
     fn test_completion_response_deserialization_gemini_flash() {
