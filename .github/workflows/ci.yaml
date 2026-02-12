@@ -19,6 +19,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-instructions:
+    name: stable / validate agent instructions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate generated agent instruction files
+        run: bash scripts/validate_agent_instruction_files.sh
+
   fmt:
     name: stable / fmt
     runs-on: ubuntu-latest
