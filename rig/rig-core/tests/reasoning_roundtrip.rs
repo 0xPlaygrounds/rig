@@ -210,3 +210,21 @@ async fn test_anthropic_reasoning_roundtrip() {
     })
     .await;
 }
+
+#[tokio::test]
+#[ignore = "requires GEMINI_API_KEY"]
+async fn test_gemini_reasoning_roundtrip() {
+    use rig::providers::gemini;
+
+    let client = gemini::Client::from_env();
+    run_reasoning_roundtrip(TestAgent {
+        model: client.completion_model("gemini-2.5-flash"),
+        preamble: "You are a helpful math tutor. Be concise.".into(),
+        additional_params: Some(serde_json::json!({
+            "generationConfig": {
+                "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
+            }
+        })),
+    })
+    .await;
+}
