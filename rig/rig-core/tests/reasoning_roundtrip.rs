@@ -194,3 +194,19 @@ async fn test_xai_reasoning_roundtrip() {
     })
     .await;
 }
+
+#[tokio::test]
+#[ignore = "requires ANTHROPIC_API_KEY"]
+async fn test_anthropic_reasoning_roundtrip() {
+    use rig::providers::anthropic;
+
+    let client = anthropic::Client::from_env();
+    run_reasoning_roundtrip(TestAgent {
+        model: client.completion_model("claude-sonnet-4-5-20250929"),
+        preamble: "You are a helpful math tutor. Be concise.".into(),
+        additional_params: Some(serde_json::json!({
+            "thinking": { "type": "enabled", "budget_tokens": 2048 }
+        })),
+    })
+    .await;
+}
