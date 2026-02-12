@@ -439,6 +439,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }

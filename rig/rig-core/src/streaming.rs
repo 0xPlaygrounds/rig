@@ -104,6 +104,10 @@ where
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
     FinalResponse(R),
+
+    /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
+    /// Captured silently into `StreamingCompletionResponse::message_id`.
+    MessageId(String),
 }
 
 /// Describes a streaming tool call response (in its entirety)
@@ -209,6 +213,8 @@ where
     /// if the provider didn't yield it during the stream
     pub response: Option<R>,
     pub final_response_yielded: AtomicBool,
+    /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
+    pub message_id: Option<String>,
 }
 
 impl<R> StreamingCompletionResponse<R>
@@ -229,6 +235,7 @@ where
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
             final_response_yielded: AtomicBool::new(false),
+            message_id: None,
         }
     }
 
@@ -297,6 +304,7 @@ where
             choice: value.choice,
             usage: Usage::new(), // Usage is not tracked in streaming responses
             raw_response: value.response,
+            message_id: value.message_id,
         }
     }
 }
@@ -400,6 +408,10 @@ where
                         let final_response = StreamedAssistantContent::final_response(response);
                         Poll::Ready(Some(Ok(final_response)))
                     }
+                }
+                RawStreamingChoice::MessageId(id) => {
+                    stream.message_id = Some(id);
+                    stream.poll_next_unpin(cx)
                 }
             },
         }
@@ -528,6 +540,7 @@ where
             RawStreamingChoice::ReasoningDelta { id, reasoning }
         }
         RawStreamingChoice::ToolCall(tool_call) => RawStreamingChoice::ToolCall(tool_call),
+        RawStreamingChoice::MessageId(id) => RawStreamingChoice::MessageId(id),
     }
 }
 

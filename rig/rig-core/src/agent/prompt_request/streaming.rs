@@ -581,7 +581,7 @@ where
 
                     content_items.extend(tool_calls);
                     history.push(Message::Assistant {
-                        id: None,
+                        id: stream.message_id.clone(),
                         content: OneOrMany::many(content_items).expect("Should have at least one item"),
                     });
                 }
