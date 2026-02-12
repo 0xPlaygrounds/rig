@@ -470,13 +470,9 @@ impl TryFrom<message::AssistantContent> for Content {
                     input: function.arguments,
                 })
             }
-            message::AssistantContent::Reasoning(Reasoning {
-                reasoning,
-                signature,
-                ..
-            }) => Ok(Content::Thinking {
-                thinking: reasoning.first().cloned().unwrap_or(String::new()),
-                signature,
+            message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
+                thinking: reasoning.display_text(),
+                signature: reasoning.first_signature().map(str::to_owned),
             }),
         }
     }
@@ -638,9 +634,9 @@ impl TryFrom<Content> for message::AssistantContent {
             Content::Thinking {
                 thinking,
                 signature,
-            } => message::AssistantContent::Reasoning(
-                Reasoning::new(&thinking).with_signature(signature),
-            ),
+            } => message::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                &thinking, signature,
+            )),
             _ => {
                 return Err(MessageError::ConversionError(
                     "Content did not contain a message, tool call, or reasoning".to_owned(),

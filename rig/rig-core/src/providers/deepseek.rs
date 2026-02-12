@@ -307,7 +307,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         text_content.push_str(text.text());
                     }
                     message::AssistantContent::Reasoning(reasoning) => {
-                        reasoning_content.push_str(&reasoning.reasoning.join("\n"));
+                        reasoning_content.push_str(&reasoning.display_text());
                     }
                     _ => {}
                 });

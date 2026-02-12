@@ -13,6 +13,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
+use crate::message::ReasoningContent;
 use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
@@ -410,8 +411,10 @@ fn handle_event(
 
                 return Some(Ok(RawStreamingChoice::Reasoning {
                     id: None,
-                    reasoning: thinking_state.thinking,
-                    signature,
+                    content: ReasoningContent::Text {
+                        text: thinking_state.thinking,
+                        signature,
+                    },
                 }));
             }
 
