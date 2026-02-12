@@ -559,27 +559,29 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
-        let (text_content, tool_calls) = value.into_iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut texts, mut tools), content| {
-                match content {
-                    message::AssistantContent::Text(text) => texts.push(text),
-                    message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
-                    message::AssistantContent::Reasoning(_) => {
-                        panic!("The OpenAI Completions API doesn't support reasoning!");
-                    }
-                    message::AssistantContent::Image(_) => {
-                        panic!(
-                            "The OpenAI Completions API doesn't support image content in assistant messages!"
-                        );
-                    }
-                }
-                (texts, tools)
-            },
-        );
+        let mut text_content = Vec::new();
+        let mut tool_calls = Vec::new();
 
-        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-        //  so either `content` or `tool_calls` will have some content.
+        for content in value {
+            match content {
+                message::AssistantContent::Text(text) => text_content.push(text),
+                message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+                message::AssistantContent::Reasoning(_) => {
+                    // OpenAI Chat Completions does not support assistant-history reasoning items.
+                    // Silently skip unsupported reasoning content.
+                }
+                message::AssistantContent::Image(_) => {
+                    panic!(
+                        "The OpenAI Completions API doesn't support image content in assistant messages!"
+                    );
+                }
+            }
+        }
+
+        if text_content.is_empty() && tool_calls.is_empty() {
+            return Ok(vec![]);
+        }
+
         Ok(vec![Message::Assistant {
             content: text_content
                 .into_iter()
@@ -1063,6 +1065,16 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
+        if full_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "OpenAI Chat Completions request has no provider-compatible messages after conversion",
+                )
+                .into(),
+            ));
+        }
+
         if tool_result_array_content {
             for msg in &mut full_history {
                 if let Message::ToolResult { content, .. } = msg {
@@ -1269,5 +1281,89 @@ where
         serializer.serialize_str("")
     } else {
         value.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assistant_reasoning_is_silently_skipped() {
+        let assistant_content = OneOrMany::one(message::AssistantContent::reasoning("hidden"));
+
+        let converted: Vec<Message> = assistant_content
+            .try_into()
+            .expect("conversion should work");
+
+        assert!(converted.is_empty());
+    }
+
+    #[test]
+    fn assistant_text_and_tool_call_are_preserved_when_reasoning_is_present() {
+        let assistant_content = OneOrMany::many(vec![
+            message::AssistantContent::reasoning("hidden"),
+            message::AssistantContent::text("visible"),
+            message::AssistantContent::tool_call(
+                "call_1",
+                "subtract",
+                serde_json::json!({"x": 2, "y": 1}),
+            ),
+        ])
+        .expect("non-empty assistant content");
+
+        let converted: Vec<Message> = assistant_content
+            .try_into()
+            .expect("conversion should work");
+        assert_eq!(converted.len(), 1);
+
+        match &converted[0] {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                assert_eq!(
+                    content,
+                    &vec![AssistantContent::Text {
+                        text: "visible".to_string()
+                    }]
+                );
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].id, "call_1");
+                assert_eq!(tool_calls[0].function.name, "subtract");
+                assert_eq!(
+                    tool_calls[0].function.arguments,
+                    serde_json::json!({"x": 2, "y": 1})
+                );
+            }
+            _ => panic!("expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn request_conversion_errors_when_all_messages_are_filtered() {
+        let request = CoreCompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::Assistant {
+                id: None,
+                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let result = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        });
+
+        assert!(matches!(result, Err(CompletionError::RequestError(_))));
     }
 }

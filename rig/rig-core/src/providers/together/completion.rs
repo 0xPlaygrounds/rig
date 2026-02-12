@@ -167,6 +167,16 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
 
         full_history.extend(chat_history);
 
+        if full_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Together request has no provider-compatible messages after conversion",
+                )
+                .into(),
+            ));
+        }
+
         let tool_choice = req
             .tool_choice
             .clone()
@@ -347,4 +357,30 @@ impl TryFrom<crate::message::ToolChoice> for ToolChoice {
 #[serde(tag = "type", content = "function")]
 pub enum ToolChoiceFunctionKind {
     Function { name: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{OneOrMany, message};
+
+    #[test]
+    fn together_request_conversion_errors_when_all_messages_are_filtered() {
+        let request = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::Assistant {
+                id: None,
+                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let result = TogetherAICompletionRequest::try_from(("meta-llama/test-model", request));
+        assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
 }
