@@ -105,10 +105,12 @@ pub(crate) enum ApiResponse<T> {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::mistral::Client = crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::mistral::Client = crate::providers::mistral::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::mistral::Client =
+            crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::mistral::Client =
+            crate::providers::mistral::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

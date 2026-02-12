@@ -14,16 +14,16 @@ use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     client::{
         self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
     },
-    completion::{self, message, CompletionError, MessageError},
+    completion::{self, CompletionError, MessageError, message},
     http_client::{self, HttpClientExt},
-    OneOrMany,
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tracing::{info_span, Instrument};
+use tracing::{Instrument, info_span};
 
 // ================================================================
 // Main Cohere Client
@@ -78,7 +78,7 @@ impl ProviderBuilder for PerplexityBuilder {
 
 pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
+    client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
 impl ProviderClient for Client {
     type Input = String;
@@ -534,12 +534,12 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::perplexity::Client = crate::providers::perplexity::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::perplexity::Client = crate::providers::perplexity::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::perplexity::Client =
+            crate::providers::perplexity::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::perplexity::Client =
+            crate::providers::perplexity::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }
-
-

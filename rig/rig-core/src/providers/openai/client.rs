@@ -40,12 +40,12 @@ type OpenAIApiKey = BearerAuth;
 // Responses API client (default)
 pub type Client<H = reqwest::Client> = client::Client<OpenAIResponsesExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
+    client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
 
 // Completions API client
 pub type CompletionsClient<H = reqwest::Client> = client::Client<OpenAICompletionsExt, H>;
 pub type CompletionsClientBuilder<H = reqwest::Client> =
-client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
+    client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
 
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
@@ -114,12 +114,12 @@ impl ProviderBuilder for OpenAICompletionsExtBuilder {
 impl<H> Client<H>
 where
     H: HttpClientExt
-    + Clone
-    + std::fmt::Debug
-    + Default
-    + WasmCompatSend
-    + WasmCompatSync
-    + 'static,
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
 {
     /// Create an extractor builder with the given completion model.
     /// Uses the OpenAI Responses API (default behavior).
@@ -143,12 +143,12 @@ where
 impl<H> CompletionsClient<H>
 where
     H: HttpClientExt
-    + Clone
-    + std::fmt::Debug
-    + Default
-    + WasmCompatSend
-    + WasmCompatSync
-    + 'static,
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
 {
     /// Create an extractor builder with the given completion model.
     /// Uses the OpenAI Chat Completions API.
@@ -233,7 +233,7 @@ mod tests {
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
-    use crate::{message, OneOrMany};
+    use crate::{OneOrMany, message};
     use serde_path_to_error::deserialize;
 
     #[test]
@@ -551,7 +551,7 @@ mod tests {
                     },
                 },
             ])
-                .unwrap(),
+            .unwrap(),
             name: None,
         };
 
@@ -582,10 +582,12 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::openai::Client = crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::openai::Client = crate::providers::openai::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::openai::Client =
+            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::openai::Client =
+            crate::providers::openai::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

@@ -1,7 +1,7 @@
 //! Anthropic client api implementation
 use http::{HeaderName, HeaderValue};
 
-use super::completion::{CompletionModel, ANTHROPIC_VERSION_LATEST};
+use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
     client::{
         self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -70,7 +70,7 @@ impl ApiKey for AnthropicKey {
 
 pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
+    client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 
 impl Default for AnthropicBuilder {
     fn default() -> Self {
@@ -170,10 +170,12 @@ impl<H> ClientBuilder<H> {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::anthropic::Client = crate::providers::anthropic::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::anthropic::Client = crate::providers::anthropic::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::anthropic::Client =
+            crate::providers::anthropic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::anthropic::Client =
+            crate::providers::anthropic::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

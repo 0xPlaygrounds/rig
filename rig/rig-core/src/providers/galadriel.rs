@@ -20,12 +20,12 @@ use crate::message::MessageError;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    message, OneOrMany,
+    json_utils, message,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{enabled, info_span, Instrument};
+use tracing::{Instrument, enabled, info_span};
 
 // ================================================================
 // Main Galadriel Client
@@ -75,7 +75,7 @@ impl<H> Capabilities<H> for GaladrielExt {
 }
 
 impl DebugExt for GaladrielExt {
-    fn fields(&self) -> impl Iterator<Item=(&'static str, &dyn std::fmt::Debug)> {
+    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn std::fmt::Debug)> {
         std::iter::once((
             "fine_tune_api_key",
             (&self.fine_tune_api_key as &dyn std::fmt::Debug),
@@ -92,7 +92,7 @@ impl ProviderBuilder for GaladrielBuilder {
 
 pub type Client<H = reqwest::Client> = client::Client<GaladrielExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-client::ClientBuilder<GaladrielBuilder, GaladrielApiKey, H>;
+    client::ClientBuilder<GaladrielBuilder, GaladrielApiKey, H>;
 
 impl<T> ClientBuilder<T> {
     pub fn fine_tune_api_key<S>(mut self, fine_tune_api_key: S) -> Self
@@ -335,9 +335,9 @@ impl TryFrom<Message> for message::Message {
                                 .into_iter(),
                         ),
                 )
-                    .map_err(|_| {
-                        message::MessageError::ConversionError("Empty assistant message".to_string())
-                    })?,
+                .map_err(|_| {
+                    message::MessageError::ConversionError("Empty assistant message".to_string())
+                })?,
             }),
             _ => Err(message::MessageError::ConversionError(format!(
                 "Unknown role: {}",
@@ -604,8 +604,8 @@ where
                 Err(CompletionError::ProviderError(text))
             }
         }
-            .instrument(span)
-            .await
+        .instrument(span)
+        .await
     }
 
     async fn stream(
@@ -659,10 +659,12 @@ where
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::galadriel::Client = crate::providers::galadriel::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::galadriel::Client = crate::providers::galadriel::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::galadriel::Client =
+            crate::providers::galadriel::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::galadriel::Client =
+            crate::providers::galadriel::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

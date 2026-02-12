@@ -8,7 +8,7 @@
 //!
 //! let llama_3_1_8b = client.completion_model(hyperbolic::LLAMA_3_1_8B);
 //! ```
-use super::openai::{send_compatible_streaming_request, AssistantContent};
+use super::openai::{AssistantContent, send_compatible_streaming_request};
 
 use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
 use crate::client::{BearerAuth, ProviderClient};
@@ -17,10 +17,10 @@ use crate::streaming::StreamingCompletionResponse;
 
 use crate::providers::openai;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     providers::openai::Message,
-    OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 
@@ -480,8 +480,8 @@ mod image_generation {
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
     use serde_json::json;
 
@@ -526,7 +526,7 @@ mod image_generation {
     }
 
     impl TryFrom<ImageGenerationResponse>
-    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
+        for image_generation::ImageGenerationResponse<ImageGenerationResponse>
     {
         type Error = ImageGenerationError;
 
@@ -604,7 +604,7 @@ mod image_generation {
 // ======================================
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
-use tracing::{info_span, Instrument};
+use tracing::{Instrument, info_span};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -613,8 +613,8 @@ mod audio_generation {
     use crate::audio_generation;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
     use crate::http_client::{self, HttpClientExt};
-    use base64::prelude::BASE64_STANDARD;
     use base64::Engine;
+    use base64::prelude::BASE64_STANDARD;
     use bytes::Bytes;
     use serde::Deserialize;
     use serde_json::json;
@@ -631,7 +631,7 @@ mod audio_generation {
     }
 
     impl TryFrom<AudioGenerationResponse>
-    for audio_generation::AudioGenerationResponse<AudioGenerationResponse>
+        for audio_generation::AudioGenerationResponse<AudioGenerationResponse>
     {
         type Error = AudioGenerationError;
 
@@ -704,10 +704,12 @@ mod audio_generation {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::hyperbolic::Client = crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::hyperbolic::Client = crate::providers::hyperbolic::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::hyperbolic::Client =
+            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::hyperbolic::Client =
+            crate::providers::hyperbolic::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

@@ -17,14 +17,14 @@ use crate::providers::openai;
 use crate::providers::openai::send_compatible_streaming_request;
 use crate::streaming::StreamingCompletionResponse;
 use crate::{
+    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     message::{self, AssistantContent, Message, UserContent},
-    OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 use std::string::FromUtf8Error;
 use thiserror::Error;
-use tracing::{self, info_span, Instrument};
+use tracing::{self, Instrument, info_span};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MiraExt;
@@ -238,9 +238,9 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
                 .into_iter()
                 .filter_map(|doc| match doc {
                     UserContent::Document(Document {
-                                              data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
-                                              ..
-                                          }) => Some(data),
+                        data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
+                        ..
+                    }) => Some(data),
                     UserContent::Text(text) => Some(text.text),
 
                     // This should always be `Document`
@@ -794,11 +794,12 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::mira::Client = crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::mira::Client = crate::providers::mira::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
+        let _client: crate::providers::mira::Client =
+            crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::mira::Client =
+            crate::providers::mira::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }
-
