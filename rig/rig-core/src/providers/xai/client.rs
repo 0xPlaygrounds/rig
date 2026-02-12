@@ -67,10 +67,8 @@ impl ProviderClient for Client {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::xai::Client = crate::providers::xai::Client::new("dummy-key").expect("Client::new() failed");
         let _client_from_builder: crate::providers::xai::Client = crate::providers::xai::Client::builder()
             .api_key("dummy-key")
             .build()

@@ -182,7 +182,6 @@ impl<H> Client<H> {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
         let _client: crate::providers::huggingface::Client = crate::providers::huggingface::Client::new("dummy-key").expect("Client::new() failed");

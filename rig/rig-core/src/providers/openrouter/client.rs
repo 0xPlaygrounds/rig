@@ -116,7 +116,6 @@ impl GetTokenUsage for Usage {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
         let _client: crate::providers::openrouter::Client = crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");

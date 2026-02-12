@@ -371,7 +371,6 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
         let _client: crate::providers::moonshot::Client = crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");

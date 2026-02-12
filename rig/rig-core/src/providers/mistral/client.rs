@@ -103,7 +103,6 @@ pub(crate) enum ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
         let _client: crate::providers::mistral::Client = crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");

@@ -1032,7 +1032,7 @@ mod audio_generation {
 #[cfg(test)]
 mod azure_tests {
     use super::*;
-    use rig::providers;
+
 
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
@@ -1099,7 +1099,7 @@ mod azure_tests {
         let _client: crate::providers::azure::Client<reqwest::Client> = crate::providers::azure::Client::builder()
             .api_key("test")
             .azure_endpoint("test".to_string()) // add your endpoint here!
-            .build().expect("Client::builder() failed");;
+            .build().expect("Client::builder() failed");
     }
 }
 

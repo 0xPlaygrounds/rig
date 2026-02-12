@@ -168,7 +168,6 @@ impl<H> ClientBuilder<H> {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
         let _client: crate::providers::anthropic::Client = crate::providers::anthropic::Client::new("dummy-key").expect("Client::new() failed");

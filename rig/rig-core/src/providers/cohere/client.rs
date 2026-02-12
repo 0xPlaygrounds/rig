@@ -131,7 +131,6 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_client_initialization() {
         let _client: crate::providers::cohere::Client = crate::providers::cohere::Client::new("dummy-key").expect("Client::new() failed");
