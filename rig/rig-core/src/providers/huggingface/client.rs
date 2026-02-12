@@ -111,7 +111,7 @@ type HuggingFaceApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<HuggingFaceExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
+client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
 
 impl Provider for HuggingFaceExt {
     type Builder = HuggingFaceBuilder;
@@ -140,7 +140,7 @@ impl<H> Capabilities<H> for HuggingFaceExt {
 }
 
 impl DebugExt for HuggingFaceExt {
-    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
+    fn fields(&self) -> impl Iterator<Item=(&'static str, &dyn Debug)> {
         std::iter::once(("subprovider", (&self.subprovider as &dyn Debug)))
     }
 }
@@ -178,5 +178,17 @@ impl<H> ClientBuilder<H> {
 impl<H> Client<H> {
     pub(crate) fn subprovider(&self) -> &SubProvider {
         &self.ext().subprovider
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::huggingface::Client = crate::providers::huggingface::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::huggingface::Client = crate::providers::huggingface::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

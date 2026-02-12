@@ -39,18 +39,18 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::streaming::RawStreamingChoice;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
-    json_utils, message,
-    message::{ImageDetail, Text},
+    json_utils,
+    message, message::{ImageDetail, Text},
     streaming,
+    OneOrMany,
 };
 use async_stream::try_stream;
 use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{convert::TryFrom, str::FromStr};
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -224,7 +224,7 @@ where
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String>,
+        documents: impl IntoIterator<Item=String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let docs: Vec<String> = documents.into_iter().collect();
 
@@ -851,17 +851,17 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         |(mut texts, mut images), content| {
                             match content {
                                 crate::message::UserContent::Text(crate::message::Text {
-                                    text,
-                                }) => texts.push(text),
+                                                                      text,
+                                                                  }) => texts.push(text),
                                 crate::message::UserContent::Image(crate::message::Image {
-                                    data: DocumentSourceKind::Base64(data),
-                                    ..
-                                }) => images.push(data),
+                                                                       data: DocumentSourceKind::Base64(data),
+                                                                       ..
+                                                                   }) => images.push(data),
                                 crate::message::UserContent::Document(
                                     crate::message::Document {
                                         data:
-                                            DocumentSourceKind::Base64(data)
-                                            | DocumentSourceKind::String(data),
+                                        DocumentSourceKind::Base64(data)
+                                        | DocumentSourceKind::String(data),
                                         ..
                                     },
                                 ) => texts.push(data),
@@ -1311,7 +1311,7 @@ mod tests {
                     text: "The answer is X".to_string(),
                 }),
             ])
-            .unwrap(),
+                .unwrap(),
         };
 
         // Convert to provider Message
@@ -1559,7 +1559,7 @@ mod tests {
             },
             "required": ["age", "available"]
         }))
-        .expect("Failed to parse schema");
+            .expect("Failed to parse schema");
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
@@ -1634,4 +1634,15 @@ mod tests {
             "format field should be absent when output_schema is None"
         );
     }
+
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::ollama::Client = crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
+        let _client_from_builder: crate::providers::ollama::Client = crate::providers::ollama::Client::builder()
+            .api_key(Nothing)
+            .build()
+            .expect("Client::builder() failed");
+    }
 }
+
+

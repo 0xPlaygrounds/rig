@@ -21,14 +21,14 @@
 
 use std::fmt::Debug;
 
-use super::openai::{TranscriptionResponse, send_compatible_streaming_request};
+use super::openai::{send_compatible_streaming_request, TranscriptionResponse};
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm, bearer_auth_header};
+use crate::http_client::{self, bearer_auth_header, HttpClientExt, MultipartForm};
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::TranscriptionError;
 use crate::{
@@ -55,12 +55,12 @@ pub struct AzureExt {
 }
 
 impl DebugExt for AzureExt {
-    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn std::fmt::Debug)> {
+    fn fields(&self) -> impl Iterator<Item=(&'static str, &dyn std::fmt::Debug)> {
         [
             ("endpoint", (&self.endpoint as &dyn Debug)),
             ("api_version", (&self.api_version as &dyn Debug)),
         ]
-        .into_iter()
+            .into_iter()
     }
 }
 
@@ -85,7 +85,7 @@ impl Default for AzureExtBuilder {
 
 pub type Client<H = reqwest::Client> = client::Client<AzureExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H>;
+client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H>;
 
 impl Provider for AzureExt {
     type Builder = AzureExtBuilder;
@@ -445,7 +445,7 @@ where
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String>,
+        documents: impl IntoIterator<Item=String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
@@ -726,8 +726,8 @@ where
                 ))
             }
         }
-        .instrument(span)
-        .await
+            .instrument(span)
+            .await
     }
 
     async fn stream(
@@ -781,7 +781,7 @@ where
             send_compatible_streaming_request(self.client.clone(), req),
             span,
         )
-        .await
+            .await
     }
 }
 
@@ -875,7 +875,7 @@ where
 // ================================================================
 #[cfg(feature = "image")]
 pub use image_generation::*;
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{enabled, info_span, Instrument, Level};
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
@@ -1032,11 +1032,12 @@ mod audio_generation {
 #[cfg(test)]
 mod azure_tests {
     use super::*;
+    use rig::providers;
 
-    use crate::OneOrMany;
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
+    use crate::OneOrMany;
 
     #[tokio::test]
     #[ignore]
@@ -1093,4 +1094,12 @@ mod azure_tests {
 
         tracing::info!("Azure completion: {:?}", completion);
     }
+    #[tokio::test]
+    async fn test_client_initialization() {
+        let _client: crate::providers::azure::Client<reqwest::Client> = crate::providers::azure::Client::builder()
+            .api_key("test")
+            .azure_endpoint("test".to_string()) // add your endpoint here!
+            .build().expect("Client::builder() failed");;
+    }
 }
+

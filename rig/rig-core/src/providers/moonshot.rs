@@ -22,7 +22,7 @@ use crate::{
 };
 use crate::{http_client, message};
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, info_span};
+use tracing::{info_span, Instrument};
 
 // ================================================================
 // Main Moonshot Client
@@ -74,7 +74,7 @@ impl<H> Capabilities<H> for MoonshotExt {
 
 pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
+client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
 
 impl ProviderClient for Client {
     type Input = String;
@@ -367,5 +367,17 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
         };
 
         Ok(res)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::moonshot::Client = crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::moonshot::Client = crate::providers::moonshot::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

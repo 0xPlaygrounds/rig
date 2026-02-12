@@ -416,7 +416,7 @@ where
             send_compatible_streaming_request(self.client.clone(), req),
             span,
         )
-        .await
+            .await
     }
 }
 
@@ -728,11 +728,11 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        OneOrMany,
         providers::{
             groq::{GroqAdditionalParameters, GroqCompletionRequest},
             openai::{Message, UserContent},
         },
+        OneOrMany,
     };
 
     #[test]
@@ -777,4 +777,13 @@ mod tests {
             })
         )
     }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::groq::Client = crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::groq::Client = crate::providers::groq::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+    }
 }
+

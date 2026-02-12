@@ -1,5 +1,4 @@
 use crate::{
-    Embed,
     client::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
@@ -7,6 +6,7 @@ use crate::{
     embeddings::EmbeddingsBuilder,
     http_client::{self, HttpClientExt},
     wasm_compat::*,
+    Embed,
 };
 
 use super::{CompletionModel, EmbeddingModel};
@@ -127,5 +127,17 @@ where
         ndims: usize,
     ) -> EmbeddingModel<T> {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::cohere::Client = crate::providers::cohere::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::cohere::Client = crate::providers::cohere::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

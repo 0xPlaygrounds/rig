@@ -23,7 +23,7 @@ type OpenRouterApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<OpenRouterExt, H>;
 pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
+client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
 
 impl Provider for OpenRouterExt {
     type Builder = OpenRouterExtBuilder;
@@ -112,5 +112,17 @@ impl GetTokenUsage for Usage {
         usage.total_tokens = self.total_tokens as u64;
 
         Some(usage)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::openrouter::Client = crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::openrouter::Client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

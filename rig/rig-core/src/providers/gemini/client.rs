@@ -36,7 +36,7 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GeminiBuilde
 impl ApiKey for GeminiApiKey {}
 
 impl DebugExt for GeminiExt {
-    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
+    fn fields(&self) -> impl Iterator<Item=(&'static str, &dyn Debug)> {
         std::iter::once(("api_key", (&"******") as &dyn Debug))
     }
 }
@@ -120,4 +120,22 @@ pub struct ApiErrorResponse {
 pub enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
+}
+
+// ================================================================
+// Tests
+// ================================================================
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: Client = Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: Client = Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+    }
 }

@@ -15,7 +15,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use http::Request;
 use std::collections::HashMap;
-use tracing::{Instrument, Level, enabled, info_span};
+use tracing::{enabled, info_span, Instrument, Level};
 
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -26,9 +26,9 @@ use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
-    json_utils, message,
+    json_utils,
+    message, OneOrMany,
 };
 use serde::{Deserialize, Serialize};
 
@@ -282,11 +282,11 @@ impl TryFrom<message::Message> for Vec<Message> {
                             name: None,
                         }),
                         message::UserContent::Document(Document {
-                            data:
-                                DocumentSourceKind::Base64(content)
-                                | DocumentSourceKind::String(content),
-                            ..
-                        }) => Some(Message::User {
+                                                           data:
+                                                           DocumentSourceKind::Base64(content)
+                                                           | DocumentSourceKind::String(content),
+                                                           ..
+                                                       }) => Some(Message::User {
                             content,
                             name: None,
                         }),
@@ -525,9 +525,9 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
         // Note that we only need to preserve the last reasoning content.
         if let (Some(idx), Some(reasoning)) = (last_assistant_idx, last_reasoning_content)
             && let Message::Assistant {
-                ref mut reasoning_content,
-                ..
-            } = full_history[idx]
+            ref mut reasoning_content,
+            ..
+        } = full_history[idx]
         {
             *reasoning_content = Some(reasoning);
         }
@@ -650,8 +650,8 @@ where
                 ))
             }
         }
-        .instrument(span)
-        .await
+            .instrument(span)
+            .await
     }
 
     async fn stream(
@@ -708,7 +708,7 @@ where
             send_compatible_streaming_request(self.client.clone(), req),
             span,
         )
-        .await
+            .await
     }
 }
 
@@ -906,7 +906,6 @@ pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 // Tests
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -1055,4 +1054,13 @@ mod tests {
 
         assert_eq!(choice, expected_choice);
     }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::deepseek::Client = crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::deepseek::Client = crate::providers::deepseek::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+    }
 }
+

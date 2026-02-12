@@ -202,7 +202,7 @@ where
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String>,
+        documents: impl IntoIterator<Item=String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
         let request = json!({
@@ -253,5 +253,17 @@ where
                 String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::voyageai::Client = crate::providers::voyageai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::voyageai::Client = crate::providers::voyageai::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }
