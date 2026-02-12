@@ -180,3 +180,17 @@ async fn test_openai_reasoning_roundtrip() {
     })
     .await;
 }
+
+#[tokio::test]
+#[ignore = "requires XAI_API_KEY"]
+async fn test_xai_reasoning_roundtrip() {
+    use rig::providers::xai;
+
+    let client = xai::Client::from_env();
+    run_reasoning_roundtrip(TestAgent {
+        model: client.completion_model(xai::GROK_3_MINI),
+        preamble: "You are a helpful math tutor. Be concise.".into(),
+        additional_params: None,
+    })
+    .await;
+}
