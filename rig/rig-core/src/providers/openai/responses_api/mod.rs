@@ -419,18 +419,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { id, reasoning, .. },
-                        ) => {
+                        crate::message::AssistantContent::Reasoning(reasoning) => {
+                            let openai_reasoning = openai_reasoning_from_core(&reasoning, None)
+                                .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
                             items.push(InputItem {
                                 role: None,
-                                input: InputContent::Reasoning(OpenAIReasoning {
-                                    id: id
-                                        .expect("An OpenAI-generated ID is required when using OpenAI reasoning items"),
-                                    summary: reasoning.into_iter().map(|x| ReasoningSummary::new(&x)).collect(),
-                                    encrypted_content: None,
-                                    status: None,
-                                }),
+                                input: InputContent::Reasoning(openai_reasoning),
                             });
                         }
                         crate::message::AssistantContent::Image(_) => {
@@ -452,6 +446,36 @@ impl From<OneOrMany<String>> for Vec<ReasoningSummary> {
     fn from(value: OneOrMany<String>) -> Self {
         value.iter().map(|x| ReasoningSummary::new(x)).collect()
     }
+}
+
+fn openai_reasoning_from_core(
+    reasoning: &crate::message::Reasoning,
+    status: Option<ToolStatus>,
+) -> Result<OpenAIReasoning, MessageError> {
+    let id = reasoning.id.clone().ok_or_else(|| {
+        MessageError::ConversionError(
+            "An OpenAI-generated ID is required when using OpenAI reasoning items".to_string(),
+        )
+    })?;
+    let summary = reasoning
+        .content
+        .iter()
+        .filter_map(|content| match content {
+            crate::message::ReasoningContent::Text { text, .. } => {
+                Some(ReasoningSummary::new(text))
+            }
+            crate::message::ReasoningContent::Summary(text) => Some(ReasoningSummary::new(text)),
+            crate::message::ReasoningContent::Encrypted(_)
+            | crate::message::ReasoningContent::Redacted { .. } => None,
+        })
+        .collect();
+
+    Ok(OpenAIReasoning {
+        id,
+        summary,
+        encrypted_content: reasoning.encrypted_content().map(str::to_owned),
+        status,
+    })
 }
 
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
@@ -995,7 +1019,7 @@ impl From<Output> for Vec<completion::AssistantContent> {
                 let summary: Vec<String> = summary.into_iter().map(|x| x.text()).collect();
 
                 vec![completion::AssistantContent::Reasoning(
-                    message::Reasoning::multi(summary).with_id(id),
+                    message::Reasoning::summaries(summary).with_id(id),
                 )]
             }
         };
@@ -1505,24 +1529,23 @@ impl TryFrom<message::Message> for Vec<Message> {
                         name: None,
                         status: ToolStatus::Completed,
                     }]),
-                    crate::message::AssistantContent::Reasoning(crate::message::Reasoning {
-                        id,
-                        reasoning,
-                        ..
-                    }) => Ok(vec![Message::Assistant {
-                        content: OneOrMany::one(AssistantContentType::Reasoning(OpenAIReasoning {
-                            id: id.expect("An OpenAI-generated ID is required when using OpenAI reasoning items"),
-                            summary: reasoning.into_iter().map(|x| ReasoningSummary::SummaryText { text: x }).collect(),
-                            encrypted_content: None,
-                            status: Some(ToolStatus::Completed),
-                        })),
-                        id: assistant_message_id.expect("The assistant message ID should exist!"),
-                        name: None,
-                        status: (ToolStatus::Completed),
-                    }]),
+                    crate::message::AssistantContent::Reasoning(reasoning) => {
+                        let openai_reasoning =
+                            openai_reasoning_from_core(&reasoning, Some(ToolStatus::Completed))?;
+                        Ok(vec![Message::Assistant {
+                            content: OneOrMany::one(AssistantContentType::Reasoning(
+                                openai_reasoning,
+                            )),
+                            id: assistant_message_id
+                                .expect("The assistant message ID should exist!"),
+                            name: None,
+                            status: ToolStatus::Completed,
+                        }])
+                    }
                     crate::message::AssistantContent::Image(_) => {
                         Err(MessageError::ConversionError(
-                            "Assistant image content is not supported in OpenAI Responses API".into(),
+                            "Assistant image content is not supported in OpenAI Responses API"
+                                .into(),
                         ))
                     }
                 }

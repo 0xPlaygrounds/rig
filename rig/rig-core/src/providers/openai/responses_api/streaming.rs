@@ -3,6 +3,7 @@
 use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
+use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::{
     ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
@@ -330,8 +331,7 @@ where
                                                 .join("\n");
                                             yield Ok(streaming::RawStreamingChoice::Reasoning {
                                                 id: Some(id.to_string()),
-                                                reasoning,
-                                                signature: None,
+                                                content: ReasoningContent::Summary(reasoning),
                                             })
                                         }
                                         _ => continue

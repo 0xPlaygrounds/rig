@@ -16,7 +16,9 @@ use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
 };
-use crate::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction, ToolResult};
+use crate::message::{
+    AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
+};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
@@ -90,8 +92,7 @@ where
     /// A reasoning (in its entirety)
     Reasoning {
         id: Option<String>,
-        reasoning: String,
-        signature: Option<String>,
+        content: ReasoningContent,
     },
     /// A reasoning partial/delta
     ReasoningDelta {
@@ -197,9 +198,9 @@ where
     pub(crate) inner: Abortable<StreamingResult<R>>,
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
-    text: String,
-    reasoning: String,
-    tool_calls: Vec<ToolCall>,
+    assistant_items: Vec<AssistantContent>,
+    text_item_index: Option<usize>,
+    reasoning_item_index: Option<usize>,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
     pub choice: OneOrMany<AssistantContent>,
@@ -221,9 +222,9 @@ where
             inner: abortable_stream,
             abort_handle,
             pause_control,
-            reasoning: String::new(),
-            text: "".to_string(),
-            tool_calls: vec![],
+            assistant_items: vec![],
+            text_item_index: None,
+            reasoning_item_index: None,
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
             final_response_yielded: AtomicBool::new(false),
@@ -244,6 +245,45 @@ where
 
     pub fn is_paused(&self) -> bool {
         self.pause_control.is_paused()
+    }
+
+    fn append_text_chunk(&mut self, text: &str) {
+        if let Some(index) = self.text_item_index
+            && let Some(AssistantContent::Text(existing_text)) = self.assistant_items.get_mut(index)
+        {
+            existing_text.text.push_str(text);
+            return;
+        }
+
+        self.assistant_items
+            .push(AssistantContent::text(text.to_owned()));
+        self.text_item_index = Some(self.assistant_items.len() - 1);
+    }
+
+    /// Accumulate streaming reasoning delta text into assistant_items.
+    /// Providers that only emit ReasoningDelta (not full Reasoning blocks)
+    /// need this so the aggregated response includes reasoning content.
+    fn append_reasoning_chunk(&mut self, id: &Option<String>, text: &str) {
+        if let Some(index) = self.reasoning_item_index
+            && let Some(AssistantContent::Reasoning(existing)) = self.assistant_items.get_mut(index)
+            && let Some(ReasoningContent::Text {
+                text: existing_text,
+                ..
+            }) = existing.content.last_mut()
+        {
+            existing_text.push_str(text);
+            return;
+        }
+
+        self.assistant_items
+            .push(AssistantContent::Reasoning(Reasoning {
+                id: id.clone(),
+                content: vec![ReasoningContent::Text {
+                    text: text.to_string(),
+                    signature: None,
+                }],
+            }));
+        self.reasoning_item_index = Some(self.assistant_items.len() - 1);
     }
 }
 
@@ -279,18 +319,11 @@ where
             Poll::Ready(None) => {
                 // This is run at the end of the inner stream to collect all tokens into
                 // a single unified `Message`.
-                let mut choice = vec![];
-
-                stream.tool_calls.iter().for_each(|tc| {
-                    choice.push(AssistantContent::ToolCall(tc.clone()));
-                });
-
-                // This is required to ensure there's always at least one item in the content
-                if choice.is_empty() || !stream.text.is_empty() {
-                    choice.insert(0, AssistantContent::text(stream.text.clone()));
+                if stream.assistant_items.is_empty() {
+                    stream.assistant_items.push(AssistantContent::text(""));
                 }
 
-                stream.choice = OneOrMany::many(choice)
+                stream.choice = OneOrMany::many(std::mem::take(&mut stream.assistant_items))
                     .expect("There should be at least one assistant message");
 
                 Poll::Ready(None)
@@ -304,9 +337,8 @@ where
             }
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
-                    // Forward the streaming tokens to the outer stream
-                    // and concat the text together
-                    stream.text = format!("{}{}", stream.text, text);
+                    stream.reasoning_item_index = None;
+                    stream.append_text_chunk(&text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
                 RawStreamingChoice::ToolCallDelta {
@@ -318,30 +350,35 @@ where
                     internal_call_id,
                     content,
                 }))),
-                RawStreamingChoice::Reasoning {
-                    id,
-                    reasoning,
-                    signature,
-                } => Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(Reasoning {
-                    id,
-                    reasoning: vec![reasoning],
-                    signature,
-                })))),
+                RawStreamingChoice::Reasoning { id, content } => {
+                    let reasoning = Reasoning {
+                        id,
+                        content: vec![content],
+                    };
+                    stream.text_item_index = None;
+                    // Full reasoning block supersedes any delta accumulation
+                    stream.reasoning_item_index = None;
+                    stream
+                        .assistant_items
+                        .push(AssistantContent::Reasoning(reasoning.clone()));
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
+                }
                 RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-                    // Forward the streaming tokens to the outer stream
-                    // and concat the text together
-                    stream.reasoning = format!("{}{}", stream.reasoning, reasoning);
+                    stream.text_item_index = None;
+                    stream.append_reasoning_chunk(&id, &reasoning);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
                         id,
                         reasoning,
                     })))
                 }
                 RawStreamingChoice::ToolCall(raw_tool_call) => {
-                    // Keep track of each tool call to aggregate the final message later
-                    // and pass it to the outer stream
                     let internal_call_id = raw_tool_call.internal_call_id.clone();
                     let tool_call: ToolCall = raw_tool_call.into();
-                    stream.tool_calls.push(tool_call.clone());
+                    stream.text_item_index = None;
+                    stream.reasoning_item_index = None;
+                    stream
+                        .assistant_items
+                        .push(AssistantContent::ToolCall(tool_call.clone()));
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
                         tool_call,
                         internal_call_id,
@@ -411,6 +448,38 @@ pub(crate) struct StreamingResultDyn<R: Clone + Unpin + GetTokenUsage> {
     pub(crate) inner: StreamingResult<R>,
 }
 
+fn map_raw_streaming_choice<R>(
+    chunk: RawStreamingChoice<R>,
+) -> RawStreamingChoice<FinalCompletionResponse>
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
+    match chunk {
+        RawStreamingChoice::FinalResponse(res) => {
+            RawStreamingChoice::FinalResponse(FinalCompletionResponse {
+                usage: res.token_usage(),
+            })
+        }
+        RawStreamingChoice::Message(m) => RawStreamingChoice::Message(m),
+        RawStreamingChoice::ToolCallDelta {
+            id,
+            internal_call_id,
+            content,
+        } => RawStreamingChoice::ToolCallDelta {
+            id,
+            internal_call_id,
+            content,
+        },
+        RawStreamingChoice::Reasoning { id, content } => {
+            RawStreamingChoice::Reasoning { id, content }
+        }
+        RawStreamingChoice::ReasoningDelta { id, reasoning } => {
+            RawStreamingChoice::ReasoningDelta { id, reasoning }
+        }
+        RawStreamingChoice::ToolCall(tool_call) => RawStreamingChoice::ToolCall(tool_call),
+    }
+}
+
 impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
     type Item = Result<RawStreamingChoice<FinalCompletionResponse>, CompletionError>;
 
@@ -420,44 +489,7 @@ impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
         match stream.inner.as_mut().poll_next(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
-            Poll::Ready(Some(Ok(chunk))) => match chunk {
-                RawStreamingChoice::FinalResponse(res) => Poll::Ready(Some(Ok(
-                    RawStreamingChoice::FinalResponse(FinalCompletionResponse {
-                        usage: res.token_usage(),
-                    }),
-                ))),
-                RawStreamingChoice::Message(m) => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::Message(m))))
-                }
-                RawStreamingChoice::ToolCallDelta {
-                    id,
-                    internal_call_id,
-                    content,
-                } => Poll::Ready(Some(Ok(RawStreamingChoice::ToolCallDelta {
-                    id,
-                    internal_call_id,
-                    content,
-                }))),
-                RawStreamingChoice::Reasoning {
-                    id,
-                    reasoning,
-                    signature,
-                } => Poll::Ready(Some(Ok(RawStreamingChoice::Reasoning {
-                    id,
-                    reasoning,
-                    signature,
-                }))),
-                RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::ReasoningDelta {
-                        id,
-                        reasoning,
-                    })))
-                }
-                RawStreamingChoice::ToolCall(tool_call) => {
-                    Poll::Ready(Some(Ok(RawStreamingChoice::ToolCall(tool_call))))
-                }
-            },
+            Poll::Ready(Some(item)) => Poll::Ready(Some(item.map(map_raw_streaming_choice::<R>))),
         }
     }
 }
@@ -502,13 +534,13 @@ where
                 println!();
                 tracing::info!("Final result: {json_res}");
             }
-            Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning, .. })) => {
+            Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                 if !is_reasoning {
                     is_reasoning = true;
                     println!();
                     println!("Thinking: ");
                 }
-                let reasoning = reasoning.into_iter().collect::<Vec<String>>().join("");
+                let reasoning = reasoning.display_text();
 
                 print!("{reasoning}");
                 std::io::Write::flush(&mut std::io::stdout())?;
@@ -553,6 +585,23 @@ mod tests {
         }
     }
 
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    fn to_stream_result(
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
+        + Send
+        + 'static,
+    ) -> StreamingResult<MockResponse> {
+        Box::pin(stream)
+    }
+
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    fn to_stream_result(
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
+        + 'static,
+    ) -> StreamingResult<MockResponse> {
+        Box::pin(stream)
+    }
+
     fn create_mock_stream() -> StreamingCompletionResponse<MockResponse> {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Message("hello 1".to_string()));
@@ -564,12 +613,75 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 15 }));
         };
 
-        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-        let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
-        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-        let pinned_stream: StreamingResult<MockResponse> = Box::pin(stream);
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
 
-        StreamingCompletionResponse::stream(pinned_stream)
+    fn create_reasoning_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: Some("rs_1".to_string()),
+                content: ReasoningContent::Text {
+                    text: "step one".to_string(),
+                    signature: Some("sig_1".to_string()),
+                },
+            });
+            yield Ok(RawStreamingChoice::Message("final answer".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 5 }));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
+    fn create_reasoning_only_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: Some("rs_only".to_string()),
+                content: ReasoningContent::Summary("hidden summary".to_string()),
+            });
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 2 }));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
+    fn create_interleaved_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: Some("rs_interleaved".to_string()),
+                content: ReasoningContent::Text {
+                    text: "chain-of-thought".to_string(),
+                    signature: None,
+                },
+            });
+            yield Ok(RawStreamingChoice::Message("final-text".to_string()));
+            yield Ok(RawStreamingChoice::ToolCall(
+                RawStreamingToolCall::new(
+                    "tool_1".to_string(),
+                    "mock_tool".to_string(),
+                    serde_json::json!({"arg": 1}),
+                ),
+            ));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 3 }));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
+    fn create_text_tool_text_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::Message("first".to_string()));
+            yield Ok(RawStreamingChoice::ToolCall(
+                RawStreamingToolCall::new(
+                    "tool_split".to_string(),
+                    "mock_tool".to_string(),
+                    serde_json::json!({"arg": "x"}),
+                ),
+            ));
+            yield Ok(RawStreamingChoice::Message("second".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 3 }));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
     }
 
     #[tokio::test]
@@ -605,8 +717,8 @@ mod tests {
                 Ok(StreamedAssistantContent::Final(res)) => {
                     println!("\nFinal response: {res:?}");
                 }
-                Ok(StreamedAssistantContent::Reasoning(Reasoning { reasoning, .. })) => {
-                    let reasoning = reasoning.into_iter().collect::<Vec<String>>().join("");
+                Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                    let reasoning = reasoning.display_text();
                     print!("{reasoning}");
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }
@@ -646,6 +758,84 @@ mod tests {
         // Test resume
         stream.resume();
         assert!(!stream.is_paused());
+    }
+
+    #[tokio::test]
+    async fn test_stream_aggregates_reasoning_content() {
+        let mut stream = create_reasoning_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+
+        assert!(choice_items.iter().any(|item| matches!(
+            item,
+            AssistantContent::Reasoning(Reasoning {
+                id: Some(id),
+                content
+            }) if id == "rs_1"
+                && matches!(
+                    content.first(),
+                    Some(ReasoningContent::Text {
+                        text,
+                        signature: Some(signature)
+                    }) if text == "step one" && signature == "sig_1"
+                )
+        )));
+    }
+
+    #[tokio::test]
+    async fn test_stream_reasoning_only_does_not_inject_empty_text() {
+        let mut stream = create_reasoning_only_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 1);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_only"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_stream_aggregates_assistant_items_in_arrival_order() {
+        let mut stream = create_interleaved_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 3);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_interleaved"
+        ));
+        assert!(matches!(
+            choice_items.get(1),
+            Some(AssistantContent::Text(Text { text })) if text == "final-text"
+        ));
+        assert!(matches!(
+            choice_items.get(2),
+            Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_1"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
+        let mut stream = create_text_tool_text_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 3);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Text(Text { text })) if text == "first"
+        ));
+        assert!(matches!(
+            choice_items.get(1),
+            Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_split"
+        ));
+        assert!(matches!(
+            choice_items.get(2),
+            Some(AssistantContent::Text(Text { text })) if text == "second"
+        ));
     }
 }
 
