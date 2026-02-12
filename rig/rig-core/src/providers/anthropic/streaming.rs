@@ -347,13 +347,10 @@ fn handle_event(
                 None
             }
             ContentDelta::ThinkingDelta { thinking } => {
-                if current_thinking.is_none() {
-                    *current_thinking = Some(ThinkingState::default());
-                }
-
-                if let Some(state) = current_thinking {
-                    state.thinking.push_str(thinking);
-                }
+                current_thinking
+                    .get_or_insert_with(ThinkingState::default)
+                    .thinking
+                    .push_str(thinking);
 
                 Some(Ok(RawStreamingChoice::ReasoningDelta {
                     id: None,
@@ -361,13 +358,10 @@ fn handle_event(
                 }))
             }
             ContentDelta::SignatureDelta { signature } => {
-                if current_thinking.is_none() {
-                    *current_thinking = Some(ThinkingState::default());
-                }
-
-                if let Some(state) = current_thinking {
-                    state.signature.push_str(signature);
-                }
+                current_thinking
+                    .get_or_insert_with(ThinkingState::default)
+                    .signature
+                    .push_str(signature);
 
                 // Don't yield signature chunks, they will be included in the final Reasoning
                 None
@@ -392,6 +386,10 @@ fn handle_event(
                 *current_thinking = Some(ThinkingState::default());
                 None
             }
+            Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
+                id: None,
+                content: ReasoningContent::Redacted { data: data.clone() },
+            })),
             // Handle other content types - they don't need special handling
             _ => None,
         },
@@ -574,6 +572,30 @@ mod tests {
         // But signature should be captured in thinking state
         assert!(thinking_state.is_some());
         assert_eq!(thinking_state.unwrap().signature, "test_signature");
+    }
+
+    #[test]
+    fn test_handle_redacted_thinking_content_block_start_event() {
+        let event = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::RedactedThinking {
+                data: "redacted_blob".to_string(),
+            },
+        };
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        match result.unwrap().unwrap() {
+            RawStreamingChoice::Reasoning {
+                content: ReasoningContent::Redacted { data },
+                ..
+            } => {
+                assert_eq!(data, "redacted_blob");
+            }
+            _ => panic!("Expected Redacted reasoning chunk"),
+        }
     }
 
     #[test]
