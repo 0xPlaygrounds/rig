@@ -134,8 +134,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("=== Example 8: Quantization Filter (fp8) ===\n");
 
-    let preferences = ProviderPreferences::new()
-        .quantizations([Quantization::Fp8]);
+    let preferences = ProviderPreferences::new().quantizations([Quantization::Fp8]);
 
     let agent = client
         .agent(DEEPSEEK_V3_2)
@@ -148,8 +147,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("=== Example 9: Maximum Price Ceiling ===\n");
 
-    let preferences = ProviderPreferences::new()
-        .max_price(MaxPrice::new().prompt(0.30).completion(0.50));
+    let preferences =
+        ProviderPreferences::new().max_price(MaxPrice::new().prompt(0.30).completion(0.50));
 
     let agent = client
         .agent(DEEPSEEK_V3_2)
