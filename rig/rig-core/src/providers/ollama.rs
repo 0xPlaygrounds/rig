@@ -351,6 +351,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         cached_input_tokens: 0,
                     },
                     raw_response,
+                    message_id: None,
                 })
             }
             _ => Err(CompletionError::ResponseError(

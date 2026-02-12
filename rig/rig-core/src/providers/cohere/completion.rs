@@ -187,6 +187,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice: OneOrMany::many(model_response).expect("There is atleast one content"),
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }

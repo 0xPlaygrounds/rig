@@ -338,6 +338,9 @@ pub struct CompletionResponse<T> {
     pub usage: Usage,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
+    /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
+    /// Used to pair reasoning input items with their output items in multi-turn.
+    pub message_id: Option<String>,
 }
 
 /// A trait for grabbing the token usage of a completion response.
@@ -502,6 +505,7 @@ where
                     choice: resp.choice,
                     usage: resp.usage,
                     raw_response: (),
+                    message_id: resp.message_id,
                 })
         })
     }
