@@ -310,7 +310,10 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                     tool_calls.push(tool_call.into())
                 }
                 message::AssistantContent::Reasoning(r) => {
-                    reasoning = r.reasoning.into_iter().next();
+                    let display = r.display_text();
+                    if !display.is_empty() {
+                        reasoning = Some(display);
+                    }
                 }
                 message::AssistantContent::Image(_) => {
                     return Err(Self::Error::ConversionError(

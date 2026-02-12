@@ -12,6 +12,7 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
+use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunkKind, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk,
     StreamingCompletionResponse, StreamingItemDoneOutput,
@@ -164,8 +165,7 @@ where
                                     .join("\n");
                                 yield Ok(RawStreamingChoice::Reasoning {
                                     id: Some(id.to_string()),
-                                    reasoning,
-                                    signature: None,
+                                    content: ReasoningContent::Summary(reasoning),
                                 });
                             }
 
