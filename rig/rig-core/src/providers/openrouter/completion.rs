@@ -118,7 +118,10 @@ pub struct ProviderSortConfig {
 impl ProviderSortConfig {
     /// Create a new sort config with the given strategy
     pub fn new(by: ProviderSortStrategy) -> Self {
-        Self { by, partition: None }
+        Self {
+            by,
+            partition: None,
+        }
     }
 
     /// Set partition strategy for multi-model requests
@@ -298,7 +301,6 @@ impl MaxPrice {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ProviderPreferences {
     // === Provider Selection Controls ===
-
     /// Try these provider slugs in the given order first.
     /// If `allow_fallbacks: true`, OpenRouter may try other providers after this list is exhausted.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -318,7 +320,6 @@ pub struct ProviderPreferences {
     pub allow_fallbacks: Option<bool>,
 
     // === Compatibility and Policy Filters ===
-
     /// If `true`, only route to providers that support all parameters in your request.
     /// Default is `false`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -334,7 +335,6 @@ pub struct ProviderPreferences {
     pub zdr: Option<bool>,
 
     // === Performance and Cost Preferences ===
-
     /// Sorting strategy. Affects ordering, not strict exclusion.
     /// If set, default load balancing is disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -353,7 +353,6 @@ pub struct ProviderPreferences {
     pub max_price: Option<MaxPrice>,
 
     // === Quantization Filter ===
-
     /// Restrict routing to providers serving specific quantization levels.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quantizations: Option<Vec<Quantization>>,
@@ -530,10 +529,7 @@ impl ProviderPreferences {
     /// let prefs = ProviderPreferences::new()
     ///     .quantizations([Quantization::Int8, Quantization::Fp16]);
     /// ```
-    pub fn quantizations(
-        mut self,
-        quantizations: impl IntoIterator<Item = Quantization>,
-    ) -> Self {
+    pub fn quantizations(mut self, quantizations: impl IntoIterator<Item = Quantization>) -> Self {
         self.quantizations = Some(quantizations.into_iter().collect());
         self
     }
@@ -1300,8 +1296,7 @@ mod tests {
     #[test]
     fn test_provider_sort_complex() {
         let sort = ProviderSort::Complex(
-            ProviderSortConfig::new(ProviderSortStrategy::Price)
-                .partition(SortPartition::None),
+            ProviderSortConfig::new(ProviderSortStrategy::Price).partition(SortPartition::None),
         );
         let json = serde_json::to_value(&sort).unwrap();
         assert_eq!(json["by"], "price");
@@ -1310,9 +1305,7 @@ mod tests {
 
     #[test]
     fn test_provider_sort_complex_without_partition() {
-        let sort = ProviderSort::Complex(
-            ProviderSortConfig::new(ProviderSortStrategy::Throughput),
-        );
+        let sort = ProviderSort::Complex(ProviderSortConfig::new(ProviderSortStrategy::Throughput));
         let json = serde_json::to_value(&sort).unwrap();
         assert_eq!(json["by"], "throughput");
         assert!(json.get("partition").is_none());
@@ -1366,9 +1359,7 @@ mod tests {
 
     #[test]
     fn test_throughput_threshold_percentile() {
-        let threshold = ThroughputThreshold::Percentile(
-            PercentileThresholds::new().p90(50.0)
-        );
+        let threshold = ThroughputThreshold::Percentile(PercentileThresholds::new().p90(50.0));
         let json = serde_json::to_value(&threshold).unwrap();
         assert_eq!(json["p90"], 50.0);
     }
@@ -1382,9 +1373,7 @@ mod tests {
 
     #[test]
     fn test_latency_threshold_percentile() {
-        let threshold = LatencyThreshold::Percentile(
-            PercentileThresholds::new().p50(0.1).p99(1.0)
-        );
+        let threshold = LatencyThreshold::Percentile(PercentileThresholds::new().p50(0.1).p99(1.0));
         let json = serde_json::to_value(&threshold).unwrap();
         assert_eq!(json["p50"], 0.1);
         assert_eq!(json["p99"], 1.0);
@@ -1392,9 +1381,7 @@ mod tests {
 
     #[test]
     fn test_max_price_builder() {
-        let price = MaxPrice::new()
-            .prompt(0.001)
-            .completion(0.002);
+        let price = MaxPrice::new().prompt(0.001).completion(0.002);
 
         assert_eq!(price.prompt, Some(0.001));
         assert_eq!(price.completion, Some(0.002));
@@ -1471,8 +1458,7 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_ignore() {
-        let prefs = ProviderPreferences::new()
-            .ignore(["deepinfra"]);
+        let prefs = ProviderPreferences::new().ignore(["deepinfra"]);
 
         let json = prefs.to_json();
         let provider = &json["provider"];
@@ -1482,8 +1468,7 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_sort_latency() {
-        let prefs = ProviderPreferences::new()
-            .sort(ProviderSortStrategy::Latency);
+        let prefs = ProviderPreferences::new().sort(ProviderSortStrategy::Latency);
 
         let json = prefs.to_json();
         let provider = &json["provider"];
@@ -1496,7 +1481,7 @@ mod tests {
         let prefs = ProviderPreferences::new()
             .sort(ProviderSortStrategy::Price)
             .preferred_min_throughput(ThroughputThreshold::Percentile(
-                PercentileThresholds::new().p90(50.0)
+                PercentileThresholds::new().p90(50.0),
             ));
 
         let json = prefs.to_json();
@@ -1508,8 +1493,7 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_require_parameters() {
-        let prefs = ProviderPreferences::new()
-            .require_parameters(true);
+        let prefs = ProviderPreferences::new().require_parameters(true);
 
         let json = prefs.to_json();
         let provider = &json["provider"];
@@ -1532,8 +1516,8 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_quantizations() {
-        let prefs = ProviderPreferences::new()
-            .quantizations([Quantization::Int8, Quantization::Fp16]);
+        let prefs =
+            ProviderPreferences::new().quantizations([Quantization::Int8, Quantization::Fp16]);
 
         let json = prefs.to_json();
         let provider = &json["provider"];
@@ -1543,24 +1527,30 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_convenience_methods() {
-        let prefs = ProviderPreferences::new()
-            .zero_data_retention()
-            .fastest();
+        let prefs = ProviderPreferences::new().zero_data_retention().fastest();
 
         assert_eq!(prefs.zdr, Some(true));
-        assert_eq!(prefs.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Throughput)));
+        assert_eq!(
+            prefs.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Throughput))
+        );
 
         let prefs2 = ProviderPreferences::new().cheapest();
-        assert_eq!(prefs2.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Price)));
+        assert_eq!(
+            prefs2.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Price))
+        );
 
         let prefs3 = ProviderPreferences::new().lowest_latency();
-        assert_eq!(prefs3.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Latency)));
+        assert_eq!(
+            prefs3.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Latency))
+        );
     }
 
     #[test]
     fn test_provider_preferences_serialization_skips_none() {
-        let prefs = ProviderPreferences::new()
-            .sort(ProviderSortStrategy::Price);
+        let prefs = ProviderPreferences::new().sort(ProviderSortStrategy::Price);
 
         let json = serde_json::to_value(&prefs).unwrap();
 
@@ -1587,7 +1577,10 @@ mod tests {
             prefs.order,
             Some(vec!["anthropic".to_string(), "openai".to_string()])
         );
-        assert_eq!(prefs.sort, Some(ProviderSort::Simple(ProviderSortStrategy::Throughput)));
+        assert_eq!(
+            prefs.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Throughput))
+        );
         assert_eq!(prefs.data_collection, Some(DataCollection::Deny));
         assert_eq!(prefs.zdr, Some(true));
         assert_eq!(
@@ -1632,10 +1625,7 @@ mod tests {
         assert!(json.get("provider").is_some());
         let provider = &json["provider"];
         assert_eq!(provider["order"], json!(["anthropic", "openai"]));
-        assert_eq!(
-            provider["only"],
-            json!(["anthropic", "openai", "google"])
-        );
+        assert_eq!(provider["only"], json!(["anthropic", "openai", "google"]));
         assert_eq!(provider["sort"], "throughput");
         assert_eq!(provider["data_collection"], "deny");
         assert_eq!(provider["zdr"], true);
@@ -1645,8 +1635,8 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_max_price() {
-        let prefs = ProviderPreferences::new()
-            .max_price(MaxPrice::new().prompt(0.001).completion(0.002));
+        let prefs =
+            ProviderPreferences::new().max_price(MaxPrice::new().prompt(0.001).completion(0.002));
 
         let json = prefs.to_json();
         let provider = &json["provider"];
@@ -1657,8 +1647,7 @@ mod tests {
 
     #[test]
     fn test_provider_preferences_preferred_max_latency() {
-        let prefs = ProviderPreferences::new()
-            .preferred_max_latency(LatencyThreshold::Simple(0.5));
+        let prefs = ProviderPreferences::new().preferred_max_latency(LatencyThreshold::Simple(0.5));
 
         let json = prefs.to_json();
         let provider = &json["provider"];
