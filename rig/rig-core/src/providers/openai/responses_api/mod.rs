@@ -198,7 +198,6 @@ impl From<Message> for InputItem {
             },
             Message::Assistant { ref content, .. } => {
                 let role = if content
-                    .clone()
                     .iter()
                     .any(|x| matches!(x, AssistantContentType::Reasoning(_)))
                 {
@@ -269,9 +268,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 items.push(InputItem {
                                     role: None,
                                     input: InputContent::FunctionCallOutput(ToolResult {
-                                        call_id: call_id
-                                            .clone()
-                                            .expect("The call ID of this tool should exist!"),
+                                        call_id: require_call_id(call_id.clone(), "Tool result")?,
                                         output: text,
                                         status: ToolStatus::Completed,
                                     }),
@@ -313,19 +310,9 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             })
                         }
-                        // todo: should we ensure this takes into account file size?
                         crate::message::UserContent::Document(Document {
-                            data: DocumentSourceKind::Base64(text),
-                            ..
-                        }) => items.push(InputItem {
-                            role: Some(Role::User),
-                            input: InputContent::Message(Message::User {
-                                content: OneOrMany::one(UserContent::InputText { text }),
-                                name: None,
-                            }),
-                        }),
-                        crate::message::UserContent::Document(Document {
-                            data: DocumentSourceKind::String(text),
+                            data:
+                                DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text),
                             ..
                         }) => items.push(InputItem {
                             role: Some(Role::User),
@@ -412,7 +399,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 role: None,
                                 input: InputContent::FunctionCall(OutputFunctionCall {
                                     arguments: function.arguments,
-                                    call_id: call_id.expect("The tool call ID should exist!"),
+                                    call_id: require_call_id(call_id, "Assistant tool call")?,
                                     id: tool_id,
                                     name: function.name,
                                     status: ToolStatus::Completed,
@@ -420,7 +407,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
-                            let openai_reasoning = openai_reasoning_from_core(&reasoning, None)
+                            let openai_reasoning = openai_reasoning_from_core(&reasoning)
                                 .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
                             items.push(InputItem {
                                 role: None,
@@ -448,33 +435,44 @@ impl From<OneOrMany<String>> for Vec<ReasoningSummary> {
     }
 }
 
+fn require_call_id(call_id: Option<String>, context: &str) -> Result<String, CompletionError> {
+    call_id.ok_or_else(|| {
+        CompletionError::RequestError(
+            format!("{context} `call_id` is required for OpenAI Responses API").into(),
+        )
+    })
+}
+
 fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
-    status: Option<ToolStatus>,
 ) -> Result<OpenAIReasoning, MessageError> {
     let id = reasoning.id.clone().ok_or_else(|| {
         MessageError::ConversionError(
             "An OpenAI-generated ID is required when using OpenAI reasoning items".to_string(),
         )
     })?;
-    let summary = reasoning
-        .content
-        .iter()
-        .filter_map(|content| match content {
-            crate::message::ReasoningContent::Text { text, .. } => {
-                Some(ReasoningSummary::new(text))
+    let mut summary = Vec::new();
+    let mut encrypted_content = None;
+    for content in &reasoning.content {
+        match content {
+            crate::message::ReasoningContent::Text { text, .. }
+            | crate::message::ReasoningContent::Summary(text) => {
+                summary.push(ReasoningSummary::new(text));
             }
-            crate::message::ReasoningContent::Summary(text) => Some(ReasoningSummary::new(text)),
-            crate::message::ReasoningContent::Encrypted(_)
-            | crate::message::ReasoningContent::Redacted { .. } => None,
-        })
-        .collect();
+            // OpenAI reasoning input has one opaque payload field; preserve either
+            // encrypted or redacted blocks there, preferring the first one seen.
+            crate::message::ReasoningContent::Encrypted(data)
+            | crate::message::ReasoningContent::Redacted { data } => {
+                encrypted_content.get_or_insert_with(|| data.clone());
+            }
+        }
+    }
 
     Ok(OpenAIReasoning {
         id,
         summary,
-        encrypted_content: reasoning.encrypted_content().map(str::to_owned),
-        status,
+        encrypted_content,
+        status: None,
     })
 }
 
@@ -672,22 +670,18 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
                 Vec::new()
             };
 
-            // Convert and extend the rest of the history
-            full_history.extend(
-                partial_history
-                    .into_iter()
-                    .map(|x| <Vec<InputItem>>::try_from(x).unwrap())
-                    .collect::<Vec<Vec<InputItem>>>()
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<InputItem>>(),
-            );
+            for history_item in partial_history {
+                full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
+            }
 
             full_history
         };
 
-        let input = OneOrMany::many(input)
-            .expect("This should never panic - if it does, please file a bug report");
+        let input = OneOrMany::many(input).map_err(|_| {
+            CompletionError::RequestError(
+                "OpenAI Responses request input must contain at least one item".into(),
+            )
+        })?;
 
         let stream = req
             .additional_params
@@ -695,12 +689,25 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             .unwrap_or(Value::Null)
             .as_bool();
 
-        let additional_parameters = if let Some(map) = req.additional_params {
-            serde_json::from_value::<AdditionalParameters>(map).expect("Converting additional parameters to AdditionalParameters should never fail as every field is an Option")
+        let mut additional_parameters = if let Some(map) = req.additional_params {
+            serde_json::from_value::<AdditionalParameters>(map).map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid OpenAI Responses additional_params payload: {err}").into(),
+                )
+            })?
         } else {
             // If there's no additional parameters, initialise an empty object
             AdditionalParameters::default()
         };
+        if additional_parameters.reasoning.is_some() {
+            let include = additional_parameters.include.get_or_insert_with(Vec::new);
+            if !include
+                .iter()
+                .any(|item| matches!(item, Include::ReasoningEncryptedContent))
+            {
+                include.push(Include::ReasoningEncryptedContent);
+            }
+        }
 
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
 
@@ -843,7 +850,7 @@ pub struct AdditionalParameters {
 
 impl AdditionalParameters {
     pub fn to_json(self) -> serde_json::Value {
-        serde_json::to_value(self).expect("this should never fail since a struct that impls Deserialize will always be valid JSON")
+        serde_json::to_value(self).unwrap_or_else(|_| serde_json::Value::Object(Map::new()))
     }
 }
 
@@ -996,6 +1003,10 @@ pub enum Output {
     Reasoning {
         id: String,
         summary: Vec<ReasoningSummary>,
+        #[serde(default)]
+        encrypted_content: Option<String>,
+        #[serde(default)]
+        status: Option<ToolStatus>,
     },
 }
 
@@ -1015,11 +1026,28 @@ impl From<Output> for Vec<completion::AssistantContent> {
             }) => vec![completion::AssistantContent::tool_call_with_call_id(
                 id, call_id, name, arguments,
             )],
-            Output::Reasoning { id, summary } => {
-                let summary: Vec<String> = summary.into_iter().map(|x| x.text()).collect();
-
+            Output::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                ..
+            } => {
+                let mut content = summary
+                    .into_iter()
+                    .map(|summary| match summary {
+                        ReasoningSummary::SummaryText { text } => {
+                            message::ReasoningContent::Summary(text)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                if let Some(encrypted_content) = encrypted_content {
+                    content.push(message::ReasoningContent::Encrypted(encrypted_content));
+                }
                 vec![completion::AssistantContent::Reasoning(
-                    message::Reasoning::summaries(summary).with_id(id),
+                    message::Reasoning {
+                        id: Some(id),
+                        content,
+                    },
                 )]
             }
         };
@@ -1377,7 +1405,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 content,
                                 ..
                             }) => Ok::<_, message::MessageError>(Message::ToolResult {
-                                tool_call_id: call_id.expect("The tool call ID should exist"),
+                                tool_call_id: call_id.ok_or_else(|| {
+                                    MessageError::ConversionError(
+                                        "Tool result `call_id` is required for OpenAI Responses API"
+                                            .into(),
+                                    )
+                                })?,
                                 output: {
                                     let res = content.first();
                                     match res {
@@ -1485,9 +1518,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    let other_content = OneOrMany::many(other_content).expect(
-                        "There must be other content here if there were no tool result content",
-                    );
+                    let other_content = OneOrMany::many(other_content).map_err(|_| {
+                        MessageError::ConversionError(
+                            "User message did not contain OpenAI Responses-compatible content"
+                                .to_string(),
+                        )
+                    })?;
 
                     Ok(vec![Message::User {
                         content: other_content,
@@ -1496,13 +1532,16 @@ impl TryFrom<message::Message> for Vec<Message> {
                 }
             }
             message::Message::Assistant { content, id } => {
-                let assistant_message_id = id;
+                let assistant_message_id = id.ok_or_else(|| {
+                    MessageError::ConversionError(
+                        "Assistant message ID is required for OpenAI Responses API".into(),
+                    )
+                })?;
 
                 match content.first() {
                     crate::message::AssistantContent::Text(Text { text }) => {
                         Ok(vec![Message::Assistant {
-                            id: assistant_message_id
-                                .expect("The assistant message ID should exist"),
+                            id: assistant_message_id.clone(),
                             status: ToolStatus::Completed,
                             content: OneOrMany::one(AssistantContentType::Text(
                                 AssistantContent::OutputText(Text { text }),
@@ -1518,26 +1557,29 @@ impl TryFrom<message::Message> for Vec<Message> {
                     }) => Ok(vec![Message::Assistant {
                         content: OneOrMany::one(AssistantContentType::ToolCall(
                             OutputFunctionCall {
-                                call_id: call_id.expect("The call ID should exist"),
+                                call_id: call_id.ok_or_else(|| {
+                                    MessageError::ConversionError(
+                                        "Tool call `call_id` is required for OpenAI Responses API"
+                                            .into(),
+                                    )
+                                })?,
                                 arguments: function.arguments,
                                 id,
                                 name: function.name,
                                 status: ToolStatus::Completed,
                             },
                         )),
-                        id: assistant_message_id.expect("The assistant message ID should exist!"),
+                        id: assistant_message_id.clone(),
                         name: None,
                         status: ToolStatus::Completed,
                     }]),
                     crate::message::AssistantContent::Reasoning(reasoning) => {
-                        let openai_reasoning =
-                            openai_reasoning_from_core(&reasoning, Some(ToolStatus::Completed))?;
+                        let openai_reasoning = openai_reasoning_from_core(&reasoning)?;
                         Ok(vec![Message::Assistant {
                             content: OneOrMany::one(AssistantContentType::Reasoning(
                                 openai_reasoning,
                             )),
-                            id: assistant_message_id
-                                .expect("The assistant message ID should exist!"),
+                            id: assistant_message_id,
                             name: None,
                             status: ToolStatus::Completed,
                         }])

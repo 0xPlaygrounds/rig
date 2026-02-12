@@ -40,6 +40,31 @@ pub struct StreamingCompletionResponse {
     pub usage: ResponsesUsage,
 }
 
+pub(crate) fn reasoning_choices_from_done_item(
+    id: &str,
+    summary: &[ReasoningSummary],
+    encrypted_content: Option<&str>,
+) -> Vec<RawStreamingChoice<StreamingCompletionResponse>> {
+    let mut choices = summary
+        .iter()
+        .map(|reasoning_summary| match reasoning_summary {
+            ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
+                id: Some(id.to_owned()),
+                content: ReasoningContent::Summary(text.to_owned()),
+            },
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(encrypted_content) = encrypted_content {
+        choices.push(RawStreamingChoice::Reasoning {
+            id: Some(id.to_owned()),
+            content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
+        });
+    }
+
+    choices
+}
+
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let mut usage = crate::completion::Usage::new();
@@ -264,7 +289,6 @@ where
 
             let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
             let mut tool_call_internal_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-            let mut combined_text = String::new();
             let span = tracing::Span::current();
 
             while let Some(event_result) = event_source.next().await {
@@ -320,32 +344,25 @@ where
                                             tool_calls.push(streaming::RawStreamingChoice::ToolCall(raw_tool_call));
                                         }
 
-                                        StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {
-                                            let reasoning = summary
-                                                .iter()
-                                                .map(|x| {
-                                                    let ReasoningSummary::SummaryText { text } = x;
-                                                    text.to_owned()
-                                                })
-                                                .collect::<Vec<String>>()
-                                                .join("\n");
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                                id: Some(id.to_string()),
-                                                content: ReasoningContent::Summary(reasoning),
-                                            })
+                                        StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id, encrypted_content, .. }, .. } => {
+                                            for reasoning_choice in reasoning_choices_from_done_item(
+                                                id,
+                                                summary,
+                                                encrypted_content.as_deref(),
+                                            ) {
+                                                yield Ok(reasoning_choice);
+                                            }
                                         }
                                         _ => continue
                                     }
                                 }
                                 ItemChunkKind::OutputTextDelta(delta) => {
-                                    combined_text.push_str(&delta.delta);
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
                                     yield Ok(streaming::RawStreamingChoice::ReasoningDelta { id: None, reasoning: delta.delta.clone() })
                                 }
                                 ItemChunkKind::RefusalDelta(delta) => {
-                                    combined_text.push_str(&delta.delta);
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::FunctionCallArgsDelta(delta) => {
@@ -411,6 +428,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::reasoning_choices_from_done_item;
+    use crate::message::ReasoningContent;
+    use crate::providers::openai::responses_api::ReasoningSummary;
+    use crate::streaming::RawStreamingChoice;
     use futures::StreamExt;
     use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
     use serde_json;
@@ -444,6 +465,59 @@ mod tests {
             let result = "Example answer".to_string();
             Ok(result)
         }
+    }
+
+    #[test]
+    fn reasoning_done_item_emits_summary_then_encrypted() {
+        let summary = vec![
+            ReasoningSummary::SummaryText {
+                text: "step 1".to_string(),
+            },
+            ReasoningSummary::SummaryText {
+                text: "step 2".to_string(),
+            },
+        ];
+        let choices = reasoning_choices_from_done_item("rs_1", &summary, Some("enc_blob"));
+
+        assert_eq!(choices.len(), 3);
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "rs_1" && text == "step 1"
+        ));
+        assert!(matches!(
+            choices.get(1),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "rs_1" && text == "step 2"
+        ));
+        assert!(matches!(
+            choices.get(2),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Encrypted(data),
+            }) if id == "rs_1" && data == "enc_blob"
+        ));
+    }
+
+    #[test]
+    fn reasoning_done_item_without_encrypted_emits_summary_only() {
+        let summary = vec![ReasoningSummary::SummaryText {
+            text: "only summary".to_string(),
+        }];
+        let choices = reasoning_choices_from_done_item("rs_2", &summary, None);
+
+        assert_eq!(choices.len(), 1);
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "rs_2" && text == "only summary"
+        ));
     }
 
     // requires `derive` rig-core feature due to using tool macro
