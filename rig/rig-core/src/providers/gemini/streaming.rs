@@ -6,6 +6,7 @@ use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
 use super::completion::{CompletionModel, create_request_body};
+use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -158,13 +159,28 @@ where
                                 Part {
                                     part: PartKind::Text(text),
                                     thought: Some(true),
+                                    thought_signature,
                                     ..
                                 } => {
                                     if !text.is_empty() {
-                                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                            id: None,
-                                            reasoning: text,
-                                        });
+                                        if thought_signature.is_some() {
+                                            // Signature arrives on the final chunk of a
+                                            // thinking block; emit a full Reasoning so the
+                                            // core accumulator captures the signature for
+                                            // Gemini 3+ roundtrip.
+                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
+                                                id: None,
+                                                content: ReasoningContent::Text {
+                                                    text,
+                                                    signature: thought_signature,
+                                                },
+                                            });
+                                        } else {
+                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                                id: None,
+                                                reasoning: text,
+                                            });
+                                        }
                                     }
                                 },
                                 Part {
