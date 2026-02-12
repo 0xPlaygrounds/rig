@@ -150,22 +150,28 @@ impl TryFrom<message::Message> for Vec<Message> {
                 Ok(tool_result_messages)
             }
             message::Message::Assistant { content, .. } => {
-                let (text_content, tool_calls) = content.into_iter().fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut texts, mut tools), content| {
-                        match content {
-                            message::AssistantContent::Text(text) => texts.push(text),
-                            message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
-                            message::AssistantContent::Reasoning(_) => {
-                                panic!("Reasoning content is not currently supported on Mistral via Rig");
-                            }
-                            message::AssistantContent::Image(_) => {
-                                panic!("Image content is not currently supported on Mistral via Rig");
-                            }
+                let mut text_content = Vec::new();
+                let mut tool_calls = Vec::new();
+
+                for content in content {
+                    match content {
+                        message::AssistantContent::Text(text) => text_content.push(text),
+                        message::AssistantContent::ToolCall(tool_call) => {
+                            tool_calls.push(tool_call)
                         }
-                        (texts, tools)
-                    },
-                );
+                        message::AssistantContent::Reasoning(_) => {
+                            // Mistral conversion path currently does not support assistant-history
+                            // reasoning items. Silently skip to avoid crashing the process.
+                        }
+                        message::AssistantContent::Image(_) => {
+                            panic!("Image content is not currently supported on Mistral via Rig");
+                        }
+                    }
+                }
+
+                if text_content.is_empty() && tool_calls.is_empty() {
+                    return Ok(vec![]);
+                }
 
                 Ok(vec![Message::Assistant {
                     content: text_content
@@ -365,6 +371,16 @@ impl TryFrom<(&str, CompletionRequest)> for MistralCompletionRequest {
 
         full_history.extend(chat_history);
 
+        if full_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Mistral request has no provider-compatible messages after conversion",
+                )
+                .into(),
+            ));
+        }
+
         let tool_choice = req
             .tool_choice
             .clone()
@@ -531,6 +547,21 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
+fn assistant_content_to_streaming_choice(
+    content: message::AssistantContent,
+) -> Option<RawStreamingChoice<CompletionResponse>> {
+    match content {
+        message::AssistantContent::Text(t) => Some(RawStreamingChoice::Message(t.text)),
+        message::AssistantContent::ToolCall(tc) => Some(RawStreamingChoice::ToolCall(
+            RawStreamingToolCall::new(tc.id, tc.function.name, tc.function.arguments),
+        )),
+        message::AssistantContent::Reasoning(_) => None,
+        message::AssistantContent::Image(_) => {
+            panic!("Image content is not supported on Mistral via Rig")
+        }
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Send + Clone + std::fmt::Debug + 'static,
@@ -616,25 +647,8 @@ where
 
         let stream = stream! {
             for c in resp.choice.clone() {
-                match c {
-                    message::AssistantContent::Text(t) => {
-                        yield Ok(RawStreamingChoice::Message(t.text.clone()))
-                    }
-                    message::AssistantContent::ToolCall(tc) => {
-                        yield Ok(RawStreamingChoice::ToolCall(
-                                RawStreamingToolCall::new(
-                                    tc.id.clone(),
-                                    tc.function.name.clone(),
-                                    tc.function.arguments.clone(),
-                                )
-                        ))
-                    }
-                    message::AssistantContent::Reasoning(_) => {
-                        panic!("Reasoning is not supported on Mistral via Rig")
-                    }
-                    message::AssistantContent::Image(_) => {
-                        panic!("Image content is not supported on Mistral via Rig")
-                    }
+                if let Some(choice) = assistant_content_to_streaming_choice(c) {
+                    yield Ok(choice);
                 }
             }
 
@@ -713,5 +727,108 @@ mod tests {
         assert_eq!(object, "chat.completion".to_string());
         assert_eq!(created, 1702256327);
         assert_eq!(choices.len(), 1);
+    }
+
+    #[test]
+    fn test_assistant_reasoning_is_skipped_in_message_conversion() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+        };
+
+        let converted: Vec<Message> = assistant.try_into().expect("conversion should work");
+        assert!(converted.is_empty());
+    }
+
+    #[test]
+    fn test_assistant_text_and_tool_call_are_preserved_when_reasoning_present() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::many(vec![
+                message::AssistantContent::reasoning("hidden"),
+                message::AssistantContent::text("visible"),
+                message::AssistantContent::tool_call(
+                    "call_1",
+                    "subtract",
+                    serde_json::json!({"x": 2, "y": 1}),
+                ),
+            ])
+            .expect("non-empty assistant content"),
+        };
+
+        let converted: Vec<Message> = assistant.try_into().expect("conversion should work");
+        assert_eq!(converted.len(), 1);
+
+        match &converted[0] {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                assert_eq!(content, "visible");
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].id, "call_1");
+                assert_eq!(tool_calls[0].function.name, "subtract");
+                assert_eq!(
+                    tool_calls[0].function.arguments,
+                    serde_json::json!({"x": 2, "y": 1})
+                );
+            }
+            _ => panic!("expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_streaming_choice_mapping_skips_reasoning_and_preserves_other_content() {
+        assert!(
+            assistant_content_to_streaming_choice(message::AssistantContent::reasoning("hidden"))
+                .is_none()
+        );
+
+        let text_choice =
+            assistant_content_to_streaming_choice(message::AssistantContent::text("visible"))
+                .expect("text should be preserved");
+        match text_choice {
+            RawStreamingChoice::Message(text) => assert_eq!(text, "visible"),
+            _ => panic!("expected text streaming choice"),
+        }
+
+        let tool_choice =
+            assistant_content_to_streaming_choice(message::AssistantContent::tool_call(
+                "call_2",
+                "add",
+                serde_json::json!({"x": 2, "y": 3}),
+            ))
+            .expect("tool call should be preserved");
+        match tool_choice {
+            RawStreamingChoice::ToolCall(call) => {
+                assert_eq!(call.id, "call_2");
+                assert_eq!(call.name, "add");
+                assert_eq!(call.arguments, serde_json::json!({"x": 2, "y": 3}));
+            }
+            _ => panic!("expected tool-call streaming choice"),
+        }
+    }
+
+    #[test]
+    fn test_request_conversion_errors_when_all_messages_are_filtered() {
+        let request = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::Assistant {
+                id: None,
+                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            model: None,
+            output_schema: None,
+        };
+
+        let result = MistralCompletionRequest::try_from((MISTRAL_SMALL, request));
+        assert!(matches!(result, Err(CompletionError::RequestError(_))));
     }
 }
