@@ -14,6 +14,7 @@ use crate::{
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
@@ -62,6 +63,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 content,
                 tool_calls,
                 reasoning,
+                reasoning_details,
                 ..
             } => {
                 let mut content = content
@@ -76,21 +78,86 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     })
                     .collect::<Vec<_>>();
 
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
+                content.extend(tool_calls.iter().map(|call| {
+                    completion::AssistantContent::tool_call(
+                        &call.id,
+                        &call.function.name,
+                        call.function.arguments.clone(),
+                    )
+                }));
 
-                if let Some(reasoning) = reasoning {
-                    content.push(completion::AssistantContent::reasoning(reasoning));
+                let mut grouped_reasoning: HashMap<
+                    Option<String>,
+                    Vec<(usize, usize, message::ReasoningContent)>,
+                > = HashMap::new();
+                let mut reasoning_order: Vec<Option<String>> = Vec::new();
+                for (position, detail) in reasoning_details.iter().enumerate() {
+                    let (reasoning_id, sort_index, parsed_content) = match detail {
+                        ReasoningDetails::Summary {
+                            id, index, summary, ..
+                        } => (
+                            id.clone(),
+                            *index,
+                            Some(message::ReasoningContent::Summary(summary.clone())),
+                        ),
+                        ReasoningDetails::Encrypted {
+                            id, index, data, ..
+                        } => (
+                            id.clone(),
+                            *index,
+                            Some(message::ReasoningContent::Encrypted(data.clone())),
+                        ),
+                        ReasoningDetails::Text {
+                            id,
+                            index,
+                            text,
+                            signature,
+                            ..
+                        } => (
+                            id.clone(),
+                            *index,
+                            text.as_ref().map(|text| message::ReasoningContent::Text {
+                                text: text.clone(),
+                                signature: signature.clone(),
+                            }),
+                        ),
+                    };
+
+                    let Some(parsed_content) = parsed_content else {
+                        continue;
+                    };
+                    let sort_index = sort_index.unwrap_or(position);
+
+                    if !grouped_reasoning.contains_key(&reasoning_id) {
+                        reasoning_order.push(reasoning_id.clone());
+                    }
+                    grouped_reasoning.entry(reasoning_id).or_default().push((
+                        sort_index,
+                        position,
+                        parsed_content,
+                    ));
+                }
+
+                if grouped_reasoning.is_empty() {
+                    if let Some(reasoning) = reasoning {
+                        content.push(completion::AssistantContent::reasoning(reasoning));
+                    }
+                } else {
+                    for reasoning_id in reasoning_order {
+                        let Some(mut blocks) = grouped_reasoning.remove(&reasoning_id) else {
+                            continue;
+                        };
+                        blocks.sort_by_key(|(index, position, _)| (*index, *position));
+                        content.push(completion::AssistantContent::Reasoning(
+                            message::Reasoning {
+                                id: reasoning_id,
+                                content: blocks
+                                    .into_iter()
+                                    .map(|(_, _, content)| content)
+                                    .collect::<Vec<_>>(),
+                            },
+                        ));
+                    }
                 }
 
                 Ok(content)
@@ -311,9 +378,47 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                     tool_calls.push(tool_call.into())
                 }
                 message::AssistantContent::Reasoning(r) => {
-                    let display = r.display_text();
-                    if !display.is_empty() {
-                        reasoning = Some(display);
+                    let mut emitted_reasoning_detail = false;
+                    for reasoning_block in &r.content {
+                        let index = Some(reasoning_details.len());
+                        match reasoning_block {
+                            message::ReasoningContent::Text { text, signature } => {
+                                reasoning_details.push(ReasoningDetails::Text {
+                                    id: r.id.clone(),
+                                    format: None,
+                                    index,
+                                    text: Some(text.clone()),
+                                    signature: signature.clone(),
+                                });
+                                emitted_reasoning_detail = true;
+                            }
+                            message::ReasoningContent::Summary(summary) => {
+                                reasoning_details.push(ReasoningDetails::Summary {
+                                    id: r.id.clone(),
+                                    format: None,
+                                    index,
+                                    summary: summary.clone(),
+                                });
+                                emitted_reasoning_detail = true;
+                            }
+                            message::ReasoningContent::Encrypted(data)
+                            | message::ReasoningContent::Redacted { data } => {
+                                reasoning_details.push(ReasoningDetails::Encrypted {
+                                    id: r.id.clone(),
+                                    format: None,
+                                    index,
+                                    data: data.clone(),
+                                });
+                                emitted_reasoning_detail = true;
+                            }
+                        }
+                    }
+
+                    if !emitted_reasoning_detail {
+                        let display = r.display_text();
+                        if !display.is_empty() {
+                            reasoning = Some(display);
+                        }
                     }
                 }
                 message::AssistantContent::Image(_) => {
@@ -734,5 +839,211 @@ mod tests {
             }
             _ => panic!("Expected Assistant message"),
         }
+    }
+
+    #[test]
+    fn test_completion_response_with_reasoning_details_maps_to_typed_reasoning() {
+        let json = json!({
+            "id": "resp_123",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openrouter/test-model",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "hello",
+                    "reasoning": null,
+                    "reasoning_details": [
+                        {"type":"reasoning.summary","id":"rs_1","summary":"s1"},
+                        {"type":"reasoning.text","id":"rs_1","text":"t1","signature":"sig_1"},
+                        {"type":"reasoning.encrypted","id":"rs_1","data":"enc_1"}
+                    ]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
+
+        assert!(items.iter().any(|item| matches!(
+            item,
+            completion::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
+                if id == "rs_1" && content.len() == 3
+        )));
+    }
+
+    #[test]
+    fn test_assistant_reasoning_emits_openrouter_reasoning_details() {
+        let reasoning = message::Reasoning {
+            id: Some("rs_2".to_string()),
+            content: vec![
+                message::ReasoningContent::Text {
+                    text: "step".to_string(),
+                    signature: Some("sig_step".to_string()),
+                },
+                message::ReasoningContent::Summary("summary".to_string()),
+                message::ReasoningContent::Encrypted("enc_blob".to_string()),
+            ],
+        };
+
+        let messages = Vec::<Message>::try_from(OneOrMany::one(
+            message::AssistantContent::Reasoning(reasoning),
+        ))
+        .unwrap();
+        let Message::Assistant {
+            reasoning,
+            reasoning_details,
+            ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+
+        assert!(reasoning.is_none());
+        assert_eq!(reasoning_details.len(), 3);
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Text {
+                id: Some(id),
+                text: Some(text),
+                signature: Some(signature),
+                ..
+            }) if id == "rs_2" && text == "step" && signature == "sig_step"
+        ));
+    }
+
+    #[test]
+    fn test_assistant_redacted_reasoning_emits_encrypted_detail_not_text() {
+        let reasoning = message::Reasoning {
+            id: Some("rs_redacted".to_string()),
+            content: vec![message::ReasoningContent::Redacted {
+                data: "opaque-redacted-data".to_string(),
+            }],
+        };
+
+        let messages = Vec::<Message>::try_from(OneOrMany::one(
+            message::AssistantContent::Reasoning(reasoning),
+        ))
+        .unwrap();
+
+        let Message::Assistant {
+            reasoning_details,
+            reasoning,
+            ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+
+        assert!(reasoning.is_none());
+        assert_eq!(reasoning_details.len(), 1);
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted {
+                id: Some(id),
+                data,
+                ..
+            }) if id == "rs_redacted" && data == "opaque-redacted-data"
+        ));
+    }
+
+    #[test]
+    fn test_completion_response_reasoning_details_respects_index_ordering() {
+        let json = json!({
+            "id": "resp_ordering",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openrouter/test-model",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "hello",
+                    "reasoning": null,
+                    "reasoning_details": [
+                        {"type":"reasoning.summary","id":"rs_order","index":1,"summary":"second"},
+                        {"type":"reasoning.summary","id":"rs_order","index":0,"summary":"first"}
+                    ]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
+        let reasoning_blocks: Vec<_> = items
+            .into_iter()
+            .filter_map(|item| match item {
+                completion::AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_blocks.len(), 1);
+        assert_eq!(reasoning_blocks[0].id.as_deref(), Some("rs_order"));
+        assert_eq!(
+            reasoning_blocks[0].content,
+            vec![
+                message::ReasoningContent::Summary("first".to_string()),
+                message::ReasoningContent::Summary("second".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_completion_response_reasoning_details_with_multiple_ids_stay_separate() {
+        let json = json!({
+            "id": "resp_multi_id",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openrouter/test-model",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "hello",
+                    "reasoning": null,
+                    "reasoning_details": [
+                        {"type":"reasoning.summary","id":"rs_a","summary":"a1"},
+                        {"type":"reasoning.summary","id":"rs_b","summary":"b1"},
+                        {"type":"reasoning.summary","id":"rs_a","summary":"a2"}
+                    ]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
+        let reasoning_blocks: Vec<_> = items
+            .into_iter()
+            .filter_map(|item| match item {
+                completion::AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_blocks.len(), 2);
+        assert_eq!(reasoning_blocks[0].id.as_deref(), Some("rs_a"));
+        assert_eq!(
+            reasoning_blocks[0].content,
+            vec![
+                message::ReasoningContent::Summary("a1".to_string()),
+                message::ReasoningContent::Summary("a2".to_string()),
+            ]
+        );
+        assert_eq!(reasoning_blocks[1].id.as_deref(), Some("rs_b"));
+        assert_eq!(
+            reasoning_blocks[1].content,
+            vec![message::ReasoningContent::Summary("b1".to_string())]
+        );
     }
 }

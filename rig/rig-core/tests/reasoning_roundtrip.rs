@@ -228,3 +228,20 @@ async fn test_gemini_reasoning_roundtrip() {
     })
     .await;
 }
+
+#[tokio::test]
+#[ignore = "requires OPENROUTER_API_KEY"]
+async fn test_openrouter_reasoning_roundtrip() {
+    use rig::providers::openrouter;
+
+    let client = openrouter::Client::from_env();
+    run_reasoning_roundtrip(TestAgent {
+        model: client.completion_model("openai/gpt-5.2"),
+        preamble: "You are a helpful math tutor. Be concise.".into(),
+        additional_params: Some(serde_json::json!({
+            "reasoning": { "effort": "medium" },
+            "include_reasoning": true
+        })),
+    })
+    .await;
+}
