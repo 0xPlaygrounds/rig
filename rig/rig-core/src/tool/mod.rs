@@ -283,10 +283,11 @@ pub mod rmcp {
             Box::pin(async move {
                 let result = self
                     .client
-                    .call_tool(rmcp::model::CallToolRequestParam {
+                    .call_tool(rmcp::model::CallToolRequestParams {
                         name,
                         arguments,
                         task: None,
+                        meta: None,
                     })
                     .await
                     .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
