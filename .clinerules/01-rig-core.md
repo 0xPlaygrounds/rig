@@ -30,7 +30,7 @@ Nearly every configurable type uses the builder pattern:
 
 ```rust
 let agent = client
-    .agent(openai::GPT_4O)
+    .agent(openai::GPT_5_2)
     .preamble("System prompt")
     .tool(my_tool)
     .temperature(0.8)
