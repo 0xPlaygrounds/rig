@@ -441,6 +441,9 @@ where
     type Hook: PromptHook<M>;
 
     /// Stream a chat with history to the model
+    ///
+    /// The updated history (including the new prompt and response) is returned
+    /// in [`FinalResponse::history()`](crate::agent::prompt_request::streaming::FinalResponse::history).
     fn stream_chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,

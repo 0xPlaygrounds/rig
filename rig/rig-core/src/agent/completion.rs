@@ -13,12 +13,12 @@ use crate::{
 };
 use futures::{StreamExt, TryStreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
+use tokio::sync::RwLock as TokioRwLock;
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub type DynamicContextStore = Arc<
-    RwLock<
+    TokioRwLock<
         Vec<(
             usize,
             Box<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
