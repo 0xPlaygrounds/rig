@@ -96,8 +96,10 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
             aws_bedrock::ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(
-                        rig::message::Reasoning::new(&reasoning_text.text)
-                            .with_signature(reasoning_text.signature),
+                        rig::message::Reasoning::new_with_signature(
+                            &reasoning_text.text,
+                            reasoning_text.signature,
+                        ),
                     )))
                 }
                 _ => Err(CompletionError::ProviderError(
@@ -129,11 +131,45 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                 ))
             }
             AssistantContent::Reasoning(reasoning) => {
-                let mut reasoning_block =
-                    aws_bedrock::ReasoningTextBlock::builder().text(reasoning.reasoning.join(""));
+                let signed_text_count = reasoning
+                    .content
+                    .iter()
+                    .filter(|content| {
+                        matches!(
+                            content,
+                            rig::message::ReasoningContent::Text {
+                                signature: Some(_),
+                                ..
+                            }
+                        )
+                    })
+                    .count();
+                if signed_text_count > 1 {
+                    return Err(CompletionError::ProviderError(
+                        "AWS Bedrock does not support multiple signed reasoning text blocks"
+                            .to_owned(),
+                    ));
+                }
+                if signed_text_count == 1 && reasoning.content.len() > 1 {
+                    return Err(CompletionError::ProviderError(
+                        "AWS Bedrock requires a single signed reasoning text block without additional reasoning parts"
+                            .to_owned(),
+                    ));
+                }
 
-                if let Some(sig) = &reasoning.signature {
-                    reasoning_block = reasoning_block.signature(sig.clone());
+                let flattened_text = reasoning.display_text();
+                if flattened_text.is_empty() {
+                    return Err(CompletionError::ProviderError(
+                        "AWS Bedrock reasoning conversion requires at least one text or summary block"
+                            .to_owned(),
+                    ));
+                }
+
+                let mut reasoning_block =
+                    aws_bedrock::ReasoningTextBlock::builder().text(flattened_text);
+
+                if let Some(sig) = reasoning.first_signature().map(str::to_owned) {
+                    reasoning_block = reasoning_block.signature(sig);
                 }
 
                 let reasoning_text_block = reasoning_block.build().map_err(|e| {
@@ -163,7 +199,10 @@ mod tests {
 
     use super::AwsConverseOutput;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig::{OneOrMany, completion, message::AssistantContent};
+    use rig::{
+        OneOrMany, completion,
+        message::{AssistantContent, ReasoningContent},
+    };
 
     #[test]
     fn aws_converse_output_to_completion_response() {
@@ -221,8 +260,12 @@ mod tests {
 
         match rig_assistant_content.unwrap().0 {
             AssistantContent::Reasoning(reasoning) => {
-                assert_eq!(reasoning.reasoning, vec!["This is my reasoning"]);
-                assert_eq!(reasoning.signature, None);
+                assert_eq!(reasoning.first_text(), Some("This is my reasoning"));
+                assert_eq!(reasoning.first_signature(), None);
+                assert!(matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text { text, signature: None }) if text == "This is my reasoning"
+                ));
             }
             _ => panic!("Expected AssistantContent::Reasoning"),
         }
@@ -247,10 +290,15 @@ mod tests {
         match rig_assistant_content.unwrap().0 {
             AssistantContent::Reasoning(reasoning) => {
                 assert_eq!(
-                    reasoning.reasoning,
-                    vec!["This is my reasoning with signature"]
+                    reasoning.first_text(),
+                    Some("This is my reasoning with signature")
                 );
-                assert_eq!(reasoning.signature, Some("test_signature_123".to_string()));
+                assert_eq!(reasoning.first_signature(), Some("test_signature_123"));
+                assert!(matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text { text, signature: Some(sig) })
+                        if text == "This is my reasoning with signature" && sig == "test_signature_123"
+                ));
             }
             _ => panic!("Expected AssistantContent::Reasoning"),
         }
@@ -279,8 +327,10 @@ mod tests {
     #[test]
     fn rig_reasoning_to_aws_content_block_with_signature() {
         // Test conversion from Rig Reasoning to AWS ContentBlock with signature
-        let reasoning = rig::message::Reasoning::new("My reasoning content")
-            .with_signature(Some("sig_abc_123".to_string()));
+        let reasoning = rig::message::Reasoning::new_with_signature(
+            "My reasoning content",
+            Some("sig_abc_123".to_string()),
+        );
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
         let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
@@ -300,9 +350,11 @@ mod tests {
     #[test]
     fn rig_reasoning_with_multiple_strings_to_aws_content_block() {
         // Test that multiple reasoning strings are joined correctly
-        let mut reasoning = rig::message::Reasoning::new("First part");
-        reasoning.reasoning.push(" Second part".to_string());
-        reasoning.reasoning.push(" Third part".to_string());
+        let reasoning = rig::message::Reasoning::multi(vec![
+            "First part".to_string(),
+            " Second part".to_string(),
+            " Third part".to_string(),
+        ]);
 
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
@@ -313,9 +365,27 @@ mod tests {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
             ) => {
-                assert_eq!(reasoning_text.text, "First part Second part Third part");
+                assert_eq!(reasoning_text.text, "First part\n Second part\n Third part");
             }
             _ => panic!("Expected ContentBlock::ReasoningContent"),
         }
+    }
+
+    #[test]
+    fn rig_reasoning_with_multiple_signed_text_blocks_returns_error() {
+        let mut reasoning =
+            rig::message::Reasoning::new_with_signature("part one", Some("sig_1".to_string()));
+        reasoning.content.push(ReasoningContent::Text {
+            text: "part two".to_string(),
+            signature: Some("sig_2".to_string()),
+        });
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(matches!(
+            aws_content_block,
+            Err(completion::CompletionError::ProviderError(message))
+                if message.contains("multiple signed reasoning text blocks")
+        ));
     }
 }

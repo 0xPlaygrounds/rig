@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         chunk_count += 1;
                     }
                     rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
-                        println!("\n[Reasoning: {}]", reasoning.reasoning.join(""));
+                        println!("\n[Reasoning: {}]", reasoning.display_text());
                         chunk_count += 1;
                     }
                     rig::streaming::StreamedAssistantContent::Final(response) => {
