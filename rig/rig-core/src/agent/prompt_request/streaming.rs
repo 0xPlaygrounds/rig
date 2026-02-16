@@ -405,7 +405,7 @@ where
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
                                 let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
+                                    return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
                                 }
 
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
