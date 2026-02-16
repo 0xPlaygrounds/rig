@@ -655,3 +655,16 @@ where
             .await
     }
 }
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::galadriel::Client =
+            crate::providers::galadriel::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::galadriel::Client =
+            crate::providers::galadriel::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
+}

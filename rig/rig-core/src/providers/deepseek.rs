@@ -906,7 +906,6 @@ pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 // Tests
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -1054,5 +1053,15 @@ mod tests {
         };
 
         assert_eq!(choice, expected_choice);
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::deepseek::Client =
+            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::deepseek::Client =
+            crate::providers::deepseek::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

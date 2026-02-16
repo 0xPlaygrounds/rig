@@ -369,3 +369,16 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
         Ok(res)
     }
 }
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::moonshot::Client =
+            crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::moonshot::Client =
+            crate::providers::moonshot::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
+}

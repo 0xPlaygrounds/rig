@@ -1631,4 +1631,15 @@ mod tests {
             "format field should be absent when output_schema is None"
         );
     }
+
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::ollama::Client =
+            crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
+        let _client_from_builder: crate::providers::ollama::Client =
+            crate::providers::ollama::Client::builder()
+                .api_key(Nothing)
+                .build()
+                .expect("Client::builder() failed");
+    }
 }

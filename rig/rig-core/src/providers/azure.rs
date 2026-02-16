@@ -1093,4 +1093,13 @@ mod azure_tests {
 
         tracing::info!("Azure completion: {:?}", completion);
     }
+    #[tokio::test]
+    async fn test_client_initialization() {
+        let _client: crate::providers::azure::Client<reqwest::Client> =
+            crate::providers::azure::Client::builder()
+                .api_key("test")
+                .azure_endpoint("test".to_string()) // add your endpoint here!
+                .build()
+                .expect("Client::builder() failed");
+    }
 }

@@ -699,3 +699,17 @@ mod audio_generation {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::hyperbolic::Client =
+            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::hyperbolic::Client =
+            crate::providers::hyperbolic::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
+}

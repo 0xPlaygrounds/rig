@@ -777,4 +777,14 @@ mod tests {
             })
         )
     }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::groq::Client =
+            crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::groq::Client =
+            crate::providers::groq::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
 }
