@@ -262,47 +262,23 @@ impl FromStr for ToolResultContent {
     }
 }
 
+/// The source of an image content block.
+///
+/// Anthropic supports two source types for images:
+/// - `Base64`: Base64-encoded image data with media type
+/// - `Url`: URL reference to an image
+///
+/// See: <https://docs.anthropic.com/en/api/messages>
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(untagged)]
-pub enum ImageSourceData {
-    Base64(String),
-    Url(String),
-}
-
-impl From<ImageSourceData> for DocumentSourceKind {
-    fn from(value: ImageSourceData) -> Self {
-        match value {
-            ImageSourceData::Base64(data) => DocumentSourceKind::Base64(data),
-            ImageSourceData::Url(url) => DocumentSourceKind::Url(url),
-        }
-    }
-}
-
-impl TryFrom<DocumentSourceKind> for ImageSourceData {
-    type Error = MessageError;
-
-    fn try_from(value: DocumentSourceKind) -> Result<Self, Self::Error> {
-        match value {
-            DocumentSourceKind::Base64(data) => Ok(ImageSourceData::Base64(data)),
-            DocumentSourceKind::Url(url) => Ok(ImageSourceData::Url(url)),
-            _ => Err(MessageError::ConversionError("Content has no body".into())),
-        }
-    }
-}
-
-impl From<ImageSourceData> for String {
-    fn from(value: ImageSourceData) -> Self {
-        match value {
-            ImageSourceData::Base64(s) | ImageSourceData::Url(s) => s,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ImageSource {
-    pub data: ImageSourceData,
-    pub media_type: ImageFormat,
-    pub r#type: SourceType,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ImageSource {
+    #[serde(rename = "base64")]
+    Base64 {
+        data: String,
+        media_type: ImageFormat,
+    },
+    #[serde(rename = "url")]
+    Url { url: String },
 }
 
 /// The source of a document content block.
@@ -509,10 +485,9 @@ impl TryFrom<message::Message> for Message {
                                     image.media_type.ok_or(MessageError::ConversionError(
                                         "Image media type is required".to_owned(),
                                     ))?;
-                                Ok(ToolResultContent::Image(ImageSource {
-                                    data: ImageSourceData::Base64(data),
+                                Ok(ToolResultContent::Image(ImageSource::Base64 {
+                                    data,
                                     media_type: media_type.try_into()?,
-                                    r#type: SourceType::BASE64,
                                 }))
                             }
                         })?,
@@ -522,21 +497,18 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Image(message::Image {
                         data, media_type, ..
                     }) => {
-                        let media_type = media_type.ok_or(MessageError::ConversionError(
-                            "Image media type is required for Claude API".to_string(),
-                        ))?;
-
                         let source = match data {
-                            DocumentSourceKind::Base64(data) => ImageSource {
-                                data: ImageSourceData::Base64(data),
-                                r#type: SourceType::BASE64,
-                                media_type: ImageFormat::try_from(media_type)?,
-                            },
-                            DocumentSourceKind::Url(url) => ImageSource {
-                                data: ImageSourceData::Url(url),
-                                r#type: SourceType::URL,
-                                media_type: ImageFormat::try_from(media_type)?,
-                            },
+                            DocumentSourceKind::Base64(data) => {
+                                let media_type =
+                                    media_type.ok_or(MessageError::ConversionError(
+                                        "Image media type is required for Claude API".to_string(),
+                                    ))?;
+                                ImageSource::Base64 {
+                                    data,
+                                    media_type: ImageFormat::try_from(media_type)?,
+                                }
+                            }
+                            DocumentSourceKind::Url(url) => ImageSource::Url { url },
                             DocumentSourceKind::Unknown => {
                                 return Err(MessageError::ConversionError(
                                     "Image content has no body".into(),
@@ -650,11 +622,12 @@ impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
             ToolResultContent::Text { text } => message::ToolResultContent::text(text),
-            ToolResultContent::Image(ImageSource {
-                data,
-                media_type: format,
-                ..
-            }) => message::ToolResultContent::image_base64(data, Some(format.into()), None),
+            ToolResultContent::Image(source) => match source {
+                ImageSource::Base64 { data, media_type } => {
+                    message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
+                }
+                ImageSource::Url { url } => message::ToolResultContent::image_url(url, None, None),
+            },
         }
     }
 }
@@ -676,14 +649,24 @@ impl TryFrom<Message> for message::Message {
                             tool_use_id,
                             content.map(|content| content.into()),
                         ),
-                        Content::Image { source, .. } => {
-                            message::UserContent::Image(message::Image {
-                                data: source.data.into(),
-                                media_type: Some(source.media_type.into()),
-                                detail: None,
-                                additional_params: None,
-                            })
-                        }
+                        Content::Image { source, .. } => match source {
+                            ImageSource::Base64 { data, media_type } => {
+                                message::UserContent::Image(message::Image {
+                                    data: DocumentSourceKind::Base64(data),
+                                    media_type: Some(media_type.into()),
+                                    detail: None,
+                                    additional_params: None,
+                                })
+                            }
+                            ImageSource::Url { url } => {
+                                message::UserContent::Image(message::Image {
+                                    data: DocumentSourceKind::Url(url),
+                                    media_type: None,
+                                    detail: None,
+                                    additional_params: None,
+                                })
+                            }
+                        },
                         Content::Document { source, .. } => match source {
                             DocumentSource::Base64 { data, media_type } => {
                                 let rig_media_type = match media_type {
@@ -1341,10 +1324,9 @@ mod tests {
                 Content::Image { source, .. } => {
                     assert_eq!(
                         source,
-                        ImageSource {
-                            data: ImageSourceData::Base64("/9j/4AAQSkZJRg...".to_owned()),
+                        ImageSource::Base64 {
+                            data: "/9j/4AAQSkZJRg...".to_owned(),
                             media_type: ImageFormat::JPEG,
-                            r#type: SourceType::BASE64,
                         }
                     );
                 }
