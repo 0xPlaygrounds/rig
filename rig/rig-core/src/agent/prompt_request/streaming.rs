@@ -122,13 +122,8 @@ fn merge_reasoning_blocks(
     }
 }
 
-async fn cancelled_prompt_error(
-    chat_history: &Arc<RwLock<Vec<Message>>>,
-    reason: String,
-) -> StreamingError {
-    StreamingError::Prompt(
-        PromptError::prompt_cancelled(chat_history.read().await.to_vec(), reason).into(),
-    )
+async fn cancelled_prompt_error(chat_history: &Vec<Message>, reason: String) -> StreamingError {
+    StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.to_owned(), reason).into())
 }
 
 fn tool_result_to_user_message(
@@ -596,7 +591,6 @@ where
 
                 // Add reasoning and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
-                let mut history = chat_history.write().await;
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     let mut content_items: Vec<rig::message::AssistantContent> = vec![];
 
@@ -616,22 +610,7 @@ where
                 }
 
                 for (id, call_id, tool_result) in tool_results {
-                    if let Some(call_id) = call_id {
-                        chat_history.push(Message::User {
-                            content: OneOrMany::one(UserContent::tool_result_with_call_id(
-                                &id,
-                                call_id.clone(),
-                                OneOrMany::one(ToolResultContent::text(&tool_result)),
-                            )),
-                        });
-                    } else {
-                        chat_history.push(Message::User {
-                            content: OneOrMany::one(UserContent::tool_result(
-                                &id,
-                                OneOrMany::one(ToolResultContent::text(&tool_result)),
-                            )),
-                        });
-                    }
+                    chat_history.push(tool_result_to_user_message(id, call_id, tool_result));
                 }
 
                 // Set the current prompt to the last message in the chat history
@@ -640,7 +619,7 @@ where
                     None => unreachable!("Chat history should never be empty at this point"),
                 };
 
-                if !did_call_tool {
+                if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
                     chat_history.push(current_prompt.clone());
                     if !last_text_response.is_empty() {
