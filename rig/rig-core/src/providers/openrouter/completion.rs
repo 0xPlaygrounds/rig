@@ -29,6 +29,541 @@ pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
 /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
 pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
 
+// ================================================================
+// Provider Selection and Prioritization
+// ================================================================
+// See: https://openrouter.ai/docs/guides/routing/provider-selection
+
+/// Data collection policy for providers.
+///
+/// Controls whether providers are allowed to collect and store request data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DataCollection {
+    /// Allow providers that may collect data (default)
+    #[default]
+    Allow,
+    /// Restrict routing to providers that do not store user data non-transiently
+    Deny,
+}
+
+/// Model quantization levels supported by OpenRouter.
+///
+/// Restrict routing to providers serving a specific quantization level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Quantization {
+    /// 4-bit integer quantization
+    #[serde(rename = "int4")]
+    Int4,
+    /// 8-bit integer quantization
+    #[serde(rename = "int8")]
+    Int8,
+    /// 16-bit floating point
+    #[serde(rename = "fp16")]
+    Fp16,
+    /// Brain floating point 16-bit
+    #[serde(rename = "bf16")]
+    Bf16,
+    /// 32-bit floating point (full precision)
+    #[serde(rename = "fp32")]
+    Fp32,
+    /// 8-bit floating point
+    #[serde(rename = "fp8")]
+    Fp8,
+    /// Unknown or custom quantization level
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+/// Simple sorting strategy for providers.
+///
+/// Determines how providers should be prioritized when multiple are available.
+/// If you set `sort`, default load balancing is disabled and providers are tried
+/// deterministically in the resulting order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderSortStrategy {
+    /// Sort by price (cheapest first)
+    Price,
+    /// Sort by throughput (higher tokens/sec first)
+    Throughput,
+    /// Sort by latency (lower latency first)
+    Latency,
+}
+
+/// Partition strategy for multi-model requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SortPartition {
+    /// Sort providers within each model group (default)
+    Model,
+    /// Sort providers globally across all models
+    None,
+}
+
+/// Complex sorting configuration with partition support.
+///
+/// For multi-model requests, allows control over how providers are sorted.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProviderSortConfig {
+    /// Sorting strategy
+    pub by: ProviderSortStrategy,
+
+    /// Partition strategy (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partition: Option<SortPartition>,
+}
+
+impl ProviderSortConfig {
+    /// Create a new sort config with the given strategy
+    pub fn new(by: ProviderSortStrategy) -> Self {
+        Self {
+            by,
+            partition: None,
+        }
+    }
+
+    /// Set partition strategy for multi-model requests
+    pub fn partition(mut self, partition: SortPartition) -> Self {
+        self.partition = Some(partition);
+        self
+    }
+}
+
+/// Sort configuration - can be a simple string or a complex object.
+///
+/// Use `ProviderSort::Simple` for basic sorting, or `ProviderSort::Complex`
+/// for multi-model requests with partition control.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ProviderSort {
+    /// Simple sorting by a single strategy
+    Simple(ProviderSortStrategy),
+    /// Complex sorting with partition support
+    Complex(ProviderSortConfig),
+}
+
+impl From<ProviderSortStrategy> for ProviderSort {
+    fn from(strategy: ProviderSortStrategy) -> Self {
+        ProviderSort::Simple(strategy)
+    }
+}
+
+impl From<ProviderSortConfig> for ProviderSort {
+    fn from(config: ProviderSortConfig) -> Self {
+        ProviderSort::Complex(config)
+    }
+}
+
+/// Throughput threshold configuration with percentile support.
+///
+/// Endpoints not meeting the threshold are deprioritized (moved later), not excluded.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ThroughputThreshold {
+    /// Simple threshold in tokens/sec
+    Simple(f64),
+    /// Percentile-based thresholds
+    Percentile(PercentileThresholds),
+}
+
+/// Latency threshold configuration with percentile support.
+///
+/// Endpoints not meeting the threshold are deprioritized, not excluded.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum LatencyThreshold {
+    /// Simple threshold in seconds
+    Simple(f64),
+    /// Percentile-based thresholds
+    Percentile(PercentileThresholds),
+}
+
+/// Percentile-based thresholds for throughput or latency.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PercentileThresholds {
+    /// 50th percentile threshold
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p50: Option<f64>,
+    /// 75th percentile threshold
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p75: Option<f64>,
+    /// 90th percentile threshold
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p90: Option<f64>,
+    /// 99th percentile threshold
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p99: Option<f64>,
+}
+
+impl PercentileThresholds {
+    /// Create new empty percentile thresholds
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set p50 threshold
+    pub fn p50(mut self, value: f64) -> Self {
+        self.p50 = Some(value);
+        self
+    }
+
+    /// Set p75 threshold
+    pub fn p75(mut self, value: f64) -> Self {
+        self.p75 = Some(value);
+        self
+    }
+
+    /// Set p90 threshold
+    pub fn p90(mut self, value: f64) -> Self {
+        self.p90 = Some(value);
+        self
+    }
+
+    /// Set p99 threshold
+    pub fn p99(mut self, value: f64) -> Self {
+        self.p99 = Some(value);
+        self
+    }
+}
+
+/// Maximum price configuration for hard ceiling on costs.
+///
+/// If no eligible provider is at or under the ceiling, the request fails.
+/// Units are OpenRouter pricing units (e.g., dollars per million tokens).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MaxPrice {
+    /// Maximum price per prompt token
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<f64>,
+    /// Maximum price per completion token
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion: Option<f64>,
+    /// Maximum price per request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request: Option<f64>,
+    /// Maximum price per image
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<f64>,
+}
+
+impl MaxPrice {
+    /// Create new empty max price config
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set maximum price per prompt token
+    pub fn prompt(mut self, price: f64) -> Self {
+        self.prompt = Some(price);
+        self
+    }
+
+    /// Set maximum price per completion token
+    pub fn completion(mut self, price: f64) -> Self {
+        self.completion = Some(price);
+        self
+    }
+
+    /// Set maximum price per request
+    pub fn request(mut self, price: f64) -> Self {
+        self.request = Some(price);
+        self
+    }
+
+    /// Set maximum price per image
+    pub fn image(mut self, price: f64) -> Self {
+        self.image = Some(price);
+        self
+    }
+}
+
+/// Provider preferences for OpenRouter routing.
+///
+/// This struct allows you to control which providers are used and how they are prioritized
+/// when making requests through OpenRouter.
+///
+/// See: <https://openrouter.ai/docs/guides/routing/provider-selection>
+///
+/// # Example
+///
+/// ```rust
+/// use rig::providers::openrouter::{ProviderPreferences, ProviderSortStrategy, Quantization};
+///
+/// // Create preferences for zero data retention providers, sorted by throughput
+/// let prefs = ProviderPreferences::new()
+///     .sort(ProviderSortStrategy::Throughput)
+///     .zdr(true)
+///     .quantizations([Quantization::Int8])
+///     .only(["anthropic", "openai"]);
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ProviderPreferences {
+    // === Provider Selection Controls ===
+    /// Try these provider slugs in the given order first.
+    /// If `allow_fallbacks: true`, OpenRouter may try other providers after this list is exhausted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<Vec<String>>,
+
+    /// Hard allowlist. Only these provider slugs are eligible.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub only: Option<Vec<String>>,
+
+    /// Blocklist. These provider slugs are never used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ignore: Option<Vec<String>>,
+
+    /// If `false`, the router will not use any providers outside what your constraints permit.
+    /// Default is `true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_fallbacks: Option<bool>,
+
+    // === Compatibility and Policy Filters ===
+    /// If `true`, only route to providers that support all parameters in your request.
+    /// Default is `false`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_parameters: Option<bool>,
+
+    /// Data collection policy. If [`DataCollection::Deny`], restrict routing to providers
+    /// that do not store user data non-transiently. Default is [`DataCollection::Allow`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_collection: Option<DataCollection>,
+
+    /// If `true`, restrict routing to Zero Data Retention endpoints only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zdr: Option<bool>,
+
+    // === Performance and Cost Preferences ===
+    /// Sorting strategy. Affects ordering, not strict exclusion.
+    /// If set, default load balancing is disabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<ProviderSort>,
+
+    /// Throughput threshold. Endpoints not meeting the threshold are deprioritized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_min_throughput: Option<ThroughputThreshold>,
+
+    /// Latency threshold. Endpoints not meeting the threshold are deprioritized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_max_latency: Option<LatencyThreshold>,
+
+    /// Hard price ceiling. If no provider is at or under, the request fails.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_price: Option<MaxPrice>,
+
+    // === Quantization Filter ===
+    /// Restrict routing to providers serving specific quantization levels.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantizations: Option<Vec<Quantization>>,
+}
+
+impl ProviderPreferences {
+    /// Create a new empty provider preferences struct
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // === Provider Selection Controls ===
+
+    /// Try these provider slugs in the given order first.
+    ///
+    /// If `allow_fallbacks` is true (default), OpenRouter may try other providers
+    /// after this list is exhausted.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .order(["anthropic", "openai"]);
+    /// ```
+    pub fn order(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.order = Some(providers.into_iter().map(|p| p.into()).collect());
+        self
+    }
+
+    /// Hard allowlist. Only these provider slugs are eligible.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .only(["azure", "together"])
+    ///     .allow_fallbacks(false);
+    /// ```
+    pub fn only(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.only = Some(providers.into_iter().map(|p| p.into()).collect());
+        self
+    }
+
+    /// Blocklist. These provider slugs are never used.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .ignore(["deepinfra"]);
+    /// ```
+    pub fn ignore(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.ignore = Some(providers.into_iter().map(|p| p.into()).collect());
+        self
+    }
+
+    /// Control whether fallbacks are allowed.
+    ///
+    /// If `false`, the router will not use any providers outside what your constraints permit.
+    /// Default is `true`.
+    pub fn allow_fallbacks(mut self, allow: bool) -> Self {
+        self.allow_fallbacks = Some(allow);
+        self
+    }
+
+    // === Compatibility and Policy Filters ===
+
+    /// If `true`, only route to providers that support all parameters in your request.
+    ///
+    /// Default is `false`, meaning providers may ignore unsupported parameters.
+    pub fn require_parameters(mut self, require: bool) -> Self {
+        self.require_parameters = Some(require);
+        self
+    }
+
+    /// Set data collection policy.
+    ///
+    /// If `Deny`, restrict routing to providers that do not store user data non-transiently.
+    pub fn data_collection(mut self, policy: DataCollection) -> Self {
+        self.data_collection = Some(policy);
+        self
+    }
+
+    /// If `true`, restrict routing to Zero Data Retention endpoints only.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::ProviderPreferences;
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .zdr(true);
+    /// ```
+    pub fn zdr(mut self, enable: bool) -> Self {
+        self.zdr = Some(enable);
+        self
+    }
+
+    // === Performance and Cost Preferences ===
+
+    /// Set the sorting strategy for providers.
+    ///
+    /// If set, default load balancing is disabled and providers are tried
+    /// deterministically in the resulting order.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::{ProviderPreferences, ProviderSortStrategy};
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .sort(ProviderSortStrategy::Latency);
+    /// ```
+    pub fn sort(mut self, sort: impl Into<ProviderSort>) -> Self {
+        self.sort = Some(sort.into());
+        self
+    }
+
+    /// Set preferred minimum throughput threshold.
+    ///
+    /// Endpoints not meeting the threshold are deprioritized (moved later), not excluded.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::{ProviderPreferences, ThroughputThreshold, PercentileThresholds};
+    ///
+    /// // Simple threshold
+    /// let prefs = ProviderPreferences::new()
+    ///     .preferred_min_throughput(ThroughputThreshold::Simple(50.0));
+    ///
+    /// // Percentile threshold
+    /// let prefs = ProviderPreferences::new()
+    ///     .preferred_min_throughput(ThroughputThreshold::Percentile(
+    ///         PercentileThresholds::new().p90(50.0)
+    ///     ));
+    /// ```
+    pub fn preferred_min_throughput(mut self, threshold: ThroughputThreshold) -> Self {
+        self.preferred_min_throughput = Some(threshold);
+        self
+    }
+
+    /// Set preferred maximum latency threshold.
+    ///
+    /// Endpoints not meeting the threshold are deprioritized, not excluded.
+    pub fn preferred_max_latency(mut self, threshold: LatencyThreshold) -> Self {
+        self.preferred_max_latency = Some(threshold);
+        self
+    }
+
+    /// Set maximum price ceiling.
+    ///
+    /// If no eligible provider is at or under the ceiling, the request fails.
+    pub fn max_price(mut self, price: MaxPrice) -> Self {
+        self.max_price = Some(price);
+        self
+    }
+
+    // === Quantization Filter ===
+
+    /// Restrict routing to providers serving specific quantization levels.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use rig::providers::openrouter::{ProviderPreferences, Quantization};
+    ///
+    /// let prefs = ProviderPreferences::new()
+    ///     .quantizations([Quantization::Int8, Quantization::Fp16]);
+    /// ```
+    pub fn quantizations(mut self, quantizations: impl IntoIterator<Item = Quantization>) -> Self {
+        self.quantizations = Some(quantizations.into_iter().collect());
+        self
+    }
+
+    // === Convenience Methods ===
+
+    /// Convenience: Enable Zero Data Retention
+    pub fn zero_data_retention(self) -> Self {
+        self.zdr(true)
+    }
+
+    /// Convenience: Sort by throughput (higher tokens/sec first)
+    pub fn fastest(self) -> Self {
+        self.sort(ProviderSortStrategy::Throughput)
+    }
+
+    /// Convenience: Sort by price (cheapest first)
+    pub fn cheapest(self) -> Self {
+        self.sort(ProviderSortStrategy::Price)
+    }
+
+    /// Convenience: Sort by latency (lower latency first)
+    pub fn lowest_latency(self) -> Self {
+        self.sort(ProviderSortStrategy::Latency)
+    }
+
+    /// Convert to JSON value for use in additional_params
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "provider": self
+        })
+    }
+}
+
 /// A openrouter completion object.
 ///
 /// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
@@ -733,5 +1268,464 @@ mod tests {
             }
             _ => panic!("Expected Assistant message"),
         }
+    }
+
+    #[test]
+    fn test_data_collection_serialization() {
+        assert_eq!(
+            serde_json::to_string(&DataCollection::Allow).unwrap(),
+            r#""allow""#
+        );
+        assert_eq!(
+            serde_json::to_string(&DataCollection::Deny).unwrap(),
+            r#""deny""#
+        );
+    }
+
+    #[test]
+    fn test_data_collection_default() {
+        assert_eq!(DataCollection::default(), DataCollection::Allow);
+    }
+
+    #[test]
+    fn test_quantization_serialization() {
+        assert_eq!(
+            serde_json::to_string(&Quantization::Int4).unwrap(),
+            r#""int4""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Int8).unwrap(),
+            r#""int8""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Fp16).unwrap(),
+            r#""fp16""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Bf16).unwrap(),
+            r#""bf16""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Fp32).unwrap(),
+            r#""fp32""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Fp8).unwrap(),
+            r#""fp8""#
+        );
+        assert_eq!(
+            serde_json::to_string(&Quantization::Unknown).unwrap(),
+            r#""unknown""#
+        );
+    }
+
+    #[test]
+    fn test_provider_sort_strategy_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ProviderSortStrategy::Price).unwrap(),
+            r#""price""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProviderSortStrategy::Throughput).unwrap(),
+            r#""throughput""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ProviderSortStrategy::Latency).unwrap(),
+            r#""latency""#
+        );
+    }
+
+    #[test]
+    fn test_sort_partition_serialization() {
+        assert_eq!(
+            serde_json::to_string(&SortPartition::Model).unwrap(),
+            r#""model""#
+        );
+        assert_eq!(
+            serde_json::to_string(&SortPartition::None).unwrap(),
+            r#""none""#
+        );
+    }
+
+    #[test]
+    fn test_provider_sort_simple() {
+        let sort = ProviderSort::Simple(ProviderSortStrategy::Latency);
+        let json = serde_json::to_value(&sort).unwrap();
+        assert_eq!(json, "latency");
+    }
+
+    #[test]
+    fn test_provider_sort_complex() {
+        let sort = ProviderSort::Complex(
+            ProviderSortConfig::new(ProviderSortStrategy::Price).partition(SortPartition::None),
+        );
+        let json = serde_json::to_value(&sort).unwrap();
+        assert_eq!(json["by"], "price");
+        assert_eq!(json["partition"], "none");
+    }
+
+    #[test]
+    fn test_provider_sort_complex_without_partition() {
+        let sort = ProviderSort::Complex(ProviderSortConfig::new(ProviderSortStrategy::Throughput));
+        let json = serde_json::to_value(&sort).unwrap();
+        assert_eq!(json["by"], "throughput");
+        assert!(json.get("partition").is_none());
+    }
+
+    #[test]
+    fn test_provider_sort_from_strategy() {
+        let sort: ProviderSort = ProviderSortStrategy::Price.into();
+        assert_eq!(sort, ProviderSort::Simple(ProviderSortStrategy::Price));
+    }
+
+    #[test]
+    fn test_provider_sort_from_config() {
+        let config = ProviderSortConfig::new(ProviderSortStrategy::Latency);
+        let sort: ProviderSort = config.into();
+        match sort {
+            ProviderSort::Complex(c) => assert_eq!(c.by, ProviderSortStrategy::Latency),
+            _ => panic!("Expected Complex variant"),
+        }
+    }
+
+    #[test]
+    fn test_percentile_thresholds_builder() {
+        let thresholds = PercentileThresholds::new()
+            .p50(10.0)
+            .p75(25.0)
+            .p90(50.0)
+            .p99(100.0);
+
+        assert_eq!(thresholds.p50, Some(10.0));
+        assert_eq!(thresholds.p75, Some(25.0));
+        assert_eq!(thresholds.p90, Some(50.0));
+        assert_eq!(thresholds.p99, Some(100.0));
+    }
+
+    #[test]
+    fn test_percentile_thresholds_default() {
+        let thresholds = PercentileThresholds::default();
+        assert_eq!(thresholds.p50, None);
+        assert_eq!(thresholds.p75, None);
+        assert_eq!(thresholds.p90, None);
+        assert_eq!(thresholds.p99, None);
+    }
+
+    #[test]
+    fn test_throughput_threshold_simple() {
+        let threshold = ThroughputThreshold::Simple(50.0);
+        let json = serde_json::to_value(&threshold).unwrap();
+        assert_eq!(json, 50.0);
+    }
+
+    #[test]
+    fn test_throughput_threshold_percentile() {
+        let threshold = ThroughputThreshold::Percentile(PercentileThresholds::new().p90(50.0));
+        let json = serde_json::to_value(&threshold).unwrap();
+        assert_eq!(json["p90"], 50.0);
+    }
+
+    #[test]
+    fn test_latency_threshold_simple() {
+        let threshold = LatencyThreshold::Simple(0.5);
+        let json = serde_json::to_value(&threshold).unwrap();
+        assert_eq!(json, 0.5);
+    }
+
+    #[test]
+    fn test_latency_threshold_percentile() {
+        let threshold = LatencyThreshold::Percentile(PercentileThresholds::new().p50(0.1).p99(1.0));
+        let json = serde_json::to_value(&threshold).unwrap();
+        assert_eq!(json["p50"], 0.1);
+        assert_eq!(json["p99"], 1.0);
+    }
+
+    #[test]
+    fn test_max_price_builder() {
+        let price = MaxPrice::new().prompt(0.001).completion(0.002);
+
+        assert_eq!(price.prompt, Some(0.001));
+        assert_eq!(price.completion, Some(0.002));
+        assert_eq!(price.request, None);
+        assert_eq!(price.image, None);
+    }
+
+    #[test]
+    fn test_max_price_all_fields() {
+        let price = MaxPrice::new()
+            .prompt(0.001)
+            .completion(0.002)
+            .request(0.01)
+            .image(0.05);
+
+        let json = serde_json::to_value(&price).unwrap();
+        assert_eq!(json["prompt"], 0.001);
+        assert_eq!(json["completion"], 0.002);
+        assert_eq!(json["request"], 0.01);
+        assert_eq!(json["image"], 0.05);
+    }
+
+    #[test]
+    fn test_max_price_default() {
+        let price = MaxPrice::default();
+        assert_eq!(price.prompt, None);
+        assert_eq!(price.completion, None);
+        assert_eq!(price.request, None);
+        assert_eq!(price.image, None);
+    }
+
+    #[test]
+    fn test_provider_preferences_default() {
+        let prefs = ProviderPreferences::default();
+        assert!(prefs.order.is_none());
+        assert!(prefs.only.is_none());
+        assert!(prefs.ignore.is_none());
+        assert!(prefs.allow_fallbacks.is_none());
+        assert!(prefs.require_parameters.is_none());
+        assert!(prefs.data_collection.is_none());
+        assert!(prefs.zdr.is_none());
+        assert!(prefs.sort.is_none());
+        assert!(prefs.preferred_min_throughput.is_none());
+        assert!(prefs.preferred_max_latency.is_none());
+        assert!(prefs.max_price.is_none());
+        assert!(prefs.quantizations.is_none());
+    }
+
+    #[test]
+    fn test_provider_preferences_order_with_fallbacks() {
+        let prefs = ProviderPreferences::new()
+            .order(["anthropic", "openai"])
+            .allow_fallbacks(true);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["order"], json!(["anthropic", "openai"]));
+        assert_eq!(provider["allow_fallbacks"], true);
+    }
+
+    #[test]
+    fn test_provider_preferences_only_allowlist() {
+        let prefs = ProviderPreferences::new()
+            .only(["azure", "together"])
+            .allow_fallbacks(false);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["only"], json!(["azure", "together"]));
+        assert_eq!(provider["allow_fallbacks"], false);
+    }
+
+    #[test]
+    fn test_provider_preferences_ignore() {
+        let prefs = ProviderPreferences::new().ignore(["deepinfra"]);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["ignore"], json!(["deepinfra"]));
+    }
+
+    #[test]
+    fn test_provider_preferences_sort_latency() {
+        let prefs = ProviderPreferences::new().sort(ProviderSortStrategy::Latency);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["sort"], "latency");
+    }
+
+    #[test]
+    fn test_provider_preferences_price_with_throughput() {
+        let prefs = ProviderPreferences::new()
+            .sort(ProviderSortStrategy::Price)
+            .preferred_min_throughput(ThroughputThreshold::Percentile(
+                PercentileThresholds::new().p90(50.0),
+            ));
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["sort"], "price");
+        assert_eq!(provider["preferred_min_throughput"]["p90"], 50.0);
+    }
+
+    #[test]
+    fn test_provider_preferences_require_parameters() {
+        let prefs = ProviderPreferences::new().require_parameters(true);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["require_parameters"], true);
+    }
+
+    #[test]
+    fn test_provider_preferences_data_policy_and_zdr() {
+        let prefs = ProviderPreferences::new()
+            .data_collection(DataCollection::Deny)
+            .zdr(true);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["data_collection"], "deny");
+        assert_eq!(provider["zdr"], true);
+    }
+
+    #[test]
+    fn test_provider_preferences_quantizations() {
+        let prefs =
+            ProviderPreferences::new().quantizations([Quantization::Int8, Quantization::Fp16]);
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["quantizations"], json!(["int8", "fp16"]));
+    }
+
+    #[test]
+    fn test_provider_preferences_convenience_methods() {
+        let prefs = ProviderPreferences::new().zero_data_retention().fastest();
+
+        assert_eq!(prefs.zdr, Some(true));
+        assert_eq!(
+            prefs.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Throughput))
+        );
+
+        let prefs2 = ProviderPreferences::new().cheapest();
+        assert_eq!(
+            prefs2.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Price))
+        );
+
+        let prefs3 = ProviderPreferences::new().lowest_latency();
+        assert_eq!(
+            prefs3.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Latency))
+        );
+    }
+
+    #[test]
+    fn test_provider_preferences_serialization_skips_none() {
+        let prefs = ProviderPreferences::new().sort(ProviderSortStrategy::Price);
+
+        let json = serde_json::to_value(&prefs).unwrap();
+
+        assert_eq!(json["sort"], "price");
+        assert!(json.get("order").is_none());
+        assert!(json.get("only").is_none());
+        assert!(json.get("ignore").is_none());
+        assert!(json.get("zdr").is_none());
+    }
+
+    #[test]
+    fn test_provider_preferences_deserialization() {
+        let json = json!({
+            "order": ["anthropic", "openai"],
+            "sort": "throughput",
+            "data_collection": "deny",
+            "zdr": true,
+            "quantizations": ["int8", "fp16"]
+        });
+
+        let prefs: ProviderPreferences = serde_json::from_value(json).unwrap();
+
+        assert_eq!(
+            prefs.order,
+            Some(vec!["anthropic".to_string(), "openai".to_string()])
+        );
+        assert_eq!(
+            prefs.sort,
+            Some(ProviderSort::Simple(ProviderSortStrategy::Throughput))
+        );
+        assert_eq!(prefs.data_collection, Some(DataCollection::Deny));
+        assert_eq!(prefs.zdr, Some(true));
+        assert_eq!(
+            prefs.quantizations,
+            Some(vec![Quantization::Int8, Quantization::Fp16])
+        );
+    }
+
+    #[test]
+    fn test_provider_preferences_deserialization_complex_sort() {
+        let json = json!({
+            "sort": {
+                "by": "latency",
+                "partition": "model"
+            }
+        });
+
+        let prefs: ProviderPreferences = serde_json::from_value(json).unwrap();
+
+        match prefs.sort {
+            Some(ProviderSort::Complex(config)) => {
+                assert_eq!(config.by, ProviderSortStrategy::Latency);
+                assert_eq!(config.partition, Some(SortPartition::Model));
+            }
+            _ => panic!("Expected Complex sort variant"),
+        }
+    }
+
+    #[test]
+    fn test_provider_preferences_full_integration() {
+        let prefs = ProviderPreferences::new()
+            .order(["anthropic", "openai"])
+            .only(["anthropic", "openai", "google"])
+            .sort(ProviderSortStrategy::Throughput)
+            .data_collection(DataCollection::Deny)
+            .zdr(true)
+            .quantizations([Quantization::Int8])
+            .allow_fallbacks(false);
+
+        let json = prefs.to_json();
+
+        assert!(json.get("provider").is_some());
+        let provider = &json["provider"];
+        assert_eq!(provider["order"], json!(["anthropic", "openai"]));
+        assert_eq!(provider["only"], json!(["anthropic", "openai", "google"]));
+        assert_eq!(provider["sort"], "throughput");
+        assert_eq!(provider["data_collection"], "deny");
+        assert_eq!(provider["zdr"], true);
+        assert_eq!(provider["quantizations"], json!(["int8"]));
+        assert_eq!(provider["allow_fallbacks"], false);
+    }
+
+    #[test]
+    fn test_provider_preferences_max_price() {
+        let prefs =
+            ProviderPreferences::new().max_price(MaxPrice::new().prompt(0.001).completion(0.002));
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["max_price"]["prompt"], 0.001);
+        assert_eq!(provider["max_price"]["completion"], 0.002);
+    }
+
+    #[test]
+    fn test_provider_preferences_preferred_max_latency() {
+        let prefs = ProviderPreferences::new().preferred_max_latency(LatencyThreshold::Simple(0.5));
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["preferred_max_latency"], 0.5);
+    }
+
+    #[test]
+    fn test_provider_preferences_empty_arrays() {
+        let prefs = ProviderPreferences::new()
+            .order(Vec::<String>::new())
+            .quantizations(Vec::<Quantization>::new());
+
+        let json = prefs.to_json();
+        let provider = &json["provider"];
+
+        assert_eq!(provider["order"], json!([]));
+        assert_eq!(provider["quantizations"], json!([]));
     }
 }
