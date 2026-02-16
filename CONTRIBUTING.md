@@ -98,3 +98,78 @@ If you're using Claude Code, don't forget to symlink AGENTS.md to CLAUDE.md:
 ```bash
 ln -s AGENTS.md CLAUDE.md
 ```
+
+If your filesystem or OS policy blocks symlinks, create a copy instead:
+
+```bash
+cp AGENTS.md CLAUDE.md
+```
+
+## AI Agent Setup Matrix
+
+Rig keeps one canonical AI instruction source in `AGENTS.md`.
+Agent-specific adapter files are generated from that source.
+
+| Agent | Primary Files | Setup Notes |
+| --- | --- | --- |
+| Claude Code | `CLAUDE.md`, `.claude/skills/*/SKILL.md`, `.claude/commands/*.md` | `CLAUDE.md` is a symlink to `AGENTS.md`. Skills follow the [Agent Skills standard](https://agentskills.io). Legacy commands kept for backward compatibility. |
+| GitHub Copilot / VS Code | `.github/copilot-instructions.md`, `.github/instructions/*.md`, `.github/prompts/*.prompt.md` | Copilot consumes repository instructions and prompt files in `.github/`. |
+| Cursor | `.cursor/rules/*.mdc` | Cursor consumes rule files from `.cursor/rules/`. |
+| Windsurf | `.windsurf/rules/*.md` | Windsurf consumes rule files from `.windsurf/rules/`. |
+| Cline | `.clinerules/*.md` | Cline consumes rule files from `.clinerules/` with path-based scoping. |
+| Continue | `.continue/rules/*.md` | Continue consumes rule files with glob-based scoping. |
+| Roo Code | `.roo/rules/*.md` | Roo Code consumes rule files from `.roo/rules/`. |
+| Gemini CLI | `GEMINI.md` | `GEMINI.md` is a symlink to `AGENTS.md`. |
+| Codex CLI / Zed / Aider | `AGENTS.md` | These tools read `AGENTS.md` directly. |
+
+### Distributable Rig Skill
+
+The `skills/rig/` directory contains a usage-focused skill for developers building applications **with** Rig (as opposed to contributing to it).
+
+**One-liner install** (auto-detects which agents you use):
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xPlaygrounds/rig/main/scripts/install-rig-skill.sh | bash
+```
+
+**Manual install for Claude Code**:
+```bash
+cp -r skills/rig/ your-project/.claude/skills/rig/
+```
+
+**Install for a specific agent** (`claude`, `cursor`, `copilot`, `windsurf`, `cline`, `continue`, `roo`, `gemini`, `agents-md`):
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xPlaygrounds/rig/main/scripts/install-rig-skill.sh | bash -s -- --agent cursor
+```
+
+**Install for all agents**:
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xPlaygrounds/rig/main/scripts/install-rig-skill.sh | bash -s -- --all
+```
+
+### Updating Agent Instructions
+
+When updating AI guidance:
+
+1. Edit `AGENTS.md` only.
+2. Regenerate adapters:
+   ```bash
+   scripts/sync_agent_instruction_files.sh
+   ```
+3. Validate no drift:
+   ```bash
+   scripts/validate_agent_instruction_files.sh
+   ```
+4. Include regenerated adapter files in the same PR.
+
+### Manual Smoke-Test Checklist
+
+Use this checklist for PR validation after updating agent instructions:
+
+1. Claude Code: invoke skills in `.claude/skills/` (e.g., `/rig-agent-scaffold`, `/rig-provider`) and verify responses retain builder pattern, trait abstraction, and quality gates.
+2. Cursor: confirm `.cursor/rules/*.mdc` rules are discovered and influence Rust edit suggestions.
+3. Copilot/VS Code: confirm `.github/copilot-instructions.md` and `.github/prompts/*.prompt.md` are available and influence generated output.
+4. Windsurf: confirm `.windsurf/rules/*.md` rules are loaded.
+5. Cline: confirm `.clinerules/*.md` rules are loaded and path scoping works.
+6. Continue: confirm `.continue/rules/*.md` rules are loaded with glob matching.
+7. Roo Code: confirm `.roo/rules/*.md` rules are loaded.
+8. Gemini CLI: confirm `GEMINI.md` is loaded as project context.
