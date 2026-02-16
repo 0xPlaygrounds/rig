@@ -347,6 +347,7 @@ where
                         .await {
 
                         yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(history_snapshot,reason).into()));
+                        break 'outer;
                     }
                 }
 
@@ -405,7 +406,8 @@ where
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
                                 let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
-                                    return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
+                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
+                                    break 'outer;
                                 }
 
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
@@ -495,6 +497,7 @@ where
                                 }
                                 Err(e) => {
                                     yield Err(e);
+                                    break 'outer;
                                 }
                             }
                         },
@@ -508,6 +511,7 @@ where
                                 if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)
                                 .await {
                                     yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
+                                    break 'outer;
                                 }
                             }
                         }
@@ -537,6 +541,7 @@ where
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
                                         yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.clone(), reason).into()));
+                                        break 'outer;
                                     }
 
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
@@ -859,6 +864,74 @@ mod tests {
             "History after streaming: {} messages, response: {:?}",
             history.len(),
             response_text
+        );
+    }
+
+    /// Test that the stream terminates after a hook returns Terminate.
+    ///
+    /// This verifies that after yielding an error due to hook termination,
+    /// the stream does not continue producing additional items.
+    #[tokio::test]
+    #[ignore = "This requires an API key"]
+    async fn test_stream_terminates_on_hook_terminate() {
+        use crate::agent::prompt_request::hooks::HookAction;
+        use std::sync::atomic::Ordering;
+
+        #[derive(Clone)]
+        struct TerminatingHook {
+            terminated: Arc<AtomicBool>,
+        }
+
+        impl<M: crate::completion::CompletionModel>
+            crate::agent::prompt_request::hooks::PromptHook<M> for TerminatingHook
+        {
+            async fn on_completion_call(
+                &self,
+                _prompt: &crate::message::Message,
+                _history: &[crate::message::Message],
+            ) -> HookAction {
+                self.terminated.store(true, Ordering::SeqCst);
+                HookAction::Terminate {
+                    reason: "Test termination".to_string(),
+                }
+            }
+        }
+
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent("claude-haiku-4-5")
+            .preamble("You are a helpful assistant.")
+            .temperature(0.1)
+            .max_tokens(100)
+            .build();
+
+        let terminated = Arc::new(AtomicBool::new(false));
+        let hook = TerminatingHook {
+            terminated: terminated.clone(),
+        };
+
+        let mut stream = agent.stream_prompt("Say hello").with_hook(hook).await;
+
+        let mut item_count = 0;
+        let mut got_error = false;
+
+        while let Some(item) = stream.next().await {
+            item_count += 1;
+            if let Err(StreamingError::Prompt(_)) = item {
+                got_error = true;
+            }
+        }
+
+        println!("Items yielded: {item_count}");
+
+        assert!(
+            terminated.load(Ordering::SeqCst),
+            "Hook should have been called"
+        );
+        assert!(got_error, "Stream should have yielded an error");
+        assert_eq!(
+            item_count, 1,
+            "Stream should have terminated after yielding exactly one error item, but got {item_count} items"
         );
     }
 }
