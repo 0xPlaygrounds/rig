@@ -267,7 +267,12 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                 tc.function.arguments.to_string(),
                             ));
                         }
-                        AssistantContent::Reasoning(r) => text_parts.extend(r.reasoning),
+                        AssistantContent::Reasoning(r) => {
+                            let reasoning_text = r.display_text();
+                            if !reasoning_text.is_empty() {
+                                text_parts.push(reasoning_text);
+                            }
+                        }
                         AssistantContent::Image(_) => {
                             return Err(CompletionError::RequestError(
                                 "xAI does not support images in assistant content".into(),

@@ -1021,16 +1021,12 @@ pub mod gemini_api_types {
                     )),
                 },
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
-                message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => {
-                    Ok(Part {
-                        thought: Some(true),
-                        thought_signature: None,
-                        part: PartKind::Text(
-                            reasoning.first().cloned().unwrap_or_else(|| "".to_string()),
-                        ),
-                        additional_params: None,
-                    })
-                }
+                message::AssistantContent::Reasoning(reasoning) => Ok(Part {
+                    thought: Some(true),
+                    thought_signature: None,
+                    part: PartKind::Text(reasoning.display_text()),
+                    additional_params: None,
+                }),
             }
         }
     }
