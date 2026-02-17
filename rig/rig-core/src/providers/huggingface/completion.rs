@@ -357,25 +357,29 @@ impl TryFrom<message::Message> for Vec<Message> {
                 }
             }
             message::Message::Assistant { content, .. } => {
-                let (text_content, tool_calls) = content.into_iter().fold(
-                    (Vec::new(), Vec::new()),
-                    |(mut texts, mut tools), content| {
-                        match content {
-                            message::AssistantContent::Text(text) => texts.push(text),
-                            message::AssistantContent::ToolCall(tool_call) => tools.push(tool_call),
-                            message::AssistantContent::Reasoning(_) => {
-                                panic!("Reasoning is not supported on HuggingFace via Rig");
-                            }
-                            message::AssistantContent::Image(_) => {
-                                panic!("Image content is not supported on HuggingFace via Rig");
-                            }
-                        }
-                        (texts, tools)
-                    },
-                );
+                let mut text_content = Vec::new();
+                let mut tool_calls = Vec::new();
 
-                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-                //  so either `content` or `tool_calls` will have some content.
+                for content in content {
+                    match content {
+                        message::AssistantContent::Text(text) => text_content.push(text),
+                        message::AssistantContent::ToolCall(tool_call) => {
+                            tool_calls.push(tool_call)
+                        }
+                        message::AssistantContent::Reasoning(_) => {
+                            // HuggingFace does not support assistant-history reasoning items.
+                            // Silently skip unsupported reasoning content.
+                        }
+                        message::AssistantContent::Image(_) => {
+                            panic!("Image content is not supported on HuggingFace via Rig");
+                        }
+                    }
+                }
+
+                if text_content.is_empty() && tool_calls.is_empty() {
+                    return Ok(vec![]);
+                }
+
                 Ok(vec![Message::Assistant {
                     content: text_content
                         .into_iter()
@@ -609,6 +613,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -631,6 +636,10 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Huggingface");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -651,6 +660,16 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+
+        if full_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "HuggingFace request has no provider-compatible messages after conversion",
+                )
+                .into(),
+            ));
+        }
 
         let tool_choice = req
             .tool_choice
@@ -707,13 +726,17 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "huggingface",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -724,7 +747,7 @@ where
             tracing::Span::current()
         };
 
-        let model = self.client.subprovider().model_identifier(&self.model);
+        let model = self.client.subprovider().model_identifier(&request_model);
         let request = HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
         if enabled!(Level::TRACE) {
@@ -737,7 +760,10 @@ where
 
         let request = serde_json::to_vec(&request)?;
 
-        let path = self.client.subprovider().completion_endpoint(&self.model);
+        let path = self
+            .client
+            .subprovider()
+            .completion_endpoint(&request_model);
         let request = self
             .client
             .post(&path)?
@@ -802,6 +828,50 @@ where
 mod tests {
     use super::*;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn test_huggingface_request_uses_request_model_override() {
+        let request = CompletionRequest {
+            model: Some("meta-llama/Meta-Llama-3.1-8B-Instruct".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let hf_request = HuggingfaceCompletionRequest::try_from(("mistralai/Mistral-7B", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(hf_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "meta-llama/Meta-Llama-3.1-8B-Instruct");
+    }
+
+    #[test]
+    fn test_huggingface_request_uses_default_model_when_override_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let hf_request = HuggingfaceCompletionRequest::try_from(("mistralai/Mistral-7B", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(hf_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["model"], "mistralai/Mistral-7B");
+    }
 
     #[test]
     fn test_deserialize_message() {
@@ -1182,5 +1252,81 @@ mod tests {
                 );
             })
         };
+    }
+
+    #[test]
+    fn test_assistant_reasoning_is_silently_skipped() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+        };
+
+        let converted: Vec<Message> = assistant.try_into().expect("conversion should work");
+        assert!(converted.is_empty());
+    }
+
+    #[test]
+    fn test_assistant_text_and_tool_call_are_preserved_when_reasoning_present() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::many(vec![
+                message::AssistantContent::reasoning("hidden"),
+                message::AssistantContent::text("visible"),
+                message::AssistantContent::tool_call(
+                    "call_1",
+                    "subtract",
+                    serde_json::json!({"x": 2, "y": 1}),
+                ),
+            ])
+            .expect("non-empty assistant content"),
+        };
+
+        let converted: Vec<Message> = assistant.try_into().expect("conversion should work");
+        assert_eq!(converted.len(), 1);
+
+        match &converted[0] {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                assert_eq!(
+                    content,
+                    &vec![AssistantContent::Text {
+                        text: "visible".to_string()
+                    }]
+                );
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].id, "call_1");
+                assert_eq!(tool_calls[0].function.name, "subtract");
+                assert_eq!(
+                    tool_calls[0].function.arguments,
+                    serde_json::json!({"x": 2, "y": 1})
+                );
+            }
+            _ => panic!("expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_request_conversion_errors_when_all_messages_are_filtered() {
+        let request = completion::CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::Assistant {
+                id: None,
+                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            model: None,
+            output_schema: None,
+        };
+
+        let result = HuggingfaceCompletionRequest::try_from(("meta/test-model", request));
+        assert!(matches!(result, Err(CompletionError::RequestError(_))));
     }
 }

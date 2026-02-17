@@ -131,6 +131,7 @@ impl<H> Capabilities<H> for HuggingFaceExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
 
@@ -177,5 +178,18 @@ impl<H> ClientBuilder<H> {
 impl<H> Client<H> {
     pub(crate) fn subprovider(&self) -> &SubProvider {
         &self.ext().subprovider
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::huggingface::Client =
+            crate::providers::huggingface::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::huggingface::Client =
+            crate::providers::huggingface::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

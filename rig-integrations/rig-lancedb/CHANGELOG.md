@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.33...rig-lancedb-v0.3.0) - 2026-02-17
+
+### Added
+
+- [**breaking**] upgrade reqwest to 0.13 with rustls as default TLS backend ([#1218](https://github.com/0xPlaygrounds/rig/pull/1218))
+
 ## [0.2.33](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.2.32...rig-lancedb-v0.2.33) - 2026-02-03
 
 ### Other

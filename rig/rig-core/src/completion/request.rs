@@ -160,6 +160,22 @@ impl PromptError {
     }
 }
 
+/// Errors that can occur when using typed structured output via [`TypedPrompt::prompt_typed`].
+#[derive(Debug, Error)]
+pub enum StructuredOutputError {
+    /// An error occurred during the prompt execution.
+    #[error("PromptError: {0}")]
+    PromptError(#[from] PromptError),
+
+    /// Failed to deserialize the model's response into the target type.
+    #[error("DeserializationError: {0}")]
+    DeserializationError(#[from] serde_json::Error),
+
+    /// The model returned an empty response.
+    #[error("EmptyResponse: model returned no content")]
+    EmptyResponse,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Document {
     pub id: String,
@@ -233,6 +249,63 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
 }
 
+/// Trait defining a high-level typed prompt interface for structured output.
+///
+/// This trait provides an ergonomic way to get typed responses from an LLM by automatically
+/// generating a JSON schema from the target type and deserializing the response.
+///
+/// # Example
+/// ```rust,ignore
+/// use rig::prelude::*;
+/// use schemars::JsonSchema;
+/// use serde::Deserialize;
+///
+/// #[derive(Debug, Deserialize, JsonSchema)]
+/// struct WeatherForecast {
+///     city: String,
+///     temperature_f: f64,
+///     conditions: String,
+/// }
+///
+/// let agent = client.agent("gpt-4o").build();
+/// let forecast: WeatherForecast = agent
+///     .prompt_typed("What's the weather in NYC?")
+///     .await?;
+/// ```
+pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
+    /// The type of the typed prompt request returned by `prompt_typed`.
+    type TypedRequest<'a, T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
+    where
+        Self: 'a,
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+
+    /// Send a prompt and receive a typed structured response.
+    ///
+    /// The JSON schema for `T` is automatically generated and sent to the provider.
+    /// Providers that support native structured outputs will constrain the model's
+    /// response to match this schema.
+    ///
+    /// # Type Parameters
+    /// * `T` - The target type to deserialize the response into. Must implement
+    ///   `JsonSchema` (for schema generation), `DeserializeOwned` (for deserialization),
+    ///   and `WasmCompatSend` (for async compatibility).
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // Type can be inferred
+    /// let forecast: WeatherForecast = agent.prompt_typed("What's the weather?").await?;
+    ///
+    /// // Or specified explicitly with turbofish
+    /// let forecast = agent.prompt_typed::<WeatherForecast>("What's the weather?").await?;
+    /// ```
+    fn prompt_typed<T>(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> Self::TypedRequest<'_, T>
+    where
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
+}
+
 /// Trait defining a low-level LLM completion interface
 pub trait Completion<M: CompletionModel> {
     /// Generates a completion request builder for the given `prompt` and `chat_history`.
@@ -265,6 +338,9 @@ pub struct CompletionResponse<T> {
     pub usage: Usage,
     /// The raw response returned by the completion model provider
     pub raw_response: T,
+    /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
+    /// Used to pair reasoning input items with their output items in multi-turn.
+    pub message_id: Option<String>,
 }
 
 /// A trait for grabbing the token usage of a completion response.
@@ -429,6 +505,7 @@ where
                     choice: resp.choice,
                     usage: resp.usage,
                     raw_response: (),
+                    message_id: resp.message_id,
                 })
         })
     }
@@ -464,6 +541,8 @@ where
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone)]
 pub struct CompletionRequest {
+    /// Optional model override for this request.
+    pub model: Option<String>,
     /// The preamble to be sent to the completion model provider
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
@@ -481,9 +560,25 @@ pub struct CompletionRequest {
     pub tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
     pub additional_params: Option<serde_json::Value>,
+    /// Optional JSON Schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    pub output_schema: Option<schemars::Schema>,
 }
 
 impl CompletionRequest {
+    /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
+    /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
+    pub fn output_schema_name(&self) -> Option<String> {
+        self.output_schema.as_ref().map(|schema| {
+            schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string()
+        })
+    }
+
     /// Returns documents normalized into a message (if any).
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     ///  `Message` so that it can be incorporated into `chat_history` as a
@@ -560,6 +655,7 @@ impl CompletionRequest {
 pub struct CompletionRequestBuilder<M: CompletionModel> {
     model: M,
     prompt: Message,
+    request_model: Option<String>,
     preamble: Option<String>,
     chat_history: Vec<Message>,
     documents: Vec<Document>,
@@ -568,6 +664,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     max_tokens: Option<u64>,
     tool_choice: Option<ToolChoice>,
     additional_params: Option<serde_json::Value>,
+    output_schema: Option<schemars::Schema>,
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
@@ -575,6 +672,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         Self {
             model,
             prompt: prompt.into(),
+            request_model: None,
             preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
@@ -583,12 +681,25 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         }
     }
 
     /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
         self.preamble = Some(preamble);
+        self
+    }
+
+    /// Overrides the model used for this request.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.request_model = Some(model.into());
+        self
+    }
+
+    /// Overrides the model used for this request.
+    pub fn model_opt(mut self, model: Option<String>) -> Self {
+        self.request_model = model;
         self
     }
 
@@ -695,12 +806,34 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Sets the output schema for structured output. When set, providers that support
+    /// native structured outputs will constrain the model's response to match this schema.
+    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
+    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
+    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
+    /// to still be able to leverage structured outputs.
+    pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Sets the output schema for structured output from an optional value.
+    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
+    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
+    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
+    /// to still be able to leverage structured outputs.
+    pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
+        self.output_schema = schema;
+        self
+    }
+
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
         let chat_history = OneOrMany::many([self.chat_history, vec![self.prompt]].concat())
             .expect("There will always be atleast the prompt");
 
         CompletionRequest {
+            model: self.request_model,
             preamble: self.preamble,
             chat_history,
             documents: self.documents,
@@ -709,6 +842,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             max_tokens: self.max_tokens,
             tool_choice: self.tool_choice,
             additional_params: self.additional_params,
+            output_schema: self.output_schema,
         }
     }
 
@@ -784,6 +918,7 @@ mod tests {
         };
 
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: vec![doc1, doc2],
@@ -792,6 +927,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         let expected = Message::User {
@@ -814,6 +950,7 @@ mod tests {
     #[test]
     fn test_normalize_documents_without_documents() {
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: Vec::new(),
@@ -822,6 +959,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         assert_eq!(request.normalized_documents(), None);

@@ -1,16 +1,17 @@
 use crate::{
     OneOrMany,
+    agent::completion::{DynamicContextStore, build_completion_request},
     agent::prompt_request::{HookAction, hooks::PromptHook},
-    completion::GetTokenUsage,
+    completion::{Document, GetTokenUsage},
     json_utils,
-    message::{AssistantContent, Reasoning, ToolResult, ToolResultContent, UserContent},
-    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletion},
+    message::{AssistantContent, ToolChoice, ToolResult, ToolResultContent, UserContent},
+    streaming::{StreamedAssistantContent, StreamedUserContent},
+    tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{pin::Pin, sync::Arc};
-use tokio::sync::RwLock;
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -47,6 +48,8 @@ pub enum MultiTurnStreamItem<R> {
 pub struct FinalResponse {
     response: String,
     aggregated_usage: crate::completion::Usage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history: Option<Vec<Message>>,
 }
 
 impl FinalResponse {
@@ -54,6 +57,7 @@ impl FinalResponse {
         Self {
             response: String::new(),
             aggregated_usage: crate::completion::Usage::new(),
+            history: None,
         }
     }
 
@@ -63,6 +67,10 @@ impl FinalResponse {
 
     pub fn usage(&self) -> crate::completion::Usage {
         self.aggregated_usage
+    }
+
+    pub fn history(&self) -> Option<&[Message]> {
+        self.history.as_deref()
     }
 }
 
@@ -75,7 +83,62 @@ impl<R> MultiTurnStreamItem<R> {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
+            history: None,
         })
+    }
+
+    pub fn final_response_with_history(
+        response: &str,
+        aggregated_usage: crate::completion::Usage,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        Self::FinalResponse(FinalResponse {
+            response: response.to_string(),
+            aggregated_usage,
+            history,
+        })
+    }
+}
+
+fn merge_reasoning_blocks(
+    accumulated_reasoning: &mut Vec<crate::message::Reasoning>,
+    incoming: &crate::message::Reasoning,
+) {
+    let ids_match = |existing: &crate::message::Reasoning| {
+        matches!(
+            (&existing.id, &incoming.id),
+            (Some(existing_id), Some(incoming_id)) if existing_id == incoming_id
+        )
+    };
+
+    if let Some(existing) = accumulated_reasoning
+        .iter_mut()
+        .rev()
+        .find(|existing| ids_match(existing))
+    {
+        existing.content.extend(incoming.content.clone());
+    } else {
+        accumulated_reasoning.push(incoming.clone());
+    }
+}
+
+async fn cancelled_prompt_error(chat_history: &Vec<Message>, reason: String) -> StreamingError {
+    StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.to_owned(), reason).into())
+}
+
+fn tool_result_to_user_message(
+    id: String,
+    call_id: Option<String>,
+    tool_result: String,
+) -> Message {
+    let content = OneOrMany::one(ToolResultContent::text(tool_result));
+    let user_content = match call_id {
+        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
+        None => UserContent::tool_result(id, content),
+    };
+
+    Message::User {
+        content: OneOrMany::one(user_content),
     }
 }
 
@@ -88,6 +151,8 @@ pub enum StreamingError {
     #[error("ToolSetError: {0}")]
     Tool(#[from] ToolSetError),
 }
+
+const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
@@ -104,13 +169,34 @@ where
 {
     /// The prompt message to send to the model
     prompt: Message,
-    /// Optional chat history to include with the prompt
-    /// Note: chat history needs to outlive the agent as it might be used with other agents
+    /// Optional chat history to include with the prompt.
     chat_history: Option<Vec<Message>>,
     /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
-    /// The agent to use for execution
-    agent: Arc<Agent<M>>,
+
+    // Agent data (cloned from agent to allow hook type transitions):
+    /// The completion model
+    model: Arc<M>,
+    /// Agent name for logging
+    agent_name: Option<String>,
+    /// System prompt
+    preamble: Option<String>,
+    /// Static context documents
+    static_context: Vec<Document>,
+    /// Temperature setting
+    temperature: Option<f64>,
+    /// Max tokens setting
+    max_tokens: Option<u64>,
+    /// Additional model parameters
+    additional_params: Option<serde_json::Value>,
+    /// Tool server handle for tool execution
+    tool_server_handle: ToolServerHandle,
+    /// Dynamic context store
+    dynamic_context: DynamicContextStore,
+    /// Tool choice setting
+    tool_choice: Option<ToolChoice>,
+    /// Optional JSON Schema for structured output
+    output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
 }
@@ -121,15 +207,57 @@ where
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
     P: PromptHook<M>,
 {
-    /// Create a new PromptRequest with the given prompt and model
-    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> Self {
-        Self {
+    /// Create a new StreamingPromptRequest with the given prompt and model.
+    /// Note: This creates a request without an agent hook. Use `from_agent` to include the agent's hook.
+    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
+        StreamingPromptRequest {
             prompt: prompt.into(),
             chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or_default(),
-            agent,
+            model: agent.model.clone(),
+            agent_name: agent.name.clone(),
+            preamble: agent.preamble.clone(),
+            static_context: agent.static_context.clone(),
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens,
+            additional_params: agent.additional_params.clone(),
+            tool_server_handle: agent.tool_server_handle.clone(),
+            dynamic_context: agent.dynamic_context.clone(),
+            tool_choice: agent.tool_choice.clone(),
+            output_schema: agent.output_schema.clone(),
             hook: None,
         }
+    }
+
+    /// Create a new StreamingPromptRequest from an agent, cloning the agent's data and default hook.
+    pub fn from_agent<P2>(
+        agent: &Agent<M, P2>,
+        prompt: impl Into<Message>,
+    ) -> StreamingPromptRequest<M, P2>
+    where
+        P2: PromptHook<M>,
+    {
+        StreamingPromptRequest {
+            prompt: prompt.into(),
+            chat_history: None,
+            max_turns: agent.default_max_turns.unwrap_or_default(),
+            model: agent.model.clone(),
+            agent_name: agent.name.clone(),
+            preamble: agent.preamble.clone(),
+            static_context: agent.static_context.clone(),
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens,
+            additional_params: agent.additional_params.clone(),
+            tool_server_handle: agent.tool_server_handle.clone(),
+            dynamic_context: agent.dynamic_context.clone(),
+            tool_choice: agent.tool_choice.clone(),
+            output_schema: agent.output_schema.clone(),
+            hook: agent.hook.clone(),
+        }
+    }
+
+    fn agent_name(&self) -> &str {
+        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
     /// Set the maximum Turns for multi-turn conversations (ie, the maximum number of turns an LLM can have calling tools before writing a text response).
@@ -139,13 +267,25 @@ where
         self
     }
 
-    /// Add chat history to the prompt request
+    /// Add chat history to the prompt request.
+    ///
+    /// When history is provided, the final [`FinalResponse`] will include the
+    /// updated chat history (original messages + new user prompt + assistant response).
+    /// ```ignore
+    /// let mut stream = agent
+    ///     .stream_prompt("Hello")
+    ///     .with_history(vec![])
+    ///     .await;
+    /// // ... consume stream ...
+    /// // Access updated history from FinalResponse::history()
+    /// ```
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
         self.chat_history = Some(history);
         self
     }
 
-    /// Attach a per-request hook for tool call events
+    /// Attach a per-request hook for tool call events.
+    /// This overrides any default hook set on the agent.
     pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
     where
         P2: PromptHook<M>,
@@ -154,7 +294,17 @@ where
             prompt: self.prompt,
             chat_history: self.chat_history,
             max_turns: self.max_turns,
-            agent: self.agent,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
+            output_schema: self.output_schema,
             hook: Some(hook),
         }
     }
@@ -164,8 +314,8 @@ where
             info_span!(
                 "invoke_agent",
                 gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent.name(),
-                gen_ai.system_instructions = self.agent.preamble,
+                gen_ai.agent.name = self.agent_name(),
+                gen_ai.system_instructions = self.preamble,
                 gen_ai.prompt = tracing::field::Empty,
                 gen_ai.completion = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
@@ -180,13 +330,19 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
-        let agent = self.agent;
-
-        let chat_history = if let Some(history) = self.chat_history {
-            Arc::new(RwLock::new(history))
-        } else {
-            Arc::new(RwLock::new(vec![]))
-        };
+        // Clone fields needed inside the stream
+        let model = self.model.clone();
+        let preamble = self.preamble.clone();
+        let static_context = self.static_context.clone();
+        let temperature = self.temperature;
+        let max_tokens = self.max_tokens;
+        let additional_params = self.additional_params.clone();
+        let tool_server_handle = self.tool_server_handle.clone();
+        let dynamic_context = self.dynamic_context.clone();
+        let tool_choice = self.tool_choice.clone();
+        let agent_name = self.agent_name.clone();
+        let has_history = self.chat_history.is_some();
+        let mut chat_history = self.chat_history.unwrap_or_default();
 
         let mut current_max_turns = 0;
         let mut last_prompt_error = String::new();
@@ -194,6 +350,7 @@ where
         let mut last_text_response = String::new();
         let mut is_text_response = false;
         let mut max_turns_reached = false;
+        let output_schema = self.output_schema;
 
         let mut aggregated_usage = crate::completion::Usage::new();
 
@@ -205,7 +362,6 @@ where
         // See also: https://github.com/rust-lang/rust-clippy/issues/8722
         let stream = async_stream::stream! {
             let mut current_prompt = prompt.clone();
-            let mut did_call_tool = false;
 
             'outer: loop {
                 if current_max_turns > self.max_turns + 1 {
@@ -225,13 +381,11 @@ where
                 }
 
                 if let Some(ref hook) = self.hook {
-                    let reader = chat_history.read().await;
-                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &reader.to_vec())
+                    let history_snapshot = chat_history.clone();
+                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
                         .await {
-
-                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                            reason
-                        ).into()));
+                        yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                        break 'outer;
                     }
                 }
 
@@ -240,8 +394,8 @@ where
                     parent: tracing::Span::current(),
                     "chat_streaming",
                     gen_ai.operation.name = "chat",
-                    gen_ai.agent.name = &agent.name(),
-                    gen_ai.system_instructions = &agent.preamble,
+                    gen_ai.agent.name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                    gen_ai.system_instructions = preamble,
                     gen_ai.provider.name = tracing::field::Empty,
                     gen_ai.request.model = tracing::field::Empty,
                     gen_ai.response.id = tracing::field::Empty,
@@ -252,20 +406,38 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
+                let history_snapshot = chat_history.clone();
                 let mut stream = tracing::Instrument::instrument(
-                    agent
-                    .stream_completion(current_prompt.clone(), (*chat_history.read().await).clone())
+                    build_completion_request(
+                        &model,
+                        current_prompt.clone(),
+                        history_snapshot,
+                        preamble.as_deref(),
+                        &static_context,
+                        temperature,
+                        max_tokens,
+                        additional_params.as_ref(),
+                        tool_choice.as_ref(),
+                        &tool_server_handle,
+                        &dynamic_context,
+                        output_schema.as_ref(),
+                    )
                     .await?
                     .stream(), chat_stream_span
                 )
 
                 .await?;
 
-                chat_history.write().await.push(current_prompt.clone());
+                chat_history.push(current_prompt.clone());
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
-                let mut accumulated_reasoning: Option<rig::message::Reasoning> = None;
+                let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
+                // Kept separate from accumulated_reasoning so providers requiring
+                // signatures (e.g. Anthropic) never see unsigned blocks.
+                let mut pending_reasoning_delta_text = String::new();
+                let mut pending_reasoning_delta_id: Option<String> = None;
+                let mut saw_tool_call_this_turn = false;
 
                 while let Some(content) = stream.next().await {
                     match content {
@@ -277,13 +449,11 @@ where
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
                                 let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                        reason
-                                    ).into()));
-                                }
+                                    yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                                    break 'outer;
+                            }
 
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
-                            did_call_tool = false;
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
                             let tool_span = info_span!(
@@ -308,9 +478,7 @@ where
                                         .await;
 
                                     if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            reason
-                                        ).into()));
+                                        return Err(cancelled_prompt_error(&chat_history, reason).await);
                                     }
 
                                     if let ToolCallHookAction::Skip { reason } = action {
@@ -323,7 +491,7 @@ where
                                         let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
                                         tool_calls.push(tool_call_msg);
                                         tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
-                                        did_call_tool = true;
+                                        saw_tool_call_this_turn = true;
                                         return Ok(reason);
                                     }
                                 }
@@ -332,7 +500,7 @@ where
                                 tool_span.record("gen_ai.tool.call.arguments", &tool_args);
 
                                 let tool_result = match
-                                agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
+                                tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
                                     Ok(thing) => thing,
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
@@ -352,9 +520,7 @@ where
                                         &tool_result.to_string()
                                     )
                                     .await {
-                                        return Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            reason
-                                        ).into()));
+                                        return Err(cancelled_prompt_error(&chat_history, reason).await);
                                     }
 
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
@@ -362,7 +528,7 @@ where
                                 tool_calls.push(tool_call_msg);
                                 tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
 
-                                did_call_tool = true;
+                                saw_tool_call_this_turn = true;
                                 Ok(tool_result)
                             }.instrument(tool_span).await;
 
@@ -373,6 +539,7 @@ where
                                 }
                                 Err(e) => {
                                     yield Err(e);
+                                    break 'outer;
                                 }
                             }
                         },
@@ -385,40 +552,35 @@ where
 
                                 if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)
                                 .await {
-                                    yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                        reason
-                                    ).into()));
+                                    yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                                    break 'outer;
                                 }
                             }
                         }
-                        Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })) => {
+                        Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                             // Accumulate reasoning for inclusion in chat history with tool calls.
                             // OpenAI Responses API requires reasoning items to be sent back
                             // alongside function_call items in multi-turn conversations.
-                            if let Some(ref mut existing) = accumulated_reasoning {
-                                existing.reasoning.extend(reasoning.clone());
-                            } else {
-                                accumulated_reasoning = Some(rig::message::Reasoning {
-                                    reasoning: reasoning.clone(),
-                                    id: id.clone(),
-                                    signature: signature.clone(),
-                                });
-                            }
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, id, signature })));
-                            did_call_tool = false;
+                            merge_reasoning_blocks(&mut accumulated_reasoning, &reasoning);
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(reasoning)));
                         },
                         Ok(StreamedAssistantContent::ReasoningDelta { reasoning, id }) => {
+                            // Deltas lack signatures/encrypted content that full
+                            // blocks carry; mixing them into accumulated_reasoning
+                            // causes Anthropic to reject with "signature required".
+                            pending_reasoning_delta_text.push_str(&reasoning);
+                            if pending_reasoning_delta_id.is_none() {
+                                pending_reasoning_delta_id = id.clone();
+                            }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
-                            did_call_tool = false;
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                             if is_text_response {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
-                                        yield Err(StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.read().await.to_vec(),
-                                            reason
-                                        ).into()));
+                                        yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                                        break 'outer;
                                     }
 
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
@@ -433,58 +595,68 @@ where
                     }
                 }
 
+                // Providers like Gemini emit thinking as incremental deltas
+                // without signatures; assemble into a single block so
+                // reasoning survives into the next turn's chat history.
+                if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
+                    let mut assembled = crate::message::Reasoning::new(&pending_reasoning_delta_text);
+                    if let Some(id) = pending_reasoning_delta_id.take() {
+                        assembled = assembled.with_id(id);
+                    }
+                    accumulated_reasoning.push(assembled);
+                }
+
                 // Add reasoning and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
-                if !tool_calls.is_empty() || accumulated_reasoning.is_some() {
+                if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     let mut content_items: Vec<rig::message::AssistantContent> = vec![];
 
                     // Reasoning must come before tool calls (OpenAI requirement)
-                    if let Some(reasoning) = accumulated_reasoning.take() {
+                    for reasoning in accumulated_reasoning.drain(..) {
                         content_items.push(rig::message::AssistantContent::Reasoning(reasoning));
                     }
 
                     content_items.extend(tool_calls.clone());
 
                     if !content_items.is_empty() {
-                        chat_history.write().await.push(Message::Assistant {
-                            id: None,
+                        chat_history.push(Message::Assistant {
+                            id: stream.message_id.clone(),
                             content: OneOrMany::many(content_items).expect("Should have at least one item"),
                         });
                     }
                 }
 
-                // Add tool results to chat history
                 for (id, call_id, tool_result) in tool_results {
-                    if let Some(call_id) = call_id {
-                        chat_history.write().await.push(Message::User {
-                            content: OneOrMany::one(UserContent::tool_result_with_call_id(
-                                &id,
-                                call_id.clone(),
-                                OneOrMany::one(ToolResultContent::text(&tool_result)),
-                            )),
-                        });
-                    } else {
-                        chat_history.write().await.push(Message::User {
-                            content: OneOrMany::one(UserContent::tool_result(
-                                &id,
-                                OneOrMany::one(ToolResultContent::text(&tool_result)),
-                            )),
-                        });
-                    }
+                    chat_history.push(tool_result_to_user_message(id, call_id, tool_result));
                 }
 
                 // Set the current prompt to the last message in the chat history
-                current_prompt = match chat_history.write().await.pop() {
+                current_prompt = match chat_history.pop() {
                     Some(prompt) => prompt,
                     None => unreachable!("Chat history should never be empty at this point"),
                 };
 
-                if !did_call_tool {
+                if !saw_tool_call_this_turn {
+                    // Add user message and assistant response to history before finishing
+                    chat_history.push(current_prompt.clone());
+                    if !last_text_response.is_empty() {
+                        chat_history.push(Message::assistant(&last_text_response));
+                    }
+
                     let current_span = tracing::Span::current();
                     current_span.record("gen_ai.usage.input_tokens", aggregated_usage.input_tokens);
                     current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
                     tracing::info!("Agent multi-turn stream finished");
-                    yield Ok(MultiTurnStreamItem::final_response(&last_text_response, aggregated_usage));
+                    let history_snapshot = if has_history {
+                        Some(chat_history.clone())
+                    } else {
+                        None
+                    };
+                    yield Ok(MultiTurnStreamItem::final_response_with_history(
+                        &last_text_response,
+                        aggregated_usage,
+                        history_snapshot,
+                    ));
                     break;
                 }
             }
@@ -492,7 +664,7 @@ where
             if max_turns_reached {
                 yield Err(Box::new(PromptError::MaxTurnsError {
                     max_turns: self.max_turns,
-                    chat_history: Box::new((*chat_history.read().await).clone()),
+                    chat_history: Box::new(chat_history.clone()),
                     prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
             }
@@ -532,9 +704,9 @@ pub async fn stream_to_stdout<R>(
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                Reasoning { reasoning, .. },
+                reasoning,
             ))) => {
-                let reasoning = reasoning.join("\n");
+                let reasoning = reasoning.display_text();
                 print!("{reasoning}");
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }
@@ -554,14 +726,247 @@ pub async fn stream_to_stdout<R>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::AgentBuilder;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
+    use crate::completion::{
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
+    };
+    use crate::message::ReasoningContent;
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
+    use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
     use futures::StreamExt;
+    use serde::{Deserialize, Serialize};
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
     use std::time::Duration;
+
+    #[test]
+    fn merge_reasoning_blocks_preserves_order_and_signatures() {
+        let mut accumulated = Vec::new();
+        let first = crate::message::Reasoning {
+            id: Some("rs_1".to_string()),
+            content: vec![ReasoningContent::Text {
+                text: "step-1".to_string(),
+                signature: Some("sig-1".to_string()),
+            }],
+        };
+        let second = crate::message::Reasoning {
+            id: Some("rs_1".to_string()),
+            content: vec![
+                ReasoningContent::Text {
+                    text: "step-2".to_string(),
+                    signature: Some("sig-2".to_string()),
+                },
+                ReasoningContent::Summary("summary".to_string()),
+            ],
+        };
+
+        merge_reasoning_blocks(&mut accumulated, &first);
+        merge_reasoning_blocks(&mut accumulated, &second);
+
+        assert_eq!(accumulated.len(), 1);
+        let merged = accumulated.first().expect("expected accumulated reasoning");
+        assert_eq!(merged.id.as_deref(), Some("rs_1"));
+        assert_eq!(merged.content.len(), 3);
+        assert!(matches!(
+            merged.content.first(),
+            Some(ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "step-1" && sig == "sig-1"
+        ));
+        assert!(matches!(
+            merged.content.get(1),
+            Some(ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "step-2" && sig == "sig-2"
+        ));
+    }
+
+    #[test]
+    fn merge_reasoning_blocks_keeps_distinct_ids_as_separate_items() {
+        let mut accumulated = vec![crate::message::Reasoning {
+            id: Some("rs_a".to_string()),
+            content: vec![ReasoningContent::Text {
+                text: "step-1".to_string(),
+                signature: None,
+            }],
+        }];
+        let incoming = crate::message::Reasoning {
+            id: Some("rs_b".to_string()),
+            content: vec![ReasoningContent::Text {
+                text: "step-2".to_string(),
+                signature: None,
+            }],
+        };
+
+        merge_reasoning_blocks(&mut accumulated, &incoming);
+        assert_eq!(accumulated.len(), 2);
+        assert_eq!(
+            accumulated.first().and_then(|r| r.id.as_deref()),
+            Some("rs_a")
+        );
+        assert_eq!(
+            accumulated.get(1).and_then(|r| r.id.as_deref()),
+            Some("rs_b")
+        );
+    }
+
+    #[test]
+    fn merge_reasoning_blocks_keeps_none_ids_separate_items() {
+        let mut accumulated = vec![crate::message::Reasoning {
+            id: None,
+            content: vec![ReasoningContent::Text {
+                text: "first".to_string(),
+                signature: None,
+            }],
+        }];
+        let incoming = crate::message::Reasoning {
+            id: None,
+            content: vec![ReasoningContent::Text {
+                text: "second".to_string(),
+                signature: None,
+            }],
+        };
+
+        merge_reasoning_blocks(&mut accumulated, &incoming);
+        assert_eq!(accumulated.len(), 2);
+        assert!(matches!(
+            accumulated.first(),
+            Some(crate::message::Reasoning {
+                id: None,
+                content
+            }) if matches!(
+                content.first(),
+                Some(ReasoningContent::Text { text, .. }) if text == "first"
+            )
+        ));
+        assert!(matches!(
+            accumulated.get(1),
+            Some(crate::message::Reasoning {
+                id: None,
+                content
+            }) if matches!(
+                content.first(),
+                Some(ReasoningContent::Text { text, .. }) if text == "second"
+            )
+        ));
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct MockStreamingResponse {
+        usage: crate::completion::Usage,
+    }
+
+    impl MockStreamingResponse {
+        fn new(total_tokens: u64) -> Self {
+            let mut usage = crate::completion::Usage::new();
+            usage.total_tokens = total_tokens;
+            Self { usage }
+        }
+    }
+
+    impl crate::completion::GetTokenUsage for MockStreamingResponse {
+        fn token_usage(&self) -> Option<crate::completion::Usage> {
+            Some(self.usage)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct MultiTurnMockModel {
+        turn_counter: Arc<AtomicUsize>,
+    }
+
+    #[allow(refining_impl_trait)]
+    impl CompletionModel for MultiTurnMockModel {
+        type Response = ();
+        type StreamingResponse = MockStreamingResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self::default()
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "completion is unused in this streaming test".to_string(),
+            ))
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+            let stream = async_stream::stream! {
+                if turn == 0 {
+                    yield Ok(RawStreamingChoice::ToolCall(
+                        RawStreamingToolCall::new(
+                            "tool_call_1".to_string(),
+                            "missing_tool".to_string(),
+                            serde_json::json!({"input": "value"}),
+                        )
+                        .with_call_id("call_1".to_string()),
+                    ));
+                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(4)));
+                } else {
+                    yield Ok(RawStreamingChoice::Message("done".to_string()));
+                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
+                }
+            };
+
+            let pinned_stream: crate::streaming::StreamingResult<Self::StreamingResponse> =
+                Box::pin(stream);
+            Ok(StreamingCompletionResponse::stream(pinned_stream))
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_continues_after_tool_call_turn() {
+        let model = MultiTurnMockModel::default();
+        let turn_counter = model.turn_counter.clone();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("do tool work").multi_turn(3).await;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut saw_final_response = false;
+        let mut final_text = String::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => {
+                    saw_tool_result = true;
+                }
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    final_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    saw_final_response = true;
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert!(saw_tool_call);
+        assert!(saw_tool_result);
+        assert!(saw_final_response);
+        assert_eq!(final_text, "done");
+        assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
+    }
 
     /// Background task that logs periodically to detect span leakage.
     /// If span leakage occurs, these logs will be prefixed with `invoke_agent{...}`.
@@ -657,6 +1062,75 @@ mod tests {
             leaks, 0,
             "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
              This indicates that span.enter() is being used inside async_stream instead of .instrument()"
+        );
+    }
+
+    /// Test that FinalResponse contains the updated chat history when with_history is used.
+    ///
+    /// This verifies that:
+    /// 1. FinalResponse.history() returns Some when with_history was called
+    /// 2. The history contains both the user prompt and assistant response
+    #[tokio::test]
+    #[ignore = "This requires an API key"]
+    async fn test_chat_history_in_final_response() {
+        use crate::message::Message;
+
+        let client = anthropic::Client::from_env();
+        let agent = client
+            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .preamble("You are a helpful assistant. Keep responses brief.")
+            .temperature(0.1)
+            .max_tokens(50)
+            .build();
+
+        // Send streaming request with history
+        let mut stream = agent
+            .stream_prompt("Say 'hello' and nothing else.")
+            .with_history(vec![])
+            .await;
+
+        // Consume the stream and collect FinalResponse
+        let mut response_text = String::new();
+        let mut final_history = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => {
+                    response_text.push_str(&text.text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_history = res.history().map(|h| h.to_vec());
+                    break;
+                }
+                Err(e) => {
+                    panic!("Streaming error: {:?}", e);
+                }
+                _ => {}
+            }
+        }
+
+        let history =
+            final_history.expect("FinalResponse should contain history when with_history is used");
+
+        // Should contain at least the user message
+        assert!(
+            history.iter().any(|m| matches!(m, Message::User { .. })),
+            "History should contain the user message"
+        );
+
+        // Should contain the assistant response
+        assert!(
+            history
+                .iter()
+                .any(|m| matches!(m, Message::Assistant { .. })),
+            "History should contain the assistant response"
+        );
+
+        tracing::info!(
+            "History after streaming: {} messages, response: {:?}",
+            history.len(),
+            response_text
         );
     }
 }

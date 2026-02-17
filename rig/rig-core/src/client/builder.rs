@@ -527,6 +527,7 @@ impl DynClientBuilder {
         let completion = self.completion(provider_name.into(), model)?;
 
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             tools: vec![],
             documents: vec![],
@@ -535,6 +536,7 @@ impl DynClientBuilder {
             additional_params: None,
             tool_choice: None,
             chat_history: crate::OneOrMany::one(prompt.into()),
+            output_schema: None,
         };
 
         completion.stream(request).await.map_err(Error::Completion)
@@ -556,6 +558,7 @@ impl DynClientBuilder {
 
         history.push(prompt.into());
         let request = CompletionRequest {
+            model: None,
             preamble: None,
             tools: vec![],
             documents: vec![],
@@ -565,6 +568,7 @@ impl DynClientBuilder {
             tool_choice: None,
             chat_history: OneOrMany::many(history)
                 .unwrap_or_else(|_| OneOrMany::one(Message::user(""))),
+            output_schema: None,
         };
 
         completion.stream(request).await.map_err(Error::Completion)

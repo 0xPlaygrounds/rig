@@ -43,6 +43,7 @@ impl<H> Capabilities<H> for VoyageExt {
     type Completion = Nothing;
     type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -252,5 +253,18 @@ where
                 String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::voyageai::Client =
+            crate::providers::voyageai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::voyageai::Client =
+            crate::providers::voyageai::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

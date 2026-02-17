@@ -307,7 +307,7 @@ impl MongoDbSearchFilter {
         Self(doc! { key: { "$size": size } })
     }
 
-    // Array opsreq.filter.unwrap().
+    // Array ops
     pub fn all(key: String, values: Vec<Bson>) -> Self {
         Self(doc! { key: { "$all": values } })
     }

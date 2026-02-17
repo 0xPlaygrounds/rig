@@ -67,6 +67,7 @@ impl<H> Capabilities<H> for GaladrielExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -270,6 +271,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -441,6 +443,10 @@ impl TryFrom<(&str, CompletionRequest)> for GaladrielCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Galadriel");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
@@ -648,5 +654,18 @@ where
         send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::galadriel::Client =
+            crate::providers::galadriel::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::galadriel::Client =
+            crate::providers::galadriel::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

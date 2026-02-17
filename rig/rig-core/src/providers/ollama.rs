@@ -84,6 +84,7 @@ impl<H> Capabilities<H> for OllamaExt {
     type Completion = Capable<CompletionModel<H>>;
     type Transcription = Nothing;
     type Embeddings = Capable<EmbeddingModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -350,6 +351,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         cached_input_tokens: 0,
                     },
                     raw_response,
+                    message_id: None,
                 })
             }
             _ => Err(CompletionError::ResponseError(
@@ -373,6 +375,8 @@ pub(super) struct OllamaCompletionRequest {
     max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     keep_alive: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<schemars::Schema>,
     options: serde_json::Value,
 }
 
@@ -380,6 +384,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
@@ -448,6 +453,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
             stream: false,
             think,
             keep_alive,
+            format: req.output_schema,
             tools: req
                 .tools
                 .clone()
@@ -895,10 +901,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         crate::message::AssistantContent::ToolCall(tool_call) => {
                             tool_calls.push(tool_call)
                         }
-                        crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { reasoning, .. },
-                        ) => {
-                            thinking = Some(reasoning.first().cloned().unwrap_or(String::new()));
+                        crate::message::AssistantContent::Reasoning(reasoning) => {
+                            let display = reasoning.display_text();
+                            if !display.is_empty() {
+                                thinking = Some(display);
+                            }
                         }
                         crate::message::AssistantContent::Image(_) => {
                             return Err(crate::message::MessageError::ConversionError(
@@ -1292,11 +1299,7 @@ mod tests {
     #[test]
     fn test_message_conversion_with_thinking() {
         // Create an internal message with reasoning content
-        let reasoning_content = crate::message::Reasoning {
-            id: None,
-            reasoning: vec!["Step 1: Consider the problem".to_string()],
-            signature: None,
-        };
+        let reasoning_content = crate::message::Reasoning::new("Step 1: Consider the problem");
 
         let internal_msg = crate::message::Message::Assistant {
             id: None,
@@ -1424,6 +1427,7 @@ mod tests {
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
+            model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text {
@@ -1440,6 +1444,7 @@ mod tests {
                 "keep_alive": "-1m",
                 "num_ctx": 4096
             })),
+            output_schema: None,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1490,6 +1495,7 @@ mod tests {
 
         // Create a CompletionRequest WITHOUT "think" in additional_params
         let completion_request = CompletionRequest {
+            model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text {
@@ -1502,6 +1508,7 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
+            output_schema: None,
         };
 
         // Convert to OllamaCompletionRequest
@@ -1534,5 +1541,106 @@ mod tests {
         });
 
         assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_completion_request_with_output_schema() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let schema: schemars::Schema = serde_json::from_value(json!({
+            "type": "object",
+            "properties": {
+                "age": { "type": "integer" },
+                "available": { "type": "boolean" }
+            },
+            "required": ["age", "available"]
+        }))
+        .expect("Failed to parse schema");
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "How old is Ollama?".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: Some(schema),
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        let format = serialized
+            .get("format")
+            .expect("format field should be present");
+        assert_eq!(
+            *format,
+            json!({
+                "type": "object",
+                "properties": {
+                    "age": { "type": "integer" },
+                    "available": { "type": "boolean" }
+                },
+                "required": ["age", "available"]
+            })
+        );
+    }
+
+    #[test]
+    fn test_completion_request_without_output_schema() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "Hello!".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert!(
+            serialized.get("format").is_none(),
+            "format field should be absent when output_schema is None"
+        );
+    }
+
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::ollama::Client =
+            crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
+        let _client_from_builder: crate::providers::ollama::Client =
+            crate::providers::ollama::Client::builder()
+                .api_key(Nothing)
+                .build()
+                .expect("Client::builder() failed");
     }
 }

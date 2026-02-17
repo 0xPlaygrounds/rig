@@ -66,6 +66,7 @@ impl<H> Capabilities<H> for DeepSeekExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -306,7 +307,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         text_content.push_str(text.text());
                     }
                     message::AssistantContent::Reasoning(reasoning) => {
-                        reasoning_content.push_str(&reasoning.reasoning.join("\n"));
+                        reasoning_content.push_str(&reasoning.display_text());
                     }
                     _ => {}
                 });
@@ -455,6 +456,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -477,6 +479,10 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for DeepSeek");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -901,7 +907,6 @@ pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 // Tests
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -1049,5 +1054,15 @@ mod tests {
         };
 
         assert_eq!(choice, expected_choice);
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::deepseek::Client =
+            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::deepseek::Client =
+            crate::providers::deepseek::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

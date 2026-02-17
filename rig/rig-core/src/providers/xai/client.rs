@@ -35,6 +35,7 @@ impl<H> Capabilities<H> for XAiExt {
 
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -62,5 +63,16 @@ impl ProviderClient for Client {
 
     fn from_val(input: Self::Input) -> Self {
         Self::new(&input).unwrap()
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client_from_builder: crate::providers::xai::Client =
+            crate::providers::xai::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

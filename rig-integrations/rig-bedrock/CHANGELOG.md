@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.13](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.12...rig-bedrock-v0.3.13) - 2026-02-17
+
+### Added
+
+- cross-provider reasoning trace roundtrip ([#1396](https://github.com/0xPlaygrounds/rig/pull/1396))
+- *(rig-1189)* structured outputs ([#1382](https://github.com/0xPlaygrounds/rig/pull/1382))
+- *(rig-core)* add optional model override to CompletionRequest ([#1374](https://github.com/0xPlaygrounds/rig/pull/1374))
+
+### Other
+
+- Disable default features on aws-bedrock-runtime ([#1363](https://github.com/0xPlaygrounds/rig/pull/1363))
+- typed reasoning content model ([#1395](https://github.com/0xPlaygrounds/rig/pull/1395))
+
 ## [0.3.12](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.3.11...rig-bedrock-v0.3.12) - 2026-02-03
 
 ### Other

@@ -33,6 +33,7 @@ impl<H> Capabilities<H> for AnthropicExt {
 
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -163,5 +164,18 @@ impl<H> ClientBuilder<H> {
 
             ext
         })
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::anthropic::Client =
+            crate::providers::anthropic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::anthropic::Client =
+            crate::providers::anthropic::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

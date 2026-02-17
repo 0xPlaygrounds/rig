@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.6...rig-mongodb-v0.3.7) - 2026-02-17
+
+### Other
+
+- *(streaming)* return updated history in FinalResponse ([#1210](https://github.com/0xPlaygrounds/rig/pull/1210))
+
 ## [0.3.6](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.5...rig-mongodb-v0.3.6) - 2026-02-03
 
 ### Fixed

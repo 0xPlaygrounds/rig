@@ -1,6 +1,6 @@
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
     extractor::ExtractorBuilder,
@@ -75,6 +75,7 @@ impl<H> Capabilities<H> for OpenAIResponsesExt {
     type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -85,6 +86,7 @@ impl<H> Capabilities<H> for OpenAICompletionsExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -577,5 +579,15 @@ mod tests {
         assert_eq!(serialized["role"], "user");
         // Single non-text content should still serialize as array
         assert!(serialized["content"].is_array());
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::openai::Client =
+            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::openai::Client =
+            crate::providers::openai::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

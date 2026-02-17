@@ -53,6 +53,7 @@ impl<H> Capabilities<H> for MiraExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
@@ -219,6 +220,10 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Mira");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut messages = Vec::new();
 
         if let Some(content) = &req.preamble {
@@ -567,6 +572,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -786,5 +792,15 @@ mod tests {
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::mira::Client =
+            crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::mira::Client =
+            crate::providers::mira::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }
