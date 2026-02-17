@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../../rig/rig-core", version = "0.30.0", default-features = false }
+rig-core = { path = "../../rig/rig-core", version = "0.31.0", default-features = false }
 async-stream = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
