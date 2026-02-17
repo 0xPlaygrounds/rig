@@ -391,7 +391,7 @@ where
                 .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
 
             chat_history.push(Message::Assistant {
-                id: None,
+                id: resp.message_id.clone(),
                 content: resp.choice.clone(),
             });
 

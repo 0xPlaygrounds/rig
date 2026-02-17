@@ -179,6 +179,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -233,6 +234,9 @@ pub enum Content {
         thinking: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
+    },
+    RedactedThinking {
+        data: String,
     },
 }
 
@@ -454,6 +458,58 @@ impl TryFrom<message::AssistantContent> for Content {
     }
 }
 
+fn anthropic_content_from_assistant_content(
+    content: message::AssistantContent,
+) -> Result<Vec<Content>, MessageError> {
+    match content {
+        message::AssistantContent::Text(message::Text { text }) => Ok(vec![Content::Text {
+            text,
+            cache_control: None,
+        }]),
+        message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
+            "Anthropic currently doesn't support images.".to_string(),
+        )),
+        message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
+            Ok(vec![Content::ToolUse {
+                id,
+                name: function.name,
+                input: function.arguments,
+            }])
+        }
+        message::AssistantContent::Reasoning(reasoning) => {
+            let mut converted = Vec::new();
+            for block in reasoning.content {
+                match block {
+                    message::ReasoningContent::Text { text, signature } => {
+                        converted.push(Content::Thinking {
+                            thinking: text,
+                            signature,
+                        });
+                    }
+                    message::ReasoningContent::Summary(summary) => {
+                        converted.push(Content::Thinking {
+                            thinking: summary,
+                            signature: None,
+                        });
+                    }
+                    message::ReasoningContent::Redacted { data }
+                    | message::ReasoningContent::Encrypted(data) => {
+                        converted.push(Content::RedactedThinking { data });
+                    }
+                }
+            }
+
+            if converted.is_empty() {
+                return Err(MessageError::ConversionError(
+                    "Cannot convert empty reasoning content to Anthropic format".to_string(),
+                ));
+            }
+
+            Ok(converted)
+        }
+    }
+}
+
 impl TryFrom<message::Message> for Message {
     type Error = MessageError;
 
@@ -586,10 +642,26 @@ impl TryFrom<message::Message> for Message {
                 })?,
             },
 
-            message::Message::Assistant { content, .. } => Message {
-                content: content.try_map(|content| content.try_into())?,
-                role: Role::Assistant,
-            },
+            message::Message::Assistant { content, .. } => {
+                let converted_content = content.into_iter().try_fold(
+                    Vec::new(),
+                    |mut accumulated, assistant_content| {
+                        accumulated
+                            .extend(anthropic_content_from_assistant_content(assistant_content)?);
+                        Ok::<Vec<Content>, MessageError>(accumulated)
+                    },
+                )?;
+
+                Message {
+                    content: OneOrMany::many(converted_content).map_err(|_| {
+                        MessageError::ConversionError(
+                            "Assistant message did not contain Anthropic-compatible content"
+                                .to_owned(),
+                        )
+                    })?,
+                    role: Role::Assistant,
+                }
+            }
         })
     }
 }
@@ -609,6 +681,9 @@ impl TryFrom<Content> for message::AssistantContent {
             } => message::AssistantContent::Reasoning(Reasoning::new_with_signature(
                 &thinking, signature,
             )),
+            Content::RedactedThinking { data } => {
+                message::AssistantContent::Reasoning(Reasoning::redacted(data))
+            }
             _ => {
                 return Err(MessageError::ConversionError(
                     "Content did not contain a message, tool call, or reasoning".to_owned(),
@@ -687,19 +762,9 @@ impl TryFrom<Message> for message::Message {
                     })
                 })?,
             },
-            Role::Assistant => match message.content.first() {
-                Content::Text { .. } | Content::ToolUse { .. } | Content::Thinking { .. } => {
-                    message::Message::Assistant {
-                        id: None,
-                        content: message.content.try_map(|content| content.try_into())?,
-                    }
-                }
-
-                _ => {
-                    return Err(MessageError::ConversionError(
-                        format!("Unsupported message for Assistant role: {message:?}").to_owned(),
-                    ));
-                }
+            Role::Assistant => message::Message::Assistant {
+                id: None,
+                content: message.content.try_map(|content| content.try_into())?,
             },
         })
     }
@@ -1909,5 +1974,95 @@ mod tests {
             }
             _ => panic!("Expected Text content"),
         }
+    }
+
+    #[test]
+    fn test_assistant_reasoning_multiblock_to_anthropic_content() {
+        let reasoning = message::Reasoning {
+            id: None,
+            content: vec![
+                message::ReasoningContent::Text {
+                    text: "step one".to_string(),
+                    signature: Some("sig-1".to_string()),
+                },
+                message::ReasoningContent::Summary("summary".to_string()),
+                message::ReasoningContent::Text {
+                    text: "step two".to_string(),
+                    signature: Some("sig-2".to_string()),
+                },
+                message::ReasoningContent::Redacted {
+                    data: "redacted block".to_string(),
+                },
+            ],
+        };
+
+        let msg = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(reasoning)),
+        };
+        let converted: Message = msg.try_into().expect("convert assistant message");
+        let converted_content = converted.content.iter().cloned().collect::<Vec<_>>();
+
+        assert_eq!(converted.role, Role::Assistant);
+        assert_eq!(converted_content.len(), 4);
+        assert!(matches!(
+            converted_content.first(),
+            Some(Content::Thinking { thinking, signature: Some(signature) })
+                if thinking == "step one" && signature == "sig-1"
+        ));
+        assert!(matches!(
+            converted_content.get(1),
+            Some(Content::Thinking { thinking, signature: None }) if thinking == "summary"
+        ));
+        assert!(matches!(
+            converted_content.get(2),
+            Some(Content::Thinking { thinking, signature: Some(signature) })
+                if thinking == "step two" && signature == "sig-2"
+        ));
+        assert!(matches!(
+            converted_content.get(3),
+            Some(Content::RedactedThinking { data }) if data == "redacted block"
+        ));
+    }
+
+    #[test]
+    fn test_redacted_thinking_content_to_assistant_reasoning() {
+        let content = Content::RedactedThinking {
+            data: "opaque-redacted".to_string(),
+        };
+        let converted: message::AssistantContent =
+            content.try_into().expect("convert redacted thinking");
+
+        assert!(matches!(
+            converted,
+            message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                if matches!(
+                    content.first(),
+                    Some(message::ReasoningContent::Redacted { data }) if data == "opaque-redacted"
+                )
+        ));
+    }
+
+    #[test]
+    fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
+        let reasoning = message::Reasoning {
+            id: None,
+            content: vec![message::ReasoningContent::Encrypted(
+                "ciphertext".to_string(),
+            )],
+        };
+        let msg = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(reasoning)),
+        };
+
+        let converted: Message = msg.try_into().expect("convert assistant message");
+        let converted_content = converted.content.iter().cloned().collect::<Vec<_>>();
+
+        assert_eq!(converted_content.len(), 1);
+        assert!(matches!(
+            converted_content.first(),
+            Some(Content::RedactedThinking { data }) if data == "ciphertext"
+        ));
     }
 }

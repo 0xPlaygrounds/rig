@@ -372,7 +372,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             if let Some(thought) = thought
                                 && *thought
                             {
-                                completion::AssistantContent::Reasoning(Reasoning::new(text))
+                                completion::AssistantContent::Reasoning(
+                                    Reasoning::new_with_signature(text, thought_signature.clone()),
+                                )
                             } else {
                                 completion::AssistantContent::text(text)
                             }
@@ -439,6 +441,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -1023,7 +1026,7 @@ pub mod gemini_api_types {
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
                 message::AssistantContent::Reasoning(reasoning) => Ok(Part {
                     thought: Some(true),
-                    thought_signature: None,
+                    thought_signature: reasoning.first_signature().map(str::to_owned),
                     part: PartKind::Text(reasoning.display_text()),
                     additional_params: None,
                 }),
@@ -1841,7 +1844,12 @@ pub mod gemini_api_types {
 
 #[cfg(test)]
 mod tests {
-    use crate::{message, providers::gemini::completion::gemini_api_types::flatten_schema};
+    use crate::{
+        message,
+        providers::gemini::completion::gemini_api_types::{
+            ContentCandidate, FinishReason, flatten_schema,
+        },
+    };
 
     use super::*;
     use serde_json::json;
@@ -2063,6 +2071,72 @@ mod tests {
         } else {
             panic!("Expected text part");
         }
+    }
+
+    #[test]
+    fn test_thought_signature_is_preserved_from_response_reasoning_part() {
+        let response = GenerateContentResponse {
+            response_id: "resp_1".to_string(),
+            candidates: vec![ContentCandidate {
+                content: Some(Content {
+                    parts: vec![Part {
+                        thought: Some(true),
+                        thought_signature: Some("thought_sig_123".to_string()),
+                        part: PartKind::Text("thinking text".to_string()),
+                        additional_params: None,
+                    }],
+                    role: Some(Role::Model),
+                }),
+                finish_reason: Some(FinishReason::Stop),
+                safety_ratings: None,
+                citation_metadata: None,
+                token_count: None,
+                avg_logprobs: None,
+                logprobs_result: None,
+                index: Some(0),
+                finish_message: None,
+            }],
+            prompt_feedback: None,
+            usage_metadata: None,
+            model_version: None,
+        };
+
+        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+            response.try_into().expect("convert response");
+        let first = converted.choice.first();
+        assert!(matches!(
+            first,
+            message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                if matches!(
+                    content.first(),
+                    Some(message::ReasoningContent::Text {
+                        text,
+                        signature: Some(signature)
+                    }) if text == "thinking text" && signature == "thought_sig_123"
+                )
+        ));
+    }
+
+    #[test]
+    fn test_reasoning_signature_is_emitted_in_gemini_part() {
+        let msg = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(
+                message::Reasoning::new_with_signature(
+                    "structured thought",
+                    Some("reuse_sig_456".to_string()),
+                ),
+            )),
+        };
+
+        let converted: Content = msg.try_into().expect("convert message");
+        let first = converted.parts.first().expect("reasoning part");
+        assert_eq!(first.thought, Some(true));
+        assert_eq!(first.thought_signature.as_deref(), Some("reuse_sig_456"));
+        assert!(matches!(
+            &first.part,
+            PartKind::Text(text) if text == "structured thought"
+        ));
     }
 
     #[test]
