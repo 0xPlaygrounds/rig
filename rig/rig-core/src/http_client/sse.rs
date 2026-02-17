@@ -2,13 +2,13 @@
 //!
 //! Primarily intended for internal usage. However if you also wish to implement generic HTTP streaming for your custom completion model,
 //! you may find this helpful.
-
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
+use crate::{
+    http_client::{
+        HttpClientExt, Result as StreamResult,
+        retry::{DEFAULT_RETRY, RetryPolicy},
+    },
+    wasm_compat::{WasmCompatSend, WasmCompatSendStream},
 };
-
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
 use futures::Stream;
@@ -21,21 +21,17 @@ use http::Response;
 use http::{HeaderName, HeaderValue, Request, StatusCode};
 use mime_guess::mime;
 use pin_project_lite::pin_project;
-
-use crate::{
-    http_client::{
-        HttpClientExt, Result as StreamResult, instance_error,
-        retry::{DEFAULT_RETRY, RetryPolicy},
-    },
-    wasm_compat::{WasmCompatSend, WasmCompatSendStream},
+use std::{
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
 
 #[cfg(not(target_arch = "wasm32"))]
-type ResponseFuture<T> = BoxFuture<'static, Result<Response<T>, super::Error>>;
+type ResponseFuture = BoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-type ResponseFuture<T> = LocalBoxFuture<'static, Result<Response<T>, super::Error>>;
+type ResponseFuture = LocalBoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
 
 #[cfg(not(target_arch = "wasm32"))]
 type EventStream = BoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
@@ -43,147 +39,102 @@ type EventStream = BoxStream<'static, Result<MessageEvent, EventStreamError<supe
 type EventStream = LocalBoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
 type BoxedRetry = Box<dyn RetryPolicy + Send + Unpin + 'static>;
 
-/// The ready state of a [`GenericEventSource`]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-#[repr(u8)]
-pub enum ReadyState {
-    /// The EventSource is waiting on a response from the endpoint
-    Connecting = 0,
-    /// The EventSource is connected
-    Open = 1,
-    /// The EventSource is closed and no longer emitting Events
-    Closed = 2,
-}
-
 pin_project! {
-    /// A generic event source that can use any HTTP client.
-    /// Modeled heavily on the `reqwest-eventsource` implementation.
-    #[project = GenericEventSourceProjection]
-    pub struct GenericEventSource<HttpClient, RequestBody, ResponseBody>
-    where
-        HttpClient: HttpClientExt,
-    {
-        client: HttpClient,
-        req: Request<RequestBody>,
-        #[pin]
-        next_response: Option<ResponseFuture<ResponseBody>>,
-        #[pin]
-        cur_stream: Option<EventStream>,
-        #[pin]
-        delay: Option<Delay>,
-        is_closed: bool,
-        retry_policy: BoxedRetry,
-        last_event_id: String,
-        last_retry: Option<(usize, Duration)>,
+    /// Internal state variants for the SSE state machine.
+    #[project = SourceStateProjection]
+    enum SourceState {
+        /// Awaiting HTTP response from the server
+        Connecting {
+            #[pin]
+            response_future: ResponseFuture,
+        },
+        /// Actively receiving SSE events
+        Open {
+            #[pin]
+            event_stream: EventStream,
+        },
+        /// Waiting before retry after an error
+        WaitingToRetry {
+            #[pin]
+            retry_delay: Delay,
+        },
+        /// Terminal state
+        Closed,
     }
 }
 
-impl<HttpClient, RequestBody>
-    GenericEventSource<
-        HttpClient,
-        RequestBody,
-        Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>,
-    >
+/// Configuration and persistent state shared across all states
+struct SourceConfig<HttpClient, RequestBody> {
+    client: HttpClient,
+    req: Request<RequestBody>,
+    retry_policy: BoxedRetry,
+    last_event_id: Option<String>,
+}
+
+pin_project! {
+    /// A generic SSE event source that works with any [`HttpClientExt`] implementation.
+    #[project = GenericEventSourceProjection]
+    pub struct GenericEventSource<HttpClient, RequestBody> {
+        config: SourceConfig<HttpClient, RequestBody>,
+        #[pin]
+        state: SourceState,
+    }
+}
+
+impl<HttpClient, RequestBody> GenericEventSource<HttpClient, RequestBody>
 where
     HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + Send + 'static,
+    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
 {
+    /// Create a new event source that will connect to the given request.
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
-        let client_clone = client.clone();
+        let response_future = Self::create_response_future(&client, &req, None);
+
+        let config = SourceConfig {
+            client,
+            req,
+            retry_policy: Box::new(DEFAULT_RETRY),
+            last_event_id: None,
+        };
+
+        let state = SourceState::Connecting { response_future };
+
+        Self { config, state }
+    }
+
+    /// Create a response future for connecting/reconnecting
+    fn create_response_future(
+        client: &HttpClient,
+        req: &Request<RequestBody>,
+        last_event_id: Option<&str>,
+    ) -> ResponseFuture {
         let mut req_clone = req.clone();
         req_clone
             .headers_mut()
             .entry("Accept")
             .or_insert(HeaderValue::from_static("text/event-stream"));
-        let res_fut = Box::pin(async move { client_clone.clone().send_streaming(req_clone).await });
-        Self {
-            client,
-            next_response: Some(res_fut),
-            cur_stream: None,
-            req,
-            delay: None,
-            is_closed: false,
-            retry_policy: Box::new(DEFAULT_RETRY),
-            last_event_id: String::new(),
-            last_retry: None,
-        }
-    }
 
-    /// Close the EventSource stream and stop trying to reconnect
-    pub fn close(&mut self) {
-        self.is_closed = true;
+        if let Some(id) = last_event_id
+            && let Ok(value) = HeaderValue::from_str(id)
+        {
+            req_clone
+                .headers_mut()
+                .insert(HeaderName::from_static("last-event-id"), value);
+        }
+
+        let client_clone = client.clone();
+        Box::pin(async move { client_clone.send_streaming(req_clone).await })
     }
 
     /// Get the last event id
-    pub fn last_event_id(&self) -> &str {
-        &self.last_event_id
+    pub fn last_event_id(&self) -> Option<&str> {
+        self.config.last_event_id.as_deref()
     }
 
-    /// Get the current ready state
-    pub fn ready_state(&self) -> ReadyState {
-        if self.is_closed {
-            ReadyState::Closed
-        } else if self.delay.is_some() || self.next_response.is_some() {
-            ReadyState::Connecting
-        } else {
-            ReadyState::Open
-        }
-    }
-}
-
-impl<'a, HttpClient, RequestBody>
-    GenericEventSourceProjection<'a, HttpClient, RequestBody, BoxedStream>
-where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
-{
-    fn clear_fetch(&mut self) {
-        self.next_response.take();
-        self.cur_stream.take();
-    }
-
-    fn retry_fetch(&mut self) -> Result<(), super::Error> {
-        self.cur_stream.take();
-        let mut req = self.req.clone();
-        req.headers_mut().insert(
-            HeaderName::from_static("last-event-id"),
-            HeaderValue::from_str(self.last_event_id).map_err(instance_error)?,
-        );
-        let client = self.client.clone();
-        let res_future = Box::pin(async move { client.send_streaming(req).await });
-        self.next_response.replace(res_future);
-        Ok(())
-    }
-
-    fn handle_response<T>(&mut self, res: Response<T>)
-    where
-        T: Stream<Item = StreamResult<Bytes>> + WasmCompatSend + 'static,
-    {
-        self.last_retry.take();
-        let mut stream = res.into_body().eventsource();
-        stream.set_last_event_id(self.last_event_id.clone());
-        self.cur_stream.replace(Box::pin(stream));
-    }
-
-    fn handle_event(&mut self, event: &eventsource_stream::Event) {
-        *self.last_event_id = event.id.clone();
-        if let Some(duration) = event.retry {
-            self.retry_policy.set_reconnection_time(duration)
-        }
-    }
-
-    fn handle_error(&mut self, error: &super::Error) {
-        self.clear_fetch();
-        if let Some(retry_delay) = self.retry_policy.retry(error, *self.last_retry) {
-            let retry_num = self
-                .last_retry
-                .map(|retry| retry.0.saturating_add(1))
-                .unwrap_or(1);
-            *self.last_retry = Some((retry_num, retry_delay));
-            self.delay.replace(Delay::new(retry_delay));
-        } else {
-            *self.is_closed = true;
-        }
+    /// Close the event source, transitioning to the Closed state.
+    /// After calling this, the stream will yield `None` on the next poll.
+    pub fn close(&mut self) {
+        self.state = SourceState::Closed;
     }
 }
 
@@ -202,90 +153,132 @@ impl From<MessageEvent> for Event {
     }
 }
 
-impl<HttpClient, RequestBody> Stream for GenericEventSource<HttpClient, RequestBody, BoxedStream>
+impl<HttpClient, RequestBody> Stream for GenericEventSource<HttpClient, RequestBody>
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
 {
     type Item = Result<Event, super::Error>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
 
-        if *this.is_closed {
-            return Poll::Ready(None);
-        }
-
-        if let Some(delay) = this.delay.as_mut().as_pin_mut() {
-            match delay.poll(cx) {
-                Poll::Ready(_) => {
-                    this.delay.take();
-                    if let Err(err) = this.retry_fetch() {
-                        *this.is_closed = true;
-                        return Poll::Ready(Some(Err(err)));
+        loop {
+            match this.state.as_mut().project() {
+                SourceStateProjection::Connecting { response_future } => {
+                    match response_future.poll(cx) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Ok(response)) => {
+                            match check_response(response) {
+                                Ok(response) => {
+                                    // Transition: Connecting -> Open
+                                    let mut event_stream = response.into_body().eventsource();
+                                    if let Some(id) = &this.config.last_event_id {
+                                        event_stream.set_last_event_id(id.clone());
+                                    }
+                                    this.state.set(SourceState::Open {
+                                        event_stream: Box::pin(event_stream),
+                                    });
+                                    return Poll::Ready(Some(Ok(Event::Open)));
+                                }
+                                Err(err) => {
+                                    // Transition: Connecting -> Closed (non-retryable error)
+                                    this.state.set(SourceState::Closed);
+                                    return Poll::Ready(Some(Err(err)));
+                                }
+                            }
+                        }
+                        Poll::Ready(Err(err)) => {
+                            if let Some(delay_duration) = this.config.retry_policy.retry(&err, None)
+                            {
+                                // Transition: Connecting -> WaitingToRetry
+                                this.state.set(SourceState::WaitingToRetry {
+                                    retry_delay: Delay::new(delay_duration),
+                                });
+                                return Poll::Ready(Some(Err(err)));
+                            } else {
+                                // Transition: Connecting -> Closed
+                                this.state.set(SourceState::Closed);
+                                return Poll::Ready(Some(Err(err)));
+                            }
+                        }
                     }
                 }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
 
-        if let Some(response_future) = this.next_response.as_mut().as_pin_mut() {
-            match response_future.poll(cx) {
-                Poll::Ready(Ok(res)) => {
-                    this.clear_fetch();
-                    match check_response(res) {
-                        Ok(res) => {
-                            this.handle_response(res);
-                            return Poll::Ready(Some(Ok(Event::Open)));
+                SourceStateProjection::Open { event_stream } => {
+                    match event_stream.poll_next(cx) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Some(Ok(event))) => {
+                            // Update last_event_id if the event has one
+                            if !event.id.is_empty() {
+                                this.config.last_event_id = Some(event.id.clone());
+                            }
+                            // Update retry policy if server specifies reconnection time
+                            if let Some(duration) = event.retry {
+                                this.config.retry_policy.set_reconnection_time(duration);
+                            }
+                            return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
-                        Err(err) => {
-                            *this.is_closed = true;
-                            return Poll::Ready(Some(Err(err)));
+                        Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
+                            if let Some(delay_duration) = this.config.retry_policy.retry(&err, None)
+                            {
+                                // Transition: Open -> WaitingToRetry
+                                this.state.set(SourceState::WaitingToRetry {
+                                    retry_delay: Delay::new(delay_duration),
+                                });
+                                return Poll::Ready(Some(Err(err)));
+                            } else {
+                                // Transition: Open -> Closed
+                                this.state.set(SourceState::Closed);
+                                return Poll::Ready(Some(Err(err)));
+                            }
+                        }
+                        Poll::Ready(Some(Err(EventStreamError::Parser(_)))) => {
+                            // Parser errors are recoverable - continue polling
+                            continue;
+                        }
+                        Poll::Ready(Some(Err(EventStreamError::Utf8(_)))) => {
+                            // UTF-8 errors are recoverable - continue polling
+                            continue;
+                        }
+                        Poll::Ready(None) => {
+                            // Transition: Open -> Closed
+                            this.state.set(SourceState::Closed);
+                            return Poll::Ready(None);
                         }
                     }
                 }
-                Poll::Ready(Err(err)) => {
-                    this.handle_error(&err);
-                    return Poll::Ready(Some(Err(err)));
-                }
-                Poll::Pending => {
-                    return Poll::Pending;
-                }
-            }
-        }
 
-        match this
-            .cur_stream
-            .as_mut()
-            .as_pin_mut()
-            .unwrap()
-            .as_mut()
-            .poll_next(cx)
-        {
-            Poll::Ready(Some(Err(err))) => {
-                let EventStreamError::Transport(err) = err else {
-                    panic!("u");
-                };
-                this.handle_error(&err);
-                Poll::Ready(Some(Err(err)))
+                SourceStateProjection::WaitingToRetry { retry_delay } => {
+                    match retry_delay.poll(cx) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(()) => {
+                            // Transition: WaitingToRetry -> Connecting
+                            let response_future =
+                                GenericEventSource::<HttpClient, RequestBody>::create_response_future(
+                                    &this.config.client,
+                                    &this.config.req,
+                                    this.config.last_event_id.as_deref(),
+                                );
+                            this.state.set(SourceState::Connecting { response_future });
+                            continue;
+                        }
+                    }
+                }
+
+                SourceStateProjection::Closed => {
+                    return Poll::Ready(None);
+                }
             }
-            Poll::Ready(Some(Ok(event))) => {
-                this.handle_event(&event);
-                Poll::Ready(Some(Ok(event.into())))
-            }
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
         }
     }
 }
 
 fn check_response<T>(response: Response<T>) -> Result<Response<T>, super::Error> {
-    match response.status() {
-        StatusCode::OK => {}
-        status => {
-            return Err(super::Error::InvalidStatusCode(status));
-        }
-    }
+    let StatusCode::OK = response.status() else {
+        return Err(super::Error::InvalidStatusCode(response.status()));
+    };
+
     let content_type =
         if let Some(content_type) = response.headers().get(&reqwest::header::CONTENT_TYPE) {
             content_type
@@ -294,6 +287,7 @@ fn check_response<T>(response: Response<T>) -> Result<Response<T>, super::Error>
                 "",
             )));
         };
+
     if content_type
         .to_str()
         .map_err(|_| ())
