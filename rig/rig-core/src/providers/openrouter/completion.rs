@@ -2520,6 +2520,9 @@ mod tests {
             UserContent::Text {
                 text: "Plain text document content".to_string()
             }
+        );
+    }
+
     #[test]
     fn test_completion_response_with_reasoning_details_maps_to_typed_reasoning() {
         let json = json!({
@@ -2813,6 +2816,9 @@ mod tests {
             }
             _ => panic!("Expected ImageUrl"),
         }
+    }
+
+    #[test]
     fn test_completion_response_reasoning_details_with_multiple_ids_stay_separate() {
         let json = json!({
             "id": "resp_multi_id",
