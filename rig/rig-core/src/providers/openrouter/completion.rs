@@ -2,7 +2,7 @@ use super::{
     client::{ApiErrorResponse, ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
-use crate::message;
+use crate::message::{self, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
@@ -13,7 +13,7 @@ use crate::{
     providers::openai,
 };
 use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
@@ -660,6 +660,362 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
+/// User content types supported by OpenRouter.
+///
+/// OpenRouter uses different content type structures than OpenAI's Chat Completions API,
+/// particularly for file/document content. This enum matches OpenRouter's API specification.
+///
+/// # Supported Content Types
+///
+/// - **Text**: Plain text content
+/// - **ImageUrl**: Images via URL or base64 data URI
+/// - **File**: PDF documents and other files via URL or base64 data URI
+///
+/// # Example
+///
+/// ```rust
+/// use rig::providers::openrouter::UserContent;
+///
+/// // Text content
+/// let text = UserContent::text("Hello, world!");
+///
+/// // Image from URL
+/// let image = UserContent::image_url("https://example.com/image.png");
+///
+/// // PDF from URL
+/// let pdf = UserContent::file_url("https://example.com/document.pdf", Some("document.pdf".to_string()));
+/// ```
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UserContent {
+    /// Plain text content
+    Text { text: String },
+
+    /// Image content (URL or base64 data URI)
+    ///
+    /// Supports: image/png, image/jpeg, image/webp, image/gif
+    #[serde(rename = "image_url")]
+    ImageUrl { image_url: ImageUrl },
+
+    /// File content (for PDFs and other documents)
+    ///
+    /// Uses `file_data` field which accepts either a publicly accessible URL
+    /// or base64-encoded content as a data URI.
+    File { file: FileContent },
+}
+
+impl UserContent {
+    /// Create text content
+    pub fn text(text: impl Into<String>) -> Self {
+        UserContent::Text { text: text.into() }
+    }
+
+    /// Create image content from URL
+    pub fn image_url(url: impl Into<String>) -> Self {
+        UserContent::ImageUrl {
+            image_url: ImageUrl {
+                url: url.into(),
+                detail: None,
+            },
+        }
+    }
+
+    /// Create image content from URL with detail level
+    pub fn image_url_with_detail(url: impl Into<String>, detail: ImageDetail) -> Self {
+        UserContent::ImageUrl {
+            image_url: ImageUrl {
+                url: url.into(),
+                detail: Some(detail),
+            },
+        }
+    }
+
+    /// Create image content from base64 data
+    ///
+    /// # Arguments
+    /// * `data` - Base64-encoded image data
+    /// * `mime_type` - MIME type (e.g., "image/png", "image/jpeg")
+    /// * `detail` - Optional detail level for image processing
+    pub fn image_base64(
+        data: impl Into<String>,
+        mime_type: &str,
+        detail: Option<ImageDetail>,
+    ) -> Self {
+        let data_uri = format!("data:{};base64,{}", mime_type, data.into());
+        UserContent::ImageUrl {
+            image_url: ImageUrl {
+                url: data_uri,
+                detail,
+            },
+        }
+    }
+
+    /// Create file content from URL
+    ///
+    /// # Arguments
+    /// * `url` - URL to the file (must be publicly accessible)
+    /// * `filename` - Optional filename for the document
+    pub fn file_url(url: impl Into<String>, filename: Option<String>) -> Self {
+        UserContent::File {
+            file: FileContent {
+                filename,
+                file_data: Some(url.into()),
+            },
+        }
+    }
+
+    /// Create file content from base64 data
+    ///
+    /// # Arguments
+    /// * `data` - Base64-encoded file data
+    /// * `mime_type` - MIME type (e.g., "application/pdf")
+    /// * `filename` - Optional filename for the document
+    pub fn file_base64(data: impl Into<String>, mime_type: &str, filename: Option<String>) -> Self {
+        let data_uri = format!("data:{};base64,{}", mime_type, data.into());
+        UserContent::File {
+            file: FileContent {
+                filename,
+                file_data: Some(data_uri),
+            },
+        }
+    }
+}
+
+impl From<String> for UserContent {
+    fn from(text: String) -> Self {
+        UserContent::Text { text }
+    }
+}
+
+impl From<&str> for UserContent {
+    fn from(text: &str) -> Self {
+        UserContent::Text {
+            text: text.to_string(),
+        }
+    }
+}
+
+impl std::str::FromStr for UserContent {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserContent::Text {
+            text: s.to_string(),
+        })
+    }
+}
+
+/// Image URL structure for OpenRouter
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ImageUrl {
+    /// URL or data URI (data:image/png;base64,...)
+    pub url: String,
+    /// Image detail level (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ImageDetail>,
+}
+
+/// File content structure for OpenRouter PDF/document support
+///
+/// OpenRouter supports sending files (particularly PDFs) to models via the `file_data` field,
+/// which accepts either:
+/// - A publicly accessible URL to the file
+/// - A base64-encoded data URI (e.g., `data:application/pdf;base64,...`)
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct FileContent {
+    /// Filename (e.g., "document.pdf")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    /// File data source - URL or base64-encoded data URI
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_data: Option<String>,
+}
+
+/// Serializes user content as a plain string when there's a single text item,
+/// otherwise as an array of content parts.
+fn serialize_user_content<S>(
+    content: &OneOrMany<UserContent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if content.len() == 1
+        && let UserContent::Text { text } = content.first_ref()
+    {
+        return serializer.serialize_str(text);
+    }
+    content.serialize(serializer)
+}
+
+impl TryFrom<message::UserContent> for UserContent {
+    type Error = message::MessageError;
+
+    fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
+        match value {
+            message::UserContent::Text(message::Text { text }) => Ok(UserContent::Text { text }),
+
+            message::UserContent::Image(message::Image {
+                data,
+                detail,
+                media_type,
+                ..
+            }) => {
+                let url = match data {
+                    DocumentSourceKind::Url(url) => url,
+                    DocumentSourceKind::Base64(data) => {
+                        let mime = media_type
+                            .ok_or_else(|| {
+                                message::MessageError::ConversionError(
+                                    "Image media type required for base64 encoding".into(),
+                                )
+                            })?
+                            .to_mime_type();
+                        format!("data:{mime};base64,{data}")
+                    }
+                    DocumentSourceKind::Raw(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "Raw bytes not supported, encode as base64 first".into(),
+                        ));
+                    }
+                    DocumentSourceKind::String(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "String source not supported for images".into(),
+                        ));
+                    }
+                    DocumentSourceKind::Unknown => {
+                        return Err(message::MessageError::ConversionError(
+                            "Image has no data".into(),
+                        ));
+                    }
+                };
+                Ok(UserContent::ImageUrl {
+                    image_url: ImageUrl { url, detail },
+                })
+            }
+
+            message::UserContent::Document(message::Document {
+                data, media_type, ..
+            }) => match data {
+                DocumentSourceKind::Url(url) => {
+                    let filename = media_type.as_ref().map(|mt| match mt {
+                        DocumentMediaType::PDF => "document.pdf",
+                        DocumentMediaType::TXT => "document.txt",
+                        DocumentMediaType::HTML => "document.html",
+                        DocumentMediaType::MARKDOWN => "document.md",
+                        DocumentMediaType::CSV => "document.csv",
+                        DocumentMediaType::XML => "document.xml",
+                        _ => "document",
+                    });
+                    Ok(UserContent::File {
+                        file: FileContent {
+                            filename: filename.map(String::from),
+                            file_data: Some(url),
+                        },
+                    })
+                }
+                DocumentSourceKind::Base64(data) => {
+                    let mime = media_type
+                        .as_ref()
+                        .map(|m| m.to_mime_type())
+                        .unwrap_or("application/pdf");
+                    let data_uri = format!("data:{mime};base64,{data}");
+
+                    let filename = media_type.as_ref().map(|mt| match mt {
+                        DocumentMediaType::PDF => "document.pdf",
+                        DocumentMediaType::TXT => "document.txt",
+                        DocumentMediaType::HTML => "document.html",
+                        DocumentMediaType::MARKDOWN => "document.md",
+                        DocumentMediaType::CSV => "document.csv",
+                        DocumentMediaType::XML => "document.xml",
+                        _ => "document",
+                    });
+
+                    Ok(UserContent::File {
+                        file: FileContent {
+                            filename: filename.map(String::from),
+                            file_data: Some(data_uri),
+                        },
+                    })
+                }
+                DocumentSourceKind::String(text) => Ok(UserContent::Text { text }),
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw bytes not supported for documents, encode as base64 first".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Document has no data".into(),
+                )),
+            },
+
+            message::UserContent::Audio(_) => Err(message::MessageError::ConversionError(
+                "Audio content not supported by OpenRouter file implementation. \
+                 Use the OpenAI-compatible audio types for audio support."
+                    .into(),
+            )),
+
+            message::UserContent::Video(_) => Err(message::MessageError::ConversionError(
+                "Video content not supported by OpenRouter file implementation".into(),
+            )),
+
+            message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
+                "Tool results should be handled as separate messages".into(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
+    type Error = message::MessageError;
+
+    fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
+        let (tool_results, other_content): (Vec<_>, Vec<_>) = value
+            .into_iter()
+            .partition(|content| matches!(content, message::UserContent::ToolResult(_)));
+
+        // If there are messages with both tool results and user content, we handle
+        // tool results first. It's unlikely that there will be both.
+        if !tool_results.is_empty() {
+            tool_results
+                .into_iter()
+                .map(|content| match content {
+                    message::UserContent::ToolResult(tool_result) => Ok(Message::ToolResult {
+                        tool_call_id: tool_result.id,
+                        content: tool_result
+                            .content
+                            .into_iter()
+                            .map(|c| match c {
+                                message::ToolResultContent::Text(message::Text { text }) => text,
+                                message::ToolResultContent::Image(_) => {
+                                    "[Image content not supported in tool results]".to_string()
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    }),
+                    _ => unreachable!(),
+                })
+                .collect::<Result<Vec<_>, _>>()
+        } else {
+            let user_content: Vec<UserContent> = other_content
+                .into_iter()
+                .map(|content| content.try_into())
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let content = OneOrMany::many(user_content)
+                .expect("There must be content here if there were no tool result content");
+
+            Ok(vec![Message::User {
+                content,
+                name: None,
+            }])
+        }
+    }
+}
+
+// ================================================================
+// Response Types
+// ================================================================
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Choice {
     pub index: usize,
@@ -671,7 +1027,8 @@ pub struct Choice {
 /// OpenRouter message.
 ///
 /// Almost identical to OpenAI's Message, but supports more parameters
-/// for some providers like `reasoning`.
+/// for some providers like `reasoning`, and uses OpenRouter-specific
+/// content types that support images, PDFs, and other file types.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
@@ -683,8 +1040,11 @@ pub enum Message {
         name: Option<String>,
     },
     User {
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        content: OneOrMany<openai::UserContent>,
+        #[serde(
+            deserialize_with = "string_or_one_or_many",
+            serialize_with = "serialize_user_content"
+        )]
+        content: OneOrMany<UserContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
@@ -761,11 +1121,40 @@ enum ToolCallAdditionalParams {
     },
 }
 
+/// Convert OpenAI's UserContent to OpenRouter's UserContent
+impl From<openai::UserContent> for UserContent {
+    fn from(value: openai::UserContent) -> Self {
+        match value {
+            openai::UserContent::Text { text } => UserContent::Text { text },
+            openai::UserContent::Image { image_url } => UserContent::ImageUrl {
+                image_url: ImageUrl {
+                    url: image_url.url,
+                    detail: Some(image_url.detail),
+                },
+            },
+            openai::UserContent::Audio { input_audio } => {
+                // Audio is not directly supported - convert to text placeholder
+                // Users should use the native audio support if needed
+                UserContent::Text {
+                    text: format!("[Audio content: format={:?}]", input_audio.format),
+                }
+            }
+        }
+    }
+}
+
 impl From<openai::Message> for Message {
     fn from(value: openai::Message) -> Self {
         match value {
             openai::Message::System { content, name } => Self::System { content, name },
-            openai::Message::User { content, name } => Self::User { content, name },
+            openai::Message::User { content, name } => {
+                // Convert OpenAI UserContent to OpenRouter UserContent
+                let converted_content = content.map(UserContent::from);
+                Self::User {
+                    content: converted_content,
+                    name,
+                }
+            }
             openai::Message::Assistant {
                 content,
                 refusal,
@@ -875,16 +1264,17 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
     }
 }
 
-// We re-use most of the openai implementation when we can and we re-implement
-// only the part that differentate for openrouter (like reasoning support).
+// OpenRouter uses its own content types for User messages to support
+// images and PDFs. Assistant messages still use OpenAI-compatible types.
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::User { content } => {
-                let messages: Vec<openai::Message> = content.try_into()?;
-                Ok(messages.into_iter().map(Message::from).collect::<Vec<_>>())
+                // Use OpenRouter's own conversion for User content
+                // This supports images and PDF files via the file content type
+                content.try_into()
             }
             message::Message::Assistant { content, .. } => content.try_into(),
         }
@@ -1727,5 +2117,448 @@ mod tests {
 
         assert_eq!(provider["order"], json!([]));
         assert_eq!(provider["quantizations"], json!([]));
+    }
+
+    // ================================================================
+    // File Support Tests
+    // ================================================================
+
+    #[test]
+    fn test_user_content_text_serialization() {
+        let content = UserContent::text("Hello, world!");
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "text");
+        assert_eq!(json["text"], "Hello, world!");
+    }
+
+    #[test]
+    fn test_user_content_image_url_serialization() {
+        let content = UserContent::image_url("https://example.com/image.png");
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "image_url");
+        assert_eq!(json["image_url"]["url"], "https://example.com/image.png");
+        assert!(json["image_url"].get("detail").is_none());
+    }
+
+    #[test]
+    fn test_user_content_image_url_with_detail_serialization() {
+        let content =
+            UserContent::image_url_with_detail("https://example.com/image.png", ImageDetail::High);
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "image_url");
+        assert_eq!(json["image_url"]["url"], "https://example.com/image.png");
+        assert_eq!(json["image_url"]["detail"], "high");
+    }
+
+    #[test]
+    fn test_user_content_image_base64_serialization() {
+        let content = UserContent::image_base64("SGVsbG8=", "image/png", Some(ImageDetail::Low));
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "image_url");
+        assert_eq!(json["image_url"]["url"], "data:image/png;base64,SGVsbG8=");
+        assert_eq!(json["image_url"]["detail"], "low");
+    }
+
+    #[test]
+    fn test_user_content_file_url_serialization() {
+        let content = UserContent::file_url(
+            "https://example.com/doc.pdf",
+            Some("document.pdf".to_string()),
+        );
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(json["file"]["file_data"], "https://example.com/doc.pdf");
+        assert_eq!(json["file"]["filename"], "document.pdf");
+    }
+
+    #[test]
+    fn test_user_content_file_base64_serialization() {
+        let content = UserContent::file_base64(
+            "JVBERi0xLjQ=",
+            "application/pdf",
+            Some("report.pdf".to_string()),
+        );
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(
+            json["file"]["file_data"],
+            "data:application/pdf;base64,JVBERi0xLjQ="
+        );
+        assert_eq!(json["file"]["filename"], "report.pdf");
+    }
+
+    #[test]
+    fn test_user_content_text_deserialization() {
+        let json = json!({
+            "type": "text",
+            "text": "Hello!"
+        });
+
+        let content: UserContent = serde_json::from_value(json).unwrap();
+        assert_eq!(
+            content,
+            UserContent::Text {
+                text: "Hello!".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_user_content_image_url_deserialization() {
+        let json = json!({
+            "type": "image_url",
+            "image_url": {
+                "url": "https://example.com/img.jpg",
+                "detail": "high"
+            }
+        });
+
+        let content: UserContent = serde_json::from_value(json).unwrap();
+        match content {
+            UserContent::ImageUrl { image_url } => {
+                assert_eq!(image_url.url, "https://example.com/img.jpg");
+                assert_eq!(image_url.detail, Some(ImageDetail::High));
+            }
+            _ => panic!("Expected ImageUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_file_deserialization() {
+        let json = json!({
+            "type": "file",
+            "file": {
+                "filename": "doc.pdf",
+                "file_data": "https://example.com/doc.pdf"
+            }
+        });
+
+        let content: UserContent = serde_json::from_value(json).unwrap();
+        match content {
+            UserContent::File { file } => {
+                assert_eq!(file.filename, Some("doc.pdf".to_string()));
+                assert_eq!(
+                    file.file_data,
+                    Some("https://example.com/doc.pdf".to_string())
+                );
+            }
+            _ => panic!("Expected File variant"),
+        }
+    }
+
+    #[test]
+    fn test_message_user_with_text_serialization() {
+        let message = Message::User {
+            content: OneOrMany::one(UserContent::text("Hello")),
+            name: None,
+        };
+        let json = serde_json::to_value(&message).unwrap();
+
+        // Single text content should be serialized as a plain string
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "Hello");
+    }
+
+    #[test]
+    fn test_message_user_with_mixed_content_serialization() {
+        let message = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("Check this image:"),
+                UserContent::image_url("https://example.com/img.png"),
+            ])
+            .unwrap(),
+            name: None,
+        };
+        let json = serde_json::to_value(&message).unwrap();
+
+        assert_eq!(json["role"], "user");
+        let content = json["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "image_url");
+    }
+
+    #[test]
+    fn test_message_user_with_file_serialization() {
+        let message = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("Analyze this PDF:"),
+                UserContent::file_url(
+                    "https://example.com/doc.pdf",
+                    Some("document.pdf".to_string()),
+                ),
+            ])
+            .unwrap(),
+            name: None,
+        };
+        let json = serde_json::to_value(&message).unwrap();
+
+        assert_eq!(json["role"], "user");
+        let content = json["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "file");
+        assert_eq!(
+            content[1]["file"]["file_data"],
+            "https://example.com/doc.pdf"
+        );
+    }
+
+    #[test]
+    fn test_user_content_from_rig_text() {
+        let rig_content = message::UserContent::Text(message::Text {
+            text: "Hello".to_string(),
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        assert_eq!(
+            openrouter_content,
+            UserContent::Text {
+                text: "Hello".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_user_content_from_rig_image_url() {
+        let rig_content = message::UserContent::Image(message::Image {
+            data: DocumentSourceKind::Url("https://example.com/img.png".to_string()),
+            media_type: Some(message::ImageMediaType::PNG),
+            detail: Some(ImageDetail::High),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::ImageUrl { image_url } => {
+                assert_eq!(image_url.url, "https://example.com/img.png");
+                assert_eq!(image_url.detail, Some(ImageDetail::High));
+            }
+            _ => panic!("Expected ImageUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_image_base64() {
+        let rig_content = message::UserContent::Image(message::Image {
+            data: DocumentSourceKind::Base64("SGVsbG8=".to_string()),
+            media_type: Some(message::ImageMediaType::JPEG),
+            detail: Some(ImageDetail::Low),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::ImageUrl { image_url } => {
+                assert_eq!(image_url.url, "data:image/jpeg;base64,SGVsbG8=");
+                assert_eq!(image_url.detail, Some(ImageDetail::Low));
+            }
+            _ => panic!("Expected ImageUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_document_url() {
+        let rig_content = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::Url("https://example.com/doc.pdf".to_string()),
+            media_type: Some(DocumentMediaType::PDF),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::File { file } => {
+                assert_eq!(
+                    file.file_data,
+                    Some("https://example.com/doc.pdf".to_string())
+                );
+                assert_eq!(file.filename, Some("document.pdf".to_string()));
+            }
+            _ => panic!("Expected File variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_document_base64() {
+        let rig_content = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::Base64("JVBERi0xLjQ=".to_string()),
+            media_type: Some(DocumentMediaType::PDF),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::File { file } => {
+                assert_eq!(
+                    file.file_data,
+                    Some("data:application/pdf;base64,JVBERi0xLjQ=".to_string())
+                );
+                assert_eq!(file.filename, Some("document.pdf".to_string()));
+            }
+            _ => panic!("Expected File variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_document_string_becomes_text() {
+        let rig_content = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::String("Plain text document content".to_string()),
+            media_type: Some(DocumentMediaType::TXT),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        assert_eq!(
+            openrouter_content,
+            UserContent::Text {
+                text: "Plain text document content".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_user_content_from_rig_image_missing_media_type_error() {
+        let rig_content = message::UserContent::Image(message::Image {
+            data: DocumentSourceKind::Base64("SGVsbG8=".to_string()),
+            media_type: None, // Missing media type
+            detail: None,
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("media type required"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_image_raw_bytes_error() {
+        let rig_content = message::UserContent::Image(message::Image {
+            data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+            media_type: Some(message::ImageMediaType::PNG),
+            detail: None,
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("base64"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_video_not_supported() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::Url("https://example.com/video.mp4".to_string()),
+            media_type: Some(message::VideoMediaType::MP4),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Video"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_audio_not_supported() {
+        let rig_content = message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::Base64("audiodata".to_string()),
+            media_type: Some(message::AudioMediaType::MP3),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Audio"));
+    }
+
+    #[test]
+    fn test_message_conversion_with_pdf() {
+        let rig_message = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::Text(message::Text {
+                    text: "Summarize this document".to_string(),
+                }),
+                message::UserContent::Document(message::Document {
+                    data: DocumentSourceKind::Url("https://example.com/paper.pdf".to_string()),
+                    media_type: Some(DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+            ])
+            .unwrap(),
+        };
+
+        let openrouter_messages: Vec<Message> = rig_message.try_into().unwrap();
+        assert_eq!(openrouter_messages.len(), 1);
+
+        match &openrouter_messages[0] {
+            Message::User { content, .. } => {
+                assert_eq!(content.len(), 2);
+
+                // First should be text
+                match content.first_ref() {
+                    UserContent::Text { text } => assert_eq!(text, "Summarize this document"),
+                    _ => panic!("Expected Text"),
+                }
+            }
+            _ => panic!("Expected User message"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_string() {
+        let content: UserContent = "Hello".into();
+        assert_eq!(
+            content,
+            UserContent::Text {
+                text: "Hello".to_string()
+            }
+        );
+
+        let content: UserContent = String::from("World").into();
+        assert_eq!(
+            content,
+            UserContent::Text {
+                text: "World".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn test_openai_user_content_conversion() {
+        // Test that OpenAI UserContent can be converted to OpenRouter UserContent
+        let openai_text = openai::UserContent::Text {
+            text: "Hello".to_string(),
+        };
+        let converted: UserContent = openai_text.into();
+        assert_eq!(
+            converted,
+            UserContent::Text {
+                text: "Hello".to_string()
+            }
+        );
+
+        let openai_image = openai::UserContent::Image {
+            image_url: openai::ImageUrl {
+                url: "https://example.com/img.png".to_string(),
+                detail: ImageDetail::Auto,
+            },
+        };
+        let converted: UserContent = openai_image.into();
+        match converted {
+            UserContent::ImageUrl { image_url } => {
+                assert_eq!(image_url.url, "https://example.com/img.png");
+                assert_eq!(image_url.detail, Some(ImageDetail::Auto));
+            }
+            _ => panic!("Expected ImageUrl"),
+        }
     }
 }
