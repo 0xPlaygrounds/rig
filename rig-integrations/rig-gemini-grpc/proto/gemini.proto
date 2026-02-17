@@ -1,0 +1,264 @@
+// Minimal Gemini gRPC API proto for Rig.
+//
+// IMPORTANT: Field numbers and wire types are intentionally aligned with
+// Google's official `google.ai.generativelanguage.v1beta` protos so the
+// generated Rust types are gRPC-wire-compatible.
+//
+// Reference sources (field numbers/types):
+// - google/ai/generativelanguage/v1beta/content.proto
+// - google/ai/generativelanguage/v1beta/generative_service.proto
+
+syntax = "proto3";
+
+package google.ai.generativelanguage.v1beta;
+
+service GenerativeService {
+  rpc GenerateContent(GenerateContentRequest) returns (GenerateContentResponse);
+  rpc StreamGenerateContent(GenerateContentRequest) returns (stream GenerateContentResponse);
+  rpc EmbedContent(EmbedContentRequest) returns (EmbedContentResponse);
+}
+
+// ================================================================
+// Shared types
+// ================================================================
+
+// Mirrors google.protobuf.NullValue.
+enum NullValue {
+  NULL_VALUE = 0;
+}
+
+// Mirrors google.protobuf.Value.
+message Value {
+  oneof kind {
+    NullValue null_value = 1;
+    double number_value = 2;
+    string string_value = 3;
+    bool bool_value = 4;
+    Struct struct_value = 5;
+    ListValue list_value = 6;
+  }
+}
+
+// Mirrors google.protobuf.Struct.
+message Struct {
+  map<string, Value> fields = 1;
+}
+
+// Mirrors google.protobuf.ListValue.
+message ListValue {
+  repeated Value values = 1;
+}
+
+// Data type enum used by Schema (matches content.proto).
+enum Type {
+  TYPE_UNSPECIFIED = 0;
+  STRING = 1;
+  NUMBER = 2;
+  INTEGER = 3;
+  BOOLEAN = 4;
+  ARRAY = 5;
+  OBJECT = 6;
+  NULL = 7;
+}
+
+message Content {
+  repeated Part parts = 1;
+  string role = 2;
+}
+
+message Part {
+  oneof data {
+    string text = 2;
+    Blob inline_data = 3;
+    FunctionCall function_call = 4;
+    FunctionResponse function_response = 5;
+    FileData file_data = 6;
+    ExecutableCode executable_code = 9;
+    CodeExecutionResult code_execution_result = 10;
+  }
+
+  // Mirrors content.proto fields.
+  bool thought = 11;
+  bytes thought_signature = 13;
+  Struct part_metadata = 8;
+}
+
+message Blob {
+  string mime_type = 1;
+  bytes data = 2;
+}
+
+message FileData {
+  string mime_type = 1;
+  string file_uri = 2;
+}
+
+message FunctionCall {
+  string name = 1;
+  Struct args = 2;
+  string id = 3;
+}
+
+message FunctionResponse {
+  string name = 1;
+  Struct response = 2;
+  string id = 3;
+}
+
+message ExecutableCode {
+  string language = 1;
+  string code = 2;
+}
+
+message CodeExecutionResult {
+  string outcome = 1;
+  string output = 2;
+}
+
+// ================================================================
+// Tools (minimal)
+// ================================================================
+
+message Tool {
+  repeated FunctionDeclaration function_declarations = 1;
+  CodeExecution code_execution = 3;
+}
+
+message CodeExecution {}
+
+message ToolConfig {}
+
+message FunctionDeclaration {
+  string name = 1;
+  string description = 2;
+  Schema parameters = 3;
+  Schema response = 4;
+  Value parameters_json_schema = 6;
+  Value response_json_schema = 7;
+}
+
+message Schema {
+  Type type = 1;
+  string format = 2;
+  string description = 3;
+  bool nullable = 4;
+  repeated string enum = 5;
+  Schema items = 6;
+  map<string, Schema> properties = 7;
+  repeated string required = 8;
+}
+
+// ================================================================
+// Safety (placeholder; not currently mapped in Rig)
+// ================================================================
+
+message SafetySetting {}
+
+message PromptFeedback {}
+
+// ================================================================
+// Generation
+// ================================================================
+
+message GenerationConfig {
+  optional int32 candidate_count = 1;
+  repeated string stop_sequences = 2;
+  optional int32 max_output_tokens = 4;
+  optional float temperature = 5;
+  optional float top_p = 6;
+  optional int32 top_k = 7;
+  optional int32 seed = 8;
+  optional string response_mime_type = 13;
+  Schema response_schema = 14;
+  ThinkingConfig thinking_config = 15;
+}
+
+message ThinkingConfig {
+  optional bool include_thoughts = 1;
+  optional int32 thinking_budget = 2;
+}
+
+message GenerateContentRequest {
+  string model = 1;
+  repeated Content contents = 2;
+  repeated SafetySetting safety_settings = 3;
+  GenerationConfig generation_config = 4;
+  repeated Tool tools = 5;
+  ToolConfig tool_config = 7;
+  Content system_instruction = 8;
+  string cached_content = 9;
+}
+
+message UsageMetadata {
+  int32 prompt_token_count = 1;
+  int32 candidates_token_count = 2;
+  int32 total_token_count = 3;
+  int32 cached_content_token_count = 4;
+}
+
+message Candidate {
+  enum FinishReason {
+    FINISH_REASON_UNSPECIFIED = 0;
+    STOP = 1;
+    MAX_TOKENS = 2;
+    SAFETY = 3;
+    RECITATION = 4;
+    OTHER = 5;
+    LANGUAGE = 6;
+    BLOCKLIST = 7;
+    PROHIBITED_CONTENT = 8;
+    SPII = 9;
+    MALFORMED_FUNCTION_CALL = 10;
+    IMAGE_SAFETY = 11;
+    UNEXPECTED_TOOL_CALL = 12;
+    TOO_MANY_TOOL_CALLS = 13;
+    IMAGE_PROHIBITED_CONTENT = 14;
+    IMAGE_OTHER = 15;
+    NO_IMAGE = 16;
+    IMAGE_RECITATION = 17;
+  }
+
+  Content content = 1;
+  FinishReason finish_reason = 2;
+  optional int32 index = 3;
+  optional string finish_message = 4;
+}
+
+message GenerateContentResponse {
+  repeated Candidate candidates = 1;
+  PromptFeedback prompt_feedback = 2;
+  UsageMetadata usage_metadata = 3;
+  string model_version = 4;
+  string response_id = 5;
+}
+
+// ================================================================
+// Embeddings
+// ================================================================
+
+enum TaskType {
+  TASK_TYPE_UNSPECIFIED = 0;
+  RETRIEVAL_QUERY = 1;
+  RETRIEVAL_DOCUMENT = 2;
+  SEMANTIC_SIMILARITY = 3;
+  CLASSIFICATION = 4;
+  CLUSTERING = 5;
+  QUESTION_ANSWERING = 6;
+  FACT_VERIFICATION = 7;
+}
+
+message EmbedContentRequest {
+  string model = 1;
+  Content content = 2;
+  optional TaskType task_type = 3;
+  optional string title = 4;
+  optional int32 output_dimensionality = 5;
+}
+
+message ContentEmbedding {
+  repeated float values = 1;
+}
+
+message EmbedContentResponse {
+  ContentEmbedding embedding = 1;
+}
