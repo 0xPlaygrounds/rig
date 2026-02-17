@@ -629,11 +629,7 @@ async fn test_openrouter_tool_call_with_reasoning() {
 //   4. Final text is substantial (not a stub or error message)
 
 /// Shared assertions for non-streaming tool call tests.
-fn assert_nonstreaming_universal(
-    result: &str,
-    tool_invocations: &AtomicUsize,
-    provider: &str,
-) {
+fn assert_nonstreaming_universal(result: &str, tool_invocations: &AtomicUsize, provider: &str) {
     let invocations = tool_invocations.load(Ordering::SeqCst);
 
     eprintln!("\n[{provider}] === NON-STREAMING DIAGNOSTICS ===");

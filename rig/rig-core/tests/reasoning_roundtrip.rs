@@ -388,7 +388,10 @@ where
         &trimmed[..trimmed.len().min(100)]
     );
 
-    eprintln!("  [nonstreaming] Turn 2: {} chars text — PASSED", trimmed.len());
+    eprintln!(
+        "  [nonstreaming] Turn 2: {} chars text — PASSED",
+        trimmed.len()
+    );
 }
 
 // ==================== Non-Streaming Provider Tests ====================
