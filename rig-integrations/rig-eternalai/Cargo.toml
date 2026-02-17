@@ -12,7 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
-rig-core = { path = "../../rig/rig-core", version = "0.30.0", default-features = false }
+rig-core = { path = "../../rig/rig-core", version = "0.31.0", default-features = false }
 ethers = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
