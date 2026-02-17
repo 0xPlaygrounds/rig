@@ -302,9 +302,11 @@ fn rig_assistant_content_to_grpc_part(
             })
         }
         message::AssistantContent::Reasoning(reasoning) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(reasoning.reasoning.join("\n"))),
+            data: Some(proto::part::Data::Text(reasoning.display_text())),
             thought: true,
-            thought_signature: decode_optional_base64(reasoning.signature)?,
+            thought_signature: decode_optional_base64(
+                reasoning.first_signature().map(|s| s.to_string()),
+            )?,
             part_metadata: None,
         }),
         _ => Err(CompletionError::RequestError(
@@ -335,10 +337,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             let assistant_content = match &part.data {
                 Some(proto::part::Data::Text(text)) => {
                     if part.thought {
-                        completion::AssistantContent::Reasoning(
-                            Reasoning::new(text)
-                                .with_signature(encode_optional_base64(&part.thought_signature)),
-                        )
+                        completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                            text,
+                            encode_optional_base64(&part.thought_signature),
+                        ))
                     } else {
                         completion::AssistantContent::text(text)
                     }
@@ -418,6 +420,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }

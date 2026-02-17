@@ -10443,7 +10443,7 @@ dependencies = [
  "futures",
  "prost 0.13.5",
  "protoc-bin-vendored",
- "rig-core 0.30.0",
+ "rig-core 0.31.0",
  "serde",
  "serde_json",
  "tokio",
@@ -13548,7 +13548,7 @@ dependencies = [
  "prost-build",
  "prost-types 0.13.5",
  "quote",
- "syn 2.0.106",
+ "syn 2.0.114",
 ]
 
 [[package]]
