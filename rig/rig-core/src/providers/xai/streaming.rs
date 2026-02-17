@@ -12,12 +12,11 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
-use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunkKind, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk,
-    StreamingCompletionResponse, StreamingItemDoneOutput,
+    StreamingCompletionResponse, StreamingItemDoneOutput, reasoning_choices_from_done_item,
 };
-use crate::providers::openai::responses_api::{Output, ReasoningSummary, ResponsesUsage};
+use crate::providers::openai::responses_api::{Output, ResponsesUsage};
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming::{self, RawStreamingChoice};
 
@@ -32,7 +31,7 @@ where
     {
         let preamble = completion_request.preamble.clone();
         let mut request =
-            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
+            XAICompletionRequest::try_from((self.model.as_str(), completion_request))?;
 
         let params = json_utils::merge(
             request.additional_params.unwrap_or(serde_json::json!({})),
@@ -152,21 +151,21 @@ where
                             }
 
                             ItemChunkKind::OutputItemDone(StreamingItemDoneOutput {
-                                item: Output::Reasoning { summary, id },
+                                item: Output::Reasoning {
+                                    summary,
+                                    id,
+                                    encrypted_content,
+                                    ..
+                                },
                                 ..
                             }) => {
-                                let reasoning = summary
-                                    .iter()
-                                    .map(|x| {
-                                        let ReasoningSummary::SummaryText { text } = x;
-                                        text.to_owned()
-                                    })
-                                    .collect::<Vec<String>>()
-                                    .join("\n");
-                                yield Ok(RawStreamingChoice::Reasoning {
-                                    id: Some(id.to_string()),
-                                    content: ReasoningContent::Summary(reasoning),
-                                });
+                                for reasoning_choice in reasoning_choices_from_done_item(
+                                    id,
+                                    summary,
+                                    encrypted_content.as_deref(),
+                                ) {
+                                    yield Ok(reasoning_choice);
+                                }
                             }
 
                             ItemChunkKind::OutputTextDelta(delta) => {
@@ -243,4 +242,48 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reasoning_choices_from_done_item;
+    use crate::message::ReasoningContent;
+    use crate::providers::openai::responses_api::ReasoningSummary;
+    use crate::streaming::RawStreamingChoice;
+
+    #[test]
+    fn reasoning_done_item_emits_summary_then_encrypted() {
+        let summary = vec![
+            ReasoningSummary::SummaryText {
+                text: "s1".to_string(),
+            },
+            ReasoningSummary::SummaryText {
+                text: "s2".to_string(),
+            },
+        ];
+        let choices = reasoning_choices_from_done_item("xr_1", &summary, Some("enc"));
+
+        assert_eq!(choices.len(), 3);
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "xr_1" && text == "s1"
+        ));
+        assert!(matches!(
+            choices.get(1),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "xr_1" && text == "s2"
+        ));
+        assert!(matches!(
+            choices.get(2),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Encrypted(data),
+            }) if id == "xr_1" && data == "enc"
+        ));
+    }
 }

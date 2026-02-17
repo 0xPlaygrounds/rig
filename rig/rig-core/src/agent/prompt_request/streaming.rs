@@ -433,6 +433,10 @@ where
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
                 let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
+                // Kept separate from accumulated_reasoning so providers requiring
+                // signatures (e.g. Anthropic) never see unsigned blocks.
+                let mut pending_reasoning_delta_text = String::new();
+                let mut pending_reasoning_delta_id: Option<String> = None;
                 let mut saw_tool_call_this_turn = false;
 
                 while let Some(content) = stream.next().await {
@@ -561,11 +565,13 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(reasoning)));
                         },
                         Ok(StreamedAssistantContent::ReasoningDelta { reasoning, id }) => {
-                            // Deltas must be accumulated or reasoning evaporates
-                            // in multi-turn tool call loops.
-                            let delta_as_reasoning = crate::message::Reasoning::new(&reasoning)
-                                .optional_id(id.clone());
-                            merge_reasoning_blocks(&mut accumulated_reasoning, &delta_as_reasoning);
+                            // Deltas lack signatures/encrypted content that full
+                            // blocks carry; mixing them into accumulated_reasoning
+                            // causes Anthropic to reject with "signature required".
+                            pending_reasoning_delta_text.push_str(&reasoning);
+                            if pending_reasoning_delta_id.is_none() {
+                                pending_reasoning_delta_id = id.clone();
+                            }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
@@ -589,6 +595,17 @@ where
                     }
                 }
 
+                // Providers like Gemini emit thinking as incremental deltas
+                // without signatures; assemble into a single block so
+                // reasoning survives into the next turn's chat history.
+                if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
+                    let mut assembled = crate::message::Reasoning::new(&pending_reasoning_delta_text);
+                    if let Some(id) = pending_reasoning_delta_id.take() {
+                        assembled = assembled.with_id(id);
+                    }
+                    accumulated_reasoning.push(assembled);
+                }
+
                 // Add reasoning and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
@@ -603,7 +620,7 @@ where
 
                     if !content_items.is_empty() {
                         chat_history.push(Message::Assistant {
-                            id: None,
+                            id: stream.message_id.clone(),
                             content: OneOrMany::many(content_items).expect("Should have at least one item"),
                         });
                     }
