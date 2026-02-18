@@ -1058,7 +1058,7 @@ mod audio_generation {
 
 #[cfg(test)]
 mod azure_tests {
-    use schemars::{JsonSchema, schema_for};
+    use schemars::JsonSchema;
 
     use super::*;
 
