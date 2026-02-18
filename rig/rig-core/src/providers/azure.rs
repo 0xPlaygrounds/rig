@@ -1058,12 +1058,16 @@ mod audio_generation {
 
 #[cfg(test)]
 mod azure_tests {
+    use schemars::{JsonSchema, schema_for};
+
     use super::*;
 
     use crate::OneOrMany;
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
+    use crate::prelude::TypedPrompt;
+    use crate::providers::openai::GPT_5_MINI;
 
     #[tokio::test]
     #[ignore]
@@ -1120,6 +1124,37 @@ mod azure_tests {
 
         tracing::info!("Azure completion: {:?}", completion);
     }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_azure_structured_output() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        #[derive(Debug, Deserialize, JsonSchema)]
+        struct Person {
+            name: String,
+            age: u32,
+        }
+
+        let client = Client::<reqwest::Client>::from_env();
+        let agent = client
+            .agent(GPT_5_MINI)
+            .preamble("You are a helpful assistant that extracts personal details.")
+            .max_tokens(100)
+            .output_schema::<Person>()
+            .build();
+
+        let result: Person = agent
+            .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
+            .await
+            .expect("failed to extract person");
+
+        assert!(result.name == "John Doe");
+        assert!(result.age == 54);
+
+        tracing::info!("Extracted person: {:?}", result);
+    }
+
     #[tokio::test]
     async fn test_client_initialization() {
         let _client: crate::providers::azure::Client<reqwest::Client> =
