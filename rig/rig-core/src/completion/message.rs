@@ -512,6 +512,9 @@ pub enum AudioMediaType {
     AAC,
     OGG,
     FLAC,
+    M4A,
+    PCM16,
+    PCM24,
 }
 
 /// Describes the video media type of the content. Not every provider supports every media type.
@@ -1031,6 +1034,9 @@ impl MimeType for AudioMediaType {
             "audio/aac" => Some(AudioMediaType::AAC),
             "audio/ogg" => Some(AudioMediaType::OGG),
             "audio/flac" => Some(AudioMediaType::FLAC),
+            "audio/m4a" => Some(AudioMediaType::M4A),
+            "audio/pcm16" => Some(AudioMediaType::PCM16),
+            "audio/pcm24" => Some(AudioMediaType::PCM24),
             _ => None,
         }
     }
@@ -1043,6 +1049,9 @@ impl MimeType for AudioMediaType {
             AudioMediaType::AAC => "audio/aac",
             AudioMediaType::OGG => "audio/ogg",
             AudioMediaType::FLAC => "audio/flac",
+            AudioMediaType::M4A => "audio/m4a",
+            AudioMediaType::PCM16 => "audio/pcm16",
+            AudioMediaType::PCM24 => "audio/pcm24",
         }
     }
 }

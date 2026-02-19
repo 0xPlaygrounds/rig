@@ -2,7 +2,9 @@ use super::{
     client::{ApiErrorResponse, ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
-use crate::message::{self, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType};
+use crate::message::{
+    self, AudioMediaType, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType,
+};
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
@@ -730,13 +732,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 /// User content types supported by OpenRouter.
 ///
 /// OpenRouter uses different content type structures than OpenAI's Chat Completions API,
-/// particularly for file/document content. This enum matches OpenRouter's API specification.
+/// particularly for file/document and audio content. This enum matches OpenRouter's API specification.
 ///
 /// # Supported Content Types
 ///
 /// - **Text**: Plain text content
 /// - **ImageUrl**: Images via URL or base64 data URI
 /// - **File**: PDF documents and other files via URL or base64 data URI
+/// - **InputAudio**: Base64-encoded audio files (supported formats vary by model)
 ///
 /// # Example
 ///
@@ -751,6 +754,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 ///
 /// // PDF from URL
 /// let pdf = UserContent::file_url("https://example.com/document.pdf", Some("document.pdf".to_string()));
+///
+/// // Audio from base64
+/// use rig::completion::message::AudioMediaType;
+/// let audio = UserContent::audio_base64("base64data", AudioMediaType::WAV);
 /// ```
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -769,6 +776,11 @@ pub enum UserContent {
     /// Uses `file_data` field which accepts either a publicly accessible URL
     /// or base64-encoded content as a data URI.
     File { file: FileContent },
+
+    /// Audio content (base64-encoded only; URLs are not supported for audio)
+    ///
+    /// Supported formats vary by model.
+    InputAudio { input_audio: openai::InputAudio },
 }
 
 impl UserContent {
@@ -843,6 +855,22 @@ impl UserContent {
             file: FileContent {
                 filename,
                 file_data: Some(data_uri),
+            },
+        }
+    }
+
+    /// Create audio content from base64-encoded data
+    ///
+    /// OpenRouter only supports base64-encoded audio; direct URLs are not supported.
+    ///
+    /// # Arguments
+    /// * `data` - Base64-encoded audio data
+    /// * `format` - Audio format (e.g., `AudioMediaType::WAV`, `AudioMediaType::MP3`)
+    pub fn audio_base64(data: impl Into<String>, format: AudioMediaType) -> Self {
+        UserContent::InputAudio {
+            input_audio: openai::InputAudio {
+                data: data.into(),
+                format,
             },
         }
     }
@@ -1014,11 +1042,32 @@ impl TryFrom<message::UserContent> for UserContent {
                 )),
             },
 
-            message::UserContent::Audio(_) => Err(message::MessageError::ConversionError(
-                "Audio content not supported by OpenRouter file implementation. \
-                 Use the OpenAI-compatible audio types for audio support."
-                    .into(),
-            )),
+            message::UserContent::Audio(message::Audio {
+                data, media_type, ..
+            }) => match data {
+                DocumentSourceKind::Base64(data) => {
+                    let format = media_type.ok_or_else(|| {
+                        message::MessageError::ConversionError(
+                            "Audio media type required for base64 encoding".into(),
+                        )
+                    })?;
+                    Ok(UserContent::InputAudio {
+                        input_audio: openai::InputAudio { data, format },
+                    })
+                }
+                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
+                    "OpenRouter does not support audio URLs, encode as base64 first".into(),
+                )),
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw bytes not supported for audio, encode as base64 first".into(),
+                )),
+                DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
+                    "String source not supported for audio".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Audio has no data".into(),
+                )),
+            },
 
             message::UserContent::Video(_) => Err(message::MessageError::ConversionError(
                 "Video content not supported by OpenRouter file implementation".into(),
@@ -1199,13 +1248,7 @@ impl From<openai::UserContent> for UserContent {
                     detail: Some(image_url.detail),
                 },
             },
-            openai::UserContent::Audio { input_audio } => {
-                // Audio is not directly supported - convert to text placeholder
-                // Users should use the native audio support if needed
-                UserContent::Text {
-                    text: format!("[Audio content: format={:?}]", input_audio.format),
-                }
-            }
+            openai::UserContent::Audio { input_audio } => UserContent::InputAudio { input_audio },
         }
     }
 }
@@ -2723,17 +2766,63 @@ mod tests {
     }
 
     #[test]
-    fn test_user_content_from_rig_audio_not_supported() {
+    fn test_user_content_from_rig_audio_base64() {
         let rig_content = message::UserContent::Audio(message::Audio {
             data: DocumentSourceKind::Base64("audiodata".to_string()),
             media_type: Some(message::AudioMediaType::MP3),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::InputAudio { input_audio } => {
+                assert_eq!(input_audio.data, "audiodata");
+                assert_eq!(input_audio.format, message::AudioMediaType::MP3);
+            }
+            _ => panic!("Expected InputAudio variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_audio_missing_media_type_error() {
+        let rig_content = message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::Base64("audiodata".to_string()),
+            media_type: None, // missing media type
             additional_params: None,
         });
         let result: Result<UserContent, _> = rig_content.try_into();
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Audio"));
+        assert!(err.to_string().contains("media type required"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_audio_url_error() {
+        let rig_content = message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::Url("https://example.com/audio.wav".to_string()),
+            media_type: Some(message::AudioMediaType::WAV),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("base64"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_audio_raw_bytes_error() {
+        let rig_content = message::UserContent::Audio(message::Audio {
+            data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+            media_type: Some(message::AudioMediaType::WAV),
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("base64"));
     }
 
     #[test]
@@ -2816,6 +2905,21 @@ mod tests {
             }
             _ => panic!("Expected ImageUrl"),
         }
+
+        let openai_audio = openai::UserContent::Audio {
+            input_audio: openai::InputAudio {
+                data: "audiodata".to_string(),
+                format: AudioMediaType::FLAC,
+            },
+        };
+        let converted: UserContent = openai_audio.into();
+        match converted {
+            UserContent::InputAudio { input_audio } => {
+                assert_eq!(input_audio.data, "audiodata");
+                assert_eq!(input_audio.format, AudioMediaType::FLAC);
+            }
+            _ => panic!("Expected InputAudio"),
+        }
     }
 
     #[test]
@@ -2867,5 +2971,56 @@ mod tests {
             reasoning_blocks[1].content,
             vec![message::ReasoningContent::Summary("b1".to_string())]
         );
+    }
+
+    #[test]
+    fn test_user_content_audio_serialization() {
+        let content = UserContent::audio_base64("SGVsbG8=", AudioMediaType::WAV);
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "input_audio");
+        assert_eq!(json["input_audio"]["data"], "SGVsbG8=");
+        assert_eq!(json["input_audio"]["format"], "wav");
+    }
+
+    #[test]
+    fn test_user_content_audio_deserialization() {
+        let json = json!({
+            "type": "input_audio",
+            "input_audio": {
+                "data": "SGVsbG8=",
+                "format": "wav"
+            }
+        });
+
+        let content: UserContent = serde_json::from_value(json).unwrap();
+        match content {
+            UserContent::InputAudio { input_audio } => {
+                assert_eq!(input_audio.data, "SGVsbG8=");
+                assert_eq!(input_audio.format, AudioMediaType::WAV);
+            }
+            _ => panic!("Expected InputAudio variant"),
+        }
+    }
+
+    #[test]
+    fn test_message_user_with_audio_serialization() {
+        let msg = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("Transcribe this audio:"),
+                UserContent::audio_base64("SGVsbG8=", AudioMediaType::MP3),
+            ])
+            .unwrap(),
+            name: None,
+        };
+        let json = serde_json::to_value(&msg).unwrap();
+
+        assert_eq!(json["role"], "user");
+        let content = json["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "input_audio");
+        assert_eq!(content[1]["input_audio"]["data"], "SGVsbG8=");
+        assert_eq!(content[1]["input_audio"]["format"], "mp3");
     }
 }
