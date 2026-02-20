@@ -4,6 +4,7 @@ use super::{
 };
 use crate::message::{
     self, AudioMediaType, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType,
+    VideoMediaType,
 };
 use crate::telemetry::SpanCombinator;
 use crate::{
@@ -732,7 +733,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 /// User content types supported by OpenRouter.
 ///
 /// OpenRouter uses different content type structures than OpenAI's Chat Completions API,
-/// particularly for file/document and audio content. This enum matches OpenRouter's API specification.
+/// particularly for file/document, audio, and video content. This enum matches OpenRouter's
+/// API specification.
 ///
 /// # Supported Content Types
 ///
@@ -740,6 +742,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 /// - **ImageUrl**: Images via URL or base64 data URI
 /// - **File**: PDF documents and other files via URL or base64 data URI
 /// - **InputAudio**: Base64-encoded audio files (supported formats vary by model)
+/// - **VideoUrl**: Videos via URL or base64 data URI
 ///
 /// # Example
 ///
@@ -758,6 +761,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 /// // Audio from base64
 /// use rig::completion::message::AudioMediaType;
 /// let audio = UserContent::audio_base64("base64data", AudioMediaType::WAV);
+///
+/// // Video from URL
+/// let video = UserContent::video_url("https://example.com/video.mp4");
+///
+/// // Video from base64
+/// use rig::completion::message::VideoMediaType;
+/// let video = UserContent::video_base64("base64data", VideoMediaType::MP4);
 /// ```
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -781,6 +791,13 @@ pub enum UserContent {
     ///
     /// Supported formats vary by model.
     InputAudio { input_audio: openai::InputAudio },
+
+    /// Video content (URL or base64 data URI)
+    ///
+    /// Supports: video/mp4, video/mpeg, video/mov, video/webm.
+    /// URL support varies by provider.
+    #[serde(rename = "video_url")]
+    VideoUrl { video_url: VideoUrlContent },
 }
 
 impl UserContent {
@@ -874,6 +891,31 @@ impl UserContent {
             },
         }
     }
+
+    /// Create video content from a URL
+    ///
+    /// URL support varies by provider.
+    ///
+    /// # Arguments
+    /// * `url` - URL to the video (must be publicly accessible)
+    pub fn video_url(url: impl Into<String>) -> Self {
+        UserContent::VideoUrl {
+            video_url: VideoUrlContent { url: url.into() },
+        }
+    }
+
+    /// Create video content from base64-encoded data
+    ///
+    /// # Arguments
+    /// * `data` - Base64-encoded video data
+    /// * `media_type` - Video media type (e.g., `VideoMediaType::MP4`)
+    pub fn video_base64(data: impl Into<String>, media_type: VideoMediaType) -> Self {
+        let mime = media_type.to_mime_type();
+        let data_uri = format!("data:{mime};base64,{}", data.into());
+        UserContent::VideoUrl {
+            video_url: VideoUrlContent { url: data_uri },
+        }
+    }
 }
 
 impl From<String> for UserContent {
@@ -908,6 +950,17 @@ pub struct ImageUrl {
     /// Image detail level (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
+}
+
+/// Video URL content structure for OpenRouter video support
+///
+/// OpenRouter supports both direct URLs and base64-encoded data URIs for video:
+/// - A publicly accessible URL
+/// - A base64-encoded data URI (e.g., `data:video/mp4;base64,...`)
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct VideoUrlContent {
+    /// URL or data URI (data:video/mp4;base64,...)
+    pub url: String,
 }
 
 /// File content structure for OpenRouter PDF/document support
@@ -1069,9 +1122,41 @@ impl TryFrom<message::UserContent> for UserContent {
                 )),
             },
 
-            message::UserContent::Video(_) => Err(message::MessageError::ConversionError(
-                "Video content not supported by OpenRouter file implementation".into(),
-            )),
+            message::UserContent::Video(message::Video {
+                data, media_type, ..
+            }) => {
+                let url = match data {
+                    DocumentSourceKind::Url(url) => url,
+                    DocumentSourceKind::Base64(data) => {
+                        let mime = media_type
+                            .ok_or_else(|| {
+                                message::MessageError::ConversionError(
+                                    "Video media type required for base64 encoding".into(),
+                                )
+                            })?
+                            .to_mime_type();
+                        format!("data:{mime};base64,{data}")
+                    }
+                    DocumentSourceKind::Raw(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "Raw bytes not supported for video, encode as base64 first".into(),
+                        ));
+                    }
+                    DocumentSourceKind::String(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "String source not supported for video".into(),
+                        ));
+                    }
+                    DocumentSourceKind::Unknown => {
+                        return Err(message::MessageError::ConversionError(
+                            "Video has no data".into(),
+                        ));
+                    }
+                };
+                Ok(UserContent::VideoUrl {
+                    video_url: VideoUrlContent { url },
+                })
+            }
 
             message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
                 "Tool results should be handled as separate messages".into(),
@@ -2752,9 +2837,57 @@ mod tests {
     }
 
     #[test]
-    fn test_user_content_from_rig_video_not_supported() {
+    fn test_user_content_from_rig_video_url() {
         let rig_content = message::UserContent::Video(message::Video {
             data: DocumentSourceKind::Url("https://example.com/video.mp4".to_string()),
+            media_type: Some(message::VideoMediaType::MP4),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "https://example.com/video.mp4");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_video_base64() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::Base64("SGVsbG8=".to_string()),
+            media_type: Some(message::VideoMediaType::MP4),
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "data:video/mp4;base64,SGVsbG8=");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_video_base64_missing_media_type_error() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::Base64("SGVsbG8=".to_string()),
+            media_type: None,
+            additional_params: None,
+        });
+        let result: Result<UserContent, _> = rig_content.try_into();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("media type"));
+    }
+
+    #[test]
+    fn test_user_content_from_rig_video_raw_bytes_error() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::Raw(vec![1, 2, 3]),
             media_type: Some(message::VideoMediaType::MP4),
             additional_params: None,
         });
@@ -2762,7 +2895,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Video"));
+        assert!(err.to_string().contains("base64"));
     }
 
     #[test]
@@ -3022,5 +3155,81 @@ mod tests {
         assert_eq!(content[1]["type"], "input_audio");
         assert_eq!(content[1]["input_audio"]["data"], "SGVsbG8=");
         assert_eq!(content[1]["input_audio"]["format"], "mp3");
+    }
+
+    #[test]
+    fn test_user_content_video_url_serialization() {
+        let content = UserContent::video_url("https://example.com/video.mp4");
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "video_url");
+        assert_eq!(json["video_url"]["url"], "https://example.com/video.mp4");
+    }
+
+    #[test]
+    fn test_user_content_video_base64_serialization() {
+        let content = UserContent::video_base64("SGVsbG8=", VideoMediaType::MP4);
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "video_url");
+        assert_eq!(json["video_url"]["url"], "data:video/mp4;base64,SGVsbG8=");
+    }
+
+    #[test]
+    fn test_user_content_video_url_deserialization() {
+        let json = json!({
+            "type": "video_url",
+            "video_url": {
+                "url": "https://example.com/video.mp4"
+            }
+        });
+
+        let content: UserContent = serde_json::from_value(json).unwrap();
+        match content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "https://example.com/video.mp4");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
+    }
+
+    #[test]
+    fn test_message_user_with_video_serialization() {
+        let msg = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("Describe this video:"),
+                UserContent::video_url("https://example.com/video.mp4"),
+            ])
+            .unwrap(),
+            name: None,
+        };
+        let json = serde_json::to_value(&msg).unwrap();
+
+        assert_eq!(json["role"], "user");
+        let content = json["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "video_url");
+        assert_eq!(
+            content[1]["video_url"]["url"],
+            "https://example.com/video.mp4"
+        );
+    }
+
+    #[test]
+    fn test_user_content_video_url_no_media_type_needed() {
+        let rig_content = message::UserContent::Video(message::Video {
+            data: DocumentSourceKind::Url("https://example.com/video.mp4".to_string()),
+            media_type: None,
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+
+        match openrouter_content {
+            UserContent::VideoUrl { video_url } => {
+                assert_eq!(video_url.url, "https://example.com/video.mp4");
+            }
+            _ => panic!("Expected VideoUrl variant"),
+        }
     }
 }

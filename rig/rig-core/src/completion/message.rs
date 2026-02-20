@@ -525,6 +525,8 @@ pub enum VideoMediaType {
     AVI,
     MP4,
     MPEG,
+    MOV,
+    WEBM,
 }
 
 /// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
@@ -1065,6 +1067,8 @@ impl MimeType for VideoMediaType {
             "video/avi" => Some(VideoMediaType::AVI),
             "video/mp4" => Some(VideoMediaType::MP4),
             "video/mpeg" => Some(VideoMediaType::MPEG),
+            "video/mov" => Some(VideoMediaType::MOV),
+            "video/webm" => Some(VideoMediaType::WEBM),
             &_ => None,
         }
     }
@@ -1074,6 +1078,8 @@ impl MimeType for VideoMediaType {
             VideoMediaType::AVI => "video/avi",
             VideoMediaType::MP4 => "video/mp4",
             VideoMediaType::MPEG => "video/mpeg",
+            VideoMediaType::MOV => "video/mov",
+            VideoMediaType::WEBM => "video/webm",
         }
     }
 }
