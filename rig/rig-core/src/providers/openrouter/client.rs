@@ -26,9 +26,9 @@ pub type ClientBuilder<H = reqwest::Client> =
     client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
 
 impl Provider for OpenRouterExt {
-    type Builder = OpenRouterExtBuilder;
-
     const VERIFY_PATH: &'static str = "/key";
+
+    type Builder = OpenRouterExtBuilder;
 
     fn build<H>(
         _: &crate::client::ClientBuilder<Self::Builder, OpenRouterApiKey, H>,
@@ -39,7 +39,7 @@ impl Provider for OpenRouterExt {
 
 impl<H> Capabilities<H> for OpenRouterExt {
     type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Nothing;
+    type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
@@ -89,8 +89,11 @@ pub(crate) enum ApiResponse<T> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
+    #[serde(default)]
     pub completion_tokens: usize,
     pub total_tokens: usize,
+    #[serde(default)]
+    pub cost: f64,
 }
 
 impl std::fmt::Display for Usage {
