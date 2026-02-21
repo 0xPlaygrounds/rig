@@ -1,6 +1,4 @@
-//! Error types for the Vectorize integration.
-
-use rig::vector_store::VectorStoreError;
+//! Error types for the Vectorize client.
 
 /// Errors that can occur when interacting with Cloudflare Vectorize.
 #[derive(Debug, thiserror::Error)]
@@ -16,10 +14,4 @@ pub enum VectorizeError {
 
     #[error("Unsupported filter operation: {0}")]
     UnsupportedFilterOperation(String),
-}
-
-impl From<VectorizeError> for VectorStoreError {
-    fn from(err: VectorizeError) -> Self {
-        VectorStoreError::DatastoreError(Box::new(err))
-    }
 }

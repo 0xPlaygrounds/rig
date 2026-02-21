@@ -21,20 +21,26 @@
 //! ```
 
 mod client;
-mod error;
-mod filter;
-mod types;
 
-pub use client::VectorizeClient;
-pub use error::VectorizeError;
-pub use filter::VectorizeFilter;
-pub use types::{QueryRequest, QueryResult, ReturnMetadata, VectorMatch};
+// Re-export client types
+pub use client::{
+    QueryRequest, QueryResult, ReturnMetadata, UpsertRequest, UpsertResult, VectorInput,
+    VectorMatch, VectorizeClient, VectorizeError, VectorizeFilter,
+};
 
+use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
 use rig::embeddings::EmbeddingModel;
 use rig::vector_store::request::VectorSearchRequest;
-use rig::vector_store::{VectorStoreError, VectorStoreIndex};
-use serde::Deserialize;
-use types::QueryRequest as ApiQueryRequest;
+use rig::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig::{Embed, OneOrMany, embeddings::Embedding};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+impl From<VectorizeError> for VectorStoreError {
+    fn from(err: VectorizeError) -> Self {
+        VectorStoreError::DatastoreError(Box::new(err))
+    }
+}
 
 /// A vector store backed by Cloudflare Vectorize.
 ///
@@ -67,27 +73,6 @@ impl<M> VectorizeVectorStore<M> {
             client: VectorizeClient::new(account_id, index_name, api_token),
         }
     }
-
-    /// Creates a new Vectorize vector store with a custom base URL.
-    ///
-    /// Useful for testing or enterprise deployments.
-    pub fn with_base_url(
-        model: M,
-        account_id: impl Into<String>,
-        index_name: impl Into<String>,
-        api_token: impl Into<String>,
-        base_url: impl Into<String>,
-    ) -> Self {
-        Self {
-            model,
-            client: VectorizeClient::with_base_url(account_id, index_name, api_token, base_url),
-        }
-    }
-
-    /// Returns a reference to the underlying Vectorize client.
-    pub fn client(&self) -> &VectorizeClient {
-        &self.client
-    }
 }
 
 impl<M> VectorStoreIndex for VectorizeVectorStore<M>
@@ -100,15 +85,12 @@ where
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        // Validate filter if present
         if let Some(filter) = req.filter() {
-            filter.validate().map_err(VectorizeError::from)?;
+            filter.validate()?;
         }
 
-        // Generate embedding for the query
         let embedding = self.model.embed_text(req.query()).await?;
 
-        // Build the query request
         let query_request = ApiQueryRequest {
             vector: embedding.vec,
             top_k: req.samples(),
@@ -117,7 +99,6 @@ where
             filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
         };
 
-        // Execute the query
         let result = self.client.query(query_request).await?;
 
         // Convert results to the expected format
@@ -139,15 +120,12 @@ where
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        // Validate filter if present
         if let Some(filter) = req.filter() {
-            filter.validate().map_err(VectorizeError::from)?;
+            filter.validate()?;
         }
 
-        // Generate embedding for the query
         let embedding = self.model.embed_text(req.query()).await?;
 
-        // Build the query request - no metadata needed for IDs only
         let query_request = ApiQueryRequest {
             vector: embedding.vec,
             top_k: req.samples(),
@@ -156,7 +134,6 @@ where
             filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
         };
 
-        // Execute the query
         let result = self.client.query(query_request).await?;
 
         // Convert results to (score, id) tuples
@@ -168,5 +145,48 @@ where
             .collect();
 
         Ok(results)
+    }
+}
+
+impl<M> InsertDocuments for VectorizeVectorStore<M>
+where
+    M: EmbeddingModel + Sync + Send,
+{
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let mut vectors: Vec<ApiVectorInput> = Vec::new();
+
+        for (doc, embeddings) in documents {
+            let metadata = serde_json::to_value(&doc)?;
+
+            for embedding in embeddings {
+                vectors.push(ApiVectorInput {
+                    id: Uuid::new_v4().to_string(),
+                    values: embedding.vec,
+                    metadata: Some(metadata.clone()),
+                    namespace: None,
+                });
+            }
+        }
+
+        if vectors.is_empty() {
+            return Ok(());
+        }
+
+        tracing::debug!("Upserting {} vectors to Vectorize", vectors.len());
+
+        const BATCH_SIZE: usize = 1000;
+
+        for batch in vectors.chunks(BATCH_SIZE) {
+            let request = UpsertRequest {
+                vectors: batch.to_vec(),
+            };
+
+            self.client.upsert(request).await?;
+        }
+
+        Ok(())
     }
 }

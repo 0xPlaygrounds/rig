@@ -17,11 +17,12 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
-# [[test]]
-# name = "integration_tests"
-# required-features = ["rig-core/derive"]
+[[example]]
+name = "vectorize_vector_search"
+required-features = ["rig-core/derive"]

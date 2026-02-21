@@ -52,6 +52,7 @@ pub struct ApiResponse<T> {
     pub errors: Vec<ApiErrorDetail>,
 
     /// Informational messages.
+    #[allow(dead_code)]
     pub messages: Vec<ApiMessage>,
 }
 
@@ -67,6 +68,7 @@ pub struct ApiErrorDetail {
 
 /// Informational message from the Cloudflare API.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct ApiMessage {
     /// Message code.
     pub code: Option<u32>,
@@ -79,6 +81,7 @@ pub struct ApiMessage {
 #[derive(Debug, Clone, Deserialize)]
 pub struct QueryResult {
     /// Number of matches returned.
+    #[allow(dead_code)]
     pub count: u64,
 
     /// The matching vectors.
@@ -96,6 +99,7 @@ pub struct VectorMatch {
 
     /// The vector values (only present if `returnValues: true`).
     #[serde(default)]
+    #[allow(dead_code)]
     pub values: Option<Vec<f64>>,
 
     /// Metadata associated with the vector.
@@ -104,5 +108,44 @@ pub struct VectorMatch {
 
     /// The namespace this vector belongs to.
     #[serde(default)]
+    #[allow(dead_code)]
     pub namespace: Option<String>,
+}
+
+// ============================================================================
+// Upsert Types
+// ============================================================================
+
+/// A single vector to be inserted or upserted.
+#[derive(Debug, Clone, Serialize)]
+pub struct VectorInput {
+    /// Unique identifier for this vector (max 64 bytes).
+    pub id: String,
+
+    /// The embedding vector values.
+    pub values: Vec<f64>,
+
+    /// Optional metadata to store with the vector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<Value>,
+
+    /// Optional namespace for the vector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+}
+
+/// Request body for the Vectorize upsert endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct UpsertRequest {
+    /// The vectors to upsert.
+    pub vectors: Vec<VectorInput>,
+}
+
+/// Result payload from an upsert request.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct UpsertResult {
+    /// Mutation identifier for tracking async processing.
+    pub mutation_id: String,
 }
