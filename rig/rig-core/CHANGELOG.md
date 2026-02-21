@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.31.0...rig-core-v0.32.0) - 2026-02-21
+
+### Added
+
+- *(openrouter)* support audio and video ([#1413](https://github.com/0xPlaygrounds/rig/pull/1413))
+
+### Other
+
+- *(deps)* update rmcp types for v0.16 API compatibility ([#1410](https://github.com/0xPlaygrounds/rig/pull/1410))
+
 ## [0.31.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.30.0...rig-core-v0.31.0) - 2026-02-17
 
 ### Added
