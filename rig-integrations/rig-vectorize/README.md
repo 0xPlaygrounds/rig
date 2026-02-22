@@ -4,6 +4,8 @@ Vector store integration for [Cloudflare Vectorize](https://developers.cloudflar
 
 You can find end-to-end examples [here](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-vectorize/examples).
 
+For Vectorize-specific questions, ask in the [Cloudflare Developers Discord](https://discord.com/channels/595317990191398933/1152193114522525726).
+
 ## Running Integration Tests
 
 Integration tests require a real Cloudflare Vectorize index.
