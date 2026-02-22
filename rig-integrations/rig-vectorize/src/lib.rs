@@ -24,8 +24,9 @@ mod client;
 
 // Re-export client types
 pub use client::{
-    QueryRequest, QueryResult, ReturnMetadata, UpsertRequest, UpsertResult, VectorInput,
-    VectorMatch, VectorizeClient, VectorizeError, VectorizeFilter,
+    DeleteByIdsRequest, DeleteResult, ListVectorsResult, QueryRequest, QueryResult, ReturnMetadata,
+    UpsertRequest, UpsertResult, VectorIdEntry, VectorInput, VectorMatch, VectorizeClient,
+    VectorizeError, VectorizeFilter,
 };
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};

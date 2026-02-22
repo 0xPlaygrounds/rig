@@ -10,8 +10,8 @@ mod types;
 pub use error::VectorizeError;
 pub use filter::VectorizeFilter;
 pub use types::{
-    QueryRequest, QueryResult, ReturnMetadata, UpsertRequest, UpsertResult, VectorInput,
-    VectorMatch,
+    DeleteByIdsRequest, DeleteResult, ListVectorsResult, QueryRequest, QueryResult, ReturnMetadata,
+    UpsertRequest, UpsertResult, VectorIdEntry, VectorInput, VectorMatch,
 };
 
 use reqwest::Client;
@@ -143,6 +143,105 @@ impl VectorizeClient {
         api_response.result.ok_or_else(|| VectorizeError::ApiError {
             code: 0,
             message: "No result in successful upsert response".to_string(),
+        })
+    }
+
+    /// Deletes vectors by their IDs.
+    ///
+    /// Up to 1000 vector IDs can be deleted per request.
+    #[instrument(skip(self, ids), fields(index = %self.index_name, count = ids.len()))]
+    pub async fn delete_by_ids(&self, ids: Vec<String>) -> Result<DeleteResult, VectorizeError> {
+        let url = format!("{}/delete_by_ids", self.index_url());
+
+        let request = DeleteByIdsRequest { ids };
+
+        let response = self
+            .http_client
+            .post(&url)
+            .bearer_auth(&self.api_token)
+            .json(&request)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+        tracing::debug!("Raw Vectorize delete response: {}", response_text);
+
+        let api_response: ApiResponse<DeleteResult> = serde_json::from_str(&response_text)?;
+
+        if !api_response.success {
+            let error = api_response
+                .errors
+                .first()
+                .map(|e| VectorizeError::ApiError {
+                    code: e.code,
+                    message: e.message.clone(),
+                })
+                .unwrap_or_else(|| VectorizeError::ApiError {
+                    code: 0,
+                    message: "Unknown error".to_string(),
+                });
+            return Err(error);
+        }
+
+        api_response.result.ok_or_else(|| VectorizeError::ApiError {
+            code: 0,
+            message: "No result in successful delete response".to_string(),
+        })
+    }
+
+    /// Lists vector IDs in the index (paginated).
+    ///
+    /// Returns up to `limit` vector IDs (max 1000, default 100).
+    /// Use the `next_cursor` from the response to fetch the next page.
+    #[instrument(skip(self), fields(index = %self.index_name))]
+    pub async fn list_vectors(
+        &self,
+        limit: Option<u32>,
+        cursor: Option<&str>,
+    ) -> Result<ListVectorsResult, VectorizeError> {
+        let mut url = format!("{}/list", self.index_url());
+
+        let mut query_params = Vec::new();
+        if let Some(limit) = limit {
+            query_params.push(format!("count={}", limit));
+        }
+        if let Some(cursor) = cursor {
+            query_params.push(format!("cursor={}", cursor));
+        }
+        if !query_params.is_empty() {
+            url = format!("{}?{}", url, query_params.join("&"));
+        }
+
+        let response = self
+            .http_client
+            .get(&url)
+            .bearer_auth(&self.api_token)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+        tracing::debug!("Raw Vectorize list response: {}", response_text);
+
+        let api_response: ApiResponse<ListVectorsResult> = serde_json::from_str(&response_text)?;
+
+        if !api_response.success {
+            let error = api_response
+                .errors
+                .first()
+                .map(|e| VectorizeError::ApiError {
+                    code: e.code,
+                    message: e.message.clone(),
+                })
+                .unwrap_or_else(|| VectorizeError::ApiError {
+                    code: 0,
+                    message: "Unknown error".to_string(),
+                });
+            return Err(error);
+        }
+
+        api_response.result.ok_or_else(|| VectorizeError::ApiError {
+            code: 0,
+            message: "No result in successful list response".to_string(),
         })
     }
 }

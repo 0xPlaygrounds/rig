@@ -149,3 +149,54 @@ pub struct UpsertResult {
     /// Mutation identifier for tracking async processing.
     pub mutation_id: String,
 }
+
+// ============================================================================
+// Delete Types
+// ============================================================================
+
+/// Request body for the Vectorize delete_by_ids endpoint.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteByIdsRequest {
+    /// The vector IDs to delete.
+    pub ids: Vec<String>,
+}
+
+/// Result payload from a delete_by_ids request.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct DeleteResult {
+    /// Mutation identifier for tracking async processing.
+    pub mutation_id: String,
+}
+
+// ============================================================================
+// List Vectors Types
+// ============================================================================
+
+/// Result payload from a list_vectors request.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListVectorsResult {
+    /// Number of vectors returned in this page.
+    pub count: u64,
+
+    /// Whether there are more vectors to fetch.
+    pub is_truncated: bool,
+
+    /// Total number of vectors in the index.
+    pub total_count: u64,
+
+    /// The vector IDs in this page.
+    pub vectors: Vec<VectorIdEntry>,
+
+    /// Cursor for fetching the next page.
+    pub next_cursor: Option<String>,
+}
+
+/// A vector ID entry from the list_vectors response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct VectorIdEntry {
+    /// The vector ID.
+    pub id: String,
+}
