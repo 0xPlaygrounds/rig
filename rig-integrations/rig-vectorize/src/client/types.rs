@@ -112,10 +112,6 @@ pub struct VectorMatch {
     pub namespace: Option<String>,
 }
 
-// ============================================================================
-// Upsert Types
-// ============================================================================
-
 /// A single vector to be inserted or upserted.
 #[derive(Debug, Clone, Serialize)]
 pub struct VectorInput {
@@ -150,10 +146,6 @@ pub struct UpsertResult {
     pub mutation_id: String,
 }
 
-// ============================================================================
-// Delete Types
-// ============================================================================
-
 /// Request body for the Vectorize delete_by_ids endpoint.
 #[derive(Debug, Clone, Serialize)]
 pub struct DeleteByIdsRequest {
@@ -169,10 +161,6 @@ pub struct DeleteResult {
     /// Mutation identifier for tracking async processing.
     pub mutation_id: String,
 }
-
-// ============================================================================
-// List Vectors Types
-// ============================================================================
 
 /// Result payload from a list_vectors request.
 #[derive(Debug, Clone, Deserialize)]
