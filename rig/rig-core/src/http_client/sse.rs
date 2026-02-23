@@ -63,19 +63,14 @@ pin_project! {
     }
 }
 
-/// Configuration and persistent state shared across all states
-struct SourceConfig<HttpClient, RequestBody> {
-    client: HttpClient,
-    req: Request<RequestBody>,
-    retry_policy: BoxedRetry,
-    last_event_id: Option<String>,
-}
-
 pin_project! {
     /// A generic SSE event source that works with any [`HttpClientExt`] implementation.
     #[project = GenericEventSourceProjection]
     pub struct GenericEventSource<HttpClient, RequestBody> {
-        config: SourceConfig<HttpClient, RequestBody>,
+        client: HttpClient,
+        req: Request<RequestBody>,
+        retry_policy: BoxedRetry,
+        last_event_id: Option<String>,
         #[pin]
         state: SourceState,
     }
@@ -89,17 +84,15 @@ where
     /// Create a new event source that will connect to the given request.
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
         let response_future = Self::create_response_future(&client, &req, None);
+        let state = SourceState::Connecting { response_future };
 
-        let config = SourceConfig {
+        Self {
             client,
             req,
             retry_policy: Box::new(DEFAULT_RETRY),
             last_event_id: None,
-        };
-
-        let state = SourceState::Connecting { response_future };
-
-        Self { config, state }
+            state,
+        }
     }
 
     /// Create a response future for connecting/reconnecting
@@ -128,7 +121,7 @@ where
 
     /// Get the last event id
     pub fn last_event_id(&self) -> Option<&str> {
-        self.config.last_event_id.as_deref()
+        self.last_event_id.as_deref()
     }
 
     /// Close the event source, transitioning to the Closed state.
@@ -173,7 +166,7 @@ where
                                 Ok(response) => {
                                     // Transition: Connecting -> Open
                                     let mut event_stream = response.into_body().eventsource();
-                                    if let Some(id) = &this.config.last_event_id {
+                                    if let Some(id) = &this.last_event_id {
                                         event_stream.set_last_event_id(id.clone());
                                     }
                                     this.state.set(SourceState::Open {
@@ -189,8 +182,7 @@ where
                             }
                         }
                         Poll::Ready(Err(err)) => {
-                            if let Some(delay_duration) = this.config.retry_policy.retry(&err, None)
-                            {
+                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
                                 // Transition: Connecting -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
@@ -211,17 +203,16 @@ where
                         Poll::Ready(Some(Ok(event))) => {
                             // Update last_event_id if the event has one
                             if !event.id.is_empty() {
-                                this.config.last_event_id = Some(event.id.clone());
+                                *this.last_event_id = Some(event.id.clone());
                             }
                             // Update retry policy if server specifies reconnection time
                             if let Some(duration) = event.retry {
-                                this.config.retry_policy.set_reconnection_time(duration);
+                                this.retry_policy.set_reconnection_time(duration);
                             }
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
-                            if let Some(delay_duration) = this.config.retry_policy.retry(&err, None)
-                            {
+                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
                                 // Transition: Open -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
@@ -256,9 +247,9 @@ where
                             // Transition: WaitingToRetry -> Connecting
                             let response_future =
                                 GenericEventSource::<HttpClient, RequestBody>::create_response_future(
-                                    &this.config.client,
-                                    &this.config.req,
-                                    this.config.last_event_id.as_deref(),
+                                    this.client,
+                                    this.req,
+                                    this.last_event_id.as_deref(),
                                 );
                             this.state.set(SourceState::Connecting { response_future });
                             continue;
