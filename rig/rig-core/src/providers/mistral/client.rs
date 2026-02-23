@@ -36,7 +36,7 @@ impl<H> Capabilities<H> for MistralExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
 
-    type Transcription = Nothing;
+    type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
