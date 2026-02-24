@@ -258,14 +258,14 @@ where
                                 this.retry_policy.retry(&err, Some(*last_retry))
                             {
                                 let (retry_num, _) = *last_retry;
-                                // Transition: Connecting -> WaitingToRetry
+                                // Transition: Reconnecting -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
                                     current_retry: (retry_num + 1, delay_duration),
                                 });
                                 return Poll::Ready(Some(Err(err)));
                             } else {
-                                // Transition: Connecting -> Closed (max retries exceeded)
+                                // Transition: Reconnecting -> Closed (max retries exceeded)
                                 this.state.set(SourceState::Closed);
                                 return Poll::Ready(Some(Err(err)));
                             }
@@ -325,7 +325,7 @@ where
                     match retry_delay.poll(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(()) => {
-                            // Transition: WaitingToRetry -> Connecting
+                            // Transition: WaitingToRetry -> Reconnecting
                             let response_future =
                                 GenericEventSource::<HttpClient, RequestBody>::create_response_future(
                                     this.client,
