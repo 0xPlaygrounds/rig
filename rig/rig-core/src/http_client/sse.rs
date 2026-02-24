@@ -5,7 +5,7 @@
 use crate::{
     http_client::{
         HttpClientExt, Result as StreamResult,
-        retry::{DEFAULT_RETRY, RetryPolicy},
+        retry::{DEFAULT_RETRY, ExponentialBackoff, RetryPolicy},
     },
     wasm_compat::{WasmCompatSend, WasmCompatSendStream},
 };
@@ -24,6 +24,7 @@ use pin_project_lite::pin_project;
 use std::{
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
 pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
@@ -37,16 +38,21 @@ type ResponseFuture = LocalBoxFuture<'static, Result<Response<BoxedStream>, supe
 type EventStream = BoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 type EventStream = LocalBoxStream<'static, Result<MessageEvent, EventStreamError<super::Error>>>;
-type BoxedRetry = Box<dyn RetryPolicy + Send + Unpin + 'static>;
 
 pin_project! {
     /// Internal state variants for the SSE state machine.
     #[project = SourceStateProjection]
     enum SourceState {
-        /// Awaiting HTTP response from the server
+        /// Initial connection attempt (no retry history yet)
         Connecting {
             #[pin]
             response_future: ResponseFuture,
+        },
+        /// Reconnection attempt after a retry delay (always has retry history)
+        Reconnecting {
+            #[pin]
+            response_future: ResponseFuture,
+            last_retry: (usize, Duration),
         },
         /// Actively receiving SSE events
         Open {
@@ -57,6 +63,7 @@ pin_project! {
         WaitingToRetry {
             #[pin]
             retry_delay: Delay,
+            current_retry: (usize, Duration),
         },
         /// Terminal state
         Closed,
@@ -66,10 +73,10 @@ pin_project! {
 pin_project! {
     /// A generic SSE event source that works with any [`HttpClientExt`] implementation.
     #[project = GenericEventSourceProjection]
-    pub struct GenericEventSource<HttpClient, RequestBody> {
+    pub struct GenericEventSource<HttpClient, RequestBody, Retry = ExponentialBackoff> {
         client: HttpClient,
         req: Request<RequestBody>,
-        retry_policy: BoxedRetry,
+        retry_policy: Retry,
         last_event_id: Option<String>,
         #[pin]
         state: SourceState,
@@ -89,7 +96,27 @@ where
         Self {
             client,
             req,
-            retry_policy: Box::new(DEFAULT_RETRY),
+            retry_policy: DEFAULT_RETRY,
+            last_event_id: None,
+            state,
+        }
+    }
+
+    pub fn with_retry_policy<R>(
+        client: HttpClient,
+        req: Request<RequestBody>,
+        retry_policy: R,
+    ) -> GenericEventSource<HttpClient, RequestBody, R>
+    where
+        R: RetryPolicy,
+    {
+        let response_future = Self::create_response_future(&client, &req, None);
+        let state = SourceState::Connecting { response_future };
+
+        GenericEventSource {
+            client,
+            req,
+            retry_policy,
             last_event_id: None,
             state,
         }
@@ -182,10 +209,12 @@ where
                             }
                         }
                         Poll::Ready(Err(err)) => {
+                            // First connection attempt failed - start retry cycle
                             if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
                                 // Transition: Connecting -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
+                                    current_retry: (1, delay_duration),
                                 });
                                 return Poll::Ready(Some(Err(err)));
                             } else {
@@ -197,25 +226,72 @@ where
                     }
                 }
 
+                SourceStateProjection::Reconnecting {
+                    response_future,
+                    last_retry,
+                } => {
+                    match response_future.poll(cx) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(Ok(response)) => {
+                            match check_response(response) {
+                                Ok(response) => {
+                                    // Transition: Reconnecting -> Open (retry cycle complete)
+                                    let mut event_stream = response.into_body().eventsource();
+                                    if let Some(id) = &this.last_event_id {
+                                        event_stream.set_last_event_id(id.clone());
+                                    }
+                                    this.state.set(SourceState::Open {
+                                        event_stream: Box::pin(event_stream),
+                                    });
+                                    return Poll::Ready(Some(Ok(Event::Open)));
+                                }
+                                Err(err) => {
+                                    // Transition: Reconnecting -> Closed (non-retryable error)
+                                    this.state.set(SourceState::Closed);
+                                    return Poll::Ready(Some(Err(err)));
+                                }
+                            }
+                        }
+                        Poll::Ready(Err(err)) => {
+                            // Reconnection attempt failed - continue retry cycle
+                            if let Some(delay_duration) =
+                                this.retry_policy.retry(&err, Some(*last_retry))
+                            {
+                                let (retry_num, _) = *last_retry;
+                                // Transition: Connecting -> WaitingToRetry
+                                this.state.set(SourceState::WaitingToRetry {
+                                    retry_delay: Delay::new(delay_duration),
+                                    current_retry: (retry_num + 1, delay_duration),
+                                });
+                                return Poll::Ready(Some(Err(err)));
+                            } else {
+                                // Transition: Connecting -> Closed (max retries exceeded)
+                                this.state.set(SourceState::Closed);
+                                return Poll::Ready(Some(Err(err)));
+                            }
+                        }
+                    }
+                }
+
                 SourceStateProjection::Open { event_stream } => {
                     match event_stream.poll_next(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(Some(Ok(event))) => {
-                            // Update last_event_id if the event has one
                             if !event.id.is_empty() {
                                 *this.last_event_id = Some(event.id.clone());
                             }
-                            // Update retry policy if server specifies reconnection time
                             if let Some(duration) = event.retry {
                                 this.retry_policy.set_reconnection_time(duration);
                             }
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
+                            // Connection error while open - start fresh retry cycle
                             if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
                                 // Transition: Open -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
+                                    current_retry: (1, delay_duration),
                                 });
                                 return Poll::Ready(Some(Err(err)));
                             } else {
@@ -240,7 +316,12 @@ where
                     }
                 }
 
-                SourceStateProjection::WaitingToRetry { retry_delay } => {
+                SourceStateProjection::WaitingToRetry {
+                    retry_delay,
+                    current_retry,
+                } => {
+                    // Copy before polling to avoid borrow conflicts
+                    let retry_info = *current_retry;
                     match retry_delay.poll(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(()) => {
@@ -251,7 +332,10 @@ where
                                     this.req,
                                     this.last_event_id.as_deref(),
                                 );
-                            this.state.set(SourceState::Connecting { response_future });
+                            this.state.set(SourceState::Reconnecting {
+                                response_future,
+                                last_retry: retry_info,
+                            });
                             continue;
                         }
                     }
