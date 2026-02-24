@@ -306,6 +306,9 @@ pub enum DocumentSource {
         data: String,
         media_type: PlainTextMediaType,
     },
+    Url {
+        url: String,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -753,6 +756,9 @@ impl TryFrom<Message> for message::Message {
                                 data,
                                 Some(message::DocumentMediaType::TXT),
                             ),
+                            DocumentSource::Url { url } => {
+                                message::UserContent::document_url(url, None)
+                            }
                         },
                         _ => {
                             return Err(MessageError::ConversionError(
