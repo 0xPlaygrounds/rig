@@ -123,22 +123,22 @@ You can find more examples each crate's `examples` (ie. [`rig/rig-core/examples`
 ## Supported Integrations
 
 Vector stores are available as separate companion-crates:
-- MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-mongodb)
-- LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-lancedb)
-- Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j)
-- Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/rig-qdrant)
-- SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/rig-sqlite)
-- SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-surrealdb)
-- Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/rig-milvus)
-- ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-scylladb)
-- AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/rig-s3vectors)
-- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-helixdb)
+- MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-mongodb)
+- LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-lancedb)
+- Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-neo4j)
+- Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-qdrant)
+- SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-sqlite)
+- SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-surrealdb)
+- Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-milvus)
+- ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-scylladb)
+- AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-s3vectors)
+- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-helixdb)
 
 The following providers are available as separate companion-crates:
-- AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/rig-bedrock)
-- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)
-- Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-eternalai)
-- Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-vertexai)
+- AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-bedrock)
+- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-fastembed)
+- Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-eternalai)
+- Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-vertexai)
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.
