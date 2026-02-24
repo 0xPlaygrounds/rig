@@ -10676,6 +10676,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-vectorize"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest 0.13.2",
+ "rig-core 0.31.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid 1.20.0",
+]
+
+[[package]]
 name = "rig-vertexai"
 version = "0.2.6"
 dependencies = [
