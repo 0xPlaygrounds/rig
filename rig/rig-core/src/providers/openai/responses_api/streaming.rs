@@ -527,8 +527,7 @@ mod tests {
     #[ignore = "requires API key"]
     async fn test_openai_streaming_tools_reasoning() {
         let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
-        let client: openai::Client<rig::http_client::ReqwestClient> =
-            openai::Client::new(&api_key).expect("Failed to build client");
+        let client = openai::Client::new(&api_key).expect("Failed to build client");
         let agent = client
             .agent("gpt-5.2")
             .max_tokens(8192)

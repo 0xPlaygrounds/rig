@@ -37,16 +37,6 @@ impl Provider for MiraExt {
     type Builder = MiraBuilder;
 
     const VERIFY_PATH: &'static str = "/user-credits";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for MiraExt {
@@ -65,10 +55,22 @@ impl<H> Capabilities<H> for MiraExt {
 impl DebugExt for MiraExt {}
 
 impl ProviderBuilder for MiraBuilder {
-    type Output = MiraExt;
+    type Extension<H>
+        = MiraExt
+    where
+        H: HttpClientExt;
     type ApiKey = MiraApiKey;
 
     const BASE_URL: &'static str = MIRA_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(MiraExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
@@ -795,12 +797,11 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::mira::Client =
+        let _client =
             crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::mira::Client =
-            crate::providers::mira::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::mira::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

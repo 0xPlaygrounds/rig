@@ -27,16 +27,6 @@ impl Provider for VoyageExt {
 
     /// There is currently no way to verify a Voyage api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for VoyageExt {
@@ -54,10 +44,22 @@ impl<H> Capabilities<H> for VoyageExt {
 impl DebugExt for VoyageExt {}
 
 impl ProviderBuilder for VoyageBuilder {
-    type Output = VoyageExt;
+    type Extension<H>
+        = VoyageExt
+    where
+        H: HttpClientExt;
     type ApiKey = VoyageApiKey;
 
     const BASE_URL: &'static str = VOYAGEAI_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(VoyageExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<VoyageExt, H>;
@@ -259,12 +261,11 @@ where
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::voyageai::Client =
+        let _client =
             crate::providers::voyageai::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::voyageai::Client =
-            crate::providers::voyageai::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::voyageai::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

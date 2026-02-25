@@ -40,25 +40,27 @@ impl Provider for MoonshotExt {
     type Builder = MoonshotBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl DebugExt for MoonshotExt {}
 
 impl ProviderBuilder for MoonshotBuilder {
-    type Output = MoonshotExt;
+    type Extension<H>
+        = MoonshotExt
+    where
+        H: HttpClientExt;
     type ApiKey = MoonshotApiKey;
 
     const BASE_URL: &'static str = MOONSHOT_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(MoonshotExt)
+    }
 }
 
 impl<H> Capabilities<H> for MoonshotExt {
@@ -373,12 +375,11 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::moonshot::Client =
+        let _client =
             crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::moonshot::Client =
-            crate::providers::moonshot::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::moonshot::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

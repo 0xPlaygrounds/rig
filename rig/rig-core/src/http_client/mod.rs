@@ -3,18 +3,13 @@ use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
 use reqwest::Body;
-
 pub mod multipart;
 pub mod retry;
 pub mod sse;
-
-pub use multipart::MultipartForm;
-
-use std::pin::Pin;
-
 use crate::wasm_compat::*;
-
+pub use multipart::MultipartForm;
 pub use reqwest::Client as ReqwestClient;
+use std::pin::Pin;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
