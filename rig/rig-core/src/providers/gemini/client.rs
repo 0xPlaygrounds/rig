@@ -147,6 +147,7 @@ impl<H> Capabilities<H> for GeminiInteractionsExt {
     type Completion = Capable<super::interactions_api::InteractionsCompletionModel<H>>;
     type Embeddings = Capable<super::embedding::EmbeddingModel>;
     type Transcription = Capable<super::transcription::TranscriptionModel>;
+    type ModelListing = Nothing;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;

@@ -482,6 +482,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -513,22 +514,37 @@ fn assistant_content_from_output(
         Content::Thought(ThoughtContent {
             summary, signature, ..
         }) => {
-            let summary = summary
+            let mut reasoning_content = summary
                 .unwrap_or_default()
                 .into_iter()
                 .filter_map(|content| match content {
-                    ThoughtSummaryContent::Text(text) => Some(text.text),
+                    ThoughtSummaryContent::Text(text) => Some(message::ReasoningContent::Text {
+                        text: text.text,
+                        signature: None,
+                    }),
                     _ => None,
                 })
                 .collect::<Vec<_>>();
 
-            if summary.is_empty() {
+            if reasoning_content.is_empty() {
                 return Ok(None);
             }
 
-            Ok(Some(completion::AssistantContent::Reasoning(
-                Reasoning::multi(summary).with_signature(signature),
-            )))
+            if let Some(signature) = signature
+                && let Some(message::ReasoningContent::Text {
+                    signature: first_signature,
+                    ..
+                }) = reasoning_content
+                    .iter_mut()
+                    .find(|content| matches!(content, message::ReasoningContent::Text { .. }))
+            {
+                *first_signature = Some(signature);
+            }
+
+            Ok(Some(completion::AssistantContent::Reasoning(Reasoning {
+                id: None,
+                content: reasoning_content,
+            })))
         }
         Content::Image(ImageContent {
             data,
@@ -1808,24 +1824,38 @@ pub mod interactions_api_types {
                         id: Some(call_id),
                     }))
                 }
-                message::AssistantContent::Reasoning(message::Reasoning {
-                    reasoning,
-                    signature,
-                    ..
-                }) => Ok(Self::Thought(ThoughtContent {
-                    signature,
-                    summary: Some(
-                        reasoning
-                            .into_iter()
-                            .map(|text| {
-                                ThoughtSummaryContent::Text(TextContent {
+                message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
+                    let mut signature = None;
+                    let summary = content
+                        .into_iter()
+                        .map(|reasoning_content| {
+                            let text = match reasoning_content {
+                                message::ReasoningContent::Text {
                                     text,
-                                    annotations: None,
-                                })
+                                    signature: content_signature,
+                                } => {
+                                    if signature.is_none() {
+                                        signature = content_signature;
+                                    }
+                                    text
+                                }
+                                message::ReasoningContent::Summary(text)
+                                | message::ReasoningContent::Encrypted(text) => text,
+                                message::ReasoningContent::Redacted { data } => data,
+                            };
+
+                            ThoughtSummaryContent::Text(TextContent {
+                                text,
+                                annotations: None,
                             })
-                            .collect(),
-                    ),
-                })),
+                        })
+                        .collect();
+
+                    Ok(Self::Thought(ThoughtContent {
+                        signature,
+                        summary: Some(summary),
+                    }))
+                }
                 message::AssistantContent::Image(message::Image {
                     data, media_type, ..
                 }) => {
@@ -2366,6 +2396,7 @@ mod tests {
         };
 
         let request = CompletionRequest {
+            model: None,
             preamble: Some("Be precise.".to_string()),
             chat_history: OneOrMany::one(prompt),
             documents: vec![],
@@ -2374,6 +2405,7 @@ mod tests {
             max_tokens: Some(128),
             tool_choice: Some(MessageToolChoice::Required),
             additional_params: None,
+            output_schema: None,
         };
 
         let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
