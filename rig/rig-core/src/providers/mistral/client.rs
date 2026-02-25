@@ -22,14 +22,7 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MistralBuild
 
 impl Provider for MistralExt {
     type Builder = MistralBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &client::ClientBuilder<Self::Builder, MistralApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for MistralExt {
@@ -48,10 +41,22 @@ impl<H> Capabilities<H> for MistralExt {
 impl DebugExt for MistralExt {}
 
 impl ProviderBuilder for MistralBuilder {
-    type Output = MistralExt;
+    type Extension<H>
+        = MistralExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = MistralApiKey;
 
     const BASE_URL: &'static str = MISTRAL_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(MistralExt)
+    }
 }
 
 impl ProviderClient for Client {
@@ -105,12 +110,11 @@ pub(crate) enum ApiResponse<T> {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::mistral::Client =
+        let _client =
             crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::mistral::Client =
-            crate::providers::mistral::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::mistral::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

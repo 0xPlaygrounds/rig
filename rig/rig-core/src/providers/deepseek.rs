@@ -48,18 +48,7 @@ type DeepSeekApiKey = BearerAuth;
 
 impl Provider for DeepSeekExt {
     type Builder = DeepSeekExtBuilder;
-
     const VERIFY_PATH: &'static str = "/user/balance";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for DeepSeekExt {
@@ -76,10 +65,22 @@ impl<H> Capabilities<H> for DeepSeekExt {
 impl DebugExt for DeepSeekExt {}
 
 impl ProviderBuilder for DeepSeekExtBuilder {
-    type Output = DeepSeekExt;
+    type Extension<H>
+        = DeepSeekExt
+    where
+        H: HttpClientExt;
     type ApiKey = DeepSeekApiKey;
 
     const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(DeepSeekExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
@@ -1057,12 +1058,11 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::deepseek::Client =
+        let _client =
             crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::deepseek::Client =
-            crate::providers::deepseek::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::deepseek::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

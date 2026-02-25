@@ -23,7 +23,7 @@ struct WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create ollama client
-    let client: ollama::Client = ollama::Client::builder()
+    let client = ollama::Client::builder()
         .api_key(Nothing)
         .base_url("http://localhost:11434")
         .build()

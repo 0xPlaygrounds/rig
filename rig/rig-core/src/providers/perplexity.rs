@@ -43,16 +43,6 @@ impl Provider for PerplexityExt {
 
     // There is currently no way to verify a perplexity api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for PerplexityExt {
@@ -70,10 +60,22 @@ impl<H> Capabilities<H> for PerplexityExt {
 impl DebugExt for PerplexityExt {}
 
 impl ProviderBuilder for PerplexityBuilder {
-    type Output = PerplexityExt;
+    type Extension<H>
+        = PerplexityExt
+    where
+        H: HttpClientExt;
     type ApiKey = PerplexityApiKey;
 
     const BASE_URL: &'static str = PERPLEXITY_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(PerplexityExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
@@ -535,12 +537,11 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::perplexity::Client =
+        let _client =
             crate::providers::perplexity::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::perplexity::Client =
-            crate::providers::perplexity::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::perplexity::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

@@ -10,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
     //
     // In the case of ollama, no API key is necessary, so we can use the `Nothing` struct in its
     // place
-    let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
+    let client = ollama::Client::new(Nothing).unwrap();
 
     // Create agent with a single context prompt
     let comedian_agent = client

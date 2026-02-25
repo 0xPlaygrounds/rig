@@ -51,7 +51,7 @@ async fn vector_search_test() {
 
     // init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client: openai::Client = openai::Client::builder()
+    let openai_client = openai::Client::builder()
         .api_key("TEST")
         .base_url(openai_mock.base_url())
         .build()

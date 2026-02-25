@@ -25,12 +25,6 @@ impl Provider for TogetherExt {
     type Builder = TogetherExtBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &client::ClientBuilder<Self::Builder, TogetherApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for TogetherExt {
@@ -46,10 +40,22 @@ impl<H> Capabilities<H> for TogetherExt {
 }
 
 impl ProviderBuilder for TogetherExtBuilder {
-    type Output = TogetherExt;
+    type Extension<H>
+        = TogetherExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = TogetherApiKey;
 
     const BASE_URL: &'static str = TOGETHER_AI_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(TogetherExt)
+    }
 }
 
 impl ProviderClient for Client {
@@ -93,12 +99,11 @@ pub mod together_ai_api_types {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::together::Client =
+        let _client =
             crate::providers::together::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::together::Client =
-            crate::providers::together::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::together::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

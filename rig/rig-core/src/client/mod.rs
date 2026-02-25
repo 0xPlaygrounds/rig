@@ -177,17 +177,15 @@ pub enum Transport {
     NdJson,
 }
 
-/// An API provider extension, this abstracts over extensions which may be use in conjunction with
+/// An API provider extension, this abstracts over extensions which may be used in conjunction with
 /// the `Client<Ext, H>` struct to define the behavior of a provider with respect to networking,
 /// auth, instantiating models
 pub trait Provider: Sized {
-    const VERIFY_PATH: &'static str;
-
+    /// The builder type that constructs this provider extension.
+    /// This associates extensions with their builders for type inference.
     type Builder: ProviderBuilder;
 
-    fn build<H>(
-        builder: &ClientBuilder<Self::Builder, <Self::Builder as ProviderBuilder>::ApiKey, H>,
-    ) -> http_client::Result<Self>;
+    const VERIFY_PATH: &'static str;
 
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
         // Some providers (like Azure) have a blank base URL to allow users to input their own endpoints.
@@ -236,11 +234,20 @@ pub trait Capabilities<H = reqwest::Client> {
 /// able to configure and produce a given provider's extension type
 ///
 /// See [Provider]
-pub trait ProviderBuilder: Sized {
-    type Output: Provider;
-    type ApiKey;
+pub trait ProviderBuilder: Sized + Default + Clone {
+    type Extension<H>: Provider
+    where
+        H: HttpClientExt;
+    type ApiKey: ApiKey;
 
     const BASE_URL: &'static str;
+
+    /// Build the provider extension from the client builder configuration.
+    fn build<H>(
+        builder: &ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt;
 
     /// This method can be used to customize the fields of `builder` before it is used to create
     /// a client. For example, adding default headers
@@ -252,14 +259,14 @@ pub trait ProviderBuilder: Sized {
     }
 }
 
-impl<Ext, ExtBuilder, Key, H> Client<Ext, H>
+impl<Ext> Client<Ext, reqwest::Client>
 where
-    ExtBuilder: Clone + Default + ProviderBuilder<Output = Ext, ApiKey = Key>,
-    Ext: Provider<Builder = ExtBuilder>,
-    H: Default + HttpClientExt,
-    Key: ApiKey,
+    Ext: Provider,
+    Ext::Builder: ProviderBuilder<Extension<reqwest::Client> = Ext> + Default,
 {
-    pub fn new(api_key: impl Into<Key>) -> http_client::Result<Self> {
+    pub fn new(
+        api_key: impl Into<<Ext::Builder as ProviderBuilder>::ApiKey>,
+    ) -> http_client::Result<Self> {
         Self::builder().api_key(api_key).build()
     }
 }
@@ -336,14 +343,19 @@ where
     }
 }
 
-impl<Ext, Builder, H> Client<Ext, H>
+impl<Ext> Client<Ext, reqwest::Client>
 where
-    H: Default + HttpClientExt,
-    Ext: Provider<Builder = Builder>,
-    Builder: Default + ProviderBuilder,
+    Ext: Provider,
+    Ext::Builder: ProviderBuilder<Extension<reqwest::Client> = Ext> + Default,
 {
-    pub fn builder() -> ClientBuilder<Builder, NeedsApiKey, H> {
-        ClientBuilder::default()
+    pub fn builder() -> ClientBuilder<Ext::Builder, NeedsApiKey, reqwest::Client> {
+        ClientBuilder {
+            api_key: NeedsApiKey,
+            headers: Default::default(),
+            base_url: <Ext::Builder as ProviderBuilder>::BASE_URL.into(),
+            http_client: None,
+            ext: Default::default(),
+        }
     }
 }
 
@@ -566,18 +578,17 @@ impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
     }
 }
 
-impl<Ext, ExtBuilder, Key, H> ClientBuilder<ExtBuilder, Key, H>
+impl<ExtBuilder, Key, H> ClientBuilder<ExtBuilder, Key, H>
 where
-    ExtBuilder: Clone + ProviderBuilder<Output = Ext, ApiKey = Key> + Default,
-    Ext: Provider<Builder = ExtBuilder>,
+    ExtBuilder: ProviderBuilder<ApiKey = Key>,
     Key: ApiKey,
-    H: Default,
+    H: Default + HttpClientExt,
 {
-    pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Output, H>> {
-        let ext = self.ext.clone();
+    pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Extension<H>, H>> {
+        let ext_builder = self.ext.clone();
 
-        self = ext.finish(self)?;
-        let ext = Ext::build(&self)?;
+        self = ext_builder.finish(self)?;
+        let ext = ExtBuilder::build(&self)?;
 
         let ClientBuilder {
             http_client,
@@ -685,5 +696,22 @@ where
     > + WasmCompatSend {
         let lister = M::new(self.clone());
         async move { lister.list_all().await }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::providers::anthropic;
+
+    /// Type-level test that `Client::builder()` methods do not require annotation to determine
+    /// backig HTTP client
+    #[test]
+    fn ensures_client_builder_no_annotation() {
+        let http_client = reqwest::Client::default();
+        let _ = anthropic::Client::builder()
+            .http_client(http_client)
+            .api_key("Foo")
+            .build()
+            .unwrap();
     }
 }

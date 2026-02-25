@@ -7,7 +7,7 @@ use crate::{
         self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
-    http_client,
+    http_client::{self, HttpClientExt},
 };
 
 // ================================================================
@@ -18,14 +18,7 @@ pub struct AnthropicExt;
 
 impl Provider for AnthropicExt {
     type Builder = AnthropicBuilder;
-
     const VERIFY_PATH: &'static str = "/v1/models";
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self::Builder, AnthropicKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for AnthropicExt {
@@ -82,10 +75,22 @@ impl Default for AnthropicBuilder {
 }
 
 impl ProviderBuilder for AnthropicBuilder {
-    type Output = AnthropicExt;
+    type Extension<H>
+        = AnthropicExt
+    where
+        H: HttpClientExt;
     type ApiKey = AnthropicKey;
 
     const BASE_URL: &'static str = "https://api.anthropic.com";
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(AnthropicExt)
+    }
 
     fn finish<H>(
         &self,
@@ -170,12 +175,11 @@ impl<H> ClientBuilder<H> {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::anthropic::Client =
+        let _client =
             crate::providers::anthropic::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::anthropic::Client =
-            crate::providers::anthropic::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::anthropic::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

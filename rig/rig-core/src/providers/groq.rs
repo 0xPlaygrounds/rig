@@ -54,18 +54,7 @@ type GroqApiKey = BearerAuth;
 
 impl Provider for GroqExt {
     type Builder = GroqBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for GroqExt {
@@ -83,10 +72,22 @@ impl<H> Capabilities<H> for GroqExt {
 impl DebugExt for GroqExt {}
 
 impl ProviderBuilder for GroqBuilder {
-    type Output = GroqExt;
+    type Extension<H>
+        = GroqExt
+    where
+        H: HttpClientExt;
     type ApiKey = GroqApiKey;
 
     const BASE_URL: &'static str = GROQ_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(GroqExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
@@ -779,12 +780,11 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::groq::Client =
+        let _client =
             crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::groq::Client =
-            crate::providers::groq::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::groq::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }
