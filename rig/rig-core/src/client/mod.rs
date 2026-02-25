@@ -708,7 +708,7 @@ mod tests {
     #[test]
     fn ensures_client_builder_no_annotation() {
         let http_client = reqwest::Client::default();
-        let client = anthropic::Client::builder()
+        let _ = anthropic::Client::builder()
             .http_client(http_client)
             .api_key("Foo")
             .build()
