@@ -58,6 +58,9 @@ pub mod stringified_json {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
+        if s.trim().is_empty() {
+            return Ok(serde_json::Value::Object(serde_json::Map::new()));
+        }
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
@@ -201,5 +204,12 @@ mod tests {
             data: serde_json::json!({"key": "value"}),
         };
         assert_eq!(dummy, expected);
+    }
+
+    #[test]
+    fn test_stringified_json_deserialize_empty_string() {
+        let json_str = r#"{"data":""}"#;
+        let dummy: Dummy = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({}));
     }
 }

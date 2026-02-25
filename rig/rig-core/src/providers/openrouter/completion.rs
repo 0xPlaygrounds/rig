@@ -1743,7 +1743,15 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
+                let parsed: ApiResponse<CompletionResponse> =
+                    serde_json::from_slice(&response_body).map_err(|e| {
+                        CompletionError::ResponseError(format!(
+                            "Failed to parse OpenRouter completion response: {}, response body: {}",
+                            e,
+                            String::from_utf8_lossy(&response_body)
+                        ))
+                    })?;
+                match parsed {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
