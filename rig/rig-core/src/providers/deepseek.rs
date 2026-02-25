@@ -307,7 +307,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         text_content.push_str(text.text());
                     }
                     message::AssistantContent::Reasoning(reasoning) => {
-                        reasoning_content.push_str(&reasoning.reasoning.join("\n"));
+                        reasoning_content.push_str(&reasoning.display_text());
                     }
                     _ => {}
                 });
@@ -456,6 +456,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -906,7 +907,6 @@ pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 // Tests
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -1054,5 +1054,15 @@ mod tests {
         };
 
         assert_eq!(choice, expected_choice);
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::deepseek::Client =
+            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::deepseek::Client =
+            crate::providers::deepseek::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

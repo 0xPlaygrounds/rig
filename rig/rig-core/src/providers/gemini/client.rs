@@ -227,3 +227,20 @@ pub enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
 }
+
+// ================================================================
+// Tests
+// ================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: Client = Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: Client = Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+    }
+}

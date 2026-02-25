@@ -156,11 +156,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             OneOrMany::many(content.into_iter().map(|content| match content {
                 AssistantContent::Text { text } => completion::AssistantContent::text(text),
                 AssistantContent::Thinking { thinking } => {
-                    completion::AssistantContent::Reasoning(Reasoning {
-                        id: None,
-                        reasoning: vec![thinking],
-                        signature: None,
-                    })
+                    completion::AssistantContent::Reasoning(Reasoning::new(&thinking))
                 }
             }))
             .map_err(|_| {
@@ -191,6 +187,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice: OneOrMany::many(model_response).expect("There is atleast one content"),
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -416,8 +413,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 }),
                             });
                         }
-                        message::AssistantContent::Reasoning(Reasoning { reasoning, .. }) => {
-                            let thinking = reasoning.join("\n");
+                        message::AssistantContent::Reasoning(reasoning) => {
+                            let thinking = reasoning.display_text();
                             text_content.push(AssistantContent::Thinking { thinking });
                         }
                         message::AssistantContent::Image(_) => {
@@ -464,11 +461,7 @@ impl TryFrom<Message> for message::Message {
                     .map(|content| match content {
                         AssistantContent::Text { text } => message::AssistantContent::text(text),
                         AssistantContent::Thinking { thinking } => {
-                            message::AssistantContent::Reasoning(Reasoning {
-                                id: None,
-                                reasoning: vec![thinking],
-                                signature: None,
-                            })
+                            message::AssistantContent::Reasoning(Reasoning::new(&thinking))
                         }
                     })
                     .collect::<Vec<_>>();

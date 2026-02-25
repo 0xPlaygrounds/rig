@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.5...rig-vertexai-v0.2.6) - 2026-02-17
+
+### Added
+
+- cross-provider reasoning trace roundtrip ([#1396](https://github.com/0xPlaygrounds/rig/pull/1396))
+- *(rig-1189)* structured outputs ([#1382](https://github.com/0xPlaygrounds/rig/pull/1382))
+- *(rig-core)* add optional model override to CompletionRequest ([#1374](https://github.com/0xPlaygrounds/rig/pull/1374))
+
 ## [0.2.5](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.4...rig-vertexai-v0.2.5) - 2026-02-03
 
 ### Other

@@ -68,6 +68,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
             choice,
             usage,
             raw_response: value,
+            message_id: None,
         })
     }
 }

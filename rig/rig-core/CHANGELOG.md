@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.30.0...rig-core-v0.31.0) - 2026-02-17
+
+### Added
+
+- *(rig-1192)* support pdf, image (openrouter) ([#1404](https://github.com/0xPlaygrounds/rig/pull/1404))
+- cross-provider reasoning trace roundtrip ([#1396](https://github.com/0xPlaygrounds/rig/pull/1396))
+- *(openrouter)* Add provider selection and prioritization support ([#1373](https://github.com/0xPlaygrounds/rig/pull/1373))
+- *(rig-1189)* structured outputs ([#1382](https://github.com/0xPlaygrounds/rig/pull/1382))
+- *(rig-core)* add optional model override to CompletionRequest ([#1374](https://github.com/0xPlaygrounds/rig/pull/1374))
+- *(rig-1180)* support text docs (anthropic) ([#1377](https://github.com/0xPlaygrounds/rig/pull/1377))
+- Add model listing capability ([#1243](https://github.com/0xPlaygrounds/rig/pull/1243))
+- *(rig-1168)* add default prompt hook to agent (breaking) ([#1356](https://github.com/0xPlaygrounds/rig/pull/1356))
+- [**breaking**] upgrade reqwest to 0.13 with rustls as default TLS backend ([#1218](https://github.com/0xPlaygrounds/rig/pull/1218))
+- *(rig-1182)* single-text serialization to single string (openai) ([#1367](https://github.com/0xPlaygrounds/rig/pull/1367))
+- add reqwest middleware example ([#1359](https://github.com/0xPlaygrounds/rig/pull/1359))
+
+### Fixed
+
+- *(rig-1195)* image urls don't work with anthropic ([#1403](https://github.com/0xPlaygrounds/rig/pull/1403))
+- *(agents)* correct prompt hook docs, split modules, and fix install script ([#1384](https://github.com/0xPlaygrounds/rig/pull/1384))
+- fix ollama dims miss ([#1199](https://github.com/0xPlaygrounds/rig/pull/1199))
+- *(rig-1182)* assistantcontent serialization when empty (openai) ([#1369](https://github.com/0xPlaygrounds/rig/pull/1369))
+- *(rig-1183)* invalid options provided (ollama) ([#1365](https://github.com/0xPlaygrounds/rig/pull/1365))
+
+### Other
+
+- add client builder test to all providers ([#1385](https://github.com/0xPlaygrounds/rig/pull/1385))
+- add ironclaw ([#1400](https://github.com/0xPlaygrounds/rig/pull/1400))
+- typed reasoning content model ([#1395](https://github.com/0xPlaygrounds/rig/pull/1395))
+- *(streaming)* return updated history in FinalResponse ([#1210](https://github.com/0xPlaygrounds/rig/pull/1210))
+- *(rig-1184)* remove AgentBuilderSimple ([#1368](https://github.com/0xPlaygrounds/rig/pull/1368))
+- propagate current span to tool call ([#1361](https://github.com/0xPlaygrounds/rig/pull/1361))
+- *(rig-1176)* unify prompt hook interfaces ([#1352](https://github.com/0xPlaygrounds/rig/pull/1352))
+
 ## [0.30.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.29.0...rig-core-v0.30.0) - 2026-02-03
 
 ### Added

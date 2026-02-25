@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::providers::huggingface;
+use rig::providers::{huggingface, mistral};
 use rig::{
     providers::{azure, gemini, groq, openai},
     transcription::TranscriptionModel,
@@ -23,6 +23,7 @@ async fn main() {
     azure(&file_path).await;
     groq(&file_path).await;
     huggingface(&file_path).await;
+    mistral(&file_path).await;
 }
 
 async fn whisper(file_path: &str) {
@@ -93,4 +94,16 @@ async fn huggingface(file_path: &str) {
         .expect("Failed to transcribe file");
     let text = response.text;
     println!("Huggingface Whisper-Large-V3: {text}")
+}
+
+async fn mistral(file_path: &str) {
+    let client = mistral::Client::from_env();
+    let model = client.transcription_model(mistral::VOXTRAL_MINI);
+    let response = model
+        .transcription_request()
+        .load_file(file_path)
+        .send()
+        .await
+        .expect("Failed to transcribe file using Mistral");
+    println!("Mistral: {}", response.text);
 }

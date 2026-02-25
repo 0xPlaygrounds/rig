@@ -79,6 +79,7 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Ryzome](https://ryzome.ai) - Ryzome is a visual AI workspace that lets you build interconnected canvases of thoughts, research, and AI agents to orchestrate complex knowledge work.
 - [deepwiki-rs](https://github.com/sopaco/deepwiki-rs) - Turn code into clarity. Generate accurate technical docs and AI-ready context in minutes—perfectly structured for human teams and intelligent agents.
 - [Cortex Memory](https://github.com/sopaco/cortex-mem) - The production-ready memory system for intelligent agents. A complete solution for memory management, from extraction and vector search to automated optimization, with a REST API, MCP, CLI, and insights dashboard out-of-the-box.
+- [Ironclaw](https://github.com/nearai/ironclaw) - A secure personal AI assistant
 
 For a full list, check out our [ECOSYSTEM.md file.](https://www.github.com/0xPlaygrounds/rig/tree/main/ECOSYSTEM.md)
 
@@ -122,22 +123,22 @@ You can find more examples each crate's `examples` (ie. [`rig/rig-core/examples`
 ## Supported Integrations
 
 Vector stores are available as separate companion-crates:
-- MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-mongodb)
-- LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-lancedb)
-- Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j)
-- Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/rig-qdrant)
-- SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/rig-sqlite)
-- SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-surrealdb)
-- Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/rig-milvus)
-- ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-scylladb)
-- AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/rig-s3vectors)
-- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-helixdb)
+- MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-mongodb)
+- LanceDB: [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-lancedb)
+- Neo4j: [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-neo4j)
+- Qdrant: [`rig-qdrant`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-qdrant)
+- SQLite: [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-sqlite)
+- SurrealDB: [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-surrealdb)
+- Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-milvus)
+- ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-scylladb)
+- AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-s3vectors)
+- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-helixdb)
 
 The following providers are available as separate companion-crates:
-- AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/rig-bedrock)
-- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)
-- Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-eternalai)
-- Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-vertexai)
+- AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-bedrock)
+- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-fastembed)
+- Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-eternalai)
+- Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-vertexai)
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

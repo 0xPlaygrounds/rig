@@ -568,7 +568,7 @@ pub(super) struct AzureOpenAICompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<openai::ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    tool_choice: Option<crate::providers::openai::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -610,8 +610,35 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
         let tool_choice = req
             .tool_choice
             .clone()
-            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
+
+        let additional_params = if let Some(schema) = req.output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            openai::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value
+                    }
+                }
+            });
+            Some(match req.additional_params {
+                Some(existing) => json_utils::merge(existing, response_format),
+                None => response_format,
+            })
+        } else {
+            req.additional_params
+        };
 
         Ok(Self {
             model: model.to_string(),
@@ -624,7 +651,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
                 .map(openai::ToolDefinition::from)
                 .collect::<Vec<_>>(),
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }
@@ -1031,12 +1058,16 @@ mod audio_generation {
 
 #[cfg(test)]
 mod azure_tests {
+    use schemars::JsonSchema;
+
     use super::*;
 
     use crate::OneOrMany;
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
+    use crate::prelude::TypedPrompt;
+    use crate::providers::openai::GPT_5_MINI;
 
     #[tokio::test]
     #[ignore]
@@ -1092,5 +1123,45 @@ mod azure_tests {
             .unwrap();
 
         tracing::info!("Azure completion: {:?}", completion);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_azure_structured_output() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        #[derive(Debug, Deserialize, JsonSchema)]
+        struct Person {
+            name: String,
+            age: u32,
+        }
+
+        let client = Client::<reqwest::Client>::from_env();
+        let agent = client
+            .agent(GPT_5_MINI)
+            .preamble("You are a helpful assistant that extracts personal details.")
+            .max_tokens(100)
+            .output_schema::<Person>()
+            .build();
+
+        let result: Person = agent
+            .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
+            .await
+            .expect("failed to extract person");
+
+        assert!(result.name == "John Doe");
+        assert!(result.age == 54);
+
+        tracing::info!("Extracted person: {:?}", result);
+    }
+
+    #[tokio::test]
+    async fn test_client_initialization() {
+        let _client: crate::providers::azure::Client<reqwest::Client> =
+            crate::providers::azure::Client::builder()
+                .api_key("test")
+                .azure_endpoint("test".to_string()) // add your endpoint here!
+                .build()
+                .expect("Client::builder() failed");
     }
 }

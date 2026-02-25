@@ -65,3 +65,14 @@ impl ProviderClient for Client {
         Self::new(&input).unwrap()
     }
 }
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client_from_builder: crate::providers::xai::Client =
+            crate::providers::xai::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
+}

@@ -6,6 +6,7 @@ use rig::completion::GetTokenUsage;
 use rig::streaming::StreamingCompletionResponse;
 use rig::{
     completion::CompletionError,
+    message::ReasoningContent,
     streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
 };
 use serde::{Deserialize, Serialize};
@@ -157,9 +158,11 @@ impl CompletionModel {
                         if let Some(reasoning_state) = current_reasoning.take()
                             && !reasoning_state.content.is_empty() {
                                 yield Ok(RawStreamingChoice::Reasoning {
-                                    reasoning: reasoning_state.content,
                                     id: None,
-                                    signature: reasoning_state.signature,
+                                    content: ReasoningContent::Text {
+                                        text: reasoning_state.content,
+                                        signature: reasoning_state.signature,
+                                    },
                                 })
                             }
                     },

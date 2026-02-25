@@ -8,7 +8,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::completion::{self, CompletionError};
-use crate::message::{Message as RigMessage, MimeType};
+use crate::message::{Message as RigMessage, MimeType, ReasoningContent};
+use crate::providers::openai::responses_api::ReasoningSummary;
 
 // ================================================================
 // Request Types
@@ -16,7 +17,7 @@ use crate::message::{Message as RigMessage, MimeType};
 
 /// Input item for xAI Responses API
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
 pub enum Message {
     /// A message
@@ -29,6 +30,13 @@ pub enum Message {
     },
     /// A function call output/result
     FunctionCallOutput { call_id: String, output: String },
+    /// A reasoning item returned by xAI/OpenAI-compatible Responses APIs.
+    Reasoning {
+        id: String,
+        summary: Vec<ReasoningSummary>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        encrypted_content: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -107,6 +115,18 @@ impl Message {
     pub fn function_call_output(call_id: String, output: String) -> Self {
         Self::FunctionCallOutput { call_id, output }
     }
+
+    pub fn reasoning(
+        id: String,
+        summary: Vec<ReasoningSummary>,
+        encrypted_content: Option<String>,
+    ) -> Self {
+        Self::Reasoning {
+            id,
+            summary,
+            encrypted_content,
+        }
+    }
 }
 
 impl TryFrom<RigMessage> for Vec<Message> {
@@ -166,6 +186,39 @@ impl TryFrom<RigMessage> for Vec<Message> {
             })
         }
 
+        fn reasoning_item(
+            reasoning: crate::message::Reasoning,
+        ) -> Result<Message, CompletionError> {
+            let crate::message::Reasoning { id, content } = reasoning;
+            let id = id.ok_or_else(|| {
+                CompletionError::RequestError(
+                    "Assistant reasoning `id` is required for xAI Responses replay".into(),
+                )
+            })?;
+            let mut encrypted_content = None;
+            let mut summary = Vec::new();
+            for reasoning_content in content {
+                match reasoning_content {
+                    ReasoningContent::Text { text, .. } | ReasoningContent::Summary(text) => {
+                        summary.push(ReasoningSummary::SummaryText { text });
+                    }
+                    // xAI has a single encrypted_content field; only the first
+                    // encrypted/redacted block can be preserved.
+                    ReasoningContent::Redacted { data } | ReasoningContent::Encrypted(data) => {
+                        if encrypted_content.is_some() {
+                            tracing::warn!(
+                                "xAI: dropping additional encrypted/redacted reasoning block \
+                                 (API only supports one encrypted_content per item)"
+                            );
+                        }
+                        encrypted_content.get_or_insert(data);
+                    }
+                }
+            }
+
+            Ok(Message::reasoning(id, summary, encrypted_content))
+        }
+
         match msg {
             RigMessage::User { content } => {
                 let mut items = Vec::new();
@@ -210,10 +263,13 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
-                            items.push(Message::function_call_output(
-                                tr.call_id.unwrap_or_default(),
-                                output,
-                            ));
+                            let call_id = tr.call_id.ok_or_else(|| {
+                                CompletionError::RequestError(
+                                    "Tool result `call_id` is required for xAI Responses API"
+                                        .into(),
+                                )
+                            })?;
+                            items.push(Message::function_call_output(call_id, output));
                         }
                         UserContent::Document(doc) => {
                             has_images = true; // Force array format for files
@@ -251,23 +307,35 @@ impl TryFrom<RigMessage> for Vec<Message> {
             RigMessage::Assistant { content, .. } => {
                 let mut items = Vec::new();
                 let mut text_parts = Vec::new();
+                let flush_assistant_text =
+                    |items: &mut Vec<Message>, text_parts: &mut Vec<String>| {
+                        if !text_parts.is_empty() {
+                            items.push(Message::assistant(text_parts.join("\n")));
+                            text_parts.clear();
+                        }
+                    };
 
                 for c in content {
                     match c {
                         AssistantContent::Text(t) => text_parts.push(t.text),
                         AssistantContent::ToolCall(tc) => {
-                            // Flush accumulated text as a message first
-                            if !text_parts.is_empty() {
-                                items.push(Message::assistant(text_parts.join("\n")));
-                            }
-                            // Tool call becomes FunctionCall
+                            flush_assistant_text(&mut items, &mut text_parts);
+                            let call_id = tc.call_id.ok_or_else(|| {
+                                CompletionError::RequestError(
+                                    "Assistant tool call `call_id` is required for xAI Responses API"
+                                        .into(),
+                                )
+                            })?;
                             items.push(Message::function_call(
-                                tc.call_id.unwrap_or_default(),
+                                call_id,
                                 tc.function.name,
                                 tc.function.arguments.to_string(),
                             ));
                         }
-                        AssistantContent::Reasoning(r) => text_parts.extend(r.reasoning),
+                        AssistantContent::Reasoning(r) => {
+                            flush_assistant_text(&mut items, &mut text_parts);
+                            items.push(reasoning_item(r)?);
+                        }
                         AssistantContent::Image(_) => {
                             return Err(CompletionError::RequestError(
                                 "xAI does not support images in assistant content".into(),
@@ -317,6 +385,180 @@ pub struct ApiError {
 impl ApiError {
     pub fn message(&self) -> String {
         format!("Code `{}`: {}", self.code, self.error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Message;
+    use crate::OneOrMany;
+    use crate::completion::CompletionError;
+    use crate::message::{AssistantContent, Message as RigMessage, Reasoning, ReasoningContent};
+    use crate::providers::openai::responses_api::ReasoningSummary;
+
+    #[test]
+    fn assistant_redacted_reasoning_is_serialized_as_encrypted_content() {
+        let reasoning = Reasoning {
+            id: Some("rs_1".to_string()),
+            content: vec![ReasoningContent::Redacted {
+                data: "opaque-redacted".to_string(),
+            }],
+        };
+        let message = RigMessage::Assistant {
+            id: Some("assistant_1".to_string()),
+            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        };
+
+        let items = Vec::<Message>::try_from(message).expect("convert assistant message");
+        assert_eq!(items.len(), 1);
+        assert!(matches!(
+            items.first(),
+            Some(Message::Reasoning {
+                id,
+                summary,
+                encrypted_content: Some(encrypted_content),
+            }) if id == "rs_1" && summary.is_empty() && encrypted_content == "opaque-redacted"
+        ));
+    }
+
+    #[test]
+    fn assistant_redacted_reasoning_does_not_leak_into_summary_text() {
+        let reasoning = Reasoning {
+            id: Some("rs_2".to_string()),
+            content: vec![
+                ReasoningContent::Text {
+                    text: "explain".to_string(),
+                    signature: None,
+                },
+                ReasoningContent::Redacted {
+                    data: "opaque-redacted".to_string(),
+                },
+            ],
+        };
+        let message = RigMessage::Assistant {
+            id: Some("assistant_2".to_string()),
+            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        };
+
+        let items = Vec::<Message>::try_from(message).expect("convert assistant message");
+        let Some(Message::Reasoning {
+            summary,
+            encrypted_content,
+            ..
+        }) = items.first()
+        else {
+            panic!("Expected reasoning item");
+        };
+
+        assert_eq!(
+            summary,
+            &vec![ReasoningSummary::SummaryText {
+                text: "explain".to_string()
+            }]
+        );
+        assert_eq!(encrypted_content.as_deref(), Some("opaque-redacted"));
+    }
+
+    #[test]
+    fn assistant_empty_reasoning_content_roundtrips_without_error() {
+        let reasoning = Reasoning {
+            id: Some("rs_empty".to_string()),
+            content: vec![],
+        };
+        let message = RigMessage::Assistant {
+            id: Some("assistant_2b".to_string()),
+            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        };
+
+        let items = Vec::<Message>::try_from(message).expect("convert assistant message");
+        assert_eq!(items.len(), 1);
+        assert!(matches!(
+            items.first(),
+            Some(Message::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+            }) if id == "rs_empty" && summary.is_empty() && encrypted_content.is_none()
+        ));
+    }
+
+    #[test]
+    fn assistant_reasoning_without_id_returns_request_error() {
+        let message = RigMessage::Assistant {
+            id: Some("assistant_no_reasoning_id".to_string()),
+            content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thinking"))),
+        };
+
+        let converted = Vec::<Message>::try_from(message);
+        assert!(matches!(
+            converted,
+            Err(CompletionError::RequestError(error))
+                if error
+                    .to_string()
+                    .contains("Assistant reasoning `id` is required")
+        ));
+    }
+
+    #[test]
+    fn serialized_message_type_tags_are_snake_case() {
+        let function_call = Message::function_call(
+            "call_1".to_string(),
+            "tool_name".to_string(),
+            "{\"arg\":1}".to_string(),
+        );
+        let user_message = Message::user("hello");
+
+        let function_call_json =
+            serde_json::to_value(function_call).expect("serialize function_call");
+        let user_message_json = serde_json::to_value(user_message).expect("serialize message");
+
+        assert_eq!(
+            function_call_json
+                .get("type")
+                .and_then(|value| value.as_str()),
+            Some("function_call")
+        );
+        assert_eq!(
+            user_message_json
+                .get("type")
+                .and_then(|value| value.as_str()),
+            Some("message")
+        );
+    }
+
+    #[test]
+    fn user_tool_result_without_call_id_returns_request_error() {
+        let message = RigMessage::tool_result("tool_1", "result payload");
+
+        let converted = Vec::<Message>::try_from(message);
+        assert!(matches!(
+            converted,
+            Err(CompletionError::RequestError(error))
+                if error
+                    .to_string()
+                    .contains("Tool result `call_id` is required")
+        ));
+    }
+
+    #[test]
+    fn assistant_tool_call_without_call_id_returns_request_error() {
+        let message = RigMessage::Assistant {
+            id: Some("assistant_3".to_string()),
+            content: OneOrMany::one(AssistantContent::tool_call(
+                "tool_1",
+                "my_tool",
+                serde_json::json!({"arg":"value"}),
+            )),
+        };
+
+        let converted = Vec::<Message>::try_from(message);
+        assert!(matches!(
+            converted,
+            Err(CompletionError::RequestError(error))
+                if error
+                    .to_string()
+                    .contains("Assistant tool call `call_id` is required")
+        ));
     }
 }
 

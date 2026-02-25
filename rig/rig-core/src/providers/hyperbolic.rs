@@ -237,6 +237,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -697,5 +698,19 @@ mod audio_generation {
                 ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::hyperbolic::Client =
+            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::hyperbolic::Client =
+            crate::providers::hyperbolic::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

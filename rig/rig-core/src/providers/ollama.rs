@@ -351,6 +351,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         cached_input_tokens: 0,
                     },
                     raw_response,
+                    message_id: None,
                 })
             }
             _ => Err(CompletionError::ResponseError(
@@ -900,10 +901,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         crate::message::AssistantContent::ToolCall(tool_call) => {
                             tool_calls.push(tool_call)
                         }
-                        crate::message::AssistantContent::Reasoning(
-                            crate::message::Reasoning { reasoning, .. },
-                        ) => {
-                            thinking = Some(reasoning.first().cloned().unwrap_or(String::new()));
+                        crate::message::AssistantContent::Reasoning(reasoning) => {
+                            let display = reasoning.display_text();
+                            if !display.is_empty() {
+                                thinking = Some(display);
+                            }
                         }
                         crate::message::AssistantContent::Image(_) => {
                             return Err(crate::message::MessageError::ConversionError(
@@ -1297,11 +1299,7 @@ mod tests {
     #[test]
     fn test_message_conversion_with_thinking() {
         // Create an internal message with reasoning content
-        let reasoning_content = crate::message::Reasoning {
-            id: None,
-            reasoning: vec!["Step 1: Consider the problem".to_string()],
-            signature: None,
-        };
+        let reasoning_content = crate::message::Reasoning::new("Step 1: Consider the problem");
 
         let internal_msg = crate::message::Message::Assistant {
             id: None,
@@ -1633,5 +1631,16 @@ mod tests {
             serialized.get("format").is_none(),
             "format field should be absent when output_schema is None"
         );
+    }
+
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::ollama::Client =
+            crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
+        let _client_from_builder: crate::providers::ollama::Client =
+            crate::providers::ollama::Client::builder()
+                .api_key(Nothing)
+                .build()
+                .expect("Client::builder() failed");
     }
 }

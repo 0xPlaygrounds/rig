@@ -580,4 +580,14 @@ mod tests {
         // Single non-text content should still serialize as array
         assert!(serialized["content"].is_array());
     }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::openai::Client =
+            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::openai::Client =
+            crate::providers::openai::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
 }

@@ -26,9 +26,9 @@ pub type ClientBuilder<H = reqwest::Client> =
     client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
 
 impl Provider for OpenRouterExt {
-    type Builder = OpenRouterExtBuilder;
-
     const VERIFY_PATH: &'static str = "/key";
+
+    type Builder = OpenRouterExtBuilder;
 
     fn build<H>(
         _: &crate::client::ClientBuilder<Self::Builder, OpenRouterApiKey, H>,
@@ -39,7 +39,7 @@ impl Provider for OpenRouterExt {
 
 impl<H> Capabilities<H> for OpenRouterExt {
     type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Nothing;
+    type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
@@ -89,8 +89,11 @@ pub(crate) enum ApiResponse<T> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
+    #[serde(default)]
     pub completion_tokens: usize,
     pub total_tokens: usize,
+    #[serde(default)]
+    pub cost: f64,
 }
 
 impl std::fmt::Display for Usage {
@@ -112,5 +115,18 @@ impl GetTokenUsage for Usage {
         usage.total_tokens = self.total_tokens as u64;
 
         Some(usage)
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::openrouter::Client =
+            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::openrouter::Client =
+            crate::providers::openrouter::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

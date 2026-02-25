@@ -36,7 +36,7 @@ impl<H> Capabilities<H> for MistralExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
 
-    type Transcription = Nothing;
+    type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
@@ -99,4 +99,18 @@ pub struct ApiErrorResponse {
 pub(crate) enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::mistral::Client =
+            crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::mistral::Client =
+            crate::providers::mistral::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
+    }
 }

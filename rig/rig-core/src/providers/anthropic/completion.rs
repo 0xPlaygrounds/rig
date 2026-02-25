@@ -179,6 +179,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -234,6 +235,9 @@ pub enum Content {
         #[serde(skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
     },
+    RedactedThinking {
+        data: String,
+    },
 }
 
 impl FromStr for Content {
@@ -262,47 +266,23 @@ impl FromStr for ToolResultContent {
     }
 }
 
+/// The source of an image content block.
+///
+/// Anthropic supports two source types for images:
+/// - `Base64`: Base64-encoded image data with media type
+/// - `Url`: URL reference to an image
+///
+/// See: <https://docs.anthropic.com/en/api/messages>
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(untagged)]
-pub enum ImageSourceData {
-    Base64(String),
-    Url(String),
-}
-
-impl From<ImageSourceData> for DocumentSourceKind {
-    fn from(value: ImageSourceData) -> Self {
-        match value {
-            ImageSourceData::Base64(data) => DocumentSourceKind::Base64(data),
-            ImageSourceData::Url(url) => DocumentSourceKind::Url(url),
-        }
-    }
-}
-
-impl TryFrom<DocumentSourceKind> for ImageSourceData {
-    type Error = MessageError;
-
-    fn try_from(value: DocumentSourceKind) -> Result<Self, Self::Error> {
-        match value {
-            DocumentSourceKind::Base64(data) => Ok(ImageSourceData::Base64(data)),
-            DocumentSourceKind::Url(url) => Ok(ImageSourceData::Url(url)),
-            _ => Err(MessageError::ConversionError("Content has no body".into())),
-        }
-    }
-}
-
-impl From<ImageSourceData> for String {
-    fn from(value: ImageSourceData) -> Self {
-        match value {
-            ImageSourceData::Base64(s) | ImageSourceData::Url(s) => s,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ImageSource {
-    pub data: ImageSourceData,
-    pub media_type: ImageFormat,
-    pub r#type: SourceType,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ImageSource {
+    #[serde(rename = "base64")]
+    Base64 {
+        data: String,
+        media_type: ImageFormat,
+    },
+    #[serde(rename = "url")]
+    Url { url: String },
 }
 
 /// The source of a document content block.
@@ -470,14 +450,62 @@ impl TryFrom<message::AssistantContent> for Content {
                     input: function.arguments,
                 })
             }
-            message::AssistantContent::Reasoning(Reasoning {
-                reasoning,
-                signature,
-                ..
-            }) => Ok(Content::Thinking {
-                thinking: reasoning.first().cloned().unwrap_or(String::new()),
-                signature,
+            message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
+                thinking: reasoning.display_text(),
+                signature: reasoning.first_signature().map(str::to_owned),
             }),
+        }
+    }
+}
+
+fn anthropic_content_from_assistant_content(
+    content: message::AssistantContent,
+) -> Result<Vec<Content>, MessageError> {
+    match content {
+        message::AssistantContent::Text(message::Text { text }) => Ok(vec![Content::Text {
+            text,
+            cache_control: None,
+        }]),
+        message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
+            "Anthropic currently doesn't support images.".to_string(),
+        )),
+        message::AssistantContent::ToolCall(message::ToolCall { id, function, .. }) => {
+            Ok(vec![Content::ToolUse {
+                id,
+                name: function.name,
+                input: function.arguments,
+            }])
+        }
+        message::AssistantContent::Reasoning(reasoning) => {
+            let mut converted = Vec::new();
+            for block in reasoning.content {
+                match block {
+                    message::ReasoningContent::Text { text, signature } => {
+                        converted.push(Content::Thinking {
+                            thinking: text,
+                            signature,
+                        });
+                    }
+                    message::ReasoningContent::Summary(summary) => {
+                        converted.push(Content::Thinking {
+                            thinking: summary,
+                            signature: None,
+                        });
+                    }
+                    message::ReasoningContent::Redacted { data }
+                    | message::ReasoningContent::Encrypted(data) => {
+                        converted.push(Content::RedactedThinking { data });
+                    }
+                }
+            }
+
+            if converted.is_empty() {
+                return Err(MessageError::ConversionError(
+                    "Cannot convert empty reasoning content to Anthropic format".to_string(),
+                ));
+            }
+
+            Ok(converted)
         }
     }
 }
@@ -513,10 +541,9 @@ impl TryFrom<message::Message> for Message {
                                     image.media_type.ok_or(MessageError::ConversionError(
                                         "Image media type is required".to_owned(),
                                     ))?;
-                                Ok(ToolResultContent::Image(ImageSource {
-                                    data: ImageSourceData::Base64(data),
+                                Ok(ToolResultContent::Image(ImageSource::Base64 {
+                                    data,
                                     media_type: media_type.try_into()?,
-                                    r#type: SourceType::BASE64,
                                 }))
                             }
                         })?,
@@ -526,21 +553,18 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Image(message::Image {
                         data, media_type, ..
                     }) => {
-                        let media_type = media_type.ok_or(MessageError::ConversionError(
-                            "Image media type is required for Claude API".to_string(),
-                        ))?;
-
                         let source = match data {
-                            DocumentSourceKind::Base64(data) => ImageSource {
-                                data: ImageSourceData::Base64(data),
-                                r#type: SourceType::BASE64,
-                                media_type: ImageFormat::try_from(media_type)?,
-                            },
-                            DocumentSourceKind::Url(url) => ImageSource {
-                                data: ImageSourceData::Url(url),
-                                r#type: SourceType::URL,
-                                media_type: ImageFormat::try_from(media_type)?,
-                            },
+                            DocumentSourceKind::Base64(data) => {
+                                let media_type =
+                                    media_type.ok_or(MessageError::ConversionError(
+                                        "Image media type is required for Claude API".to_string(),
+                                    ))?;
+                                ImageSource::Base64 {
+                                    data,
+                                    media_type: ImageFormat::try_from(media_type)?,
+                                }
+                            }
+                            DocumentSourceKind::Url(url) => ImageSource::Url { url },
                             DocumentSourceKind::Unknown => {
                                 return Err(MessageError::ConversionError(
                                     "Image content has no body".into(),
@@ -618,10 +642,26 @@ impl TryFrom<message::Message> for Message {
                 })?,
             },
 
-            message::Message::Assistant { content, .. } => Message {
-                content: content.try_map(|content| content.try_into())?,
-                role: Role::Assistant,
-            },
+            message::Message::Assistant { content, .. } => {
+                let converted_content = content.into_iter().try_fold(
+                    Vec::new(),
+                    |mut accumulated, assistant_content| {
+                        accumulated
+                            .extend(anthropic_content_from_assistant_content(assistant_content)?);
+                        Ok::<Vec<Content>, MessageError>(accumulated)
+                    },
+                )?;
+
+                Message {
+                    content: OneOrMany::many(converted_content).map_err(|_| {
+                        MessageError::ConversionError(
+                            "Assistant message did not contain Anthropic-compatible content"
+                                .to_owned(),
+                        )
+                    })?,
+                    role: Role::Assistant,
+                }
+            }
         })
     }
 }
@@ -638,9 +678,12 @@ impl TryFrom<Content> for message::AssistantContent {
             Content::Thinking {
                 thinking,
                 signature,
-            } => message::AssistantContent::Reasoning(
-                Reasoning::new(&thinking).with_signature(signature),
-            ),
+            } => message::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                &thinking, signature,
+            )),
+            Content::RedactedThinking { data } => {
+                message::AssistantContent::Reasoning(Reasoning::redacted(data))
+            }
             _ => {
                 return Err(MessageError::ConversionError(
                     "Content did not contain a message, tool call, or reasoning".to_owned(),
@@ -654,11 +697,12 @@ impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
             ToolResultContent::Text { text } => message::ToolResultContent::text(text),
-            ToolResultContent::Image(ImageSource {
-                data,
-                media_type: format,
-                ..
-            }) => message::ToolResultContent::image_base64(data, Some(format.into()), None),
+            ToolResultContent::Image(source) => match source {
+                ImageSource::Base64 { data, media_type } => {
+                    message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
+                }
+                ImageSource::Url { url } => message::ToolResultContent::image_url(url, None, None),
+            },
         }
     }
 }
@@ -680,14 +724,24 @@ impl TryFrom<Message> for message::Message {
                             tool_use_id,
                             content.map(|content| content.into()),
                         ),
-                        Content::Image { source, .. } => {
-                            message::UserContent::Image(message::Image {
-                                data: source.data.into(),
-                                media_type: Some(source.media_type.into()),
-                                detail: None,
-                                additional_params: None,
-                            })
-                        }
+                        Content::Image { source, .. } => match source {
+                            ImageSource::Base64 { data, media_type } => {
+                                message::UserContent::Image(message::Image {
+                                    data: DocumentSourceKind::Base64(data),
+                                    media_type: Some(media_type.into()),
+                                    detail: None,
+                                    additional_params: None,
+                                })
+                            }
+                            ImageSource::Url { url } => {
+                                message::UserContent::Image(message::Image {
+                                    data: DocumentSourceKind::Url(url),
+                                    media_type: None,
+                                    detail: None,
+                                    additional_params: None,
+                                })
+                            }
+                        },
                         Content::Document { source, .. } => match source {
                             DocumentSource::Base64 { data, media_type } => {
                                 let rig_media_type = match media_type {
@@ -708,19 +762,9 @@ impl TryFrom<Message> for message::Message {
                     })
                 })?,
             },
-            Role::Assistant => match message.content.first() {
-                Content::Text { .. } | Content::ToolUse { .. } | Content::Thinking { .. } => {
-                    message::Message::Assistant {
-                        id: None,
-                        content: message.content.try_map(|content| content.try_into())?,
-                    }
-                }
-
-                _ => {
-                    return Err(MessageError::ConversionError(
-                        format!("Unsupported message for Assistant role: {message:?}").to_owned(),
-                    ));
-                }
+            Role::Assistant => message::Message::Assistant {
+                id: None,
+                content: message.content.try_map(|content| content.try_into())?,
             },
         })
     }
@@ -1345,10 +1389,9 @@ mod tests {
                 Content::Image { source, .. } => {
                     assert_eq!(
                         source,
-                        ImageSource {
-                            data: ImageSourceData::Base64("/9j/4AAQSkZJRg...".to_owned()),
+                        ImageSource::Base64 {
+                            data: "/9j/4AAQSkZJRg...".to_owned(),
                             media_type: ImageFormat::JPEG,
-                            r#type: SourceType::BASE64,
                         }
                     );
                 }
@@ -1931,5 +1974,95 @@ mod tests {
             }
             _ => panic!("Expected Text content"),
         }
+    }
+
+    #[test]
+    fn test_assistant_reasoning_multiblock_to_anthropic_content() {
+        let reasoning = message::Reasoning {
+            id: None,
+            content: vec![
+                message::ReasoningContent::Text {
+                    text: "step one".to_string(),
+                    signature: Some("sig-1".to_string()),
+                },
+                message::ReasoningContent::Summary("summary".to_string()),
+                message::ReasoningContent::Text {
+                    text: "step two".to_string(),
+                    signature: Some("sig-2".to_string()),
+                },
+                message::ReasoningContent::Redacted {
+                    data: "redacted block".to_string(),
+                },
+            ],
+        };
+
+        let msg = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(reasoning)),
+        };
+        let converted: Message = msg.try_into().expect("convert assistant message");
+        let converted_content = converted.content.iter().cloned().collect::<Vec<_>>();
+
+        assert_eq!(converted.role, Role::Assistant);
+        assert_eq!(converted_content.len(), 4);
+        assert!(matches!(
+            converted_content.first(),
+            Some(Content::Thinking { thinking, signature: Some(signature) })
+                if thinking == "step one" && signature == "sig-1"
+        ));
+        assert!(matches!(
+            converted_content.get(1),
+            Some(Content::Thinking { thinking, signature: None }) if thinking == "summary"
+        ));
+        assert!(matches!(
+            converted_content.get(2),
+            Some(Content::Thinking { thinking, signature: Some(signature) })
+                if thinking == "step two" && signature == "sig-2"
+        ));
+        assert!(matches!(
+            converted_content.get(3),
+            Some(Content::RedactedThinking { data }) if data == "redacted block"
+        ));
+    }
+
+    #[test]
+    fn test_redacted_thinking_content_to_assistant_reasoning() {
+        let content = Content::RedactedThinking {
+            data: "opaque-redacted".to_string(),
+        };
+        let converted: message::AssistantContent =
+            content.try_into().expect("convert redacted thinking");
+
+        assert!(matches!(
+            converted,
+            message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                if matches!(
+                    content.first(),
+                    Some(message::ReasoningContent::Redacted { data }) if data == "opaque-redacted"
+                )
+        ));
+    }
+
+    #[test]
+    fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
+        let reasoning = message::Reasoning {
+            id: None,
+            content: vec![message::ReasoningContent::Encrypted(
+                "ciphertext".to_string(),
+            )],
+        };
+        let msg = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(reasoning)),
+        };
+
+        let converted: Message = msg.try_into().expect("convert assistant message");
+        let converted_content = converted.content.iter().cloned().collect::<Vec<_>>();
+
+        assert_eq!(converted_content.len(), 1);
+        assert!(matches!(
+            converted_content.first(),
+            Some(Content::RedactedThinking { data }) if data == "ciphertext"
+        ));
     }
 }

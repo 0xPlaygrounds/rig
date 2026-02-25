@@ -572,6 +572,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -791,5 +792,15 @@ mod tests {
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::mira::Client =
+            crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::mira::Client =
+            crate::providers::mira::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }

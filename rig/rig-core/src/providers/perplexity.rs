@@ -191,6 +191,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     cached_input_tokens: 0,
                 },
                 raw_response: response,
+                message_id: None,
             }),
             _ => Err(CompletionError::ResponseError(
                 "Response contained no assistant message".to_owned(),
@@ -531,5 +532,15 @@ mod tests {
 
         assert_eq!(user_message, back_to_user_message);
         assert_eq!(assistant_message, back_to_assistant_message);
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client: crate::providers::perplexity::Client =
+            crate::providers::perplexity::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: crate::providers::perplexity::Client =
+            crate::providers::perplexity::Client::builder()
+                .api_key("dummy-key")
+                .build()
+                .expect("Client::builder() failed");
     }
 }
