@@ -35,6 +35,8 @@ pub(crate) struct StreamingToolCall {
 struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     tool_calls: Vec<StreamingToolCall>,
 }
@@ -243,6 +245,14 @@ where
                                 });
                             }
                         }
+                    }
+
+                    // Streamed reasoning/thinking content (e.g. GLM-4, DeepSeek via compatible endpoint)
+                    if let Some(reasoning) = &delta.reasoning_content && !reasoning.is_empty() {
+                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                            id: None,
+                            reasoning: reasoning.clone(),
+                        });
                     }
 
                     // Streamed text content
