@@ -44,6 +44,29 @@ pub enum Message {
     },
 }
 
+impl Message {
+    /// A helper method to create a user message with a single piece of text in it.
+    pub fn user_text<S>(input: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self::User {
+            content: OneOrMany::one(UserContent::text(input.as_ref())),
+        }
+    }
+
+    /// A helper method to create an assistant message with a single piece of text in it.
+    pub fn assistant_text<S>(input: S) -> Self
+    where
+        S: AsRef<str>,
+    {
+        Self::Assistant {
+            content: OneOrMany::one(AssistantContent::text(input.as_ref())),
+            id: None,
+        }
+    }
+}
+
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
 ///  a document. Dependent on provider supporting the content type. Multimedia content is generally
 ///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
