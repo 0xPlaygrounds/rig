@@ -121,6 +121,7 @@ reqwest-rustls = [
   "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",
+  "reqwest/system-proxy",
 ]
 reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
