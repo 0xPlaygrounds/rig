@@ -36,7 +36,7 @@ struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
-    reasoning_content: Option<String>,
+    reasoning_content: Option<String>, // This is not part of the official OpenAI API
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     tool_calls: Vec<StreamingToolCall>,
 }
