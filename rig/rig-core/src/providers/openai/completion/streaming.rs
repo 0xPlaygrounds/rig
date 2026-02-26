@@ -12,7 +12,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
-use crate::providers::openai::completion::{self, CompletionModel, OpenAIRequestParams, Usage};
+use crate::providers::openai::completion::{CompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
@@ -158,7 +158,6 @@ where
         // Accumulate tool calls by index while streaming
         let mut tool_calls: HashMap<usize, streaming::RawStreamingToolCall> = HashMap::new();
         let mut text_content = String::new();
-        let mut final_tool_calls: Vec<completion::ToolCall> = Vec::new();
         let mut final_usage = None;
 
         while let Some(event_result) = event_source.next().await {
@@ -197,24 +196,37 @@ where
                         for tool_call in &delta.tool_calls {
                             let index = tool_call.index;
 
-                            // Get or create tool call entry
+                            // Some API gateways (e.g. LiteLLM, OneAPI) emit multiple
+                            // distinct tool calls all sharing index 0.  Detect this by
+                            // comparing the provider-supplied `id`: if a new, non-empty
+                            // id arrives for an index that already has a different id,
+                            // flush the old entry as a completed tool call first.
+                            if let Some(new_id) = &tool_call.id
+                                && !new_id.is_empty()
+                                && let Some(existing) = tool_calls.get(&index)
+                                && !existing.id.is_empty()
+                                && existing.id != *new_id
+                            {
+                                let evicted = tool_calls.remove(&index).expect("checked above");
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(evicted));
+                            }
+
                             let existing_tool_call = tool_calls.entry(index).or_insert_with(streaming::RawStreamingToolCall::empty);
 
-                            // Update fields if present
                             if let Some(id) = &tool_call.id && !id.is_empty() {
-                                    existing_tool_call.id = id.clone();
+                                existing_tool_call.id = id.clone();
                             }
 
                             if let Some(name) = &tool_call.function.name && !name.is_empty() {
-                                    existing_tool_call.name = name.clone();
-                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
-                                        id: existing_tool_call.id.clone(),
-                                        internal_call_id: existing_tool_call.internal_call_id.clone(),
-                                        content: streaming::ToolCallDeltaContent::Name(name.clone()),
-                                    });
+                                existing_tool_call.name = name.clone();
+                                yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                    id: existing_tool_call.id.clone(),
+                                    internal_call_id: existing_tool_call.internal_call_id.clone(),
+                                    content: streaming::ToolCallDeltaContent::Name(name.clone()),
+                                });
                             }
 
-                                // Convert current arguments to string if needed
+                            // Convert current arguments to string if needed
                             if let Some(chunk) = &tool_call.function.arguments && !chunk.is_empty() {
                                 let current_args = match &existing_tool_call.arguments {
                                     serde_json::Value::Null => String::new(),
@@ -254,14 +266,6 @@ where
                     // Finish reason
                     if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
                         for (_idx, tool_call) in tool_calls.into_iter() {
-                            final_tool_calls.push(completion::ToolCall {
-                                id: tool_call.id.clone(),
-                                r#type: completion::ToolType::Function,
-                                function: completion::Function {
-                                    name: tool_call.name.clone(),
-                                    arguments: tool_call.arguments.clone(),
-                                },
-                            });
                             yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
                         }
                         tool_calls = HashMap::new();
@@ -483,78 +487,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_usage_only_chunk_is_not_ignored() {
+        use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
-
-        #[derive(Clone)]
-        struct MockHttpClient {
-            sse_bytes: Bytes,
-        }
-
-        impl crate::http_client::HttpClientExt for MockHttpClient {
-            fn send<T, U>(
-                &self,
-                _req: http::Request<T>,
-            ) -> impl std::future::Future<
-                Output = crate::http_client::Result<
-                    http::Response<crate::http_client::LazyBody<U>>,
-                >,
-            > + crate::wasm_compat::WasmCompatSend
-            + 'static
-            where
-                T: Into<Bytes>,
-                T: crate::wasm_compat::WasmCompatSend,
-                U: From<Bytes>,
-                U: crate::wasm_compat::WasmCompatSend + 'static,
-            {
-                std::future::ready(Err(crate::http_client::Error::InvalidStatusCode(
-                    http::StatusCode::NOT_IMPLEMENTED,
-                )))
-            }
-
-            fn send_multipart<U>(
-                &self,
-                _req: http::Request<crate::http_client::MultipartForm>,
-            ) -> impl std::future::Future<
-                Output = crate::http_client::Result<
-                    http::Response<crate::http_client::LazyBody<U>>,
-                >,
-            > + crate::wasm_compat::WasmCompatSend
-            + 'static
-            where
-                U: From<Bytes>,
-                U: crate::wasm_compat::WasmCompatSend + 'static,
-            {
-                std::future::ready(Err(crate::http_client::Error::InvalidStatusCode(
-                    http::StatusCode::NOT_IMPLEMENTED,
-                )))
-            }
-
-            fn send_streaming<T>(
-                &self,
-                _req: http::Request<T>,
-            ) -> impl std::future::Future<
-                Output = crate::http_client::Result<crate::http_client::StreamingResponse>,
-            > + crate::wasm_compat::WasmCompatSend
-            where
-                T: Into<Bytes>,
-            {
-                let sse_bytes = self.sse_bytes.clone();
-                async move {
-                    let byte_stream = futures::stream::iter(vec![Ok::<
-                        Bytes,
-                        crate::http_client::Error,
-                    >(sse_bytes)]);
-                    let boxed_stream: crate::http_client::sse::BoxedStream = Box::pin(byte_stream);
-
-                    http::Response::builder()
-                        .status(http::StatusCode::OK)
-                        .header(reqwest::header::CONTENT_TYPE, "text/event-stream")
-                        .body(boxed_stream)
-                        .map_err(crate::http_client::Error::Protocol)
-                }
-            }
-        }
 
         // Some providers emit a final "usage-only" chunk where `choices` is empty.
         let sse = concat!(
@@ -563,7 +498,7 @@ mod tests {
             "data: [DONE]\n\n",
         );
 
-        let client = MockHttpClient {
+        let client = MockStreamingClient {
             sse_bytes: Bytes::from(sse),
         };
 
@@ -588,5 +523,81 @@ mod tests {
         let usage = final_usage.expect("expected a final response with usage");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    /// Reproduces the bug where a proxy/gateway sends multiple parallel tool
+    /// calls all sharing `index: 0` but with distinct `id` values.  Without
+    /// the fix, rig merges both calls into one corrupted entry.
+    #[tokio::test]
+    async fn test_duplicate_index_different_id_tool_calls() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        // Simulate a gateway that sends two tool calls both at index 0.
+        // First tool call: id="call_aaa", name="command", args={"cmd":"ls"}
+        // Second tool call: id="call_bbb", name="git", args={"action":"log"}
+        let sse = concat!(
+            // First tool call starts
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_aaa\",\"function\":{\"name\":\"command\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // First tool call argument chunks
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"ls\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // Second tool call starts AT THE SAME index 0 but with a NEW id
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bbb\",\"function\":{\"name\":\"git\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // Second tool call argument chunks
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"action\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"log\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // Finish with tool_calls reason
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
+            // Usage chunk
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            } = chunk.unwrap()
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(
+            collected_tool_calls.len(),
+            2,
+            "expected 2 separate tool calls, got {collected_tool_calls:?}"
+        );
+
+        assert_eq!(collected_tool_calls[0].id, "call_aaa");
+        assert_eq!(collected_tool_calls[0].function.name, "command");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({"cmd": "ls"})
+        );
+
+        assert_eq!(collected_tool_calls[1].id, "call_bbb");
+        assert_eq!(collected_tool_calls[1].function.name, "git");
+        assert_eq!(
+            collected_tool_calls[1].function.arguments,
+            serde_json::json!({"action": "log"})
+        );
     }
 }
