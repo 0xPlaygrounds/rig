@@ -992,7 +992,7 @@ struct AnthropicCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
+    tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<OutputConfig>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -1046,7 +1046,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
         let AnthropicRequestParams {
             model,
-            request: req,
+            request: mut req,
             prompt_caching,
         } = params;
 
@@ -1068,7 +1068,14 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             .map(Message::try_from)
             .collect::<Result<Vec<Message>, _>>()?;
 
-        let tools = req
+        let mut additional_params_payload = req
+            .additional_params
+            .take()
+            .unwrap_or(serde_json::Value::Null);
+        let mut additional_tools =
+            extract_tools_from_additional_params(&mut additional_params_payload)?;
+
+        let mut tools = req
             .tools
             .into_iter()
             .map(|tool| ToolDefinition {
@@ -1076,7 +1083,9 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
                 description: Some(tool.description),
                 input_schema: tool.parameters,
             })
-            .collect::<Vec<_>>();
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut additional_tools);
 
         // Convert system prompt to array format for cache_control support
         let mut system = if let Some(preamble) = req.preamble {
@@ -1117,9 +1126,29 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
             tools,
             output_config,
-            additional_params: req.additional_params,
+            additional_params: if additional_params_payload.is_null() {
+                None
+            } else {
+                Some(additional_params_payload)
+            },
         })
     }
+}
+
+fn extract_tools_from_additional_params(
+    additional_params: &mut serde_json::Value,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid Anthropic `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
 }
 
 impl<T> completion::CompletionModel for CompletionModel<T>
