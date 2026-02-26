@@ -79,6 +79,10 @@ where
 {
     const MAX_DOCUMENTS: usize = 1024;
 
+    fn max_tokens_per_request(&self) -> Option<usize> {
+        Some(300_000)
+    }
+
     type Client = Client<T>;
 
     fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {

@@ -47,6 +47,12 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
 
+    /// The maximum number of tokens that can be embedded in a single request.
+    /// If None, the limit is assumed to be infinite (or unknown).
+    fn max_tokens_per_request(&self) -> Option<usize> {
+        None
+    }
+
     type Client;
 
     fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self;
