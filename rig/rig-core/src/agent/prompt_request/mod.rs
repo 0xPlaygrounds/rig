@@ -242,14 +242,14 @@ where
 #[derive(Debug, Clone)]
 pub struct PromptResponse {
     pub output: String,
-    pub total_usage: Usage,
+    pub usage: Usage,
 }
 
 impl PromptResponse {
-    pub fn new(output: impl Into<String>, total_usage: Usage) -> Self {
+    pub fn new(output: impl Into<String>, usage: Usage) -> Self {
         Self {
             output: output.into(),
-            total_usage,
+            usage,
         }
     }
 }
