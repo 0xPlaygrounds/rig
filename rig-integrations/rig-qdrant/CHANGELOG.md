@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.38](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.37...rig-qdrant-v0.1.38) - 2026-02-28
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.37](https://github.com/0xPlaygrounds/rig/compare/rig-qdrant-v0.1.36...rig-qdrant-v0.1.37) - 2026-02-17
 
 ### Other

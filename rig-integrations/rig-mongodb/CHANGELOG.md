@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.7...rig-mongodb-v0.3.8) - 2026-02-28
+
+### Other
+
+- *(rig-1200)* improve Client::builder DX ([#1436](https://github.com/0xPlaygrounds/rig/pull/1436))
+
 ## [0.3.7](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.6...rig-mongodb-v0.3.7) - 2026-02-17
 
 ### Other

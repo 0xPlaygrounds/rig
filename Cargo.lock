@@ -10325,7 +10325,7 @@ checksum = "0c6a884d2998352bb4daf0183589aec883f16a6da1f4dde84d8e2e9a5409a1ce"
 
 [[package]]
 name = "rig-bedrock"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -10335,7 +10335,7 @@ dependencies = [
  "base64 0.22.1",
  "nanoid",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "rig-derive",
  "schemars 1.2.1",
  "serde",
@@ -10372,7 +10372,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.31.0"
+version = "0.32.0"
 dependencies = [
  "anyhow",
  "as-any",
@@ -10432,7 +10432,7 @@ dependencies = [
  "indoc",
  "proc-macro2",
  "quote",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "syn 2.0.114",
@@ -10448,7 +10448,7 @@ dependencies = [
  "async-stream",
  "ethers",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10459,11 +10459,11 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.2.23"
+version = "0.2.24"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10473,7 +10473,7 @@ dependencies = [
 
 [[package]]
 name = "rig-gemini-grpc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -10481,7 +10481,7 @@ dependencies = [
  "futures",
  "prost 0.13.5",
  "protoc-bin-vendored",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "tokio",
@@ -10494,10 +10494,10 @@ dependencies = [
 
 [[package]]
 name = "rig-helixdb"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "helix-rs",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "tokio",
@@ -10505,7 +10505,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -10513,7 +10513,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "tokio",
@@ -10521,11 +10521,11 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "anyhow",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "tokio",
@@ -10535,13 +10535,13 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "anyhow",
  "futures",
  "httpmock",
  "mongodb",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -10552,13 +10552,13 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "anyhow",
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "term_size",
@@ -10571,14 +10571,14 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.1.32"
+version = "0.1.33"
 dependencies = [
  "anyhow",
  "dotenvy",
  "httpmock",
  "log",
  "pgvector",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "sqlx",
@@ -10592,12 +10592,12 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.1.37"
+version = "0.1.38"
 dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "testcontainers",
@@ -10607,13 +10607,13 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "anyhow",
  "aws-config",
  "aws-sdk-s3vectors",
  "aws-smithy-types",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "tokio",
@@ -10624,13 +10624,13 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "anyhow",
  "chrono",
  "futures",
  "httpmock",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "scylla",
  "serde",
  "serde_json",
@@ -10643,12 +10643,12 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.1.34"
+version = "0.1.35"
 dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "rusqlite",
  "serde",
  "serde_json",
@@ -10662,10 +10662,10 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.1.29"
+version = "0.1.30"
 dependencies = [
  "anyhow",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "surrealdb",
@@ -10677,11 +10677,11 @@ dependencies = [
 
 [[package]]
 name = "rig-vectorize"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -10692,12 +10692,12 @@ dependencies = [
 
 [[package]]
 name = "rig-vertexai"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
- "rig-core 0.31.0",
+ "rig-core 0.32.0",
  "schemars 1.2.1",
  "serde",
  "serde_json",
