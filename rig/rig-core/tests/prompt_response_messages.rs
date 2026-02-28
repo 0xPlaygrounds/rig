@@ -1,16 +1,15 @@
 //! Integration tests for `PromptResponse.messages` using mock models.
 //! Exercises the real agent loop code path with mocked LLM responses.
 
+use rig::OneOrMany;
 use rig::agent::AgentBuilder;
 use rig::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
-    Usage,
+    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt, Usage,
 };
 use rig::message::{AssistantContent, Text, ToolCall, ToolFunction, UserContent};
 use rig::streaming::{StreamingCompletionResponse, StreamingResult};
-use rig::OneOrMany;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ---------------------------------------------------------------------------
 // Mock model infrastructure
@@ -53,8 +52,7 @@ impl CompletionModel for SimpleTextModel {
         &self,
         _request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let stream: StreamingResult<()> =
-            Box::pin(futures::stream::empty());
+        let stream: StreamingResult<()> = Box::pin(futures::stream::empty());
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }
@@ -131,8 +129,7 @@ impl CompletionModel for ToolThenTextModel {
         &self,
         _request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let stream: StreamingResult<()> =
-            Box::pin(futures::stream::empty());
+        let stream: StreamingResult<()> = Box::pin(futures::stream::empty());
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }
@@ -159,10 +156,7 @@ impl CompletionModel for AlwaysToolCallModel {
         Ok(CompletionResponse {
             choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
                 "tc_loop".to_string(),
-                ToolFunction::new(
-                    "infinite_tool".to_string(),
-                    serde_json::json!({"x": 1}),
-                ),
+                ToolFunction::new("infinite_tool".to_string(), serde_json::json!({"x": 1})),
             ))),
             usage: Usage::new(),
             raw_response: (),
@@ -174,8 +168,7 @@ impl CompletionModel for AlwaysToolCallModel {
         &self,
         _request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let stream: StreamingResult<()> =
-            Box::pin(futures::stream::empty());
+        let stream: StreamingResult<()> = Box::pin(futures::stream::empty());
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }
@@ -210,30 +203,28 @@ async fn extended_details_populates_messages() {
     assert_eq!(resp.total_usage.output_tokens, 5);
 
     // Messages should be populated
-    let messages = resp.messages.expect("messages should be Some for extended_details");
+    let messages = resp
+        .messages
+        .expect("messages should be Some for extended_details");
 
     // Should contain: [User("hi"), Assistant("hello from mock")]
     assert_eq!(messages.len(), 2);
 
     // First message: User
     match &messages[0] {
-        Message::User { content } => {
-            match content.first() {
-                UserContent::Text(t) => assert_eq!(t.text, "hi"),
-                other => panic!("expected text user content, got: {other:?}"),
-            }
-        }
+        Message::User { content } => match content.first() {
+            UserContent::Text(t) => assert_eq!(t.text, "hi"),
+            other => panic!("expected text user content, got: {other:?}"),
+        },
         other => panic!("expected User message, got: {other:?}"),
     }
 
     // Second message: Assistant
     match &messages[1] {
-        Message::Assistant { content, .. } => {
-            match content.first() {
-                AssistantContent::Text(t) => assert_eq!(t.text, "hello from mock"),
-                other => panic!("expected text assistant content, got: {other:?}"),
-            }
-        }
+        Message::Assistant { content, .. } => match content.first() {
+            AssistantContent::Text(t) => assert_eq!(t.text, "hello from mock"),
+            other => panic!("expected text assistant content, got: {other:?}"),
+        },
         other => panic!("expected Assistant message, got: {other:?}"),
     }
 }
@@ -345,12 +336,10 @@ async fn multi_turn_messages_include_tool_calls() {
 
     // [3] Assistant with text
     match &messages[3] {
-        Message::Assistant { content, .. } => {
-            match content.first() {
-                AssistantContent::Text(t) => assert_eq!(t.text, "The answer is 5"),
-                other => panic!("expected text, got: {other:?}"),
-            }
-        }
+        Message::Assistant { content, .. } => match content.first() {
+            AssistantContent::Text(t) => assert_eq!(t.text, "The answer is 5"),
+            other => panic!("expected text, got: {other:?}"),
+        },
         other => panic!("expected Assistant with text, got: {other:?}"),
     }
 
@@ -376,13 +365,9 @@ async fn prompt_response_new_backward_compat() {
 async fn prompt_response_with_messages_builder() {
     use rig::agent::PromptResponse;
 
-    let messages = vec![
-        Message::user("hello"),
-        Message::assistant("world"),
-    ];
+    let messages = vec![Message::user("hello"), Message::assistant("world")];
 
-    let resp = PromptResponse::new("output", Usage::new())
-        .with_messages(messages.clone());
+    let resp = PromptResponse::new("output", Usage::new()).with_messages(messages.clone());
 
     assert!(resp.messages.is_some());
     assert_eq!(resp.messages.as_ref().unwrap().len(), 2);
@@ -410,7 +395,10 @@ async fn max_turns_error_still_contains_history() {
         }) => {
             assert_eq!(max_turns, 2);
             // Chat history should have accumulated messages
-            assert!(!chat_history.is_empty(), "chat_history in error should not be empty");
+            assert!(
+                !chat_history.is_empty(),
+                "chat_history in error should not be empty"
+            );
         }
         Ok(_) => panic!("expected MaxTurnsError, got Ok"),
         Err(other) => panic!("expected MaxTurnsError, got: {other:?}"),
@@ -431,7 +419,9 @@ async fn extended_details_works_without_with_history() {
         .await
         .expect("prompt should succeed");
 
-    let messages = resp.messages.expect("messages should be Some even without with_history()");
+    let messages = resp
+        .messages
+        .expect("messages should be Some even without with_history()");
 
     // Should have full multi-turn history
     assert_eq!(messages.len(), 4);
