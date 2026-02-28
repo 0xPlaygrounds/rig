@@ -36,13 +36,22 @@ use serde_json::json;
 
 use crate::{
     agent::{Agent, AgentBuilder, WithBuilderTools},
-    completion::{Completion, CompletionError, CompletionModel, ToolDefinition},
+    completion::{Completion, CompletionError, CompletionModel, ToolDefinition, Usage},
     message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction},
     tool::Tool,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 const SUBMIT_TOOL_NAME: &str = "submit";
+
+/// Response from an extraction operation containing the extracted data and usage information.
+#[derive(Debug, Clone)]
+pub struct ExtractionResponse<T> {
+    /// The extracted structured data
+    pub data: T,
+    /// Accumulated token usage across all attempts (including retries)
+    pub usage: Usage,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractionError {
@@ -91,8 +100,8 @@ where
                 retries = self.retries - i
             );
             let attempt_text = text_message.clone();
-            match self.extract_json(attempt_text, vec![]).await {
-                Ok(data) => return Ok(data),
+            match self.extract_json_with_usage(attempt_text, vec![]).await {
+                Ok((data, _usage)) => return Ok(data),
                 Err(e) => {
                     tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
                     last_error = Some(e);
@@ -124,8 +133,11 @@ where
                 retries = self.retries - i
             );
             let attempt_text = text_message.clone();
-            match self.extract_json(attempt_text, chat_history.clone()).await {
-                Ok(data) => return Ok(data),
+            match self
+                .extract_json_with_usage(attempt_text, chat_history.clone())
+                .await
+            {
+                Ok((data, _usage)) => return Ok(data),
                 Err(e) => {
                     tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
                     last_error = Some(e);
@@ -137,12 +149,98 @@ where
         Err(last_error.unwrap_or(ExtractionError::NoData))
     }
 
-    async fn extract_json(
+    /// Attempts to extract data from the given text with a number of retries,
+    /// returning both the extracted data and accumulated token usage.
+    ///
+    /// The function will retry the extraction if the initial attempt fails or
+    /// if the model does not call the `submit` tool.
+    ///
+    /// The number of retries is determined by the `retries` field on the Extractor struct.
+    ///
+    /// Usage accumulates across all retry attempts, providing the complete cost picture
+    /// including failed attempts.
+    pub async fn extract_with_usage(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+    ) -> Result<ExtractionResponse<T>, ExtractionError> {
+        let mut last_error = None;
+        let text_message = text.into();
+        let mut usage = Usage::new();
+
+        for i in 0..=self.retries {
+            tracing::debug!(
+                "Attempting to extract JSON. Retries left: {retries}",
+                retries = self.retries - i
+            );
+            let attempt_text = text_message.clone();
+            match self.extract_json_with_usage(attempt_text, vec![]).await {
+                Ok((data, u)) => {
+                    usage += u;
+                    return Ok(ExtractionResponse { data, usage });
+                }
+                Err(e) => {
+                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        // If the loop finishes without a successful extraction, return the last error encountered.
+        Err(last_error.unwrap_or(ExtractionError::NoData))
+    }
+
+    /// Attempts to extract data from the given text with a number of retries,
+    /// providing chat history context, and returning both the extracted data
+    /// and accumulated token usage.
+    ///
+    /// The function will retry the extraction if the initial attempt fails or
+    /// if the model does not call the `submit` tool.
+    ///
+    /// The number of retries is determined by the `retries` field on the Extractor struct.
+    ///
+    /// Usage accumulates across all retry attempts, providing the complete cost picture
+    /// including failed attempts.
+    pub async fn extract_with_chat_history_with_usage(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+        chat_history: Vec<Message>,
+    ) -> Result<ExtractionResponse<T>, ExtractionError> {
+        let mut last_error = None;
+        let text_message = text.into();
+        let mut usage = Usage::new();
+
+        for i in 0..=self.retries {
+            tracing::debug!(
+                "Attempting to extract JSON. Retries left: {retries}",
+                retries = self.retries - i
+            );
+            let attempt_text = text_message.clone();
+            match self
+                .extract_json_with_usage(attempt_text, chat_history.clone())
+                .await
+            {
+                Ok((data, u)) => {
+                    usage += u;
+                    return Ok(ExtractionResponse { data, usage });
+                }
+                Err(e) => {
+                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}. Retrying...");
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        // If the loop finishes without a successful extraction, return the last error encountered.
+        Err(last_error.unwrap_or(ExtractionError::NoData))
+    }
+
+    async fn extract_json_with_usage(
         &self,
         text: impl Into<Message> + WasmCompatSend,
         messages: Vec<Message>,
-    ) -> Result<T, ExtractionError> {
+    ) -> Result<(T, Usage), ExtractionError> {
         let response = self.agent.completion(text, messages).await?.send().await?;
+        let usage = response.usage;
 
         if !response.choice.iter().any(|x| {
             let AssistantContent::ToolCall(ToolCall {
@@ -193,7 +291,8 @@ where
             return Err(ExtractionError::NoData);
         };
 
-        Ok(serde_json::from_value(raw_data)?)
+        let data = serde_json::from_value(raw_data)?;
+        Ok((data, usage))
     }
 
     pub async fn get_inner(&self) -> &Agent<M> {
