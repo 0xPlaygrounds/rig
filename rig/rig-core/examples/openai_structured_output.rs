@@ -91,6 +91,19 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("\n=== With turbofish syntax ===");
     println!("{}", serde_json::to_string_pretty(&forecast)?);
 
+    // And use extended details for usage information!
+    let forecast = agent
+        .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
+        .extended_details()
+        .await?;
+
+    println!("\n=== With turbofish syntax ===");
+    println!(
+        "{}\nUsage: {:?}",
+        serde_json::to_string_pretty(&forecast.output)?,
+        forecast.total_usage
+    );
+
     // This approach sets the schema at agent build time. The response is a
     // JSON string that you must manually deserialize.
     // This method is more suited towards agent being used as tools
