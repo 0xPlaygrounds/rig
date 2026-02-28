@@ -88,6 +88,8 @@ where
     concurrency: usize,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    /// Whether to collect message history in the response
+    collect_messages: bool,
 }
 
 impl<'a, M, P> PromptRequest<'a, Standard, M, P>
@@ -115,6 +117,7 @@ where
             hook: agent.hook.clone(),
             concurrency: 1,
             output_schema: agent.output_schema.clone(),
+            collect_messages: false,
         }
     }
 }
@@ -149,6 +152,7 @@ where
             hook: self.hook,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            collect_messages: true,
         }
     }
 
@@ -196,6 +200,7 @@ where
             hook: Some(hook),
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            collect_messages: self.collect_messages,
         }
     }
 }
@@ -229,20 +234,46 @@ where
     }
 }
 
-impl<M, P> PromptRequest<'_, Standard, M, P>
+impl<'a, M, P> PromptRequest<'a, Standard, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
 {
+    fn into_extended(self) -> PromptRequest<'a, Extended, M, P> {
+        PromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_turns: self.max_turns,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
+            state: PhantomData,
+            hook: self.hook,
+            concurrency: self.concurrency,
+            output_schema: self.output_schema,
+            collect_messages: false,
+        }
+    }
+
     async fn send(self) -> Result<String, PromptError> {
-        self.extended_details().send().await.map(|resp| resp.output)
+        self.into_extended().send().await.map(|resp| resp.output)
     }
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct PromptResponse {
     pub output: String,
     pub total_usage: Usage,
+    /// The message history accumulated during the agent loop, if collected
+    pub messages: Option<Vec<Message>>,
 }
 
 impl PromptResponse {
@@ -250,7 +281,13 @@ impl PromptResponse {
         Self {
             output: output.into(),
             total_usage,
+            messages: None,
         }
+    }
+
+    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
+        self.messages = Some(messages);
+        self
     }
 }
 
@@ -432,7 +469,11 @@ where
                 agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
 
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
-                return Ok(PromptResponse::new(merged_texts, usage));
+                let mut resp = PromptResponse::new(merged_texts, usage);
+                if self.collect_messages {
+                    resp = resp.with_messages(chat_history.to_vec());
+                }
+                return Ok(resp);
             }
 
             let hook = self.hook.clone();
