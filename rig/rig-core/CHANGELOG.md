@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.31.0...rig-core-v0.32.0) - 2026-02-28
+
+### Added
+
+- add `.extended_details` to `TypedPromptRequest` via typestate ([#1446](https://github.com/0xPlaygrounds/rig/pull/1446))
+- *(mistral)* implements audio transcription api ([#1424](https://github.com/0xPlaygrounds/rig/pull/1424))
+- Reify SSE state machine ([#1428](https://github.com/0xPlaygrounds/rig/pull/1428))
+- feat(openrouter) Add support for openrouter embeddings ([#1418](https://github.com/0xPlaygrounds/rig/pull/1418)) ([#1419](https://github.com/0xPlaygrounds/rig/pull/1419))
+- *(azure-openai)* Add structured outputs support ([#1407](https://github.com/0xPlaygrounds/rig/pull/1407))
+- *(openrouter)* support audio and video ([#1413](https://github.com/0xPlaygrounds/rig/pull/1413))
+
+### Fixed
+
+- *(deps)* enable reqwest system-proxy for proxy env var support ([#1442](https://github.com/0xPlaygrounds/rig/pull/1442))
+- *(streaming)* disambiguate tool calls sharing the same index from API gateways ([#1443](https://github.com/0xPlaygrounds/rig/pull/1443))
+- allow empty arguments openrouter ([#1438](https://github.com/0xPlaygrounds/rig/pull/1438))
+
+### Other
+
+- *(rig-1200)* improve Client::builder DX ([#1436](https://github.com/0xPlaygrounds/rig/pull/1436))
+- *(deps)* update rmcp types for v0.16 API compatibility ([#1410](https://github.com/0xPlaygrounds/rig/pull/1410))
+
 ## [0.31.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.30.0...rig-core-v0.31.0) - 2026-02-17
 
 ### Added

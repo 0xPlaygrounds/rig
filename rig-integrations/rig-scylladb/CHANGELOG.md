@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.24](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.23...rig-scylladb-v0.1.24) - 2026-02-28
+
+### Other
+
+- *(rig-1200)* improve Client::builder DX ([#1436](https://github.com/0xPlaygrounds/rig/pull/1436))
+
 ## [0.1.23](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.22...rig-scylladb-v0.1.23) - 2026-02-17
 
 ### Other
