@@ -16,7 +16,8 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use std::convert::Infallible;
 use std::fmt;
 use tracing::{Instrument, Level, enabled, info_span};
@@ -402,8 +403,23 @@ impl TryFrom<crate::message::ToolChoice> for ToolChoice {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    #[serde(with = "json_utils::stringified_json")]
+    #[serde(
+        serialize_with = "json_utils::stringified_json::serialize",
+        deserialize_with = "deserialize_arguments"
+    )]
     pub arguments: serde_json::Value,
+}
+
+fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+
+    match value {
+        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
+        other => Ok(other),
+    }
 }
 
 impl TryFrom<message::ToolResult> for Message {
@@ -1457,5 +1473,39 @@ mod tests {
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn deserialize_llama_cpp_tool_call() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{ "type": "function", "function": { "name": "hello_world", "arguments": {} }, "id": "xxx" }]
+                }
+            }],
+            "created": 0,
+            "model": "unsloth/Qwen3-Coder-Next-GGUF:Q8_0",
+            "system_fingerprint": "b8113-xxxx",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 13, "prompt_tokens": 255, "total_tokens": 268 },
+            "id": "xxx",
+            "timings": {
+                "cache_n": 0,
+                "prompt_n": 255,
+                "prompt_ms": 670,
+                "prompt_per_token_ms": 2.63,
+                "prompt_per_second": 380,
+                "predicted_n": 13,
+                "predicted_ms": 367,
+                "predicted_per_token_ms": 28,
+                "predicted_per_second": 35
+            }
+        }
+        "#;
+        serde_json::from_str::<ApiResponse<CompletionResponse>>(&request).unwrap();
     }
 }
