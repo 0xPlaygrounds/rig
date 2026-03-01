@@ -187,49 +187,66 @@ where
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
-    let mut full_history = Vec::new();
-    full_history.extend(completion_request.chat_history);
+    let CompletionRequest {
+        model: _,
+        preamble,
+        chat_history,
+        documents: _,
+        tools: function_tools,
+        temperature,
+        max_tokens,
+        tool_choice,
+        mut additional_params,
+        output_schema,
+    } = completion_request;
 
-    let additional_params = completion_request
-        .additional_params
+    let mut full_history = Vec::new();
+    full_history.extend(chat_history);
+
+    let mut additional_params_payload = additional_params
+        .take()
         .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut additional_tools =
+        extract_tools_from_additional_params(&mut additional_params_payload)?;
 
     let AdditionalParameters {
         mut generation_config,
         additional_params,
-    } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
+    } = serde_json::from_value::<AdditionalParameters>(additional_params_payload)?;
 
     // Apply output_schema to generation_config, creating one if needed
-    if let Some(schema) = completion_request.output_schema {
+    if let Some(schema) = output_schema {
         let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
         cfg.response_mime_type = Some("application/json".to_string());
         cfg.response_json_schema = Some(schema.to_value());
     }
 
     generation_config = generation_config.map(|mut cfg| {
-        if let Some(temp) = completion_request.temperature {
+        if let Some(temp) = temperature {
             cfg.temperature = Some(temp);
         };
 
-        if let Some(max_tokens) = completion_request.max_tokens {
+        if let Some(max_tokens) = max_tokens {
             cfg.max_output_tokens = Some(max_tokens);
         };
 
         cfg
     });
 
-    let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
+    let system_instruction = preamble.clone().map(|preamble| Content {
         parts: vec![preamble.into()],
         role: Some(Role::Model),
     });
 
-    let tools = if completion_request.tools.is_empty() {
-        None
+    let mut tools = if function_tools.is_empty() {
+        Vec::new()
     } else {
-        Some(vec![Tool::try_from(completion_request.tools)?])
+        vec![serde_json::to_value(Tool::try_from(function_tools)?)?]
     };
+    tools.append(&mut additional_tools);
+    let tools = if tools.is_empty() { None } else { Some(tools) };
 
-    let tool_config = if let Some(cfg) = completion_request.tool_choice {
+    let tool_config = if let Some(cfg) = tool_choice {
         Some(ToolConfig {
             function_calling_config: Some(FunctionCallingMode::try_from(cfg)?),
         })
@@ -254,6 +271,22 @@ pub(crate) fn create_request_body(
     };
 
     Ok(request)
+}
+
+fn extract_tools_from_additional_params(
+    additional_params: &mut Value,
+) -> Result<Vec<Value>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid Gemini `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
 }
 
 pub(crate) fn resolve_request_model(
@@ -1741,7 +1774,7 @@ pub mod gemini_api_types {
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub tools: Option<Vec<Tool>>,
+        pub tools: Option<Vec<Value>>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
         pub generation_config: Option<GenerationConfig>,

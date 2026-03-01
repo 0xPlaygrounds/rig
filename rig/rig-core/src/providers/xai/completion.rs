@@ -4,6 +4,7 @@
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::{Instrument, Level, enabled, info_span};
 
 use super::api::{ApiResponse, Message, ToolDefinition};
@@ -39,7 +40,7 @@ pub(super) struct XAICompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_output_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
+    tools: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -54,6 +55,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             tracing::warn!("Structured outputs currently not supported for xAI");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
+        let mut additional_params_payload = req.additional_params.unwrap_or(Value::Null);
         let mut input: Vec<Message> = req
             .preamble
             .as_ref()
@@ -65,7 +67,20 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
         }
 
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
-        let tools = req.tools.into_iter().map(ToolDefinition::from).collect();
+        let mut additional_tools =
+            extract_tools_from_additional_params(&mut additional_params_payload)?;
+        let mut tools = req
+            .tools
+            .into_iter()
+            .map(ToolDefinition::from)
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut additional_tools);
+        let additional_params = if additional_params_payload.is_null() {
+            None
+        } else {
+            Some(additional_params_payload)
+        };
 
         Ok(Self {
             model: model.to_string(),
@@ -74,9 +89,25 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             max_output_tokens: req.max_tokens,
             tools,
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
+}
+
+fn extract_tools_from_additional_params(
+    additional_params: &mut Value,
+) -> Result<Vec<Value>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid xAI `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
 }
 
 // ================================================================
