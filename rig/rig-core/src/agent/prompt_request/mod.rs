@@ -125,11 +125,12 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    /// Enable returning extended details for responses (includes aggregated token usage)
+    /// Enable returning extended details for responses (includes aggregated token usage
+    /// and the full message history accumulated during the agent loop).
     ///
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
-    /// of conversation.
+    /// of conversation and inspecting the full message exchange.
     pub fn extended_details(self) -> PromptRequest<'a, Extended, M, P> {
         PromptRequest {
             prompt: self.prompt,
@@ -240,9 +241,19 @@ where
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct PromptResponse {
     pub output: String,
     pub total_usage: Usage,
+    /// The message history accumulated during the agent loop.
+    /// Always populated when using `extended_details()`.
+    pub messages: Option<Vec<Message>>,
+}
+
+impl std::fmt::Display for PromptResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.output.fmt(f)
+    }
 }
 
 impl PromptResponse {
@@ -250,7 +261,13 @@ impl PromptResponse {
         Self {
             output: output.into(),
             total_usage,
+            messages: None,
         }
+    }
+
+    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
+        self.messages = Some(messages);
+        self
     }
 }
 
@@ -417,7 +434,9 @@ where
                 agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
 
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
-                return Ok(PromptResponse::new(merged_texts, usage));
+                return Ok(
+                    PromptResponse::new(merged_texts, usage).with_messages(chat_history.to_vec())
+                );
             }
 
             let hook = self.hook.clone();
