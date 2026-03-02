@@ -126,7 +126,7 @@ pub const GPT_4_1: &str = "gpt-4.1";
 
 impl From<ApiErrorResponse> for CompletionError {
     fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
+        CompletionError::ProviderError(err.error_message().to_string())
     }
 }
 
@@ -771,8 +771,12 @@ impl FromStr for SystemContent {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
-    pub object: String,
-    pub created: u64,
+    /// Optional for Azure/Copilot API compatibility (omitted in some responses)
+    #[serde(default)]
+    pub object: Option<String>,
+    /// Optional for Azure/Copilot API compatibility (omitted in some responses)
+    #[serde(default)]
+    pub created: Option<u64>,
     pub model: String,
     pub system_fingerprint: Option<String>,
     pub choices: Vec<Choice>,
@@ -892,10 +896,13 @@ impl ProviderResponseExt for CompletionResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Choice {
+    #[serde(default)]
     pub index: usize,
     pub message: Message,
     pub logprobs: Option<serde_json::Value>,
-    pub finish_reason: String,
+    /// Optional for Copilot API compatibility (Claude models may omit or use different naming)
+    #[serde(default)]
+    pub finish_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
@@ -1282,7 +1289,7 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.error_message().to_string())),
                 }
             } else {
                 let text = http_client::text(response).await?;
@@ -1457,5 +1464,70 @@ mod tests {
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn deserialize_standard_openai_response() {
+        let json = r#"{
+            "id": "chatcmpl-abc123",
+            "object": "chat.completion",
+            "created": 1700000000,
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello!"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15
+            }
+        }"#;
+
+        let response: CompletionResponse =
+            serde_json::from_str(json).expect("standard OpenAI response should deserialize");
+        assert_eq!(response.id, "chatcmpl-abc123");
+        assert_eq!(response.object, Some("chat.completion".to_string()));
+        assert_eq!(response.created, Some(1700000000));
+        assert_eq!(response.model, "gpt-4o");
+        assert_eq!(response.choices.len(), 1);
+    }
+
+    #[test]
+    fn deserialize_azure_copilot_response_without_object_and_created() {
+        // Azure-flavored and GitHub Copilot API responses omit the
+        // `object` and `created` fields and may include extra fields
+        // like `prompt_filter_results`.
+        let json = r#"{
+            "id": "chatcmpl-xyz789",
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Review complete."
+                },
+                "finish_reason": "stop",
+                "content_filter_results": {}
+            }],
+            "usage": {
+                "prompt_tokens": 20,
+                "completion_tokens": 10,
+                "total_tokens": 30
+            },
+            "prompt_filter_results": [{"prompt_index": 0}]
+        }"#;
+
+        let response: CompletionResponse =
+            serde_json::from_str(json).expect("Azure/Copilot response should deserialize");
+        assert_eq!(response.id, "chatcmpl-xyz789");
+        assert_eq!(response.object, None);
+        assert_eq!(response.created, None);
+        assert_eq!(response.model, "gpt-4o");
+        assert_eq!(response.choices.len(), 1);
     }
 }
