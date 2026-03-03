@@ -101,7 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!(
         "{}\nUsage: {:?}",
         serde_json::to_string_pretty(&forecast.output)?,
-        forecast.total_usage
+        forecast.usage
     );
 
     // This approach sets the schema at agent build time. The response is a
