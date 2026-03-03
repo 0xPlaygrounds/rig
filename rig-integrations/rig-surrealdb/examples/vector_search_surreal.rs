@@ -78,17 +78,18 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for word: {doc}");
-
-        // expected output
-        // Result distance 0.693218142100547 for word: glarb-glarb
-        // Result distance 0.2529120980283861 for word: linglingdong
     }
 
-    println!("Attempting vector search with cosine similarity threshold of 0.5 and query: {query}");
+    // Use the midpoint as similarity threshold to guarantee exactly one result is returned.
+    let midpoint = (results[0].0 + results[1].0) / 2.0;
+
+    println!(
+        "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
+    );
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(2)
-        .threshold(0.5)
+        .threshold(midpoint)
         .build()?;
 
     let results = vector_store.top_n::<WordDefinition>(req).await?;

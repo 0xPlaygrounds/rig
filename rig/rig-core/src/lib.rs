@@ -125,6 +125,7 @@ pub mod image_generation;
 pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
+pub mod model;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
@@ -140,6 +141,7 @@ pub mod wasm_compat;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
+pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
 
 #[cfg(feature = "derive")]

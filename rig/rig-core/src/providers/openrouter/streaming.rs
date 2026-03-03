@@ -116,9 +116,13 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let preamble = completion_request.preamble.clone();
         let mut request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
-            model: self.model.as_ref(),
+            model: request_model.as_ref(),
             request: completion_request,
             strict_tools: self.strict_tools,
         })?;
@@ -144,7 +148,7 @@ where
                 "chat_streaming",
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "openrouter",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -222,6 +226,7 @@ where
                                     existing_tool_call.name = name.clone();
                                     yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                         id: existing_tool_call.id.clone(),
+                                        internal_call_id: existing_tool_call.internal_call_id.clone(),
                                         content: streaming::ToolCallDeltaContent::Name(name.clone()),
                                     });
                             }
@@ -250,6 +255,7 @@ where
                                 // Emit the delta so UI can show progress
                                 yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                     id: existing_tool_call.id.clone(),
+                                    internal_call_id: existing_tool_call.internal_call_id.clone(),
                                     content: streaming::ToolCallDeltaContent::Delta(chunk.clone()),
                                 });
                             }

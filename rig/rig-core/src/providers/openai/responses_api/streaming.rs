@@ -3,6 +3,7 @@
 use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
+use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::{
     ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
 };
@@ -39,12 +40,43 @@ pub struct StreamingCompletionResponse {
     pub usage: ResponsesUsage,
 }
 
+pub(crate) fn reasoning_choices_from_done_item(
+    id: &str,
+    summary: &[ReasoningSummary],
+    encrypted_content: Option<&str>,
+) -> Vec<RawStreamingChoice<StreamingCompletionResponse>> {
+    let mut choices = summary
+        .iter()
+        .map(|reasoning_summary| match reasoning_summary {
+            ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
+                id: Some(id.to_owned()),
+                content: ReasoningContent::Summary(text.to_owned()),
+            },
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(encrypted_content) = encrypted_content {
+        choices.push(RawStreamingChoice::Reasoning {
+            id: Some(id.to_owned()),
+            content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
+        });
+    }
+
+    choices
+}
+
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.usage.input_tokens;
         usage.output_tokens = self.usage.output_tokens;
         usage.total_tokens = self.usage.total_tokens;
+        usage.cached_input_tokens = self
+            .usage
+            .input_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens)
+            .unwrap_or(0);
         Some(usage)
     }
 }
@@ -256,7 +288,7 @@ where
             let mut final_usage = ResponsesUsage::new();
 
             let mut tool_calls: Vec<RawStreamingChoice<StreamingCompletionResponse>> = Vec::new();
-            let mut combined_text = String::new();
+            let mut tool_call_internal_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
             let span = tracing::Span::current();
 
             while let Some(event_result) = event_source.next().await {
@@ -284,8 +316,13 @@ where
                             match &chunk.data {
                                 ItemChunkKind::OutputItemAdded(message) => {
                                     if let StreamingItemDoneOutput { item: Output::FunctionCall(func), .. } = message {
+                                        let internal_call_id = tool_call_internal_ids
+                                            .entry(func.id.clone())
+                                            .or_insert_with(|| nanoid::nanoid!())
+                                            .clone();
                                         yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
                                             id: func.id.clone(),
+                                            internal_call_id,
                                             content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
                                         });
                                     }
@@ -293,47 +330,53 @@ where
                                 ItemChunkKind::OutputItemDone(message) => {
                                     match message {
                                         StreamingItemDoneOutput {  item: Output::FunctionCall(func), .. } => {
-                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall(
-                                                streaming::RawStreamingToolCall::new(
-                                                    func.id.clone(),
-                                                    func.name.clone(),
-                                                    func.arguments.clone(),
-                                                )
-                                                .with_call_id(func.call_id.clone())
-                                            ));
+                                            let internal_id = tool_call_internal_ids
+                                                .entry(func.id.clone())
+                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .clone();
+                                            let raw_tool_call = streaming::RawStreamingToolCall::new(
+                                                func.id.clone(),
+                                                func.name.clone(),
+                                                func.arguments.clone(),
+                                            )
+                                                .with_internal_call_id(internal_id)
+                                                .with_call_id(func.call_id.clone());
+                                            tool_calls.push(streaming::RawStreamingChoice::ToolCall(raw_tool_call));
                                         }
 
-                                        StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id }, .. } => {
-                                            let reasoning = summary
-                                                .iter()
-                                                .map(|x| {
-                                                    let ReasoningSummary::SummaryText { text } = x;
-                                                    text.to_owned()
-                                                })
-                                                .collect::<Vec<String>>()
-                                                .join("\n");
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                                id: Some(id.to_string()),
-                                                reasoning,
-                                                signature: None,
-                                            })
+                                        StreamingItemDoneOutput {  item: Output::Reasoning {  summary, id, encrypted_content, .. }, .. } => {
+                                            for reasoning_choice in reasoning_choices_from_done_item(
+                                                id,
+                                                summary,
+                                                encrypted_content.as_deref(),
+                                            ) {
+                                                yield Ok(reasoning_choice);
+                                            }
                                         }
-                                        _ => continue
+                                        StreamingItemDoneOutput { item: Output::Message(msg), .. } => {
+                                            yield Ok(streaming::RawStreamingChoice::MessageId(msg.id.clone()));
+                                        }
                                     }
                                 }
                                 ItemChunkKind::OutputTextDelta(delta) => {
-                                    combined_text.push_str(&delta.delta);
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
                                     yield Ok(streaming::RawStreamingChoice::ReasoningDelta { id: None, reasoning: delta.delta.clone() })
                                 }
                                 ItemChunkKind::RefusalDelta(delta) => {
-                                    combined_text.push_str(&delta.delta);
                                     yield Ok(streaming::RawStreamingChoice::Message(delta.delta.clone()))
                                 }
                                 ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta { id: delta.item_id.clone(), content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone()) })
+                                    let internal_call_id = tool_call_internal_ids
+                                        .entry(delta.item_id.clone())
+                                        .or_insert_with(|| nanoid::nanoid!())
+                                        .clone();
+                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                        id: delta.item_id.clone(),
+                                        internal_call_id,
+                                        content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
+                                    })
                                 }
 
                                 _ => { continue }
@@ -382,5 +425,126 @@ where
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
             stream,
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reasoning_choices_from_done_item;
+    use crate::message::ReasoningContent;
+    use crate::providers::openai::responses_api::ReasoningSummary;
+    use crate::streaming::RawStreamingChoice;
+    use futures::StreamExt;
+    use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
+    use serde_json;
+
+    use crate::{
+        completion::ToolDefinition,
+        tool::{Tool, ToolError},
+    };
+
+    struct ExampleTool;
+
+    impl Tool for ExampleTool {
+        type Args = ();
+        type Error = ToolError;
+        type Output = String;
+        const NAME: &'static str = "example_tool";
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: self.name(),
+                description: "A tool that returns some example text.".to_string(),
+                parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                }),
+            }
+        }
+
+        async fn call(&self, _input: Self::Args) -> Result<Self::Output, Self::Error> {
+            let result = "Example answer".to_string();
+            Ok(result)
+        }
+    }
+
+    #[test]
+    fn reasoning_done_item_emits_summary_then_encrypted() {
+        let summary = vec![
+            ReasoningSummary::SummaryText {
+                text: "step 1".to_string(),
+            },
+            ReasoningSummary::SummaryText {
+                text: "step 2".to_string(),
+            },
+        ];
+        let choices = reasoning_choices_from_done_item("rs_1", &summary, Some("enc_blob"));
+
+        assert_eq!(choices.len(), 3);
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "rs_1" && text == "step 1"
+        ));
+        assert!(matches!(
+            choices.get(1),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "rs_1" && text == "step 2"
+        ));
+        assert!(matches!(
+            choices.get(2),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Encrypted(data),
+            }) if id == "rs_1" && data == "enc_blob"
+        ));
+    }
+
+    #[test]
+    fn reasoning_done_item_without_encrypted_emits_summary_only() {
+        let summary = vec![ReasoningSummary::SummaryText {
+            text: "only summary".to_string(),
+        }];
+        let choices = reasoning_choices_from_done_item("rs_2", &summary, None);
+
+        assert_eq!(choices.len(), 1);
+        assert!(matches!(
+            choices.first(),
+            Some(RawStreamingChoice::Reasoning {
+                id: Some(id),
+                content: ReasoningContent::Summary(text),
+            }) if id == "rs_2" && text == "only summary"
+        ));
+    }
+
+    // requires `derive` rig-core feature due to using tool macro
+    #[tokio::test]
+    #[ignore = "requires API key"]
+    async fn test_openai_streaming_tools_reasoning() {
+        let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
+        let client = openai::Client::new(&api_key).expect("Failed to build client");
+        let agent = client
+            .agent("gpt-5.2")
+            .max_tokens(8192)
+            .tool(ExampleTool)
+            .additional_params(serde_json::json!({
+                "reasoning": {"effort": "high"}
+            }))
+            .build();
+
+        let chat_history = Vec::new();
+        let mut stream = agent
+            .stream_chat("Call my example tool", chat_history)
+            .multi_turn(5)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            println!("Got item: {item:?}");
+        }
     }
 }

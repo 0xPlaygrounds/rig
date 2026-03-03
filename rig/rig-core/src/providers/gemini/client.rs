@@ -1,8 +1,6 @@
-#[cfg(feature = "image")]
-use crate::client::Nothing;
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
-    Transport,
+    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient, Transport,
 };
 use crate::http_client;
 use serde::Deserialize;
@@ -48,14 +46,6 @@ impl Provider for GeminiExt {
 
     const VERIFY_PATH: &'static str = "/v1beta/models";
 
-    fn build<H>(
-        builder: &client::ClientBuilder<Self::Builder, GeminiApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self {
-            api_key: builder.get_api_key().0.clone(),
-        })
-    }
-
     fn build_uri(&self, base_url: &str, path: &str, transport: Transport) -> String {
         match transport {
             Transport::Sse => {
@@ -82,6 +72,7 @@ impl<H> Capabilities<H> for GeminiExt {
     type Completion = Capable<super::completion::CompletionModel>;
     type Embeddings = Capable<super::embedding::EmbeddingModel>;
     type Transcription = Capable<super::transcription::TranscriptionModel>;
+    type ModelListing = Nothing;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
@@ -90,10 +81,24 @@ impl<H> Capabilities<H> for GeminiExt {
 }
 
 impl ProviderBuilder for GeminiBuilder {
-    type Output = GeminiExt;
+    type Extension<H>
+        = GeminiExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = GeminiApiKey;
 
     const BASE_URL: &'static str = GEMINI_API_BASE_URL;
+
+    fn build<H>(
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(GeminiExt {
+            api_key: builder.get_api_key().0.clone(),
+        })
+    }
 }
 
 impl ProviderClient for Client {
@@ -121,4 +126,21 @@ pub struct ApiErrorResponse {
 pub enum ApiResponse<T> {
     Ok(T),
     Err(ApiErrorResponse),
+}
+
+// ================================================================
+// Tests
+// ================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_client_initialization() {
+        let _client: Client = Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder: Client = Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+    }
 }

@@ -1,6 +1,6 @@
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
     extractor::ExtractorBuilder,
@@ -49,32 +49,19 @@ pub type CompletionsClientBuilder<H = reqwest::Client> =
 
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl Provider for OpenAICompletionsExt {
     type Builder = OpenAICompletionsExtBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for OpenAIResponsesExt {
     type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -85,6 +72,7 @@ impl<H> Capabilities<H> for OpenAICompletionsExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -96,17 +84,41 @@ impl DebugExt for OpenAIResponsesExt {}
 impl DebugExt for OpenAICompletionsExt {}
 
 impl ProviderBuilder for OpenAIResponsesExtBuilder {
-    type Output = OpenAIResponsesExt;
+    type Extension<H>
+        = OpenAIResponsesExt
+    where
+        H: HttpClientExt;
     type ApiKey = OpenAIApiKey;
 
     const BASE_URL: &'static str = OPENAI_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(OpenAIResponsesExt)
+    }
 }
 
 impl ProviderBuilder for OpenAICompletionsExtBuilder {
-    type Output = OpenAICompletionsExt;
+    type Extension<H>
+        = OpenAICompletionsExt
+    where
+        H: HttpClientExt;
     type ApiKey = OpenAIApiKey;
 
     const BASE_URL: &'static str = OPENAI_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(OpenAICompletionsExt)
+    }
 }
 
 impl<H> Client<H>
@@ -518,5 +530,73 @@ mod tests {
 
         assert_eq!(original_user_message[0], user_message);
         assert_eq!(original_assistant_message[0], assistant_message);
+    }
+
+    #[test]
+    fn test_user_message_single_text_serializes_as_string() {
+        let user_message = Message::User {
+            content: OneOrMany::one(UserContent::Text {
+                text: "Hello world".to_string(),
+            }),
+            name: None,
+        };
+
+        let serialized = serde_json::to_value(&user_message).unwrap();
+
+        assert_eq!(serialized["role"], "user");
+        assert_eq!(serialized["content"], "Hello world");
+    }
+
+    #[test]
+    fn test_user_message_multiple_parts_serializes_as_array() {
+        let user_message = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::Text {
+                    text: "What's in this image?".to_string(),
+                },
+                UserContent::Image {
+                    image_url: ImageUrl {
+                        url: "https://example.com/image.jpg".to_string(),
+                        detail: ImageDetail::default(),
+                    },
+                },
+            ])
+            .unwrap(),
+            name: None,
+        };
+
+        let serialized = serde_json::to_value(&user_message).unwrap();
+
+        assert_eq!(serialized["role"], "user");
+        assert!(serialized["content"].is_array());
+        assert_eq!(serialized["content"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_user_message_single_image_serializes_as_array() {
+        let user_message = Message::User {
+            content: OneOrMany::one(UserContent::Image {
+                image_url: ImageUrl {
+                    url: "https://example.com/image.jpg".to_string(),
+                    detail: ImageDetail::default(),
+                },
+            }),
+            name: None,
+        };
+
+        let serialized = serde_json::to_value(&user_message).unwrap();
+
+        assert_eq!(serialized["role"], "user");
+        // Single non-text content should still serialize as array
+        assert!(serialized["content"].is_array());
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::openai::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

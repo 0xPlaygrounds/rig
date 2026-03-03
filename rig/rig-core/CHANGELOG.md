@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.30.0...rig-core-v0.31.0) - 2026-02-17
+
+### Added
+
+- *(rig-1192)* support pdf, image (openrouter) ([#1404](https://github.com/0xPlaygrounds/rig/pull/1404))
+- cross-provider reasoning trace roundtrip ([#1396](https://github.com/0xPlaygrounds/rig/pull/1396))
+- *(openrouter)* Add provider selection and prioritization support ([#1373](https://github.com/0xPlaygrounds/rig/pull/1373))
+- *(rig-1189)* structured outputs ([#1382](https://github.com/0xPlaygrounds/rig/pull/1382))
+- *(rig-core)* add optional model override to CompletionRequest ([#1374](https://github.com/0xPlaygrounds/rig/pull/1374))
+- *(rig-1180)* support text docs (anthropic) ([#1377](https://github.com/0xPlaygrounds/rig/pull/1377))
+- Add model listing capability ([#1243](https://github.com/0xPlaygrounds/rig/pull/1243))
+- *(rig-1168)* add default prompt hook to agent (breaking) ([#1356](https://github.com/0xPlaygrounds/rig/pull/1356))
+- [**breaking**] upgrade reqwest to 0.13 with rustls as default TLS backend ([#1218](https://github.com/0xPlaygrounds/rig/pull/1218))
+- *(rig-1182)* single-text serialization to single string (openai) ([#1367](https://github.com/0xPlaygrounds/rig/pull/1367))
+- add reqwest middleware example ([#1359](https://github.com/0xPlaygrounds/rig/pull/1359))
+
+### Fixed
+
+- *(rig-1195)* image urls don't work with anthropic ([#1403](https://github.com/0xPlaygrounds/rig/pull/1403))
+- *(agents)* correct prompt hook docs, split modules, and fix install script ([#1384](https://github.com/0xPlaygrounds/rig/pull/1384))
+- fix ollama dims miss ([#1199](https://github.com/0xPlaygrounds/rig/pull/1199))
+- *(rig-1182)* assistantcontent serialization when empty (openai) ([#1369](https://github.com/0xPlaygrounds/rig/pull/1369))
+- *(rig-1183)* invalid options provided (ollama) ([#1365](https://github.com/0xPlaygrounds/rig/pull/1365))
+
+### Other
+
+- add client builder test to all providers ([#1385](https://github.com/0xPlaygrounds/rig/pull/1385))
+- add ironclaw ([#1400](https://github.com/0xPlaygrounds/rig/pull/1400))
+- typed reasoning content model ([#1395](https://github.com/0xPlaygrounds/rig/pull/1395))
+- *(streaming)* return updated history in FinalResponse ([#1210](https://github.com/0xPlaygrounds/rig/pull/1210))
+- *(rig-1184)* remove AgentBuilderSimple ([#1368](https://github.com/0xPlaygrounds/rig/pull/1368))
+- propagate current span to tool call ([#1361](https://github.com/0xPlaygrounds/rig/pull/1361))
+- *(rig-1176)* unify prompt hook interfaces ([#1352](https://github.com/0xPlaygrounds/rig/pull/1352))
+
+## [0.30.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.29.0...rig-core-v0.30.0) - 2026-02-03
+
+### Added
+
+- *(rig-1160)* encode control flow directly in type signature for hooks (breaking) ([#1305](https://github.com/0xPlaygrounds/rig/pull/1305))
+- *(rig-1126)* tool image result support for gemini ([#1329](https://github.com/0xPlaygrounds/rig/pull/1329))
+- support xhigh reasoning effort ([#1319](https://github.com/0xPlaygrounds/rig/pull/1319))
+- *(agent)* allow on_tool_call hook to reject tool execution ([#1284](https://github.com/0xPlaygrounds/rig/pull/1284))
+
+### Fixed
+
+- avoid duplicate role in responses input ([#1314](https://github.com/0xPlaygrounds/rig/pull/1314))
+- *(providers)* fixed azure openai embedding dimension ([#1303](https://github.com/0xPlaygrounds/rig/pull/1303))
+- *(rig-1174)* openai responses requires reasoning in history ([#1335](https://github.com/0xPlaygrounds/rig/pull/1335))
+- *(rig-1170)* concurrent tool execution ([#1326](https://github.com/0xPlaygrounds/rig/pull/1326))
+- *(rig-1167)* fix deepseek-reasoner v3.2 invoke ([#1333](https://github.com/0xPlaygrounds/rig/pull/1333))
+- *(rig-1156)* impl VectorStoreIndexDyn for mongodb and milvus ([#1300](https://github.com/0xPlaygrounds/rig/pull/1300))
+- *(rig-1154)* gemini API tools mismatch ([#1291](https://github.com/0xPlaygrounds/rig/pull/1291))
+- *(providers)* re-export gemini EmbeddingModel and constants at module root ([#1292](https://github.com/0xPlaygrounds/rig/pull/1292))
+
+### Other
+
+- *(rig-1164)* rename max_depth & related to max_turns (BREAKING) ([#1323](https://github.com/0xPlaygrounds/rig/pull/1323))
+- remove unnecessary feature requirement for test ([#1341](https://github.com/0xPlaygrounds/rig/pull/1341))
+- *(rig-1157)* Update xAI to Responses API ([#1316](https://github.com/0xPlaygrounds/rig/pull/1316))
+- *(rig-1171)* update ollama docs ([#1327](https://github.com/0xPlaygrounds/rig/pull/1327))
+- *(rig-1163)* ollama stream tool calls get ignored ([#1309](https://github.com/0xPlaygrounds/rig/pull/1309))
+- Handle error for HTTP client response ([#1237](https://github.com/0xPlaygrounds/rig/pull/1237))
+- Add default type parameter T = reqwest::Client to ollama's EmbeddingModel for consistency with other providers ([#1293](https://github.com/0xPlaygrounds/rig/pull/1293))
+
 ## [0.29.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.28.0...rig-core-v0.29.0) - 2026-01-20
 
 ### Added

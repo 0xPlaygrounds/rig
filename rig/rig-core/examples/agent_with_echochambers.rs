@@ -363,7 +363,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Build a CLI chatbot from the agent, with multi-turn enabled
     let chatbot = ChatBotBuilder::new()
         .agent(echochambers_agent)
-        .multi_turn_depth(10)
+        .max_turns(10)
         .build();
 
     // Run the agent

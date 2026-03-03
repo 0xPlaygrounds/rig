@@ -147,6 +147,10 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for TogetherAI");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
@@ -166,6 +170,16 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
             .collect();
 
         full_history.extend(chat_history);
+
+        if full_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Together request has no provider-compatible messages after conversion",
+                )
+                .into(),
+            ));
+        }
 
         let tool_choice = req
             .tool_choice
@@ -347,4 +361,32 @@ impl TryFrom<crate::message::ToolChoice> for ToolChoice {
 #[serde(tag = "type", content = "function")]
 pub enum ToolChoiceFunctionKind {
     Function { name: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{OneOrMany, message};
+
+    #[test]
+    fn together_request_conversion_errors_when_all_messages_are_filtered() {
+        let request = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::Assistant {
+                id: None,
+                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            model: None,
+            output_schema: None,
+        };
+
+        let result = TogetherAICompletionRequest::try_from(("meta-llama/test-model", request));
+        assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
 }

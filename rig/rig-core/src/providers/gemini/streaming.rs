@@ -5,7 +5,10 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
-use super::completion::{CompletionModel, create_request_body};
+use super::completion::{
+    CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
+};
+use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -76,16 +79,17 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let request_model = resolve_request_model(&self.model, &completion_request);
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "chat_streaming",
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "gcp.gemini",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = self.model,
+                gen_ai.response.model = &request_model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
             )
@@ -106,10 +110,7 @@ where
 
         let req = self
             .client
-            .post_sse(format!(
-                "/v1beta/models/{}:streamGenerateContent",
-                self.model
-            ))?
+            .post_sse(streaming_endpoint(&request_model))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
@@ -158,13 +159,28 @@ where
                                 Part {
                                     part: PartKind::Text(text),
                                     thought: Some(true),
+                                    thought_signature,
                                     ..
                                 } => {
                                     if !text.is_empty() {
-                                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                            id: None,
-                                            reasoning: text,
-                                        });
+                                        if thought_signature.is_some() {
+                                            // Signature arrives on the final chunk of a
+                                            // thinking block; emit a full Reasoning so the
+                                            // core accumulator captures the signature for
+                                            // Gemini 3+ roundtrip.
+                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
+                                                id: None,
+                                                content: ReasoningContent::Text {
+                                                    text,
+                                                    signature: thought_signature,
+                                                },
+                                            });
+                                        } else {
+                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                                id: None,
+                                                reasoning: text,
+                                            });
+                                        }
                                     }
                                 },
                                 Part {

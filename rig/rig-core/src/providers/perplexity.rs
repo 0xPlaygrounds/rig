@@ -43,22 +43,13 @@ impl Provider for PerplexityExt {
 
     // There is currently no way to verify a perplexity api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for PerplexityExt {
     type Completion = Capable<CompletionModel<H>>;
     type Transcription = Nothing;
     type Embeddings = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -69,10 +60,22 @@ impl<H> Capabilities<H> for PerplexityExt {
 impl DebugExt for PerplexityExt {}
 
 impl ProviderBuilder for PerplexityBuilder {
-    type Output = PerplexityExt;
+    type Extension<H>
+        = PerplexityExt
+    where
+        H: HttpClientExt;
     type ApiKey = PerplexityApiKey;
 
     const BASE_URL: &'static str = PERPLEXITY_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(PerplexityExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
@@ -187,8 +190,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     input_tokens: response.usage.prompt_tokens as u64,
                     output_tokens: response.usage.completion_tokens as u64,
                     total_tokens: response.usage.total_tokens as u64,
+                    cached_input_tokens: 0,
                 },
                 raw_response: response,
+                message_id: None,
             }),
             _ => Err(CompletionError::ResponseError(
                 "Response contained no assistant message".to_owned(),
@@ -214,6 +219,10 @@ impl TryFrom<(&str, CompletionRequest)> for PerplexityCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Perplexity");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
             partial_history.push(docs);
@@ -525,5 +534,14 @@ mod tests {
 
         assert_eq!(user_message, back_to_user_message);
         assert_eq!(assistant_message, back_to_assistant_message);
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::perplexity::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::perplexity::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

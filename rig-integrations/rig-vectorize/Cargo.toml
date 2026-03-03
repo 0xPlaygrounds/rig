@@ -1,0 +1,28 @@
+[package]
+name = "rig-vectorize"
+version = "0.1.0"
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Cloudflare Vectorize vector store implementation for the Rig framework"
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../../rig/rig-core", version = "0.31.0" }
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "vectorize_vector_search"
+required-features = ["rig-core/derive"]

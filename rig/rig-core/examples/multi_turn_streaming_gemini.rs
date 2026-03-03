@@ -98,7 +98,7 @@ where
                         yield Ok(Text { text: text.text });
                         did_call_tool = false;
                     },
-                    Ok(StreamedAssistantContent::ToolCall(tool_call)) => {
+                    Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id: _ }) => {
                         let tool_result =
                             agent.tool_server_handle.call_tool(&tool_call.function.name, &tool_call.function.arguments.to_string()).await
                             .map_err(|x| StreamingError::Tool(ToolSetError::ToolCallError(ToolError::ToolCallError(x.into()))))?;
@@ -111,9 +111,12 @@ where
                         did_call_tool = true;
                         // break;
                     },
-                    Ok(StreamedAssistantContent::Reasoning(rig::message::Reasoning { reasoning, .. })) => {
-                        if !reasoning.is_empty() {
-                            yield Ok(Text { text: reasoning.first().unwrap().to_owned() });
+                    Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                        let rendered_reasoning = reasoning.display_text();
+                        if !rendered_reasoning.is_empty() {
+                            yield Ok(Text {
+                                text: rendered_reasoning,
+                            });
                         }
                         did_call_tool = false;
                     },

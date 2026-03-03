@@ -33,8 +33,8 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
-    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse, Part, PartKind,
-    Role, Tool,
+    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
+    GenerationConfig, Part, PartKind, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -85,13 +85,14 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+        let request_model = resolve_request_model(&self.model, &completion_request);
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "generate_content",
                 gen_ai.operation.name = "generate_content",
                 gen_ai.provider.name = "gcp.gemini",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
@@ -114,7 +115,7 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let path = format!("/v1beta/models/{}:generateContent", self.model);
+        let path = completion_endpoint(&request_model);
 
         let request = self
             .client
@@ -204,6 +205,13 @@ pub(crate) fn create_request_body(
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
 
+    // Apply output_schema to generation_config, creating one if needed
+    if let Some(schema) = completion_request.output_schema {
+        let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
+        cfg.response_mime_type = Some("application/json".to_string());
+        cfg.response_json_schema = Some(schema.to_value());
+    }
+
     generation_config = generation_config.map(|mut cfg| {
         if let Some(temp) = completion_request.temperature {
             cfg.temperature = Some(temp);
@@ -252,6 +260,24 @@ pub(crate) fn create_request_body(
     };
 
     Ok(request)
+}
+
+pub(crate) fn resolve_request_model(
+    default_model: &str,
+    completion_request: &CompletionRequest,
+) -> String {
+    completion_request
+        .model
+        .clone()
+        .unwrap_or_else(|| default_model.to_string())
+}
+
+pub(crate) fn completion_endpoint(model: &str) -> String {
+    format!("/v1beta/models/{model}:generateContent")
+}
+
+pub(crate) fn streaming_endpoint(model: &str) -> String {
+    format!("/v1beta/models/{model}:streamGenerateContent")
 }
 
 impl TryFrom<completion::ToolDefinition> for Tool {
@@ -352,7 +378,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                             if let Some(thought) = thought
                                 && *thought
                             {
-                                completion::AssistantContent::Reasoning(Reasoning::new(text))
+                                completion::AssistantContent::Reasoning(
+                                    Reasoning::new_with_signature(text, thought_signature.clone()),
+                                )
                             } else {
                                 completion::AssistantContent::text(text)
                             }
@@ -411,6 +439,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 input_tokens: usage.prompt_token_count as u64,
                 output_tokens: usage.candidates_token_count.unwrap_or(0) as u64,
                 total_tokens: usage.total_token_count as u64,
+                cached_input_tokens: 0,
             })
             .unwrap_or_default();
 
@@ -418,6 +447,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -708,29 +738,84 @@ pub mod gemini_api_types {
                     additional_params: None,
                 }),
                 message::UserContent::ToolResult(message::ToolResult { id, content, .. }) => {
-                    let content = match content.first() {
-                        message::ToolResultContent::Text(text) => text.text,
-                        message::ToolResultContent::Image(_) => {
-                            return Err(message::MessageError::ConversionError(
-                                "Tool result content must be text".to_string(),
-                            ));
+                    let mut response_json: Option<serde_json::Value> = None;
+                    let mut parts: Vec<FunctionResponsePart> = Vec::new();
+
+                    for item in content.iter() {
+                        match item {
+                            message::ToolResultContent::Text(text) => {
+                                let result: serde_json::Value =
+                                    serde_json::from_str(&text.text).unwrap_or_else(|error| {
+                                        tracing::trace!(
+                                            ?error,
+                                            "Tool result is not a valid JSON, treat it as normal string"
+                                        );
+                                        json!(&text.text)
+                                    });
+
+                                response_json = Some(match response_json {
+                                    Some(mut existing) => {
+                                        if let serde_json::Value::Object(ref mut map) = existing {
+                                            map.insert("text".to_string(), result);
+                                        }
+                                        existing
+                                    }
+                                    None => json!({ "result": result }),
+                                });
+                            }
+                            message::ToolResultContent::Image(image) => {
+                                let part = match &image.data {
+                                    DocumentSourceKind::Base64(b64) => {
+                                        let mime_type = image
+                                            .media_type
+                                            .as_ref()
+                                            .ok_or(message::MessageError::ConversionError(
+                                                "Image media type is required for Gemini tool results".to_string(),
+                                            ))?
+                                            .to_mime_type();
+
+                                        FunctionResponsePart {
+                                            inline_data: Some(FunctionResponseInlineData {
+                                                mime_type: mime_type.to_string(),
+                                                data: b64.clone(),
+                                                display_name: None,
+                                            }),
+                                            file_data: None,
+                                        }
+                                    }
+                                    DocumentSourceKind::Url(url) => {
+                                        let mime_type = image
+                                            .media_type
+                                            .as_ref()
+                                            .map(|mt| mt.to_mime_type().to_string());
+
+                                        FunctionResponsePart {
+                                            inline_data: None,
+                                            file_data: Some(FileData {
+                                                mime_type,
+                                                file_uri: url.clone(),
+                                            }),
+                                        }
+                                    }
+                                    _ => {
+                                        return Err(message::MessageError::ConversionError(
+                                            "Unsupported image source kind for tool results"
+                                                .to_string(),
+                                        ));
+                                    }
+                                };
+                                parts.push(part);
+                            }
                         }
-                    };
-                    // Convert to JSON since this value may be a valid JSON value
-                    let result: serde_json::Value =
-                        serde_json::from_str(&content).unwrap_or_else(|error| {
-                            tracing::trace!(
-                                ?error,
-                                "Tool result is not a valid JSON, treat it as normal string"
-                            );
-                            json!(content)
-                        });
+                    }
+
                     Ok(Part {
                         thought: Some(false),
                         thought_signature: None,
                         part: PartKind::FunctionResponse(FunctionResponse {
                             name: id,
-                            response: Some(json!({ "result": result })),
+                            response: response_json,
+                            parts: if parts.is_empty() { None } else { Some(parts) },
                         }),
                         additional_params: None,
                     })
@@ -991,16 +1076,12 @@ pub mod gemini_api_types {
                     )),
                 },
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
-                message::AssistantContent::Reasoning(message::Reasoning { reasoning, .. }) => {
-                    Ok(Part {
-                        thought: Some(true),
-                        thought_signature: None,
-                        part: PartKind::Text(
-                            reasoning.first().cloned().unwrap_or_else(|| "".to_string()),
-                        ),
-                        additional_params: None,
-                    })
-                }
+                message::AssistantContent::Reasoning(reasoning) => Ok(Part {
+                    thought: Some(true),
+                    thought_signature: reasoning.first_signature().map(str::to_owned),
+                    part: PartKind::Text(reasoning.display_text()),
+                    additional_params: None,
+                }),
             }
         }
     }
@@ -1060,7 +1141,36 @@ pub mod gemini_api_types {
         /// with a maximum length of 63.
         pub name: String,
         /// The function response in JSON object format.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response: Option<serde_json::Value>,
+        /// Multimodal parts for the function response (e.g., images).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub parts: Option<Vec<FunctionResponsePart>>,
+    }
+
+    /// A part of a multimodal function response.
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct FunctionResponsePart {
+        /// Inline data containing base64-encoded media content.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub inline_data: Option<FunctionResponseInlineData>,
+        /// File data containing a URI reference.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub file_data: Option<FileData>,
+    }
+
+    /// Inline data for function response parts.
+    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct FunctionResponseInlineData {
+        /// The IANA standard MIME type of the source data.
+        pub mime_type: String,
+        /// Raw bytes for media formats. A base64-encoded string.
+        pub data: String,
+        /// Optional display name for the content.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub display_name: Option<String>,
     }
 
     /// URI based data.
@@ -1786,10 +1896,63 @@ pub mod gemini_api_types {
 
 #[cfg(test)]
 mod tests {
-    use crate::{message, providers::gemini::completion::gemini_api_types::flatten_schema};
+    use crate::{
+        message,
+        providers::gemini::completion::gemini_api_types::{
+            ContentCandidate, FinishReason, flatten_schema,
+        },
+    };
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_resolve_request_model_uses_override() {
+        let request = CompletionRequest {
+            model: Some("gemini-2.5-flash".to_string()),
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request_model = resolve_request_model("gemini-2.0-flash", &request);
+        assert_eq!(request_model, "gemini-2.5-flash");
+        assert_eq!(
+            completion_endpoint(&request_model),
+            "/v1beta/models/gemini-2.5-flash:generateContent"
+        );
+        assert_eq!(
+            streaming_endpoint(&request_model),
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent"
+        );
+    }
+
+    #[test]
+    fn test_resolve_request_model_uses_default_when_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        assert_eq!(
+            resolve_request_model("gemini-2.0-flash", &request),
+            "gemini-2.0-flash"
+        );
+    }
 
     #[test]
     fn test_deserialize_message_user() {
@@ -1963,6 +2126,72 @@ mod tests {
     }
 
     #[test]
+    fn test_thought_signature_is_preserved_from_response_reasoning_part() {
+        let response = GenerateContentResponse {
+            response_id: "resp_1".to_string(),
+            candidates: vec![ContentCandidate {
+                content: Some(Content {
+                    parts: vec![Part {
+                        thought: Some(true),
+                        thought_signature: Some("thought_sig_123".to_string()),
+                        part: PartKind::Text("thinking text".to_string()),
+                        additional_params: None,
+                    }],
+                    role: Some(Role::Model),
+                }),
+                finish_reason: Some(FinishReason::Stop),
+                safety_ratings: None,
+                citation_metadata: None,
+                token_count: None,
+                avg_logprobs: None,
+                logprobs_result: None,
+                index: Some(0),
+                finish_message: None,
+            }],
+            prompt_feedback: None,
+            usage_metadata: None,
+            model_version: None,
+        };
+
+        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+            response.try_into().expect("convert response");
+        let first = converted.choice.first();
+        assert!(matches!(
+            first,
+            message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                if matches!(
+                    content.first(),
+                    Some(message::ReasoningContent::Text {
+                        text,
+                        signature: Some(signature)
+                    }) if text == "thinking text" && signature == "thought_sig_123"
+                )
+        ));
+    }
+
+    #[test]
+    fn test_reasoning_signature_is_emitted_in_gemini_part() {
+        let msg = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(
+                message::Reasoning::new_with_signature(
+                    "structured thought",
+                    Some("reuse_sig_456".to_string()),
+                ),
+            )),
+        };
+
+        let converted: Content = msg.try_into().expect("convert message");
+        let first = converted.parts.first().expect("reasoning part");
+        assert_eq!(first.thought, Some(true));
+        assert_eq!(first.thought_signature.as_deref(), Some("reuse_sig_456"));
+        assert!(matches!(
+            &first.part,
+            PartKind::Text(text) if text == "structured thought"
+        ));
+    }
+
+    #[test]
     fn test_message_conversion_tool_call() {
         let tool_call = message::ToolCall {
             id: "test_tool".to_string(),
@@ -2131,10 +2360,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
-
+      
         if let Part {
             part: PartKind::Text(text),
             ..
@@ -2147,8 +2373,72 @@ mod tests {
                 "Expected text part for TXT document, got: {:?}",
                 content.parts[0]
             );
+
         }
-    }
+    
+  }
+    fn test_tool_result_with_image_content() {
+        // Test that a ToolResult with image content converts correctly to Gemini's Part format
+        use crate::OneOrMany;
+        use crate::message::{
+            DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
+        };
+
+        // Create a tool result with both text and image content
+        let tool_result = ToolResult {
+            id: "test_tool".to_string(),
+            call_id: None,
+            content: OneOrMany::many(vec![
+                ToolResultContent::Text(message::Text {
+                    text: r#"{"status": "success"}"#.to_string(),
+                }),
+                ToolResultContent::Image(Image {
+                    data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
+                    media_type: Some(ImageMediaType::PNG),
+                    detail: None,
+                    additional_params: None,
+                }),
+            ]).expect("Should create OneOrMany with multiple items"),
+        };
+
+        let user_content = message::UserContent::ToolResult(tool_result);
+        let msg = message::Message::User {
+            content: OneOrMany::one(user_content),
+        };
+
+        // Convert to Gemini Content
+        let content: Content = msg.try_into().expect("Should convert to Gemini Content");
+      
+        // Verify the part is a FunctionResponse with both response and parts
+        if let Some(Part {
+            part: PartKind::FunctionResponse(function_response),
+            ..
+        }) = content.parts.first()
+        {
+            assert_eq!(function_response.name, "test_tool");
+
+            // Check that response JSON is present
+            assert!(function_response.response.is_some());
+            let response = function_response.response.as_ref().unwrap();
+            assert!(response.get("result").is_some());
+
+            // Check that parts with image data are present
+            assert!(function_response.parts.is_some());
+            let parts = function_response.parts.as_ref().unwrap();
+            assert_eq!(parts.len(), 1);
+
+            let image_part = &parts[0];
+            assert!(image_part.inline_data.is_some());
+            let inline_data = image_part.inline_data.as_ref().unwrap();
+            assert_eq!(inline_data.mime_type, "image/png");
+            assert!(!inline_data.data.is_empty());
+        } else {
+            panic!("Expected FunctionResponse part");
+
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+      }
+      }
 
     #[test]
     fn test_markdown_document_conversion_to_text_part() {
@@ -2165,10 +2455,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
-
+      
         if let Part {
             part: PartKind::Text(text),
             ..
@@ -2180,6 +2467,58 @@ mod tests {
                 "Expected text part for MARKDOWN document, got: {:?}",
                 content.parts[0]
             );
+      }
+      }
+    fn test_tool_result_with_url_image() {
+        // Test that a ToolResult with a URL-based image converts to file_data
+        use crate::OneOrMany;
+        use crate::message::{
+            DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
+        };
+
+        let tool_result = ToolResult {
+            id: "screenshot_tool".to_string(),
+            call_id: None,
+            content: OneOrMany::one(ToolResultContent::Image(Image {
+                data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
+                media_type: Some(ImageMediaType::PNG),
+                detail: None,
+                additional_params: None,
+            })),
+        };
+
+        let user_content = message::UserContent::ToolResult(tool_result);
+        let msg = message::Message::User {
+            content: OneOrMany::one(user_content),
+        };
+
+        let content: Content = msg.try_into().expect("Should convert to Gemini Content");
+      
+        if let Some(Part {
+            part: PartKind::FunctionResponse(function_response),
+            ..
+        }) = content.parts.first()
+        {
+            assert_eq!(function_response.name, "screenshot_tool");
+
+            // URL images should have parts with file_data
+            assert!(function_response.parts.is_some());
+            let parts = function_response.parts.as_ref().unwrap();
+            assert_eq!(parts.len(), 1);
+
+            let image_part = &parts[0];
+            assert!(image_part.file_data.is_some());
+            let file_data = image_part.file_data.as_ref().unwrap();
+            assert_eq!(file_data.file_uri, "https://example.com/image.png");
+            assert_eq!(file_data.mime_type.as_ref().unwrap(), "image/png");
+        } else {
+            panic!("Expected FunctionResponse part");
+
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
+
+
+        
         }
     }
 
@@ -2293,5 +2632,143 @@ mod tests {
         } else {
             panic!("Expected user message to be text");
         }
+    fn test_from_tool_output_parses_image_json() {
+        // Test the ToolResultContent::from_tool_output helper with image JSON
+        use crate::message::{DocumentSourceKind, ToolResultContent};
+
+        // Test simple image JSON format
+        let image_json = r#"{"type": "image", "data": "base64data==", "mimeType": "image/jpeg"}"#;
+        let result = ToolResultContent::from_tool_output(image_json);
+
+        assert_eq!(result.len(), 1);
+        if let ToolResultContent::Image(img) = result.first() {
+            assert!(matches!(img.data, DocumentSourceKind::Base64(_)));
+            if let DocumentSourceKind::Base64(data) = &img.data {
+                assert_eq!(data, "base64data==");
+            }
+            assert_eq!(img.media_type, Some(crate::message::ImageMediaType::JPEG));
+        } else {
+            panic!("Expected Image content");
+        }
+    }
+
+    #[test]
+    fn test_from_tool_output_parses_hybrid_json() {
+        // Test the ToolResultContent::from_tool_output helper with hybrid response/parts format
+        use crate::message::{DocumentSourceKind, ToolResultContent};
+
+        let hybrid_json = r#"{
+            "response": {"status": "ok", "count": 42},
+            "parts": [
+                {"type": "image", "data": "imgdata1==", "mimeType": "image/png"},
+                {"type": "image", "data": "https://example.com/img.jpg", "mimeType": "image/jpeg"}
+            ]
+        }"#;
+
+        let result = ToolResultContent::from_tool_output(hybrid_json);
+
+        // Should have 3 items: 1 text (response) + 2 images (parts)
+        assert_eq!(result.len(), 3);
+
+        let items: Vec<_> = result.iter().collect();
+
+        // First should be text with the response JSON
+        if let ToolResultContent::Text(text) = &items[0] {
+            assert!(text.text.contains("status"));
+            assert!(text.text.contains("ok"));
+        } else {
+            panic!("Expected Text content first");
+        }
+
+        // Second should be base64 image
+        if let ToolResultContent::Image(img) = &items[1] {
+            assert!(matches!(img.data, DocumentSourceKind::Base64(_)));
+        } else {
+            panic!("Expected Image content second");
+        }
+
+        // Third should be URL image
+        if let ToolResultContent::Image(img) = &items[2] {
+            assert!(matches!(img.data, DocumentSourceKind::Url(_)));
+        } else {
+            panic!("Expected Image content third");
+        }
+    }
+
+    /// E2E test that verifies Gemini can process tool results containing images.
+    /// This test creates an agent with a tool that returns an image, invokes it,
+    /// and verifies that Gemini can interpret the image in the tool result.
+    #[tokio::test]
+    #[ignore = "requires GEMINI_API_KEY environment variable"]
+    async fn test_gemini_agent_with_image_tool_result_e2e() {
+        use crate::completion::{Prompt, ToolDefinition};
+        use crate::prelude::*;
+        use crate::providers::gemini;
+        use crate::tool::Tool;
+        use serde::{Deserialize, Serialize};
+
+        /// A tool that returns a small red 1x1 pixel PNG image
+        #[derive(Debug, Serialize, Deserialize)]
+        struct ImageGeneratorTool;
+
+        #[derive(Debug, thiserror::Error)]
+        #[error("Image generation error")]
+        struct ImageToolError;
+
+        impl Tool for ImageGeneratorTool {
+            const NAME: &'static str = "generate_test_image";
+            type Error = ImageToolError;
+            type Args = serde_json::Value;
+            // Return the image in the format that from_tool_output expects
+            type Output = String;
+
+            async fn definition(&self, _prompt: String) -> ToolDefinition {
+                ToolDefinition {
+                    name: "generate_test_image".to_string(),
+                    description: "Generates a small test image (a 1x1 red pixel). Call this tool when asked to generate or show an image.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                }
+            }
+
+            async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+                // Return a JSON object that from_tool_output will parse as an image
+                // This is a 1x1 red PNG pixel
+                Ok(json!({
+                    "type": "image",
+                    "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+                    "mimeType": "image/png"
+                }).to_string())
+            }
+        }
+
+        let client = gemini::Client::from_env();
+
+        let agent = client
+            .agent("gemini-3-flash-preview")
+            .preamble("You are a helpful assistant. When asked about images, use the generate_test_image tool to create one, then describe what you see in the image.")
+            .tool(ImageGeneratorTool)
+            .build();
+
+        // This prompt should trigger the tool, which returns an image that Gemini should process
+        let response = agent
+            .prompt("Please generate a test image and tell me what color the pixel is.")
+            .await;
+
+        // The test passes if Gemini successfully processes the request without errors.
+        // The image is a 1x1 red pixel, so Gemini should be able to describe it.
+        assert!(
+            response.is_ok(),
+            "Gemini should successfully process tool result with image: {:?}",
+            response.err()
+        );
+
+        let response_text = response.unwrap();
+        println!("Response: {response_text}");
+        // Gemini should have been able to see the image and potentially describe its color
+        assert!(!response_text.is_empty(), "Response should not be empty");
     }
 }

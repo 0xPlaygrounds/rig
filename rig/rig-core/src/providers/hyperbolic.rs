@@ -40,22 +40,13 @@ impl Provider for HyperbolicExt {
     type Builder = HyperbolicBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for HyperbolicExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
@@ -65,10 +56,22 @@ impl<H> Capabilities<H> for HyperbolicExt {
 impl DebugExt for HyperbolicExt {}
 
 impl ProviderBuilder for HyperbolicBuilder {
-    type Output = HyperbolicExt;
+    type Extension<H>
+        = HyperbolicExt
+    where
+        H: HttpClientExt;
     type ApiKey = HyperbolicApiKey;
 
     const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(HyperbolicExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
@@ -228,6 +231,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 input_tokens: usage.prompt_tokens as u64,
                 output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
                 total_tokens: usage.total_tokens as u64,
+                cached_input_tokens: 0,
             })
             .unwrap_or_default();
 
@@ -235,6 +239,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             choice,
             usage,
             raw_response: response,
+            message_id: None,
         })
     }
 }
@@ -260,6 +265,11 @@ impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Hyperbolic");
+        }
+
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
         }
@@ -690,5 +700,18 @@ mod audio_generation {
                 ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::hyperbolic::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

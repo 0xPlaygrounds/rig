@@ -232,7 +232,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
 
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-    let client = providers::anthropic::Client::<reqwest::Client>::builder()
+    let client = providers::anthropic::Client::builder()
         .api_key(&api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19")
         .build()?;
@@ -279,7 +279,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let resp = agent
         .prompt(prompt)
         .with_history(&mut chat_history)
-        .multi_turn(10)
+        .max_turns(10)
         .await?;
 
     println!("Chat history:");

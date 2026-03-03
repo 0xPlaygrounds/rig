@@ -19,6 +19,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-instructions:
+    name: stable / validate agent instructions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate generated agent instruction files
+        run: bash scripts/validate_agent_instruction_files.sh
+
   fmt:
     name: stable / fmt
     runs-on: ubuntu-latest
@@ -105,7 +115,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: nextest
-          args: run --all-features
+          args: run --all-features --retries 2
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

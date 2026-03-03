@@ -117,20 +117,13 @@ impl Provider for HuggingFaceExt {
     type Builder = HuggingFaceBuilder;
 
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
-
-    fn build<H>(
-        builder: &client::ClientBuilder<Self::Builder, HuggingFaceApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self {
-            subprovider: builder.ext().subprovider.clone(),
-        })
-    }
 }
 
 impl<H> Capabilities<H> for HuggingFaceExt {
     type Completion = Capable<super::completion::CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
 
@@ -145,10 +138,24 @@ impl DebugExt for HuggingFaceExt {
 }
 
 impl ProviderBuilder for HuggingFaceBuilder {
-    type Output = HuggingFaceExt;
+    type Extension<H>
+        = HuggingFaceExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = HuggingFaceApiKey;
 
     const BASE_URL: &'static str = HUGGINGFACE_API_BASE_URL;
+
+    fn build<H>(
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(HuggingFaceExt {
+            subprovider: builder.ext().subprovider.clone(),
+        })
+    }
 }
 
 impl ProviderClient for Client {
@@ -177,5 +184,17 @@ impl<H> ClientBuilder<H> {
 impl<H> Client<H> {
     pub(crate) fn subprovider(&self) -> &SubProvider {
         &self.ext().subprovider
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::huggingface::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::huggingface::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

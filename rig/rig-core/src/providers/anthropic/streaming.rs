@@ -13,6 +13,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
+use crate::message::ReasoningContent;
 use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
@@ -93,6 +94,7 @@ impl GetTokenUsage for PartialUsage {
 struct ToolCallState {
     name: String,
     id: String,
+    internal_call_id: String,
     input_json: String,
 }
 
@@ -128,16 +130,20 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let span = if tracing::Span::current().is_disabled() {
             info_span!(
                 target: "rig::completions",
                 "chat_streaming",
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "anthropic",
-                gen_ai.request.model = self.model,
+                gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = self.model,
+                gen_ai.response.model = &request_model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
@@ -188,7 +194,7 @@ where
         }
 
         let mut body = json!({
-            "model": self.model,
+            "model": request_model,
             "messages": messages,
             "max_tokens": max_tokens,
             "stream": true,
@@ -338,19 +344,17 @@ fn handle_event(
                     // Emit the delta so UI can show progress
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
                         id: tool_call.id.clone(),
+                        internal_call_id: tool_call.internal_call_id.clone(),
                         content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
                 None
             }
             ContentDelta::ThinkingDelta { thinking } => {
-                if current_thinking.is_none() {
-                    *current_thinking = Some(ThinkingState::default());
-                }
-
-                if let Some(state) = current_thinking {
-                    state.thinking.push_str(thinking);
-                }
+                current_thinking
+                    .get_or_insert_with(ThinkingState::default)
+                    .thinking
+                    .push_str(thinking);
 
                 Some(Ok(RawStreamingChoice::ReasoningDelta {
                     id: None,
@@ -358,13 +362,10 @@ fn handle_event(
                 }))
             }
             ContentDelta::SignatureDelta { signature } => {
-                if current_thinking.is_none() {
-                    *current_thinking = Some(ThinkingState::default());
-                }
-
-                if let Some(state) = current_thinking {
-                    state.signature.push_str(signature);
-                }
+                current_thinking
+                    .get_or_insert_with(ThinkingState::default)
+                    .signature
+                    .push_str(signature);
 
                 // Don't yield signature chunks, they will be included in the final Reasoning
                 None
@@ -372,13 +373,16 @@ fn handle_event(
         },
         StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
             Content::ToolUse { id, name, .. } => {
+                let internal_call_id = nanoid::nanoid!();
                 *current_tool_call = Some(ToolCallState {
                     name: name.clone(),
                     id: id.clone(),
+                    internal_call_id: internal_call_id.clone(),
                     input_json: String::new(),
                 });
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
                     id: id.clone(),
+                    internal_call_id,
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
@@ -386,6 +390,10 @@ fn handle_event(
                 *current_thinking = Some(ThinkingState::default());
                 None
             }
+            Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
+                id: None,
+                content: ReasoningContent::Redacted { data: data.clone() },
+            })),
             // Handle other content types - they don't need special handling
             _ => None,
         },
@@ -401,8 +409,10 @@ fn handle_event(
 
                 return Some(Ok(RawStreamingChoice::Reasoning {
                     id: None,
-                    reasoning: thinking_state.thinking,
-                    signature,
+                    content: ReasoningContent::Text {
+                        text: thinking_state.thinking,
+                        signature,
+                    },
                 }));
             }
 
@@ -413,9 +423,12 @@ fn handle_event(
                     &tool_call.input_json
                 };
                 match serde_json::from_str(json_str) {
-                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
-                        RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value),
-                    ))),
+                    Ok(json_value) => {
+                        let raw_tool_call =
+                            RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value)
+                                .with_internal_call_id(tool_call.internal_call_id);
+                        Some(Ok(RawStreamingChoice::ToolCall(raw_tool_call)))
+                    }
                     Err(e) => Some(Err(CompletionError::from(e))),
                 }
             } else {
@@ -566,6 +579,30 @@ mod tests {
     }
 
     #[test]
+    fn test_handle_redacted_thinking_content_block_start_event() {
+        let event = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::RedactedThinking {
+                data: "redacted_blob".to_string(),
+            },
+        };
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        match result.unwrap().unwrap() {
+            RawStreamingChoice::Reasoning {
+                content: ReasoningContent::Redacted { data },
+                ..
+            } => {
+                assert_eq!(data, "redacted_blob");
+            }
+            _ => panic!("Expected Redacted reasoning chunk"),
+        }
+    }
+
+    #[test]
     fn test_handle_text_delta_event() {
         let event = StreamingEvent::ContentBlockDelta {
             index: 0,
@@ -602,6 +639,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
@@ -634,6 +672,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
@@ -645,7 +684,11 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::ToolCallDelta { id, content } => {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content,
+            } => {
                 assert_eq!(id, "tool_123");
                 match content {
                     ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
@@ -666,6 +709,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
+            internal_call_id: nanoid::nanoid!(),
             input_json: String::new(),
         });
         let mut thinking_state = None;

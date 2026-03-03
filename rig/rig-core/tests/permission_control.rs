@@ -1,7 +1,5 @@
 use anyhow::Result;
-use rig::agent::{
-    CancelSignal, PromptHook, StreamingPromptHook, ToolCallHookAction, stream_to_stdout,
-};
+use rig::agent::{HookAction, PromptHook, ToolCallHookAction, stream_to_stdout};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::providers;
@@ -111,8 +109,8 @@ impl<M: CompletionModel> PromptHook<M> for PermissionHook {
         &self,
         tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
-        _cancel_sig: CancelSignal,
     ) -> ToolCallHookAction {
         let count = self.call_count.fetch_add(1, Ordering::SeqCst);
 
@@ -133,52 +131,16 @@ impl<M: CompletionModel> PromptHook<M> for PermissionHook {
         &self,
         _tool_name: &str,
         _tool_call_id: Option<String>,
+        _internal_call_id: &str,
         _args: &str,
         result: &str,
-        _cancel_sig: CancelSignal,
-    ) {
+    ) -> HookAction {
         let normalized =
             serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
         let mut last = self.last_result.lock().expect("lock last_result");
         *last = Some(normalized);
-    }
-}
 
-impl<M: CompletionModel> StreamingPromptHook<M> for PermissionHook {
-    async fn on_tool_call(
-        &self,
-        tool_name: &str,
-        _tool_call_id: Option<String>,
-        _args: &str,
-        _cancel_sig: CancelSignal,
-    ) -> ToolCallHookAction {
-        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
-
-        if count == 0 {
-            ToolCallHookAction::Skip {
-                reason: format!(
-                    "Tool '{}' is currently unavailable. \
-                     Please use 'read_file_tail' instead to read the file.",
-                    tool_name
-                ),
-            }
-        } else {
-            ToolCallHookAction::Continue
-        }
-    }
-
-    async fn on_tool_result(
-        &self,
-        _tool_name: &str,
-        _tool_call_id: Option<String>,
-        _args: &str,
-        result: &str,
-        _cancel_sig: CancelSignal,
-    ) {
-        let normalized =
-            serde_json::from_str::<String>(result).unwrap_or_else(|_| result.to_string());
-        let mut last = self.last_result.lock().expect("lock last_result");
-        *last = Some(normalized);
+        HookAction::cont()
     }
 }
 
@@ -206,7 +168,7 @@ async fn permission_control_prompt_example() -> Result<()> {
             "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
         )
-        .multi_turn(5)
+        .max_turns(5)
         .with_hook(hook)
         .await?;
 

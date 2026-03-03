@@ -16,7 +16,11 @@ where
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
-        let model = self.client.subprovider().model_identifier(&self.model);
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
+        let model = self.client.subprovider().model_identifier(&request_model);
         let mut request =
             HuggingfaceCompletionRequest::try_from((model.as_ref(), completion_request))?;
 
@@ -36,7 +40,10 @@ where
         }
 
         // HF Inference API uses the model in the path even though its specified in the request body
-        let path = self.client.subprovider().completion_endpoint(&self.model);
+        let path = self
+            .client
+            .subprovider()
+            .completion_endpoint(&request_model);
 
         let body = serde_json::to_vec(&request)?;
 
@@ -53,9 +60,9 @@ where
             "chat",
             gen_ai.operation.name = "chat",
             gen_ai.provider.name = "huggingface",
-            gen_ai.request.model = self.model,
+            gen_ai.request.model = &request_model,
             gen_ai.response.id = tracing::field::Empty,
-            gen_ai.response.model = self.model,
+            gen_ai.response.model = &request_model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
             )

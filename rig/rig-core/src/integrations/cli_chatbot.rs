@@ -19,7 +19,7 @@ where
     M: CompletionModel + 'static,
 {
     agent: Agent<M>,
-    multi_turn_depth: usize,
+    max_turns: usize,
     show_usage: bool,
     usage: Usage,
 }
@@ -72,7 +72,7 @@ where
             .agent
             .stream_prompt(prompt)
             .with_history(history)
-            .multi_turn(self.multi_turn_depth)
+            .multi_turn(self.max_turns)
             .await;
 
         let mut acc = String::new();
@@ -128,7 +128,7 @@ impl ChatBotBuilder<NoImplProvided> {
     ) -> ChatBotBuilder<AgentImpl<M>> {
         ChatBotBuilder(AgentImpl {
             agent,
-            multi_turn_depth: 1,
+            max_turns: 1,
             show_usage: false,
             usage: Usage::default(),
         })
@@ -153,9 +153,9 @@ impl<M> ChatBotBuilder<AgentImpl<M>>
 where
     M: CompletionModel + 'static,
 {
-    pub fn multi_turn_depth(self, multi_turn_depth: usize) -> Self {
+    pub fn max_turns(self, max_turns: usize) -> Self {
         ChatBotBuilder(AgentImpl {
-            multi_turn_depth,
+            max_turns,
             ..self.0
         })
     }

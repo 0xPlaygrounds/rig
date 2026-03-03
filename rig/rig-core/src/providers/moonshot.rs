@@ -40,31 +40,34 @@ impl Provider for MoonshotExt {
     type Builder = MoonshotBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl DebugExt for MoonshotExt {}
 
 impl ProviderBuilder for MoonshotBuilder {
-    type Output = MoonshotExt;
+    type Extension<H>
+        = MoonshotExt
+    where
+        H: HttpClientExt;
     type ApiKey = MoonshotApiKey;
 
     const BASE_URL: &'static str = MOONSHOT_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(MoonshotExt)
+    }
 }
 
 impl<H> Capabilities<H> for MoonshotExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -133,6 +136,10 @@ impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Moonshot");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
@@ -362,5 +369,17 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
         };
 
         Ok(res)
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::moonshot::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

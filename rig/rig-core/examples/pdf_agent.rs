@@ -56,7 +56,7 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
 async fn main() -> Result<()> {
     // Initialize Ollama client
     // because Ollama is local and does not require an api key, we pass in `Nothing`
-    let client: ollama::Client = ollama::Client::builder()
+    let client = ollama::Client::builder()
         .api_key(Nothing)
         .base_url("http://localhost:11434/v1")
         .build()
@@ -101,10 +101,7 @@ async fn main() -> Result<()> {
     println!("Starting CLI chatbot...");
 
     // Start interactive CLI
-    let chatbot = ChatBotBuilder::new()
-        .agent(rag_agent)
-        .multi_turn_depth(10)
-        .build();
+    let chatbot = ChatBotBuilder::new().agent(rag_agent).max_turns(10).build();
 
     chatbot.run().await?;
 

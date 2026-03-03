@@ -54,24 +54,14 @@ type GroqApiKey = BearerAuth;
 
 impl Provider for GroqExt {
     type Builder = GroqBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for GroqExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Capable<TranscriptionModel<H>>;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -82,10 +72,22 @@ impl<H> Capabilities<H> for GroqExt {
 impl DebugExt for GroqExt {}
 
 impl ProviderBuilder for GroqBuilder {
-    type Output = GroqExt;
+    type Extension<H>
+        = GroqExt
+    where
+        H: HttpClientExt;
     type ApiKey = GroqApiKey;
 
     const BASE_URL: &'static str = GROQ_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(GroqExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
@@ -183,6 +185,10 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        if req.output_schema.is_some() {
+            tracing::warn!("Structured outputs currently not supported for Groq");
+        }
+        let model = req.model.clone().unwrap_or_else(|| model.to_string());
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
@@ -547,6 +553,12 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
         usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens as u64)
+            .unwrap_or(0);
 
         Some(usage)
     }
@@ -570,7 +582,8 @@ where
         let span = tracing::Span::current();
         let mut final_usage = Usage {
             prompt_tokens: 0,
-            total_tokens: 0
+            total_tokens: 0,
+            prompt_tokens_details: None,
         };
 
         let mut text_response = String::new();
@@ -756,10 +769,7 @@ mod tests {
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{
-                            "type": "text",
-                            "text": "Hello world!"
-                        }]
+                        "content": "Hello world!"
                     }
                 ],
                 "stream": false,
@@ -767,5 +777,14 @@ mod tests {
                 "reasoning_format": "parsed"
             })
         )
+    }
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::groq::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

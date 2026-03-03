@@ -23,3 +23,4 @@ Nothing here yet. Maybe you'd like to be the first person to add something here?
 - [Neon](https://neon.com/) - using Rig for [their V2 of app.build](https://github.com/neondatabase/appdotbuild-agent)
 - [Syncable](https://syncable.dev/) - using Rig for their CLI
 - [Refresh Agent](https://refreshagent.com/) - an AI agent heavily using Rig for SEO/marketing analysis. [Relevant article](https://refreshagent.com/engineering/building-ai-agents-in-rust)
+- [nitpik](https://nitpik.dev/) - AI code reviews. Uses Rig under the hood.

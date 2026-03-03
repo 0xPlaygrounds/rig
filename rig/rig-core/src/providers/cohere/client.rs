@@ -29,20 +29,14 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CohereBuilde
 
 impl Provider for CohereExt {
     type Builder = CohereBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &client::ClientBuilder<Self::Builder, CohereApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for CohereExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Nothing;
+    type ModelListing = Nothing;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -53,16 +47,21 @@ impl<H> Capabilities<H> for CohereExt {
 impl DebugExt for CohereExt {}
 
 impl ProviderBuilder for CohereBuilder {
-    type Output = CohereExt;
+    type Extension<H>
+        = CohereExt
+    where
+        H: HttpClientExt;
     type ApiKey = CohereApiKey;
 
     const BASE_URL: &'static str = "https://api.cohere.ai";
 
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, CohereApiKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, CohereApiKey, H>> {
-        Ok(builder)
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(CohereExt)
     }
 }
 
@@ -126,5 +125,17 @@ where
         ndims: usize,
     ) -> EmbeddingModel<T> {
         EmbeddingModel::new(self.clone(), model, input_type, ndims)
+    }
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_client_initialization() {
+        let _client =
+            crate::providers::cohere::Client::new("dummy-key").expect("Client::new() failed");
+        let _client_from_builder = crate::providers::cohere::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }
