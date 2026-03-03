@@ -2360,7 +2360,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-      
+
         if let Part {
             part: PartKind::Text(text),
             ..
@@ -2373,10 +2373,8 @@ mod tests {
                 "Expected text part for TXT document, got: {:?}",
                 content.parts[0]
             );
-
         }
-    
-  }
+    }
     fn test_tool_result_with_image_content() {
         // Test that a ToolResult with image content converts correctly to Gemini's Part format
         use crate::OneOrMany;
@@ -2408,7 +2406,7 @@ mod tests {
 
         // Convert to Gemini Content
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-      
+
         // Verify the part is a FunctionResponse with both response and parts
         if let Some(Part {
             part: PartKind::FunctionResponse(function_response),
@@ -2435,10 +2433,10 @@ mod tests {
         } else {
             panic!("Expected FunctionResponse part");
 
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
-      }
-      }
+            assert_eq!(content.role, Some(Role::User));
+            assert_eq!(content.parts.len(), 1);
+        }
+    }
 
     #[test]
     fn test_markdown_document_conversion_to_text_part() {
@@ -2455,7 +2453,7 @@ mod tests {
         }
         .try_into()
         .unwrap();
-      
+
         if let Part {
             part: PartKind::Text(text),
             ..
@@ -2467,8 +2465,8 @@ mod tests {
                 "Expected text part for MARKDOWN document, got: {:?}",
                 content.parts[0]
             );
-      }
-      }
+        }
+    }
     fn test_tool_result_with_url_image() {
         // Test that a ToolResult with a URL-based image converts to file_data
         use crate::OneOrMany;
@@ -2493,7 +2491,7 @@ mod tests {
         };
 
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-      
+
         if let Some(Part {
             part: PartKind::FunctionResponse(function_response),
             ..
@@ -2514,11 +2512,8 @@ mod tests {
         } else {
             panic!("Expected FunctionResponse part");
 
-        assert_eq!(content.role, Some(Role::User));
-        assert_eq!(content.parts.len(), 1);
-
-
-        
+            assert_eq!(content.role, Some(Role::User));
+            assert_eq!(content.parts.len(), 1);
         }
     }
 
@@ -2548,6 +2543,8 @@ mod tests {
             documents: documents.clone(),
             tools: vec![],
             temperature: None,
+            model: None,
+            output_schema: None,
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
@@ -2614,6 +2611,8 @@ mod tests {
             temperature: None,
             max_tokens: None,
             tool_choice: None,
+            model: None,
+            output_schema: None,
             additional_params: None,
         };
 
@@ -2632,6 +2631,8 @@ mod tests {
         } else {
             panic!("Expected user message to be text");
         }
+    }
+
     fn test_from_tool_output_parses_image_json() {
         // Test the ToolResultContent::from_tool_output helper with image JSON
         use crate::message::{DocumentSourceKind, ToolResultContent};
