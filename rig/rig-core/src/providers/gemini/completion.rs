@@ -2375,6 +2375,8 @@ mod tests {
             );
         }
     }
+
+    #[test]
     fn test_tool_result_with_image_content() {
         // Test that a ToolResult with image content converts correctly to Gemini's Part format
         use crate::OneOrMany;
@@ -2406,6 +2408,8 @@ mod tests {
 
         // Convert to Gemini Content
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
 
         // Verify the part is a FunctionResponse with both response and parts
         if let Some(Part {
@@ -2432,9 +2436,6 @@ mod tests {
             assert!(!inline_data.data.is_empty());
         } else {
             panic!("Expected FunctionResponse part");
-
-            assert_eq!(content.role, Some(Role::User));
-            assert_eq!(content.parts.len(), 1);
         }
     }
 
@@ -2467,6 +2468,8 @@ mod tests {
             );
         }
     }
+
+    #[test]
     fn test_tool_result_with_url_image() {
         // Test that a ToolResult with a URL-based image converts to file_data
         use crate::OneOrMany;
@@ -2491,6 +2494,8 @@ mod tests {
         };
 
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
+        assert_eq!(content.role, Some(Role::User));
+        assert_eq!(content.parts.len(), 1);
 
         if let Some(Part {
             part: PartKind::FunctionResponse(function_response),
@@ -2511,9 +2516,6 @@ mod tests {
             assert_eq!(file_data.mime_type.as_ref().unwrap(), "image/png");
         } else {
             panic!("Expected FunctionResponse part");
-
-            assert_eq!(content.role, Some(Role::User));
-            assert_eq!(content.parts.len(), 1);
         }
     }
 
@@ -2633,6 +2635,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_from_tool_output_parses_image_json() {
         // Test the ToolResultContent::from_tool_output helper with image JSON
         use crate::message::{DocumentSourceKind, ToolResultContent};
