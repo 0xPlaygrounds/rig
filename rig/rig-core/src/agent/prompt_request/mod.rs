@@ -257,15 +257,12 @@ impl PromptResponse {
 #[derive(Debug, Clone)]
 pub struct TypedPromptResponse<T> {
     pub output: T,
-    pub total_usage: Usage,
+    pub usage: Usage,
 }
 
 impl<T> TypedPromptResponse<T> {
-    pub fn new(output: T, total_usage: Usage) -> Self {
-        Self {
-            output,
-            total_usage,
-        }
+    pub fn new(output: T, usage: Usage) -> Self {
+        Self { output, usage }
     }
 }
 
@@ -731,7 +728,7 @@ where
         }
 
         let parsed: T = serde_json::from_str(&response.output)?;
-        Ok(TypedPromptResponse::new(parsed, response.total_usage))
+        Ok(TypedPromptResponse::new(parsed, response.usage))
     }
 }
 
