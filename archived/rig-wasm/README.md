@@ -5,7 +5,7 @@
 > `rig-wasm` was an experimental set of WASM bindings to Rig. It is no longer
 > being developed or supported. The code is preserved here for reference only.
 >
-> If you are interested in WASM support for Rig, please open an issue in the
+> If you are interested in an npm package for Rig to be used via WASM, please open an issue in the
 > main repository to discuss.
 
 ---
