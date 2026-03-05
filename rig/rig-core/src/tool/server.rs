@@ -88,6 +88,27 @@ impl ToolServer {
         self
     }
 
+    // Add an MCP tool (from TurboMCP) to the agent
+    #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+    #[cfg(feature = "turbomcp")]
+    pub fn turbomcp_tool<T>(
+        mut self,
+        tool: turbomcp_client::Tool,
+        client: turbomcp_client::Client<T>,
+    ) -> Self
+    where
+        T: turbomcp_client::Transport + 'static,
+    {
+        use crate::tool::turbomcp::TurboMcpTool;
+        let toolname = tool.name.clone();
+        Arc::get_mut(&mut self.toolset)
+            .expect("ToolServer::turbomcp_tool() called after run()")
+            .get_mut()
+            .add_tool(TurboMcpTool::from_mcp_server(tool, client));
+        self.static_tool_names.push(toolname);
+        self
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     pub fn dynamic_tools(
