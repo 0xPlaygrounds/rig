@@ -1043,6 +1043,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_assistant_message_with_reasoning_and_tool_calls() {
         use crate::completion::message::{AssistantContent, Message as RigMessage};
 
