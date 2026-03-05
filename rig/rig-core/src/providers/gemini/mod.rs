@@ -12,10 +12,11 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod interactions_api;
 pub mod streaming;
 pub mod transcription;
 
-pub use client::Client;
+pub use client::{Client, InteractionsClient};
 pub use completion::CompletionModel;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004, EmbeddingModel};
 

@@ -397,6 +397,23 @@ where
         self.ext.with_custom(req)
     }
 
+    pub fn get_sse<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        let uri = self
+            .ext
+            .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
+
+        let mut req = Request::get(uri);
+
+        if let Some(hs) = req.headers_mut() {
+            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+
+        self.ext.with_custom(req)
+    }
+
     pub fn get<S>(&self, path: S) -> http_client::Result<Builder>
     where
         S: AsRef<str>,
