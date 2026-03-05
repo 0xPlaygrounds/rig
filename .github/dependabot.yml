@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Cargo dependencies at the workspace root.
+  # archived/ is excluded from the workspace via Cargo.toml.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # All npm package.json files live inside archived/ and should be ignored.
+  # These entries exist solely to suppress Dependabot security/version PRs
+  # for the unmaintained rig-wasm JS package and its examples.
+  - package-ecosystem: "npm"
+    directory: "/archived/rig-wasm/pkg"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "npm"
+    directory: "/archived/rig-wasm/examples/basic"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "npm"
+    directory: "/archived/rig-wasm/examples/basic_with_tools"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+  - package-ecosystem: "npm"
+    directory: "/archived/rig-wasm/examples/embedding"
+    schedule:
+      interval: "weekly"
+    ignore:
+      - dependency-name: "*"

@@ -299,54 +299,37 @@ impl TryFrom<message::Message> for Vec<Message> {
                 Ok(messages)
             }
             message::Message::Assistant { content, .. } => {
-                let mut messages: Vec<Message> = vec![];
                 let mut text_content = String::new();
                 let mut reasoning_content = String::new();
+                let mut tool_calls = Vec::new();
 
-                content.iter().for_each(|content| match content {
-                    message::AssistantContent::Text(text) => {
-                        text_content.push_str(text.text());
-                    }
-                    message::AssistantContent::Reasoning(reasoning) => {
-                        reasoning_content.push_str(&reasoning.display_text());
-                    }
-                    _ => {}
-                });
-
-                messages.push(Message::Assistant {
-                    content: text_content,
-                    name: None,
-                    tool_calls: vec![],
-                    reasoning_content: if reasoning_content.is_empty() {
-                        None
-                    } else {
-                        Some(reasoning_content)
-                    },
-                });
-
-                // extract tool calls
-                let tool_calls = content
-                    .clone()
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::AssistantContent::ToolCall(tool_call) => {
-                            Some(ToolCall::from(tool_call))
+                for item in content.iter() {
+                    match item {
+                        message::AssistantContent::Text(text) => {
+                            text_content.push_str(text.text());
                         }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                // if we have tool calls, we add a new Assistant message with them
-                if !tool_calls.is_empty() {
-                    messages.push(Message::Assistant {
-                        content: "".to_string(),
-                        name: None,
-                        tool_calls,
-                        reasoning_content: None,
-                    });
+                        message::AssistantContent::Reasoning(reasoning) => {
+                            reasoning_content.push_str(&reasoning.display_text());
+                        }
+                        message::AssistantContent::ToolCall(tool_call) => {
+                            tool_calls.push(ToolCall::from(tool_call.clone()));
+                        }
+                        _ => {}
+                    }
                 }
 
-                Ok(messages)
+                let reasoning = if reasoning_content.is_empty() {
+                    None
+                } else {
+                    Some(reasoning_content)
+                };
+
+                Ok(vec![Message::Assistant {
+                    content: text_content,
+                    name: None,
+                    tool_calls,
+                    reasoning_content: reasoning,
+                }])
             }
         }
     }
@@ -504,35 +487,7 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
             .flatten()
             .collect();
 
-        let mut last_reasoning_content = None;
-        let mut last_assistant_idx = None;
-
-        for message in chat_history {
-            if let Message::Assistant {
-                reasoning_content, ..
-            } = &message
-            {
-                if let Some(content) = reasoning_content {
-                    last_reasoning_content = Some(content.clone());
-                } else {
-                    last_assistant_idx = Some(full_history.len());
-                    full_history.push(message);
-                }
-            } else {
-                full_history.push(message);
-            }
-        }
-
-        // Merge last reasoning content into the last assistant message.
-        // Note that we only need to preserve the last reasoning content.
-        if let (Some(idx), Some(reasoning)) = (last_assistant_idx, last_reasoning_content)
-            && let Message::Assistant {
-                ref mut reasoning_content,
-                ..
-            } = full_history[idx]
-        {
-            *reasoning_content = Some(reasoning);
-        }
+        full_history.extend(chat_history);
 
         let tool_choice = req
             .tool_choice
@@ -1064,12 +1019,12 @@ mod tests {
             content: OneOrMany::many(vec![
                 UserContent::text("first part"),
                 UserContent::text("second part"),
-            ])
+                          ])
             .expect("content should not be empty"),
         };
 
         let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
-
+      
         let user_messages: Vec<&Message> = messages
             .iter()
             .filter(|m| matches!(m, Message::User { .. }))
@@ -1085,6 +1040,74 @@ mod tests {
                 assert_eq!(content, "first part\nsecond part");
             }
             _ => unreachable!(),
+                  }
+    }
+
+    fn test_assistant_message_with_reasoning_and_tool_calls() {
+        use crate::completion::message::{AssistantContent, Message as RigMessage};
+
+        let rig_msg = RigMessage::Assistant {
+            id: None,
+            content: OneOrMany::many(vec![
+                AssistantContent::reasoning("thinking about the problem"),
+                AssistantContent::text("I'll call the tool"),
+                AssistantContent::tool_call(
+                    "call_1",
+                    "subtract",
+                    serde_json::json!({"x": 2, "y": 5}),
+                ),
+            ])
+            .expect("content should not be empty"),
+        };
+
+        let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
+
+        assert_eq!(messages.len(), 1, "should produce exactly one message");
+        match &messages[0] {
+            Message::Assistant {
+                content,
+                tool_calls,
+                reasoning_content,
+                ..
+            } => {
+                assert_eq!(content, "I'll call the tool");
+                assert_eq!(
+                    reasoning_content.as_deref(),
+                    Some("thinking about the problem")
+                );
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].function.name, "subtract");
+            }
+            _ => panic!("Expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_assistant_message_without_reasoning() {
+        use crate::completion::message::{AssistantContent, Message as RigMessage};
+
+        let rig_msg = RigMessage::Assistant {
+            id: None,
+            content: OneOrMany::many(vec![
+                AssistantContent::text("calling tool"),
+                AssistantContent::tool_call("call_1", "add", serde_json::json!({"a": 1, "b": 2})),
+            ])
+            .expect("content should not be empty"),
+        };
+
+        let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
+
+        assert_eq!(messages.len(), 1);
+        match &messages[0] {
+            Message::Assistant {
+                reasoning_content,
+                tool_calls,
+                ..
+            } => {
+                assert!(reasoning_content.is_none());
+                assert_eq!(tool_calls.len(), 1);
+            }
+            _ => panic!("Expected assistant message"),
         }
     }
 
