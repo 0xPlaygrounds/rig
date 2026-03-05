@@ -274,27 +274,27 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 messages.extend(tool_results);
 
-                // extract text results
-                let text_messages = content
+                let text_content: String = content
                     .into_iter()
                     .filter_map(|content| match content {
-                        message::UserContent::Text(text) => Some(Message::User {
-                            content: text.text,
-                            name: None,
-                        }),
+                        message::UserContent::Text(text) => Some(text.text),
                         message::UserContent::Document(Document {
                             data:
                                 DocumentSourceKind::Base64(content)
                                 | DocumentSourceKind::String(content),
                             ..
-                        }) => Some(Message::User {
-                            content,
-                            name: None,
-                        }),
+                        }) => Some(content),
                         _ => None,
                     })
-                    .collect::<Vec<_>>();
-                messages.extend(text_messages);
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                if !text_content.is_empty() {
+                    messages.push(Message::User {
+                        content: text_content,
+                        name: None,
+                    });
+                }
 
                 Ok(messages)
             }
@@ -1011,6 +1011,38 @@ mod tests {
 
         assert_eq!(choice, expected_choice);
     }
+    #[test]
+    fn test_user_message_multiple_text_items_merged() {
+        use crate::completion::message::{Message as RigMessage, UserContent};
+
+        let rig_msg = RigMessage::User {
+            content: OneOrMany::many(vec![
+                UserContent::text("first part"),
+                UserContent::text("second part"),
+            ])
+            .expect("content should not be empty"),
+        };
+
+        let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
+
+        let user_messages: Vec<&Message> = messages
+            .iter()
+            .filter(|m| matches!(m, Message::User { .. }))
+            .collect();
+
+        assert_eq!(
+            user_messages.len(),
+            1,
+            "multiple text items should produce a single user message"
+        );
+        match &user_messages[0] {
+            Message::User { content, .. } => {
+                assert_eq!(content, "first part\nsecond part");
+            }
+            _ => unreachable!(),
+        }
+    }
+
     #[test]
     fn test_assistant_message_with_reasoning_and_tool_calls() {
         use crate::completion::message::{AssistantContent, Message as RigMessage};
