@@ -1019,12 +1019,12 @@ mod tests {
             content: OneOrMany::many(vec![
                 UserContent::text("first part"),
                 UserContent::text("second part"),
-                          ])
+            ])
             .expect("content should not be empty"),
         };
 
         let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
-      
+
         let user_messages: Vec<&Message> = messages
             .iter()
             .filter(|m| matches!(m, Message::User { .. }))
@@ -1040,7 +1040,7 @@ mod tests {
                 assert_eq!(content, "first part\nsecond part");
             }
             _ => unreachable!(),
-                  }
+        }
     }
 
     fn test_assistant_message_with_reasoning_and_tool_calls() {
