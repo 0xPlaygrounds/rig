@@ -18,6 +18,10 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
+#[cfg(feature = "turbomcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+use crate::tool::turbomcp::TurboMcpTool;
+
 use super::Agent;
 
 /// Marker type indicating no tool configuration has been set yet.
@@ -408,6 +412,97 @@ where
         }
     }
 
+    /// Add an MCP tool (from TurboMCP) to the agent.
+    ///
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "turbomcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+    pub fn turbomcp_tool<T>(
+        self,
+        tool: turbomcp_client::Tool,
+        client: turbomcp_client::Client<T>,
+    ) -> AgentBuilder<M, P, WithBuilderTools>
+    where
+        T: turbomcp_client::Transport + 'static,
+    {
+        let toolname = tool.name.clone();
+        let tools = ToolSet::from_tools(vec![TurboMcpTool::from_mcp_server(tool, client)]);
+
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_choice: self.tool_choice,
+            default_max_turns: self.default_max_turns,
+            hook: self.hook,
+            output_schema: self.output_schema,
+            tool_state: WithBuilderTools {
+                static_tools: vec![toolname],
+                tools,
+                dynamic_tools: vec![],
+            },
+        }
+    }
+
+    /// Add an array of MCP tools (from TurboMCP) to the agent.
+    ///
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "turbomcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+    pub fn turbomcp_tools<T>(
+        self,
+        tools: Vec<turbomcp_client::Tool>,
+        client: turbomcp_client::Client<T>,
+    ) -> AgentBuilder<M, P, WithBuilderTools>
+    where
+        T: turbomcp_client::Transport + 'static,
+    {
+        use std::sync::Arc;
+        use crate::tool::turbomcp::TurboMcpToolCaller;
+
+        let client_arc: Arc<dyn TurboMcpToolCaller> = Arc::new(client);
+
+        let (static_tools, tools) = tools.into_iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut toolnames, mut toolset), tool| {
+                let tool_name = tool.name.clone();
+                let tool = TurboMcpTool::from_client_arc(tool, client_arc.clone());
+                toolnames.push(tool_name);
+                toolset.push(tool);
+                (toolnames, toolset)
+            },
+        );
+
+        let tools = ToolSet::from_tools(tools);
+
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_choice: self.tool_choice,
+            default_max_turns: self.default_max_turns,
+            hook: self.hook,
+            output_schema: self.output_schema,
+            tool_state: WithBuilderTools {
+                static_tools,
+                tools,
+                dynamic_tools: vec![],
+            },
+        }
+    }
+
     /// Add some dynamic tools to the agent. On each prompt, `sample` tools from the
     /// dynamic toolset will be inserted in the request.
     ///
@@ -550,6 +645,32 @@ where
         for tool in tools {
             let tool_name = tool.name.to_string();
             let tool = RmcpTool::from_mcp_server(tool, client.clone());
+            self.tool_state.static_tools.push(tool_name);
+            self.tool_state.tools.add_tool(tool);
+        }
+
+        self
+    }
+
+    /// Add an array of MCP tools (from TurboMCP) to the agent.
+    #[cfg(feature = "turbomcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+    pub fn turbomcp_tools<T>(
+        mut self,
+        tools: Vec<turbomcp_client::Tool>,
+        client: turbomcp_client::Client<T>,
+    ) -> Self
+    where
+        T: turbomcp_client::Transport + 'static,
+    {
+        use std::sync::Arc;
+        use crate::tool::turbomcp::TurboMcpToolCaller;
+
+        let client_arc: Arc<dyn TurboMcpToolCaller> = Arc::new(client);
+
+        for tool in tools {
+            let tool_name = tool.name.clone();
+            let tool = TurboMcpTool::from_client_arc(tool, client_arc.clone());
             self.tool_state.static_tools.push(tool_name);
             self.tool_state.tools.add_tool(tool);
         }
