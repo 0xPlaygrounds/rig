@@ -137,7 +137,6 @@ Vector stores are available as separate companion-crates:
 The following providers are available as separate companion-crates:
 - AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-bedrock)
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-fastembed)
-- Eternal AI: [`rig-eternalai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-eternalai)
 - Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-vertexai)
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
