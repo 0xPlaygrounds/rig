@@ -1,6 +1,6 @@
 [package]
 name = "rig-surrealdb"
-version = "0.1.29"
+version = "0.2.0"
 edition = { workspace = true }
 description = "SurrealDB vector store implementation for the rig framework"
 license = "MIT"
