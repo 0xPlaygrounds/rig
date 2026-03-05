@@ -1,0 +1,37 @@
+[changelog]
+body = """
+## [{{ version }}]{%- if release_link -%}({{ release_link }}){% endif %}{% if timestamp %} - {{ timestamp | date(format="%Y-%m-%d") }}{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits %}
+{%- if commit.scope -%}
+- *({{commit.scope}})* {% if commit.breaking %}[**breaking**] {% endif %}\
+{{ commit.message }}\
+{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}\
+{%- if commit.links %} ({% for link in commit.links %}[{{link.text}}]({{link.href}}) {% endfor -%}){% endif %}
+{% else -%}
+- {% if commit.breaking %}[**breaking**] {% endif %}\
+{{ commit.message }}\
+{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}
+{% endif -%}
+{% endfor -%}
+{% endfor %}
+{% if github.contributors | length != 0 %}
+
+## Contributors
+
+{% for contributor in github.contributors -%}
+* @{{ contributor.username }}
+{% endfor -%}
+{% endif %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+
+[remote.github]
+owner = "0xPlaygrounds"
+repo = "rig"
