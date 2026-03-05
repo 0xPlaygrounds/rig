@@ -61,7 +61,7 @@ proc-macro2 = "1.0.95"
 qdrant-client = { version = "1.14.0", default-features = false, features = [
     "serde",
 ] }
-quick-xml = "0.38.0"
+quick-xml = "0.39.2"
 quote = "1.0.40"
 rayon = "1.10.0"
 reqwest = { version = "0.13", default-features = false }
