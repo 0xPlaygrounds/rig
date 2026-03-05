@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.32.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.31.0...rig-core-v0.32.0) - 2026-03-05
+
+### Added
+
+- *(moonshot)* add Kimi K2 and K2.5 model constants ([#1457](https://github.com/0xPlaygrounds/rig/pull/1457)) (by @howardpen9)
+- *(gemini)* add RAG extractor example and dynamic_context support ([#1456](https://github.com/0xPlaygrounds/rig/pull/1456)) (by @atellou)
+- *(gemini)* Add support for RAG documents in dynamic context ([#1205](https://github.com/0xPlaygrounds/rig/pull/1205)) (by @snaumov)
+- *(rig-core)* return conversation messages from non-streaming agent loop ([#1450](https://github.com/0xPlaygrounds/rig/pull/1450)) (by @illegalcall)
+- *(extractor)* expose token usage via extract_with_usage methods ([#1447](https://github.com/0xPlaygrounds/rig/pull/1447)) (by @liamwh)
+- add `.extended_details` to `TypedPromptRequest` via typestate ([#1446](https://github.com/0xPlaygrounds/rig/pull/1446)) (by @0xMochan) - #1446
+- *(mistral)* implements audio transcription api ([#1424](https://github.com/0xPlaygrounds/rig/pull/1424)) (by @renanvieira)
+- Reify SSE state machine ([#1428](https://github.com/0xPlaygrounds/rig/pull/1428)) (by @FayCarsons) - #1428
+- feat(openrouter) Add support for openrouter embeddings ([#1418](https://github.com/0xPlaygrounds/rig/pull/1418)) ([#1419](https://github.com/0xPlaygrounds/rig/pull/1419)) (by @Lochlanna) - #1419
+- *(azure-openai)* Add structured outputs support ([#1407](https://github.com/0xPlaygrounds/rig/pull/1407)) (by @austinsimpsond41)
+- *(openrouter)* support audio and video ([#1413](https://github.com/0xPlaygrounds/rig/pull/1413)) (by @micllam)
+
+### Fixed
+
+- *(rig-1210)* deepseek content should not split into separate messages ([#1460](https://github.com/0xPlaygrounds/rig/pull/1460)) (by @joshua-mo-143)
+- *(rig-1209)* reasoning content dropped from deepseektool messages ([#1459](https://github.com/0xPlaygrounds/rig/pull/1459)) (by @joshua-mo-143)
+- *(openai)* add reasoning_content to StreamingDelta for OpenAI-compatible providers ([#1441](https://github.com/0xPlaygrounds/rig/pull/1441)) (by @Fromsko)
+- properly support PDF doc URLs (anthropic) ([#1431](https://github.com/0xPlaygrounds/rig/pull/1431)) (by @joshua-mo-143) - #1431
+- URL doc returns HTTP 400 (OpenAI) ([#1432](https://github.com/0xPlaygrounds/rig/pull/1432)) (by @joshua-mo-143) - #1432
+- `total_usage` -> `usage` ([#1453](https://github.com/0xPlaygrounds/rig/pull/1453)) (by @0xMochan) - #1453
+- *(deps)* enable reqwest system-proxy for proxy env var support ([#1442](https://github.com/0xPlaygrounds/rig/pull/1442)) (by @Phoenix500526)
+- *(streaming)* disambiguate tool calls sharing the same index from API gateways ([#1443](https://github.com/0xPlaygrounds/rig/pull/1443)) (by @Phoenix500526)
+- allow empty arguments openrouter ([#1438](https://github.com/0xPlaygrounds/rig/pull/1438)) (by @CremboC) - #1438
+
+### Other
+
+- *(rig-1220)* mark rig-eternalai deprecated ([#1472](https://github.com/0xPlaygrounds/rig/pull/1472)) (by @joshua-mo-143)
+- *(rig-1200)* improve Client::builder DX ([#1436](https://github.com/0xPlaygrounds/rig/pull/1436)) (by @FayCarsons)
+- *(deps)* update rmcp types for v0.16 API compatibility ([#1410](https://github.com/0xPlaygrounds/rig/pull/1410)) (by @adrianncovaci)
+
+### Contributors
+
+* @joshua-mo-143
+* @Fromsko
+* @howardpen9
+* @atellou
+* @snaumov
+* @0xMochan
+* @illegalcall
+* @liamwh
+* @Phoenix500526
+* @FayCarsons
+* @CremboC
+* @renanvieira
+* @Lochlanna
+* @austinsimpsond41
+* @adrianncovaci
+* @micllam
+
 ## [0.31.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.30.0...rig-core-v0.31.0) - 2026-02-17
 
 ### Added

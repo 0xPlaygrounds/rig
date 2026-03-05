@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.2.0...rig-scylladb-v0.2.1) - 2026-03-05
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.1.23](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.1.22...rig-scylladb-v0.1.23) - 2026-02-17
 
 ### Other
