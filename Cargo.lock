@@ -2031,12 +2031,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cast"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
-
-[[package]]
 name = "castaway"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2179,18 +2173,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d59ae0466b83e838b81a54256c39d5d7c20b9d7daa10510a242d9b75abd5936e"
 dependencies = [
  "chrono",
- "chrono-tz-build 0.2.1",
- "phf 0.11.3",
-]
-
-[[package]]
-name = "chrono-tz"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93698b29de5e97ad0ae26447b344c482a7284c737d9ddc5f9e52b74a336671bb"
-dependencies = [
- "chrono",
- "chrono-tz-build 0.3.0",
+ "chrono-tz-build",
  "phf 0.11.3",
 ]
 
@@ -2209,17 +2192,6 @@ name = "chrono-tz-build"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "433e39f13c9a060046954e0592a8d0a4bcb1040125cbf91cb8ee58964cfb350f"
-dependencies = [
- "parse-zoneinfo",
- "phf 0.11.3",
- "phf_codegen",
-]
-
-[[package]]
-name = "chrono-tz-build"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c088aee841df9c3041febbb73934cfc39708749bf96dc827e3359cd39ef11b1"
 dependencies = [
  "parse-zoneinfo",
  "phf 0.11.3",
@@ -2401,16 +2373,6 @@ dependencies = [
  "once_cell",
  "unicode-width 0.2.2",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "console_error_panic_hook"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
-dependencies = [
- "cfg-if",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -5883,15 +5845,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "humansize"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb51c9a029ddc91b07a787f1d86b53ccfa49b0e86688c946ebe8d3555685dd7"
-dependencies = [
- "libm",
-]
-
-[[package]]
 name = "humantime"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7806,16 +7759,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minicov"
-version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4869b6a491569605d66d3952bcdf03df789e5b536e5f0cf7758a7f08a55ae24d"
-dependencies = [
- "cc",
- "walkdir",
-]
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8408,12 +8351,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oorandom"
-version = "11.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
-
-[[package]]
 name = "open-fastrlp"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8901,39 +8838,6 @@ checksum = "e0848c601009d37dfa3430c4666e147e49cdcf1b92ecd3e63657d8a5f19da662"
 dependencies = [
  "memchr",
  "ucd-trie",
-]
-
-[[package]]
-name = "pest_derive"
-version = "2.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11f486f1ea21e6c10ed15d5a7c77165d0ee443402f0780849d1768e7d9d6fe77"
-dependencies = [
- "pest",
- "pest_generator",
-]
-
-[[package]]
-name = "pest_generator"
-version = "2.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8040c4647b13b210a963c1ed407c1ff4fdfa01c31d6d2a098218702e6664f94f"
-dependencies = [
- "pest",
- "pest_meta",
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
-
-[[package]]
-name = "pest_meta"
-version = "2.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89815c69d36021a140146f26659a81d6c2afa33d216d736dd4be5381a7362220"
-dependencies = [
- "pest",
- "sha2",
 ]
 
 [[package]]
@@ -10335,7 +10239,7 @@ dependencies = [
  "base64 0.22.1",
  "nanoid",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core",
  "rig-derive",
  "schemars 1.2.1",
  "serde",
@@ -10344,30 +10248,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid 1.20.0",
-]
-
-[[package]]
-name = "rig-core"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e57d16b6bc8ed1a4d7cea51782f1c6320e0a98b01a8de719540251a81b027ffb"
-dependencies = [
- "as-any",
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "futures",
- "glob",
- "mime_guess",
- "ordered-float 5.1.0",
- "reqwest 0.12.28",
- "schemars 0.8.22",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "url",
- "worker",
 ]
 
 [[package]]
@@ -10432,7 +10312,7 @@ dependencies = [
  "indoc",
  "proc-macro2",
  "quote",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "syn 2.0.114",
@@ -10448,7 +10328,7 @@ dependencies = [
  "async-stream",
  "ethers",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10463,7 +10343,7 @@ version = "0.2.23"
 dependencies = [
  "anyhow",
  "fastembed",
- "rig-core 0.31.0",
+ "rig-core",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10481,7 +10361,7 @@ dependencies = [
  "futures",
  "prost 0.13.5",
  "protoc-bin-vendored",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
@@ -10497,7 +10377,7 @@ name = "rig-helixdb"
 version = "0.1.11"
 dependencies = [
  "helix-rs",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
@@ -10513,7 +10393,7 @@ dependencies = [
  "futures",
  "httpmock",
  "lancedb",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
@@ -10525,7 +10405,7 @@ version = "0.1.23"
 dependencies = [
  "anyhow",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
@@ -10541,7 +10421,7 @@ dependencies = [
  "futures",
  "httpmock",
  "mongodb",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "testcontainers",
@@ -10558,7 +10438,7 @@ dependencies = [
  "futures",
  "httpmock",
  "neo4rs",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "term_size",
@@ -10578,7 +10458,7 @@ dependencies = [
  "httpmock",
  "log",
  "pgvector",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "sqlx",
@@ -10597,7 +10477,7 @@ dependencies = [
  "anyhow",
  "httpmock",
  "qdrant-client",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "testcontainers",
@@ -10613,7 +10493,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3vectors",
  "aws-smithy-types",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "tokio",
@@ -10630,7 +10510,7 @@ dependencies = [
  "chrono",
  "futures",
  "httpmock",
- "rig-core 0.31.0",
+ "rig-core",
  "scylla",
  "serde",
  "serde_json",
@@ -10648,7 +10528,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "httpmock",
- "rig-core 0.31.0",
+ "rig-core",
  "rusqlite",
  "serde",
  "serde_json",
@@ -10665,7 +10545,7 @@ name = "rig-surrealdb"
 version = "0.1.29"
 dependencies = [
  "anyhow",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "surrealdb",
@@ -10681,7 +10561,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "reqwest 0.13.2",
- "rig-core 0.31.0",
+ "rig-core",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -10697,7 +10577,7 @@ dependencies = [
  "anyhow",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
- "rig-core 0.31.0",
+ "rig-core",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10705,28 +10585,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "rig-wasm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "bytes",
- "console_error_panic_hook",
- "futures",
- "rig-core 0.17.1",
- "send_wrapper 0.6.0",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "tera",
- "tokio",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "wasm-streams 0.4.2",
 ]
 
 [[package]]
@@ -11315,18 +11173,6 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
-dependencies = [
- "dyn-clone",
- "schemars_derive 0.8.22",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "schemars"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cd191f9397d57d581cddd31014772520aa448f65ef991055d7f61582c65165f"
@@ -11346,21 +11192,9 @@ dependencies = [
  "chrono",
  "dyn-clone",
  "ref-cast",
- "schemars_derive 1.2.1",
+ "schemars_derive",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn 2.0.114",
 ]
 
 [[package]]
@@ -11589,17 +11423,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3753ca04f350fa92d00b6146a3555e63c55388c9ef2e11e09bce2ff1c0b509c6"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "serde-wasm-bindgen"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -11943,16 +11766,6 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
-
-[[package]]
-name = "slug"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "882a80f72ee45de3cc9a5afeb2da0331d58df69e4e7d8eeb5d3c7784ae67e724"
-dependencies = [
- "deunicode",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "smallvec"
@@ -12985,28 +12798,6 @@ dependencies = [
  "futf",
  "mac",
  "utf-8",
-]
-
-[[package]]
-name = "tera"
-version = "1.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8004bca281f2d32df3bacd59bc67b312cb4c70cea46cbd79dbe8ac5ed206722"
-dependencies = [
- "chrono",
- "chrono-tz 0.9.0",
- "globwalk",
- "humansize",
- "lazy_static",
- "percent-encoding",
- "pest",
- "pest_derive",
- "rand 0.8.5",
- "regex",
- "serde",
- "serde_json",
- "slug",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -14350,45 +14141,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm-bindgen-test"
-version = "0.3.58"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45649196a53b0b7a15101d845d44d2dda7374fc1b5b5e2bbf58b7577ff4b346d"
-dependencies = [
- "async-trait",
- "cast",
- "js-sys",
- "libm",
- "minicov",
- "nu-ansi-term",
- "num-traits",
- "oorandom",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test-macro",
- "wasm-bindgen-test-shared",
-]
-
-[[package]]
-name = "wasm-bindgen-test-macro"
-version = "0.3.58"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f579cdd0123ac74b94e1a4a72bd963cf30ebac343f2df347da0b8df24cdebed2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
-
-[[package]]
-name = "wasm-bindgen-test-shared"
-version = "0.2.108"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8145dd1593bf0fb137dbfa85b8be79ec560a447298955877804640e40c2d6ea"
-
-[[package]]
 name = "wasm-encoder"
 version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15152,64 +14904,6 @@ dependencies = [
  "log",
  "num-traits",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "worker"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9320293035d2074f1fb84baf7d79d7932c183dd04a7e0c143dc75db0d0037ac"
-dependencies = [
- "async-trait",
- "bytes",
- "chrono",
- "futures-channel",
- "futures-util",
- "http 1.4.0",
- "http-body 1.0.1",
- "js-sys",
- "matchit 0.7.3",
- "pin-project",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "serde_urlencoded",
- "tokio",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams 0.4.2",
- "web-sys",
- "worker-macros",
- "worker-sys",
-]
-
-[[package]]
-name = "worker-macros"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb37d4f9d99921836a1e4dc21e6041df9b0c2c5fe3c230edddd172a8ef9e251e"
-dependencies = [
- "async-trait",
- "proc-macro2",
- "quote",
- "syn 2.0.114",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-macro-support",
- "worker-sys",
-]
-
-[[package]]
-name = "worker-sys"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07b4e2ca5d405247a986d533bba78c396c941835747977631168b8b05304f1b6"
-dependencies = [
- "cfg-if",
- "js-sys",
- "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]

@@ -4,6 +4,9 @@ members = [
     "rig/*",
     "rig-integrations/*"
 ]
+exclude = [
+    "archived"
+]
 
 [workspace.lints.clippy]
 dbg_macro = "forbid"
