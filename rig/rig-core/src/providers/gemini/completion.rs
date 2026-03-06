@@ -1736,8 +1736,33 @@ pub mod gemini_api_types {
                     obj.clone()
                 };
 
+                let schema_type = infer_type(obj);
+                let items = obj
+                    .get("items")
+                    .and_then(|v| v.clone().try_into().ok())
+                    .map(Box::new);
+
+                // Gemini requires `items` on array-typed schemas; default to
+                // string items when the source schema omits it.
+                let items = if schema_type == "array" && items.is_none() {
+                    Some(Box::new(Schema {
+                        r#type: "string".to_string(),
+                        format: None,
+                        description: None,
+                        nullable: None,
+                        r#enum: None,
+                        max_items: None,
+                        min_items: None,
+                        properties: None,
+                        required: None,
+                        items: None,
+                    }))
+                } else {
+                    items
+                };
+
                 Ok(Schema {
-                    r#type: infer_type(obj),
+                    r#type: schema_type,
                     format: obj.get("format").and_then(|v| v.as_str()).map(String::from),
                     description: obj
                         .get("description")
@@ -1775,10 +1800,7 @@ pub mod gemini_api_types {
                                 .filter_map(|v| v.as_str().map(String::from))
                                 .collect()
                         }),
-                    items: obj
-                        .get("items")
-                        .and_then(|v| v.clone().try_into().ok())
-                        .map(Box::new),
+                    items,
                 })
             } else {
                 Err(CompletionError::ResponseError(
@@ -2343,6 +2365,29 @@ mod tests {
             assert_eq!(items.r#type, "object");
             assert!(items.properties.is_some());
         }
+    }
+
+    #[test]
+    fn test_array_without_items_gets_default() {
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "service_ids": {
+                    "type": "array",
+                    "description": "A list of service IDs"
+                }
+            }
+        });
+
+        let schema: Schema = schema_json.try_into().unwrap();
+        let props = schema.properties.unwrap();
+        let service_ids = props.get("service_ids").unwrap();
+        assert_eq!(service_ids.r#type, "array");
+        let items = service_ids
+            .items
+            .as_ref()
+            .expect("array schema missing items should get a default");
+        assert_eq!(items.r#type, "string");
     }
 
     #[test]
