@@ -227,7 +227,29 @@ impl ProviderClient for CompletionsClient {
 
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
+    /// Direct message field (some APIs return { "message": "..." })
+    #[serde(default)]
     pub(crate) message: String,
+    /// Nested error field (OpenAI standard: { "error": { "message": "..." } })
+    #[serde(default)]
+    pub(crate) error: Option<ApiErrorDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApiErrorDetail {
+    pub(crate) message: String,
+    #[serde(default)]
+    pub(crate) r#type: Option<String>,
+}
+
+impl ApiErrorResponse {
+    pub(crate) fn error_message(&self) -> &str {
+        if let Some(ref detail) = self.error {
+            &detail.message
+        } else {
+            &self.message
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

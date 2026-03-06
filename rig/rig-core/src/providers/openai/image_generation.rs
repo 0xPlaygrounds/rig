@@ -117,7 +117,7 @@ where
 
         match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.error_message().to_string())),
         }
     }
 }
