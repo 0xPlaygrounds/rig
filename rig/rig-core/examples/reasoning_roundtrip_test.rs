@@ -71,10 +71,11 @@ fn build_anthropic() -> anyhow::Result<
     use rig::providers::anthropic;
     let client = anthropic::Client::from_env();
     Ok(TestAgent {
-        model: client.completion_model("claude-sonnet-4-5-20250929"),
+        model: client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6),
         preamble: "You are a helpful math tutor. Be concise.".into(),
         additional_params: Some(serde_json::json!({
-            "thinking": { "type": "enabled", "budget_tokens": 2048 }
+            "thinking": { "type": "adaptive" },
+            "output_config": { "effort": "high" }
         })),
     })
 }
