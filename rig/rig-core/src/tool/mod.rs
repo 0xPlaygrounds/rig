@@ -355,6 +355,193 @@ pub mod rmcp {
     }
 }
 
+#[cfg(feature = "turbomcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+pub mod turbomcp {
+    use crate::completion::ToolDefinition;
+    use crate::tool::ToolDyn;
+    use crate::tool::ToolError;
+    use crate::wasm_compat::WasmBoxedFuture;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use turbomcp_client::{
+        CallToolResult, Client, ContentBlock, ResourceContent, Result as McpResult, Tool, Transport,
+    };
+
+    /// Trait for abstracting over TurboMCP client tool calling.
+    ///
+    /// This trait allows storing a type-erased client that can call tools
+    /// regardless of the underlying transport type (HTTP, WebSocket, TCP, etc.).
+    pub trait TurboMcpToolCaller: Send + Sync {
+        fn call_tool(
+            &self,
+            name: &str,
+            arguments: Option<HashMap<String, serde_json::Value>>,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = McpResult<CallToolResult>> + Send + '_>,
+        >;
+    }
+
+    impl<T> TurboMcpToolCaller for Client<T>
+    where
+        T: Transport + 'static,
+    {
+        fn call_tool(
+            &self,
+            name: &str,
+            arguments: Option<HashMap<String, serde_json::Value>>,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = McpResult<CallToolResult>> + Send + '_>,
+        > {
+            let name = name.to_string();
+            Box::pin(async move { self.call_tool(&name, arguments, None).await })
+        }
+    }
+
+    /// A wrapper around a TurboMCP tool that implements Rig's ToolDyn trait.
+    ///
+    /// Bridges TurboMCP's tool system with Rig's tool abstraction,
+    /// allowing TurboMCP tools to be used seamlessly with Rig agents.
+    #[derive(Clone)]
+    pub struct TurboMcpTool {
+        definition: Tool,
+        client: Arc<dyn TurboMcpToolCaller>,
+    }
+
+    impl TurboMcpTool {
+        pub fn from_mcp_server<T>(definition: Tool, client: Client<T>) -> Self
+        where
+            T: Transport + 'static,
+        {
+            Self {
+                definition,
+                client: Arc::new(client),
+            }
+        }
+
+        pub fn from_client_arc(definition: Tool, client: Arc<dyn TurboMcpToolCaller>) -> Self {
+            Self { definition, client }
+        }
+    }
+
+    impl From<&Tool> for ToolDefinition {
+        fn from(val: &Tool) -> Self {
+            Self {
+                name: val.name.clone(),
+                description: val.description.clone().unwrap_or_default(),
+                parameters: serde_json::to_value(&val.input_schema).unwrap_or_default(),
+            }
+        }
+    }
+
+    impl From<Tool> for ToolDefinition {
+        fn from(val: Tool) -> Self {
+            Self {
+                name: val.name.clone(),
+                description: val.description.clone().unwrap_or_default(),
+                parameters: serde_json::to_value(&val.input_schema).unwrap_or_default(),
+            }
+        }
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("TurboMCP tool error: {0}")]
+    pub struct TurboMcpToolError(String);
+
+    impl From<TurboMcpToolError> for ToolError {
+        fn from(e: TurboMcpToolError) -> Self {
+            ToolError::ToolCallError(Box::new(e))
+        }
+    }
+
+    impl ToolDyn for TurboMcpTool {
+        fn name(&self) -> String {
+            self.definition.name.clone()
+        }
+
+        fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
+            Box::pin(async move {
+                ToolDefinition {
+                    name: self.definition.name.clone(),
+                    description: self.definition.description.clone().unwrap_or_default(),
+                    parameters: serde_json::to_value(&self.definition.input_schema)
+                        .unwrap_or_default(),
+                }
+            })
+        }
+
+        fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
+            let name = self.definition.name.clone();
+            let arguments: Option<HashMap<String, serde_json::Value>> =
+                serde_json::from_str(&args).ok();
+
+            Box::pin(async move {
+                let result = self
+                    .client
+                    .call_tool(&name, arguments)
+                    .await
+                    .map_err(|e| TurboMcpToolError(format!("Tool returned an error: {e}")))?;
+
+                if let Some(true) = result.is_error {
+                    let error_msg = result
+                        .content
+                        .iter()
+                        .filter_map(|c| {
+                            if let ContentBlock::Text(text) = c {
+                                Some(text.text.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    if !error_msg.is_empty() {
+                        return Err(TurboMcpToolError(error_msg).into());
+                    } else {
+                        return Err(
+                            TurboMcpToolError("No error message returned".to_string()).into()
+                        );
+                    }
+                }
+
+                Ok(result
+                    .content
+                    .into_iter()
+                    .map(|c| match c {
+                        ContentBlock::Text(text) => text.text,
+                        ContentBlock::Image(img) => {
+                            format!("data:{};base64,{}", img.mime_type, img.data)
+                        }
+                        ContentBlock::Resource(res) => match res.resource {
+                            ResourceContent::Text(text_res) => {
+                                format!("resource:{}", text_res.uri)
+                            }
+                            ResourceContent::Blob(blob_res) => {
+                                format!("resource:{}", blob_res.uri)
+                            }
+                        },
+                        ContentBlock::ResourceLink(link) => {
+                            format!("resource-link:{}", link.uri)
+                        }
+                        ContentBlock::Audio(audio) => {
+                            format!("data:{};base64,{}", audio.mime_type, audio.data)
+                        }
+                        // ToolUse and ToolResult are MCP 2025-11-25 content types
+                        // for nested tool invocations; convert to descriptive text
+                        ContentBlock::ToolUse(tu) => {
+                            format!("tool-use:{}:{}", tu.name, tu.id)
+                        }
+                        ContentBlock::ToolResult(tr) => {
+                            format!("tool-result:{}", tr.tool_use_id)
+                        }
+                    })
+                    .collect::<String>())
+            })
+        }
+    }
+}
+
 /// Wrapper trait to allow for dynamic dispatch of raggable tools
 pub trait ToolEmbeddingDyn: ToolDyn {
     fn context(&self) -> serde_json::Result<serde_json::Value>;
@@ -697,5 +884,336 @@ mod tests {
         toolset.delete_tool("add");
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
+    }
+}
+
+#[cfg(all(test, feature = "turbomcp"))]
+mod turbomcp_tests {
+    use super::turbomcp::*;
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use turbomcp_client::{CallToolResult, ContentBlock, Tool};
+    use turbomcp_protocol::types::content::{
+        AudioContent, ImageContent, ResourceLink, TextContent,
+    };
+
+    /// Mock TurboMcpToolCaller for testing without a real MCP server
+    struct MockToolCaller {
+        response: CallToolResult,
+    }
+
+    impl MockToolCaller {
+        fn success(text: &str) -> Self {
+            Self {
+                response: CallToolResult {
+                    content: vec![ContentBlock::Text(TextContent {
+                        text: text.to_string(),
+                        annotations: None,
+                        meta: None,
+                    })],
+                    is_error: None,
+                    structured_content: None,
+                    _meta: None,
+                    task_id: None,
+                },
+            }
+        }
+
+        fn error(msg: &str) -> Self {
+            Self {
+                response: CallToolResult {
+                    content: vec![ContentBlock::Text(TextContent {
+                        text: msg.to_string(),
+                        annotations: None,
+                        meta: None,
+                    })],
+                    is_error: Some(true),
+                    structured_content: None,
+                    _meta: None,
+                    task_id: None,
+                },
+            }
+        }
+
+        fn with_content(content: Vec<ContentBlock>) -> Self {
+            Self {
+                response: CallToolResult {
+                    content,
+                    is_error: None,
+                    structured_content: None,
+                    _meta: None,
+                    task_id: None,
+                },
+            }
+        }
+    }
+
+    impl TurboMcpToolCaller for MockToolCaller {
+        fn call_tool(
+            &self,
+            _name: &str,
+            _arguments: Option<HashMap<String, serde_json::Value>>,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = turbomcp_client::Result<CallToolResult>>
+                    + Send
+                    + '_,
+            >,
+        > {
+            let result = self.response.clone();
+            Box::pin(async move { Ok(result) })
+        }
+    }
+
+    fn make_tool(name: &str, description: &str) -> Tool {
+        serde_json::from_value(serde_json::json!({
+            "name": name,
+            "description": description,
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                },
+                "required": ["x", "y"]
+            }
+        }))
+        .expect("valid tool JSON")
+    }
+
+    #[test]
+    fn test_tool_definition_from_ref() {
+        let tool = make_tool("add", "Add two numbers");
+        let def: ToolDefinition = (&tool).into();
+
+        assert_eq!(def.name, "add");
+        assert_eq!(def.description, "Add two numbers");
+        assert!(def.parameters.is_object());
+    }
+
+    #[test]
+    fn test_tool_definition_from_owned() {
+        let tool = make_tool("multiply", "Multiply two numbers");
+        let def: ToolDefinition = tool.into();
+
+        assert_eq!(def.name, "multiply");
+        assert_eq!(def.description, "Multiply two numbers");
+    }
+
+    #[test]
+    fn test_tool_definition_empty_description() {
+        let tool: Tool = serde_json::from_value(serde_json::json!({
+            "name": "no_desc",
+            "inputSchema": { "type": "object" }
+        }))
+        .expect("valid tool JSON");
+        let def: ToolDefinition = tool.into();
+
+        assert_eq!(def.name, "no_desc");
+        assert_eq!(def.description, "");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_name() {
+        let tool = make_tool("my_tool", "A test tool");
+        let caller = MockToolCaller::success("ok");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        assert_eq!(ToolDyn::name(&mcp_tool), "my_tool");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_definition() {
+        let tool = make_tool("calc", "Calculate things");
+        let caller = MockToolCaller::success("ok");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let def = ToolDyn::definition(&mcp_tool, "prompt".into()).await;
+        assert_eq!(def.name, "calc");
+        assert_eq!(def.description, "Calculate things");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_text_result() {
+        let tool = make_tool("add", "Add");
+        let caller = MockToolCaller::success("42");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{"x": 1, "y": 2}"#.to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "42");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_error_result() {
+        let tool = make_tool("fail", "Fail");
+        let caller = MockToolCaller::error("something went wrong");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{}"#.to_string()).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("something went wrong"));
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_error_no_message() {
+        let caller = MockToolCaller {
+            response: CallToolResult {
+                content: vec![ContentBlock::Image(ImageContent {
+                    data: "abc".to_string(),
+                    mime_type: "image/png".to_string(),
+                    annotations: None,
+                    meta: None,
+                })],
+                is_error: Some(true),
+                structured_content: None,
+                _meta: None,
+                task_id: None,
+            },
+        };
+        let tool = make_tool("fail2", "Fail2");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{}"#.to_string()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No error message"));
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_image_content() {
+        let tool = make_tool("img", "Image");
+        let caller = MockToolCaller::with_content(vec![ContentBlock::Image(ImageContent {
+            data: "base64data".to_string(),
+            mime_type: "image/png".to_string(),
+            annotations: None,
+            meta: None,
+        })]);
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{}"#.to_string()).await.unwrap();
+        assert_eq!(result, "data:image/png;base64,base64data");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_audio_content() {
+        let tool = make_tool("audio", "Audio");
+        let caller = MockToolCaller::with_content(vec![ContentBlock::Audio(AudioContent {
+            data: "audiodata".to_string(),
+            mime_type: "audio/wav".to_string(),
+            annotations: None,
+            meta: None,
+        })]);
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{}"#.to_string()).await.unwrap();
+        assert_eq!(result, "data:audio/wav;base64,audiodata");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_resource_link_content() {
+        let tool = make_tool("reslink", "ResLink");
+        let link: ResourceLink = serde_json::from_value(serde_json::json!({
+            "uri": "file:///tmp/test.txt",
+            "name": "test"
+        }))
+        .expect("valid resource link JSON");
+        let caller = MockToolCaller::with_content(vec![ContentBlock::ResourceLink(link)]);
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{}"#.to_string()).await.unwrap();
+        assert_eq!(result, "resource-link:file:///tmp/test.txt");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_mixed_content() {
+        let tool = make_tool("mixed", "Mixed");
+        let caller = MockToolCaller::with_content(vec![
+            ContentBlock::Text(TextContent {
+                text: "Hello ".to_string(),
+                annotations: None,
+                meta: None,
+            }),
+            ContentBlock::Text(TextContent {
+                text: "World".to_string(),
+                annotations: None,
+                meta: None,
+            }),
+        ]);
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let result = ToolDyn::call(&mcp_tool, r#"{}"#.to_string()).await.unwrap();
+        assert_eq!(result, "Hello World");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_call_invalid_json_args() {
+        let tool = make_tool("t", "T");
+        let caller = MockToolCaller::success("ok");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        // Invalid JSON args should still work (parsed as None)
+        let result = ToolDyn::call(&mcp_tool, "not json".to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "ok");
+    }
+
+    #[test]
+    fn test_turbomcp_tool_clone() {
+        let tool = make_tool("cloneable", "Clone");
+        let caller = MockToolCaller::success("ok");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let cloned = mcp_tool.clone();
+        assert_eq!(ToolDyn::name(&cloned), "cloneable");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_in_toolset() {
+        let tool = make_tool("set_tool", "Tool in set");
+        let caller = MockToolCaller::success("result");
+        let mcp_tool = TurboMcpTool::from_client_arc(tool, Arc::new(caller));
+
+        let toolset = ToolSet::from_tools(vec![mcp_tool]);
+        assert!(toolset.contains("set_tool"));
+
+        let result = toolset.call("set_tool", r#"{}"#.to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "result");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_multiple_tools_shared_client() {
+        let caller: Arc<dyn TurboMcpToolCaller> = Arc::new(MockToolCaller::success("shared"));
+
+        let tool1 = TurboMcpTool::from_client_arc(make_tool("t1", "Tool 1"), caller.clone());
+        let tool2 = TurboMcpTool::from_client_arc(make_tool("t2", "Tool 2"), caller.clone());
+
+        let toolset = ToolSet::from_tools(vec![tool1, tool2]);
+        assert!(toolset.contains("t1"));
+        assert!(toolset.contains("t2"));
+        assert_eq!(toolset.tools.len(), 2);
+
+        let r1 = toolset.call("t1", r#"{}"#.to_string()).await.unwrap();
+        let r2 = toolset.call("t2", r#"{}"#.to_string()).await.unwrap();
+        assert_eq!(r1, "shared");
+        assert_eq!(r2, "shared");
+    }
+
+    #[tokio::test]
+    async fn test_turbomcp_tool_definitions_in_toolset() {
+        let caller: Arc<dyn TurboMcpToolCaller> = Arc::new(MockToolCaller::success("x"));
+
+        let tool1 = TurboMcpTool::from_client_arc(make_tool("alpha", "Alpha tool"), caller.clone());
+        let tool2 = TurboMcpTool::from_client_arc(make_tool("beta", "Beta tool"), caller);
+
+        let toolset = ToolSet::from_tools(vec![tool1, tool2]);
+        let defs = toolset.get_tool_definitions().await.unwrap();
+
+        assert_eq!(defs.len(), 2);
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert!(names.contains(&"alpha"));
+        assert!(names.contains(&"beta"));
     }
 }
