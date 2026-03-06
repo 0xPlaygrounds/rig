@@ -278,17 +278,17 @@ pub mod rmcp {
 
         fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
             let name = self.definition.name.clone();
-            let arguments = serde_json::from_str(&args).unwrap_or_default();
+            let arguments: Option<rmcp::model::JsonObject> =
+                serde_json::from_str(&args).unwrap_or_default();
 
             Box::pin(async move {
+                let mut params = rmcp::model::CallToolRequestParams::new(name);
+                if let Some(args) = arguments {
+                    params = params.with_arguments(args);
+                }
                 let result = self
                     .client
-                    .call_tool(rmcp::model::CallToolRequestParams {
-                        name,
-                        arguments,
-                        meta: None,
-                        task: None,
-                    })
+                    .call_tool(params)
                     .await
                     .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
