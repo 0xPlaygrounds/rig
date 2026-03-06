@@ -214,8 +214,7 @@ pub mod turbomcp {
     use std::collections::HashMap;
     use std::sync::Arc;
     use turbomcp_client::{
-        CallToolResult, Client, ContentBlock, ResourceContent, Result as McpResult, Tool,
-        Transport,
+        CallToolResult, Client, ContentBlock, ResourceContent, Result as McpResult, Tool, Transport,
     };
 
     /// Trait for abstracting over TurboMCP client tool calling.
@@ -350,7 +349,7 @@ pub mod turbomcp {
                         return Err(TurboMcpToolError(error_msg).into());
                     } else {
                         return Err(
-                            TurboMcpToolError("No error message returned".to_string()).into(),
+                            TurboMcpToolError("No error message returned".to_string()).into()
                         );
                     }
                 }
@@ -745,9 +744,8 @@ mod turbomcp_tests {
     use std::sync::Arc;
     use turbomcp_client::{CallToolResult, ContentBlock, Tool};
     use turbomcp_protocol::types::content::{
-        AudioContent, EmbeddedResource, ImageContent, ResourceLink, TextContent,
+        AudioContent, ImageContent, ResourceLink, TextContent,
     };
-    use turbomcp_protocol::types::tools::ToolInputSchema;
 
     /// Mock TurboMcpToolCaller for testing without a real MCP server
     struct MockToolCaller {

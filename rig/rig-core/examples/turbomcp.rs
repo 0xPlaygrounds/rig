@@ -38,9 +38,7 @@ async fn main() -> anyhow::Result<()> {
 
     let transport = StreamableHttpClientTransport::new(config);
 
-    let client = ClientBuilder::new()
-        .with_tools(true)
-        .build_sync(transport);
+    let client = ClientBuilder::new().with_tools(true).build_sync(transport);
 
     // Initialize the client
     tracing::info!("Connecting to TurboMCP server...");
@@ -55,7 +53,9 @@ async fn main() -> anyhow::Result<()> {
     );
 
     if tools.is_empty() {
-        tracing::warn!("No tools available from server. Make sure the server has tools registered.");
+        tracing::warn!(
+            "No tools available from server. Make sure the server has tools registered."
+        );
         return Ok(());
     }
 
