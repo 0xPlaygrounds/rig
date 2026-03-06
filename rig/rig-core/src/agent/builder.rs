@@ -463,8 +463,8 @@ where
     where
         T: turbomcp_client::Transport + 'static,
     {
-        use std::sync::Arc;
         use crate::tool::turbomcp::TurboMcpToolCaller;
+        use std::sync::Arc;
 
         let client_arc: Arc<dyn TurboMcpToolCaller> = Arc::new(client);
 
@@ -663,8 +663,8 @@ where
     where
         T: turbomcp_client::Transport + 'static,
     {
-        use std::sync::Arc;
         use crate::tool::turbomcp::TurboMcpToolCaller;
+        use std::sync::Arc;
 
         let client_arc: Arc<dyn TurboMcpToolCaller> = Arc::new(client);
 
