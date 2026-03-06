@@ -2,15 +2,18 @@ use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+    Embed,
+    embeddings::EmbeddingsBuilder,
+    providers::openai::Client,
+    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlite_vec::sqlite3_vec_init;
 use tokio_rusqlite::Connection;
 
-#[derive(Embed, Clone, Debug, Deserialize)]
+#[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 struct Document {
     id: String,
     #[embed]
@@ -91,10 +94,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Initialize SQLite vector store
-    let vector_store = SqliteVectorStore::new(conn, &model).await?;
+    let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::new(conn, &model).await?;
 
     // Add embeddings to vector store
-    vector_store.add_rows(embeddings).await?;
+    vector_store.insert_documents(embeddings).await?;
 
     // Create a vector index on our vector store
     let index = vector_store.index(model);
