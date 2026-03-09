@@ -105,7 +105,8 @@ impl CompletionModel {
             .set_inference_config(request.inference_config())
             .set_tool_config(tool_config)
             .set_system(request.system_prompt()?)
-            .set_messages(Some(prompt_with_history));
+            .set_messages(Some(prompt_with_history))
+            .set_output_config(request.output_config());
 
         let response = converse_builder.send().await.map_err(|sdk_error| {
             Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
