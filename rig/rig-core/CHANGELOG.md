@@ -7,15 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- support Anthropic adaptive thinking for Claude 4.6 (`thinking.type = "adaptive"` with `output_config.effort`) with typed request mapping for both streaming and non-streaming paths
-- add new Claude 4.6 model constants: `claude-opus-4-6`, `claude-sonnet-4-6`
-
-### Fixed
-
-- preserve legacy Anthropic manual thinking support (`thinking.type = "enabled"` and `budget_tokens`) in both streaming and non-streaming request conversion
-- add model-aware validation for adaptive thinking / `output_config.effort: "max"` on known unsupported Anthropic models (both streaming and non-streaming) while preserving pass-through for unknown future model variants
 
 ## [0.32.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.31.0...rig-core-v0.32.0) - 2026-03-05
 
