@@ -96,14 +96,6 @@ impl Provider for GeminiInteractionsExt {
 
     const VERIFY_PATH: &'static str = "/v1beta/models";
 
-    fn build<H>(
-        builder: &client::ClientBuilder<Self::Builder, GeminiApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self {
-            api_key: builder.get_api_key().0.clone(),
-        })
-    }
-
     fn build_uri(&self, base_url: &str, path: &str, transport: Transport) -> String {
         let trimmed = path.trim_start_matches('/');
         match transport {
@@ -169,10 +161,24 @@ impl ProviderBuilder for GeminiBuilder {
 }
 
 impl ProviderBuilder for GeminiInteractionsBuilder {
-    type Output = GeminiInteractionsExt;
+    type Extension<H>
+        = GeminiInteractionsExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = GeminiApiKey;
 
     const BASE_URL: &'static str = GEMINI_API_BASE_URL;
+
+    fn build<H>(
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(GeminiInteractionsExt {
+            api_key: builder.get_api_key().0.clone(),
+        })
+    }
 }
 
 impl ProviderClient for Client {
