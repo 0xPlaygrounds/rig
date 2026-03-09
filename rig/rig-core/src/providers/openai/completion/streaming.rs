@@ -75,6 +75,11 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .map_or(0, |d| d.cached_tokens as u64);
         Some(usage)
     }
 }
@@ -533,6 +538,60 @@ mod tests {
         let usage = final_usage.expect("expected a final response with usage");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_cached_input_tokens_populated() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        // Usage chunk includes prompt_tokens_details with cached_tokens.
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut final_response = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+                final_response = Some(res);
+                break;
+            }
+        }
+
+        let res = final_response.expect("expected a final response");
+
+        // Verify provider-level usage has the cached_tokens
+        assert_eq!(
+            res.usage
+                .prompt_tokens_details
+                .as_ref()
+                .unwrap()
+                .cached_tokens,
+            80
+        );
+
+        // Verify core Usage also has cached_input_tokens via GetTokenUsage
+        let core_usage = res.token_usage().expect("token_usage should return Some");
+        assert_eq!(core_usage.cached_input_tokens, 80);
+        assert_eq!(core_usage.input_tokens, 100);
+        assert_eq!(core_usage.total_tokens, 110);
     }
 
     /// Reproduces the bug where a proxy/gateway sends multiple parallel tool
