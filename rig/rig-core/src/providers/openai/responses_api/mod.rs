@@ -1496,11 +1496,13 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 data,
                                 ..
                             }) => {
-                                let (file_data, file_url) = match data {
-                                    DocumentSourceKind::Base64(data) => {
-                                        (Some(format!("data:application/pdf;base64,{data}")), None)
-                                    }
-                                    DocumentSourceKind::Url(url) => (None, Some(url)),
+                                let (file_data, file_url, filename) = match data {
+                                    DocumentSourceKind::Base64(data) => (
+                                        Some(format!("data:application/pdf;base64,{data}")),
+                                        None,
+                                        Some("document.pdf".to_string()),
+                                    ),
+                                    DocumentSourceKind::Url(url) => (None, Some(url), None),
                                     DocumentSourceKind::Raw(_) => {
                                         return Err(MessageError::ConversionError(
                                             "Raw files not supported, encode as base64 first"
@@ -1517,7 +1519,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 Ok(UserContent::InputFile {
                                     file_url,
                                     file_data,
-                                    filename: Some("document.pdf".into()),
+                                    filename,
                                 })
                             }
                             message::UserContent::Document(message::Document {

@@ -1,12 +1,26 @@
-//! Moonshot API client and Rig integration
+//! Moonshot AI (Kimi) API client and Rig integration
 //!
 //! # Example
+//! ```no_run
+//! use rig::providers::moonshot;
+//! use rig::client::CompletionClient;
+//!
+//! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
+//!
+//! let kimi_model = client.completion_model(moonshot::KIMI_K2_5);
 //! ```
+//!
+//! # Custom base URL
+//! The default base URL is `https://api.moonshot.cn/v1`. For global access,
+//! use `https://api.moonshot.ai/v1`:
+//! ```no_run
 //! use rig::providers::moonshot;
 //!
-//! let client = moonshot::Client::new("YOUR_API_KEY");
-//!
-//! let moonshot_model = client.completion_model(moonshot::MOONSHOT_CHAT);
+//! let client = moonshot::Client::builder()
+//!     .api_key("YOUR_API_KEY")
+//!     .base_url("https://api.moonshot.ai/v1")
+//!     .build()
+//!     .expect("Failed to build Moonshot client");
 //! ```
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -114,7 +128,14 @@ enum ApiResponse<T> {
 // Moonshot Completion API
 // ================================================================
 
+/// Moonshot v1 128K context model (legacy)
 pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
+
+/// Kimi K2 — Mixture-of-Experts model (1T total params, 32B active)
+pub const KIMI_K2: &str = "kimi-k2";
+
+/// Kimi K2.5 — Native multimodal agentic model with 256K context
+pub const KIMI_K2_5: &str = "kimi-k2.5";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct MoonshotCompletionRequest {

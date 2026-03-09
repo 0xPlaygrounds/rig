@@ -1,4 +1,15 @@
-# rig-wasm: Rig, but it's WASM!
+# rig-wasm
+
+> **⚠️ UNMAINTAINED — This crate is no longer actively maintained and has been archived.**
+>
+> `rig-wasm` was an experimental set of WASM bindings to Rig. It is no longer
+> being developed or supported. The code is preserved here for reference only.
+>
+> If you are interested in an npm package for Rig to be used via WASM, please open an issue in the
+> main repository to discuss.
+
+---
+
 WASM bindings to Rig.
 
 To install, run the following command:
@@ -9,7 +20,7 @@ npm i rig-wasm
 
 Examples can be found in the `examples` folder.
 
-Please note that this package is extremely experimental at the moment and as such, you may find that there are DX papercuts here and there differing in severity. Opening a ticket for any issues you find would be hugely helpful.
+Please note that this package was extremely experimental and is no longer maintained.
 
 Like the original `rig` crates, there will also likely be breaking changes between minor versions. Migration paths will be provided between each version if required.
 
