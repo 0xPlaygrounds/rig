@@ -578,7 +578,14 @@ mod tests {
         let res = final_response.expect("expected a final response");
 
         // Verify provider-level usage has the cached_tokens
-        assert_eq!(res.usage.prompt_tokens_details.as_ref().unwrap().cached_tokens, 80);
+        assert_eq!(
+            res.usage
+                .prompt_tokens_details
+                .as_ref()
+                .unwrap()
+                .cached_tokens,
+            80
+        );
 
         // Verify core Usage also has cached_input_tokens via GetTokenUsage
         let core_usage = res.token_usage().expect("token_usage should return Some");
