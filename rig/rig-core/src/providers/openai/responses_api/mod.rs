@@ -81,11 +81,16 @@ impl CompletionRequest {
         self
     }
 
+    /// Adds a provider-native hosted tool (e.g. `web_search`, `file_search`, `computer_use`)
+    /// to the request. These tools are executed by OpenAI's infrastructure, not by Rig's
+    /// agent loop.
     pub fn with_tool(mut self, tool: impl Into<ResponsesToolDefinition>) -> Self {
         self.tools.push(tool.into());
         self
     }
 
+    /// Adds multiple provider-native hosted tools to the request. These tools are executed
+    /// by OpenAI's infrastructure, not by Rig's agent loop.
     pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
     where
         I: IntoIterator<Item = Tool>,
