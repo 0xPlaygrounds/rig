@@ -341,7 +341,8 @@ impl Neo4jClient {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexOptions {
-            _index_provider: String,
+            #[allow(dead_code)]
+            index_provider: Option<String>,
             index_config: IndexConfigDetails,
         }
 

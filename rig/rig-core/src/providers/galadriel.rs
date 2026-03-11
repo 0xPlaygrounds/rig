@@ -49,18 +49,6 @@ impl Provider for GaladrielExt {
 
     /// There is currently no way to verify a Galadriel api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
-
-    fn build<H>(
-        builder: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        let GaladrielBuilder { fine_tune_api_key } = builder.ext().clone();
-
-        Ok(Self { fine_tune_api_key })
-    }
 }
 
 impl<H> Capabilities<H> for GaladrielExt {
@@ -84,10 +72,24 @@ impl DebugExt for GaladrielExt {
 }
 
 impl ProviderBuilder for GaladrielBuilder {
-    type Output = GaladrielExt;
+    type Extension<H>
+        = GaladrielExt
+    where
+        H: HttpClientExt;
     type ApiKey = GaladrielApiKey;
 
     const BASE_URL: &'static str = GALADRIEL_API_BASE_URL;
+
+    fn build<H>(
+        builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        let GaladrielBuilder { fine_tune_api_key } = builder.ext().clone();
+
+        Ok(GaladrielExt { fine_tune_api_key })
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GaladrielExt, H>;
@@ -660,12 +662,11 @@ where
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::galadriel::Client =
+        let _client =
             crate::providers::galadriel::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::galadriel::Client =
-            crate::providers::galadriel::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::galadriel::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

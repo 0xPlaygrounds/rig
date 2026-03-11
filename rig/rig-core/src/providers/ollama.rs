@@ -8,7 +8,7 @@
 //!
 //! // Create a new Ollama client (defaults to http://localhost:11434)
 //! // In the case of ollama, no API key is necessary, so we use the `Nothing` struct
-//! let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
+//! let client = ollama::Client::new(Nothing).unwrap();
 //!
 //! // Create an agent with a preamble
 //! let comedian_agent = client
@@ -66,18 +66,7 @@ pub struct OllamaBuilder;
 
 impl Provider for OllamaExt {
     type Builder = OllamaBuilder;
-
     const VERIFY_PATH: &'static str = "api/tags";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for OllamaExt {
@@ -95,10 +84,22 @@ impl<H> Capabilities<H> for OllamaExt {
 impl DebugExt for OllamaExt {}
 
 impl ProviderBuilder for OllamaBuilder {
-    type Output = OllamaExt;
+    type Extension<H>
+        = OllamaExt
+    where
+        H: HttpClientExt;
     type ApiKey = Nothing;
 
     const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(OllamaExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
@@ -1635,12 +1636,10 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::ollama::Client =
-            crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
-        let _client_from_builder: crate::providers::ollama::Client =
-            crate::providers::ollama::Client::builder()
-                .api_key(Nothing)
-                .build()
-                .expect("Client::builder() failed");
+        let _client = crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
+        let _client_from_builder = crate::providers::ollama::Client::builder()
+            .api_key(Nothing)
+            .build()
+            .expect("Client::builder() failed");
     }
 }

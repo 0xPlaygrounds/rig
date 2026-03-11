@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [0.1.11](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.10...rig-derive-v0.1.11) - 2026-03-05
+
+### Other
+
+- update Cargo.toml dependencies
+
 ## [0.1.10](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.9...rig-derive-v0.1.10) - 2025-12-15
 
 ### Other

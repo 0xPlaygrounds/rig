@@ -125,11 +125,12 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    /// Enable returning extended details for responses (includes aggregated token usage)
+    /// Enable returning extended details for responses (includes aggregated token usage
+    /// and the full message history accumulated during the agent loop).
     ///
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
-    /// of conversation.
+    /// of conversation and inspecting the full message exchange.
     pub fn extended_details(self) -> PromptRequest<'a, Extended, M, P> {
         PromptRequest {
             prompt: self.prompt,
@@ -240,17 +241,45 @@ where
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct PromptResponse {
     pub output: String,
-    pub total_usage: Usage,
+    pub usage: Usage,
+    /// The message history accumulated during the agent loop.
+    /// Always populated when using `extended_details()`.
+    pub messages: Option<Vec<Message>>,
+}
+
+impl std::fmt::Display for PromptResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.output.fmt(f)
+    }
 }
 
 impl PromptResponse {
-    pub fn new(output: impl Into<String>, total_usage: Usage) -> Self {
+    pub fn new(output: impl Into<String>, usage: Usage) -> Self {
         Self {
             output: output.into(),
-            total_usage,
+            usage,
+            messages: None,
         }
+    }
+
+    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
+        self.messages = Some(messages);
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedPromptResponse<T> {
+    pub output: T,
+    pub usage: Usage,
+}
+
+impl<T> TypedPromptResponse<T> {
+    pub fn new(output: T, usage: Usage) -> Self {
+        Self { output, usage }
     }
 }
 
@@ -417,7 +446,9 @@ where
                 agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
 
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
-                return Ok(PromptResponse::new(merged_texts, usage));
+                return Ok(
+                    PromptResponse::new(merged_texts, usage).with_messages(chat_history.to_vec())
+                );
             }
 
             let hook = self.hook.clone();
@@ -584,6 +615,9 @@ use serde::de::DeserializeOwned;
 /// - Automatic JSON schema generation from the target type `T`
 /// - Automatic deserialization of the response into `T`
 ///
+/// The type parameter `S` represents the state of the request (Standard or Extended).
+/// Use `.extended_details()` to transition to Extended state for usage tracking.
+///
 /// # Example
 /// ```rust,ignore
 /// let forecast: WeatherForecast = agent
@@ -591,17 +625,18 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<'a, T, M, P>
+pub struct TypedPromptRequest<'a, T, S, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    inner: PromptRequest<'a, Standard, M, P>,
+    inner: PromptRequest<'a, S, M, P>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a, T, M, P> TypedPromptRequest<'a, T, M, P>
+impl<'a, T, M, P> TypedPromptRequest<'a, T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
@@ -616,6 +651,26 @@ where
         inner.output_schema = Some(schema_for!(T));
         Self {
             inner,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, T, S, M, P> TypedPromptRequest<'a, T, S, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    S: PromptType,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
+    /// Enable returning extended details for responses (includes aggregated token usage).
+    ///
+    /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
+    /// instead of just `T`. This is useful for tracking token usage across multiple turns
+    /// of conversation.
+    pub fn extended_details(self) -> TypedPromptRequest<'a, T, Extended, M, P> {
+        TypedPromptRequest {
+            inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -647,7 +702,7 @@ where
     /// Attach a per-request hook for tool call events.
     ///
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<'a, T, M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<'a, T, S, M, P2>
     where
         P2: PromptHook<M>,
     {
@@ -656,7 +711,14 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
+}
 
+impl<'a, T, M, P> TypedPromptRequest<'a, T, Standard, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
         let response = self.inner.send().await?;
@@ -670,13 +732,46 @@ where
     }
 }
 
-impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, M, P>
+impl<'a, T, M, P> TypedPromptRequest<'a, T, Extended, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    M: CompletionModel,
+    P: PromptHook<M>,
+{
+    /// Send the typed prompt request with extended details and deserialize the response.
+    async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
+        let response = self.inner.send().await?;
+
+        if response.output.is_empty() {
+            return Err(StructuredOutputError::EmptyResponse);
+        }
+
+        let parsed: T = serde_json::from_str(&response.output)?;
+        Ok(TypedPromptResponse::new(parsed, response.usage))
+    }
+}
+
+impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a,
     M: CompletionModel + 'a,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
+    type IntoFuture = WasmBoxedFuture<'a, Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.send())
+    }
+}
+
+impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, Extended, M, P>
+where
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a,
+    M: CompletionModel + 'a,
+    P: PromptHook<M> + 'static,
+{
+    type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'a, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {

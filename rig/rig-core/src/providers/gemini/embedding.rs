@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// `embedding-001` embedding model
-pub const EMBEDDING_001: &str = "embedding-001";
+pub const EMBEDDING_001: &str = "gemini-embedding-001";
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 

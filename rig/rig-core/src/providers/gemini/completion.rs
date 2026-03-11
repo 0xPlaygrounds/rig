@@ -187,6 +187,8 @@ where
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
+    let documents_message = completion_request.normalized_documents();
+
     let CompletionRequest {
         model: _,
         preamble,
@@ -201,6 +203,9 @@ pub(crate) fn create_request_body(
     } = completion_request;
 
     let mut full_history = Vec::new();
+    if let Some(msg) = documents_message {
+        full_history.push(msg);
+    }
     full_history.extend(chat_history);
 
     let mut additional_params_payload = additional_params
@@ -881,7 +886,53 @@ pub mod gemini_api_types {
                         ));
                     };
 
-                    if !media_type.is_code() {
+                    // For text/plain documents (RAG context), convert to plain text
+                    if matches!(
+                        media_type,
+                        message::DocumentMediaType::TXT
+                            | message::DocumentMediaType::RTF
+                            | message::DocumentMediaType::HTML
+                            | message::DocumentMediaType::CSS
+                            | message::DocumentMediaType::MARKDOWN
+                            | message::DocumentMediaType::CSV
+                            | message::DocumentMediaType::XML
+                            | message::DocumentMediaType::Javascript
+                            | message::DocumentMediaType::Python
+                    ) {
+                        use base64::Engine;
+                        let text = match data {
+                            DocumentSourceKind::String(text) => text.clone(),
+                            DocumentSourceKind::Base64(data) => {
+                                // Decode base64 if needed
+                                String::from_utf8(
+                                    base64::engine::general_purpose::STANDARD
+                                        .decode(&data)
+                                        .map_err(|e| {
+                                            MessageError::ConversionError(format!(
+                                                "Failed to decode base64: {e}"
+                                            ))
+                                        })?,
+                                )
+                                .map_err(|e| {
+                                    MessageError::ConversionError(format!(
+                                        "Invalid UTF-8 in document: {e}"
+                                    ))
+                                })?
+                            }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "Text-based documents must be String or Base64 encoded"
+                                        .to_string(),
+                                ));
+                            }
+                        };
+
+                        Ok(Part {
+                            thought: Some(false),
+                            part: PartKind::Text(text),
+                            ..Default::default()
+                        })
+                    } else if !media_type.is_code() {
                         let mime_type = media_type.to_mime_type().to_string();
 
                         let part = match data {
@@ -1717,8 +1768,33 @@ pub mod gemini_api_types {
                     obj.clone()
                 };
 
+                let schema_type = infer_type(obj);
+                let items = obj
+                    .get("items")
+                    .and_then(|v| v.clone().try_into().ok())
+                    .map(Box::new);
+
+                // Gemini requires `items` on array-typed schemas; default to
+                // string items when the source schema omits it.
+                let items = if schema_type == "array" && items.is_none() {
+                    Some(Box::new(Schema {
+                        r#type: "string".to_string(),
+                        format: None,
+                        description: None,
+                        nullable: None,
+                        r#enum: None,
+                        max_items: None,
+                        min_items: None,
+                        properties: None,
+                        required: None,
+                        items: None,
+                    }))
+                } else {
+                    items
+                };
+
                 Ok(Schema {
-                    r#type: infer_type(obj),
+                    r#type: schema_type,
                     format: obj.get("format").and_then(|v| v.as_str()).map(String::from),
                     description: obj
                         .get("description")
@@ -1756,10 +1832,7 @@ pub mod gemini_api_types {
                                 .filter_map(|v| v.as_str().map(String::from))
                                 .collect()
                         }),
-                    items: obj
-                        .get("items")
-                        .and_then(|v| v.clone().try_into().ok())
-                        .map(Box::new),
+                    items,
                 })
             } else {
                 Err(CompletionError::ResponseError(
@@ -2327,6 +2400,60 @@ mod tests {
     }
 
     #[test]
+    fn test_array_without_items_gets_default() {
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "service_ids": {
+                    "type": "array",
+                    "description": "A list of service IDs"
+                }
+            }
+        });
+
+        let schema: Schema = schema_json.try_into().unwrap();
+        let props = schema.properties.unwrap();
+        let service_ids = props.get("service_ids").unwrap();
+        assert_eq!(service_ids.r#type, "array");
+        let items = service_ids
+            .items
+            .as_ref()
+            .expect("array schema missing items should get a default");
+        assert_eq!(items.r#type, "string");
+    }
+
+    #[test]
+    fn test_txt_document_conversion_to_text_part() {
+        // Test that TXT documents are converted to plain text parts, not inline data
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "Note: test.md\nPath: /test.md\nContent: Hello World!",
+            Some(DocumentMediaType::TXT),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert!(text.contains("Note: test.md"));
+            assert!(text.contains("Hello World!"));
+        } else {
+            panic!(
+                "Expected text part for TXT document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
     fn test_tool_result_with_image_content() {
         // Test that a ToolResult with image content converts correctly to Gemini's Part format
         use crate::OneOrMany;
@@ -2358,7 +2485,6 @@ mod tests {
 
         // Convert to Gemini Content
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 1);
 
@@ -2391,6 +2517,36 @@ mod tests {
     }
 
     #[test]
+    fn test_markdown_document_conversion_to_text_part() {
+        // Test that MARKDOWN documents are converted to plain text parts
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "# Heading\n\n* List item",
+            Some(DocumentMediaType::MARKDOWN),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert_eq!(text, "# Heading\n\n* List item");
+        } else {
+            panic!(
+                "Expected text part for MARKDOWN document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
     fn test_tool_result_with_url_image() {
         // Test that a ToolResult with a URL-based image converts to file_data
         use crate::OneOrMany;
@@ -2415,7 +2571,6 @@ mod tests {
         };
 
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 1);
 
@@ -2438,6 +2593,122 @@ mod tests {
             assert_eq!(file_data.mime_type.as_ref().unwrap(), "image/png");
         } else {
             panic!("Expected FunctionResponse part");
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_with_documents() {
+        // Test that documents are injected into chat history
+        use crate::OneOrMany;
+        use crate::completion::request::{CompletionRequest, Document};
+        use crate::message::Message;
+
+        let documents = vec![
+            Document {
+                id: "doc1".to_string(),
+                text: "Note: first.md\nContent: First note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+            Document {
+                id: "doc2".to_string(),
+                text: "Note: second.md\nContent: Second note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+        ];
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("What are my notes about?")),
+            documents: documents.clone(),
+            tools: vec![],
+            temperature: None,
+            model: None,
+            output_schema: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have 2 contents: 1 for documents, 1 for user message
+        assert_eq!(
+            request.contents.len(),
+            2,
+            "Expected 2 contents (documents + user message)"
+        );
+
+        // First content should be documents with role User
+        assert_eq!(request.contents[0].role, Some(Role::User));
+        assert_eq!(
+            request.contents[0].parts.len(),
+            2,
+            "Expected 2 document parts"
+        );
+
+        // Check that documents are text parts
+        for part in &request.contents[0].parts {
+            if let Part {
+                part: PartKind::Text(text),
+                ..
+            } = part
+            {
+                assert!(
+                    text.contains("Note:") && text.contains("Content:"),
+                    "Document should contain note metadata"
+                );
+            } else {
+                panic!("Document parts should be text, not {:?}", part);
+            }
+        }
+
+        // Second content should be the user message
+        assert_eq!(request.contents[1].role, Some(Role::User));
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[1].parts[0]
+        {
+            assert_eq!(text, "What are my notes about?");
+        } else {
+            panic!("Expected user message to be text");
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_without_documents() {
+        // Test backward compatibility: requests without documents work as before
+        use crate::OneOrMany;
+        use crate::completion::request::CompletionRequest;
+        use crate::message::Message;
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("Hello")),
+            documents: vec![], // No documents
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            model: None,
+            output_schema: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have only 1 content (the user message)
+        assert_eq!(request.contents.len(), 1, "Expected only user message");
+        assert_eq!(request.contents[0].role, Some(Role::User));
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[0].parts[0]
+        {
+            assert_eq!(text, "Hello");
+        } else {
+            panic!("Expected user message to be text");
         }
     }
 

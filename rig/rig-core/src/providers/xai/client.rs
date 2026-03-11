@@ -22,12 +22,6 @@ impl Provider for XAiExt {
     type Builder = XAiExtBuilder;
 
     const VERIFY_PATH: &'static str = "/v1/api-key";
-
-    fn build<H>(
-        _: &client::ClientBuilder<Self::Builder, XAiApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for XAiExt {
@@ -45,10 +39,22 @@ impl<H> Capabilities<H> for XAiExt {
 impl DebugExt for XAiExt {}
 
 impl ProviderBuilder for XAiExtBuilder {
-    type Output = XAiExt;
+    type Extension<H>
+        = XAiExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = XAiApiKey;
 
     const BASE_URL: &'static str = XAI_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(XAiExt)
+    }
 }
 
 impl ProviderClient for Client {
@@ -69,10 +75,9 @@ impl ProviderClient for Client {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client_from_builder: crate::providers::xai::Client =
-            crate::providers::xai::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::xai::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

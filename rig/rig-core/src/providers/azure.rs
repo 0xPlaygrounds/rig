@@ -5,7 +5,7 @@
 //! use rig::providers::azure;
 //! use rig::client::CompletionClient;
 //!
-//! let client: azure::Client<reqwest::Client> = azure::Client::builder()
+//! let client = azure::Client::builder()
 //!     .api_key("test")
 //!     .azure_endpoint("test".to_string()) // add your endpoint here!
 //!     .build()?;
@@ -92,30 +92,6 @@ impl Provider for AzureExt {
 
     /// Verifying Azure auth without consuming tokens is not supported
     const VERIFY_PATH: &'static str = "";
-
-    fn build<H>(
-        builder: &client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        let AzureExtBuilder {
-            endpoint,
-            api_version,
-            ..
-        } = builder.ext().clone();
-
-        match endpoint {
-            Some(endpoint) => Ok(Self {
-                endpoint,
-                api_version,
-            }),
-            None => Err(http_client::Error::Instance(
-                "Azure client must be provided an endpoint prior to building".into(),
-            )),
-        }
-    }
 }
 
 impl<H> Capabilities<H> for AzureExt {
@@ -130,10 +106,36 @@ impl<H> Capabilities<H> for AzureExt {
 }
 
 impl ProviderBuilder for AzureExtBuilder {
-    type Output = AzureExt;
+    type Extension<H>
+        = AzureExt
+    where
+        H: HttpClientExt;
     type ApiKey = AzureOpenAIAuth;
 
     const BASE_URL: &'static str = "";
+
+    fn build<H>(
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        let AzureExtBuilder {
+            endpoint,
+            api_version,
+            ..
+        } = builder.ext().clone();
+
+        match endpoint {
+            Some(endpoint) => Ok(AzureExt {
+                endpoint,
+                api_version,
+            }),
+            None => Err(http_client::Error::Instance(
+                "Azure client must be provided an endpoint prior to building".into(),
+            )),
+        }
+    }
 
     fn finish<H>(
         &self,
@@ -1074,7 +1076,7 @@ mod azure_tests {
     async fn test_azure_embedding() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
         let embeddings = model
             .embed_texts(vec!["Hello, world!".to_string()])
@@ -1090,7 +1092,7 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let ndims = 256;
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
         let embedding = model.embed_text("Hello, world!").await.unwrap();
 
@@ -1104,7 +1106,7 @@ mod azure_tests {
     async fn test_azure_completion() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
@@ -1136,7 +1138,7 @@ mod azure_tests {
             age: u32,
         }
 
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let agent = client
             .agent(GPT_5_MINI)
             .preamble("You are a helpful assistant that extracts personal details.")
@@ -1157,11 +1159,10 @@ mod azure_tests {
 
     #[tokio::test]
     async fn test_client_initialization() {
-        let _client: crate::providers::azure::Client<reqwest::Client> =
-            crate::providers::azure::Client::builder()
-                .api_key("test")
-                .azure_endpoint("test".to_string()) // add your endpoint here!
-                .build()
-                .expect("Client::builder() failed");
+        let _client = crate::providers::azure::Client::builder()
+            .api_key("test")
+            .azure_endpoint("test".to_string()) // add your endpoint here!
+            .build()
+            .expect("Client::builder() failed");
     }
 }

@@ -16,7 +16,7 @@ async fn main() -> Result<(), anyhow::Error> {
         builder = builder.fine_tune_api_key(fine_tune_api_key);
     }
 
-    let client: galadriel::Client = builder.build().unwrap();
+    let client = builder.build().unwrap();
 
     // Create agent with a single context prompt
     let comedian_agent = client
