@@ -854,7 +854,8 @@ pub mod gemini_api_types {
                         ));
                     };
 
-                    // For text/plain documents (RAG context), convert to plain text
+                    // For text-like documents (RAG context), convert inline content to plain text.
+                    // URL-backed files should stay as file_data references so Gemini can fetch them.
                     if matches!(
                         media_type,
                         message::DocumentMediaType::TXT
@@ -868,11 +869,11 @@ pub mod gemini_api_types {
                             | message::DocumentMediaType::Python
                     ) {
                         use base64::Engine;
-                        let text = match data {
-                            DocumentSourceKind::String(text) => text.clone(),
+                        let part = match data {
+                            DocumentSourceKind::String(text) => PartKind::Text(text),
                             DocumentSourceKind::Base64(data) => {
-                                // Decode base64 if needed
-                                String::from_utf8(
+                                // Decode base64 text payloads.
+                                let text = String::from_utf8(
                                     base64::engine::general_purpose::STANDARD
                                         .decode(&data)
                                         .map_err(|e| {
@@ -885,19 +886,28 @@ pub mod gemini_api_types {
                                     MessageError::ConversionError(format!(
                                         "Invalid UTF-8 in document: {e}"
                                     ))
-                                })?
+                                })?;
+                                PartKind::Text(text)
                             }
-                            _ => {
+                            DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
+                                mime_type: Some(media_type.to_mime_type().to_string()),
+                                file_uri,
+                            }),
+                            DocumentSourceKind::Raw(_) => {
                                 return Err(MessageError::ConversionError(
-                                    "Text-based documents must be String or Base64 encoded"
-                                        .to_string(),
+                                    "Raw files not supported, encode as base64 first".to_string(),
+                                ));
+                            }
+                            DocumentSourceKind::Unknown => {
+                                return Err(MessageError::ConversionError(
+                                    "Document has no body".to_string(),
                                 ));
                             }
                         };
 
                         Ok(Part {
                             thought: Some(false),
-                            part: PartKind::Text(text),
+                            part,
                             ..Default::default()
                         })
                     } else if !media_type.is_code() {
@@ -2509,6 +2519,43 @@ mod tests {
         } else {
             panic!(
                 "Expected text part for MARKDOWN document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
+    fn test_markdown_url_document_conversion_to_file_data_part() {
+        // URL-backed MARKDOWN documents should be represented as file_data.
+        use crate::message::{DocumentMediaType, DocumentSourceKind, UserContent};
+
+        let doc = UserContent::Document(message::Document {
+            data: DocumentSourceKind::Url(
+                "https://generativelanguage.googleapis.com/v1beta/files/test-markdown".to_string(),
+            ),
+            media_type: Some(DocumentMediaType::MARKDOWN),
+            additional_params: None,
+        });
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        if let Part {
+            part: PartKind::FileData(file_data),
+            ..
+        } = &content.parts[0]
+        {
+            assert_eq!(
+                file_data.file_uri,
+                "https://generativelanguage.googleapis.com/v1beta/files/test-markdown"
+            );
+            assert_eq!(file_data.mime_type.as_deref(), Some("text/markdown"));
+        } else {
+            panic!(
+                "Expected file_data part for URL MARKDOWN document, got: {:?}",
                 content.parts[0]
             );
         }
