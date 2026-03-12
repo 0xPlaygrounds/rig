@@ -1454,6 +1454,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "backon"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cffb0e931875b666fc4fcb20fee52e9bbd1ef836fd9e9e04ec21555f9f85f7ef"
+dependencies = [
+ "fastrand",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9937,6 +9946,30 @@ dependencies = [
 
 [[package]]
 name = "redis"
+version = "0.27.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09d8f99a4090c89cc489a94833c901ead69bfbf3877b4867d5482e321ee875bc"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "backon",
+ "bytes",
+ "combine",
+ "futures",
+ "futures-util",
+ "itertools 0.13.0",
+ "itoa",
+ "num-bigint",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
+name = "redis"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e969d1d702793536d5fda739a82b88ad7cbe7d04f8386ee8cd16ad3eff4854a5"
@@ -10401,7 +10434,7 @@ dependencies = [
  "pin-project-lite",
  "quick-xml",
  "rayon",
- "redis",
+ "redis 1.0.3",
  "reqwest 0.13.2",
  "reqwest-middleware",
  "reqwest-retry",
@@ -10602,6 +10635,22 @@ dependencies = [
  "serde_json",
  "testcontainers",
  "tokio",
+ "uuid 1.20.0",
+]
+
+[[package]]
+name = "rig-redis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "httpmock",
+ "redis 0.27.6",
+ "rig-core 0.31.0",
+ "serde",
+ "serde_json",
+ "testcontainers",
+ "tokio",
+ "tracing-subscriber",
  "uuid 1.20.0",
 ]
 
