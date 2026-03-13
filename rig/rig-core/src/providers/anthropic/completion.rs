@@ -16,6 +16,7 @@ use crate::completion::CompletionRequest;
 use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
@@ -26,6 +27,10 @@ use tracing::{Instrument, Level, enabled, info_span};
 pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
 /// `claude-sonnet-4-0` completion model
 pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
+/// `claude-opus-4-6` completion model
+pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
+/// `claude-sonnet-4-6` completion model
+pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 /// `claude-3-7-sonnet-latest` completion model
 pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
 /// `claude-3-5-sonnet-latest` completion model
@@ -826,8 +831,96 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
-fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4") {
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AnthropicModelCapabilities {
+    pub(crate) default_max_tokens: Option<u64>,
+    pub(crate) custom_max_tokens: u64,
+    pub(crate) supports_adaptive_thinking: CapabilitySupport,
+    pub(crate) supports_effort_max: CapabilitySupport,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CapabilitySupport {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ModelMatchPattern {
+    BaseOrVariant(&'static str),
+    Prefix(&'static str),
+}
+
+impl ModelMatchPattern {
+    fn matches(self, model: &str) -> bool {
+        match self {
+            Self::BaseOrVariant(base) => {
+                model == base
+                    || model
+                        .strip_prefix(base)
+                        .is_some_and(|suffix| suffix.starts_with('-'))
+            }
+            Self::Prefix(prefix) => model.starts_with(prefix),
+        }
+    }
+}
+
+const ADAPTIVE_THINKING_SUPPORTED_MODELS: &[ModelMatchPattern] = &[
+    ModelMatchPattern::BaseOrVariant(CLAUDE_OPUS_4_6),
+    ModelMatchPattern::BaseOrVariant(CLAUDE_SONNET_4_6),
+];
+
+const EFFORT_MAX_SUPPORTED_MODELS: &[ModelMatchPattern] =
+    &[ModelMatchPattern::BaseOrVariant(CLAUDE_OPUS_4_6)];
+
+const KNOWN_PRE_4_6_MODELS: &[ModelMatchPattern] = &[
+    ModelMatchPattern::BaseOrVariant("claude-opus-4-5"),
+    ModelMatchPattern::BaseOrVariant("claude-opus-4-1"),
+    ModelMatchPattern::BaseOrVariant(CLAUDE_4_OPUS),
+    ModelMatchPattern::Prefix("claude-opus-4-2025"),
+    ModelMatchPattern::BaseOrVariant("claude-sonnet-4-5"),
+    ModelMatchPattern::BaseOrVariant(CLAUDE_4_SONNET),
+    ModelMatchPattern::Prefix("claude-sonnet-4-2025"),
+    ModelMatchPattern::BaseOrVariant("claude-haiku-4-5"),
+    ModelMatchPattern::Prefix("claude-haiku-4-2025"),
+    ModelMatchPattern::Prefix("claude-3-"),
+];
+
+fn model_matches_any(model: &str, patterns: &[ModelMatchPattern]) -> bool {
+    patterns
+        .iter()
+        .copied()
+        .any(|pattern| pattern.matches(model))
+}
+
+fn adaptive_thinking_capability(model: &str) -> CapabilitySupport {
+    if model_matches_any(model, ADAPTIVE_THINKING_SUPPORTED_MODELS) {
+        CapabilitySupport::Supported
+    } else if model_matches_any(model, KNOWN_PRE_4_6_MODELS) {
+        CapabilitySupport::Unsupported
+    } else {
+        CapabilitySupport::Unknown
+    }
+}
+
+fn effort_max_capability(model: &str) -> CapabilitySupport {
+    if model_matches_any(model, EFFORT_MAX_SUPPORTED_MODELS) {
+        CapabilitySupport::Supported
+    } else if model_matches_any(model, KNOWN_PRE_4_6_MODELS)
+        || model_matches_any(
+            model,
+            &[ModelMatchPattern::BaseOrVariant(CLAUDE_SONNET_4_6)],
+        )
+    {
+        CapabilitySupport::Unsupported
+    } else {
+        CapabilitySupport::Unknown
+    }
+}
+
+pub(crate) fn anthropic_model_capabilities(model: &str) -> AnthropicModelCapabilities {
+    let default_max_tokens = if model.starts_with("claude-opus-4") {
         Some(32000)
     } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
         Some(64000)
@@ -840,24 +933,22 @@ fn calculate_max_tokens(model: &str) -> Option<u64> {
         Some(4096)
     } else {
         None
+    };
+
+    AnthropicModelCapabilities {
+        default_max_tokens,
+        custom_max_tokens: default_max_tokens.unwrap_or(2048),
+        supports_adaptive_thinking: adaptive_thinking_capability(model),
+        supports_effort_max: effort_max_capability(model),
     }
 }
 
+fn calculate_max_tokens(model: &str) -> Option<u64> {
+    anthropic_model_capabilities(model).default_max_tokens
+}
+
 fn calculate_max_tokens_custom(model: &str) -> u64 {
-    if model.starts_with("claude-opus-4") {
-        32000
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        64000
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        8192
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        4096
-    } else {
-        2048
-    }
+    anthropic_model_capabilities(model).custom_max_tokens
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -906,7 +997,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 /// - All properties must be listed in `required`
 ///
 /// Source: <https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs#json-schema-limitations>
-fn sanitize_schema(schema: &mut serde_json::Value) {
+pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
     use serde_json::Value;
 
     if let Value::Object(obj) = schema {
@@ -974,15 +1065,51 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Source: <https://docs.anthropic.com/en/api/messages>
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum OutputFormat {
+pub(crate) enum OutputFormat {
     /// Constrains the model's response to conform to the provided JSON schema.
     JsonSchema { schema: serde_json::Value },
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum Thinking {
+    Enabled { budget_tokens: u64 },
+    Adaptive,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
+    Max,
+}
+
 /// Configuration for the model's output format.
-#[derive(Debug, Deserialize, Serialize)]
-struct OutputConfig {
-    format: OutputFormat,
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub(crate) struct OutputConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) format: Option<OutputFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) effort: Option<ReasoningEffort>,
+    #[serde(flatten)]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    pub(crate) additional: Map<String, Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub(crate) struct AdditionalParameters {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) thinking: Option<Thinking>,
+    #[serde(rename = "output_config")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) output_config: Option<OutputConfig>,
+    #[serde(flatten)]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Map::is_empty")]
+    pub(crate) passthrough: Map<String, Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -999,6 +1126,8 @@ struct AnthropicCompletionRequest {
     tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<ToolDefinition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<Thinking>,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<OutputConfig>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
@@ -1052,7 +1181,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
         let AnthropicRequestParams {
             model,
-            request: req,
+            request: mut req,
             prompt_caching,
         } = params;
 
@@ -1103,16 +1232,85 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             apply_cache_control(&mut system, &mut messages);
         }
 
+        let typed_additional_params = if let Some(params) = req.additional_params {
+            serde_json::from_value::<AdditionalParameters>(params).map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid Anthropic additional_params payload: {err}").into(),
+                )
+            })?
+        } else {
+            AdditionalParameters::default()
+        };
+        let model_capabilities = anthropic_model_capabilities(model);
+
+        if matches!(
+            typed_additional_params.thinking.as_ref(),
+            Some(Thinking::Adaptive)
+        ) && matches!(
+            model_capabilities.supports_adaptive_thinking,
+            CapabilitySupport::Unsupported
+        ) {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "`thinking.type = \"adaptive\"` is only supported for Claude Opus 4.6 and Claude Sonnet 4.6 models (got: {model})"
+                )
+                .into(),
+            ));
+        }
+
         // Map output_schema to Anthropic's output_config field
-        let output_config = req.output_schema.map(|schema| {
+        let mut output_config = req.output_schema.take().map(|schema| {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
             OutputConfig {
-                format: OutputFormat::JsonSchema {
+                format: Some(OutputFormat::JsonSchema {
                     schema: schema_value,
-                },
+                }),
+                ..Default::default()
             }
         });
+
+        if let Some(user_output_config) = typed_additional_params.output_config {
+            let has_schema_format = output_config.is_some();
+            let mut merged = output_config.take().unwrap_or_default();
+            merged.effort = user_output_config.effort;
+            merged.additional.extend(user_output_config.additional);
+            if has_schema_format {
+                merged.additional.remove("format");
+            } else if user_output_config.format.is_some() {
+                merged.format = user_output_config.format;
+            }
+
+            output_config = if merged.format.is_some()
+                || merged.effort.is_some()
+                || !merged.additional.is_empty()
+            {
+                Some(merged)
+            } else {
+                None
+            };
+        }
+
+        if let Some(output_config) = output_config.as_ref()
+            && matches!(output_config.effort, Some(ReasoningEffort::Max))
+            && matches!(
+                model_capabilities.supports_effort_max,
+                CapabilitySupport::Unsupported
+            )
+        {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "`effort: \"max\" is only supported for claude-opus-4-6 models (got: {model})"
+                )
+                .into(),
+            ));
+        }
+
+        let additional_params = if typed_additional_params.passthrough.is_empty() {
+            None
+        } else {
+            Some(Value::Object(typed_additional_params.passthrough))
+        };
 
         Ok(Self {
             model: model.to_string(),
@@ -1122,8 +1320,9 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             temperature: req.temperature,
             tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
             tools,
+            thinking: typed_additional_params.thinking,
             output_config,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }
@@ -2070,5 +2269,384 @@ mod tests {
             converted_content.first(),
             Some(Content::RedactedThinking { data }) if data == "ciphertext"
         ));
+    }
+
+    fn make_schema() -> schemars::Schema {
+        serde_json::from_value(json!({
+            "type": "object",
+            "properties": {
+                "result": { "type": "string" }
+            },
+            "required": ["result"]
+        }))
+        .unwrap()
+    }
+
+    fn sample_anthropic_request(
+        additional_params: Option<serde_json::Value>,
+        output_schema: Option<schemars::Schema>,
+    ) -> CompletionRequest {
+        use crate::completion::message as msg;
+        completion::CompletionRequest {
+            preamble: Some("You are a concise assistant.".into()),
+            chat_history: OneOrMany::one(msg::Message::User {
+                content: OneOrMany::one(msg::UserContent::text("Run the numbers.")),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(256),
+            tool_choice: None,
+            additional_params,
+            model: None,
+            output_schema,
+        }
+    }
+
+    #[test]
+    fn test_adaptive_thinking_with_output_config_effort_merge() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+                "output_config": { "effort": "high", "custom_field": "kept" }
+            })),
+            Some(make_schema()),
+        );
+
+        let req = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+        })
+        .expect("Adaptive request should be built");
+
+        assert_eq!(req.thinking, Some(Thinking::Adaptive));
+        let output_config = req.output_config.expect("output_config should be set");
+        assert_eq!(output_config.effort, Some(ReasoningEffort::High));
+        assert_eq!(
+            output_config
+                .additional
+                .get("custom_field")
+                .and_then(Value::as_str),
+            Some("kept")
+        );
+        assert!(!output_config.additional.contains_key("format"));
+        match output_config.format {
+            Some(OutputFormat::JsonSchema { .. }) => {}
+            _ => panic!("expected schema output format"),
+        }
+        assert!(req.additional_params.is_none());
+    }
+
+    #[test]
+    fn test_manual_thinking_backward_compatible() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "enabled", "budget_tokens": 2048 }
+            })),
+            None,
+        );
+
+        let req = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+        })
+        .expect("Legacy request should be built");
+
+        assert_eq!(
+            req.thinking,
+            Some(Thinking::Enabled {
+                budget_tokens: 2048
+            })
+        );
+        assert!(req.output_config.is_none());
+        assert!(req.additional_params.is_none());
+    }
+
+    #[test]
+    fn test_anthropic_additional_passthrough_and_conflict_rules() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+                "output_config": {
+                    "effort": "low",
+                    "format": {
+                        "type": "json_schema",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "extra_output_key": "from_additional_output_config"
+                },
+                "custom_top_level": "preserved"
+            })),
+            Some(make_schema()),
+        );
+
+        let req = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+        })
+        .expect("Request with conflicts should be built");
+
+        let additional_params = req
+            .additional_params
+            .expect("Top-level passthrough should preserve unknown keys");
+        assert_eq!(
+            additional_params["custom_top_level"],
+            Value::String("preserved".into())
+        );
+
+        let output_config = req
+            .output_config
+            .expect("output_config should be produced from schema");
+        assert_eq!(output_config.effort, Some(ReasoningEffort::Low));
+        assert_eq!(
+            output_config
+                .additional
+                .get("extra_output_key")
+                .and_then(Value::as_str),
+            Some("from_additional_output_config")
+        );
+        assert!(!output_config.additional.contains_key("format"));
+        assert!(matches!(
+            output_config.format,
+            Some(OutputFormat::JsonSchema { .. })
+        ));
+    }
+
+    #[test]
+    fn test_adaptive_thinking_effort_max_rejected_for_non_opus_model() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+                "output_config": { "effort": "max" },
+            })),
+            None,
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+        })
+        .expect_err("max effort should be invalid on non-opus 4.6");
+
+        assert!(
+            err.to_string()
+                .contains("effort: \"max\" is only supported for claude-opus-4-6 models")
+        );
+    }
+
+    #[test]
+    fn test_adaptive_thinking_effort_max_rejected_for_known_legacy_model() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "enabled", "budget_tokens": 1024 },
+                "output_config": { "effort": "max" },
+            })),
+            None,
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-5-20250929",
+            request,
+            prompt_caching: false,
+        })
+        .expect_err("max effort should be invalid on known legacy models");
+
+        assert!(
+            err.to_string()
+                .contains("effort: \"max\" is only supported for claude-opus-4-6 models")
+        );
+    }
+
+    #[test]
+    fn test_adaptive_thinking_effort_max_allowed_for_opus_4_6() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+                "output_config": { "effort": "max" },
+            })),
+            None,
+        );
+
+        assert!(
+            AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+                model: CLAUDE_OPUS_4_6,
+                request,
+                prompt_caching: false,
+            })
+            .is_ok(),
+            "max effort should be valid on opus 4-6"
+        );
+    }
+
+    #[test]
+    fn test_adaptive_thinking_effort_max_allowed_for_opus_4_6_variant() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+                "output_config": { "effort": "max" },
+            })),
+            None,
+        );
+
+        assert!(
+            AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+                model: "claude-opus-4-6-20260215",
+                request,
+                prompt_caching: false,
+            })
+            .is_ok(),
+            "max effort should be valid for opus 4-6 variants"
+        );
+    }
+
+    #[test]
+    fn test_adaptive_thinking_rejected_for_known_legacy_model() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+            })),
+            None,
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-5-20250929",
+            request,
+            prompt_caching: false,
+        })
+        .expect_err("adaptive thinking should be rejected for known legacy models");
+
+        assert!(err.to_string().contains("thinking.type = \"adaptive\""));
+    }
+
+    #[test]
+    fn test_adaptive_thinking_allowed_for_unknown_future_model() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+            })),
+            None,
+        );
+
+        assert!(
+            AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+                model: "claude-sonnet-4-7-20270101",
+                request,
+                prompt_caching: false,
+            })
+            .is_ok(),
+            "unknown future model variants should pass local validation"
+        );
+    }
+
+    #[test]
+    fn test_adaptive_thinking_effort_max_allowed_for_unknown_future_model() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "adaptive" },
+                "output_config": { "effort": "max" },
+            })),
+            None,
+        );
+
+        assert!(
+            AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+                model: "claude-opus-4-7-20270101",
+                request,
+                prompt_caching: false,
+            })
+            .is_ok(),
+            "unknown future model variants should pass local validation"
+        );
+    }
+
+    #[test]
+    fn test_base_or_variant_pattern_does_not_match_non_variant_suffix() {
+        assert!(ModelMatchPattern::BaseOrVariant(CLAUDE_OPUS_4_6).matches(CLAUDE_OPUS_4_6));
+        assert!(
+            ModelMatchPattern::BaseOrVariant(CLAUDE_OPUS_4_6).matches("claude-opus-4-6-20260215")
+        );
+        assert!(!ModelMatchPattern::BaseOrVariant(CLAUDE_OPUS_4_6).matches("claude-opus-4-60"));
+    }
+
+    #[test]
+    fn test_known_capability_tables() {
+        assert_eq!(
+            adaptive_thinking_capability("claude-sonnet-4-5-20250929"),
+            CapabilitySupport::Unsupported
+        );
+        assert_eq!(
+            adaptive_thinking_capability("claude-sonnet-4-50-20270101"),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(
+            adaptive_thinking_capability("claude-opus-4-10-20270101"),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(
+            adaptive_thinking_capability(CLAUDE_SONNET_4_6),
+            CapabilitySupport::Supported
+        );
+        assert_eq!(
+            adaptive_thinking_capability("claude-sonnet-4-7-20270101"),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(
+            adaptive_thinking_capability(CLAUDE_3_7_SONNET),
+            CapabilitySupport::Unsupported
+        );
+
+        assert_eq!(
+            effort_max_capability(CLAUDE_OPUS_4_6),
+            CapabilitySupport::Supported
+        );
+        assert_eq!(
+            effort_max_capability(CLAUDE_SONNET_4_6),
+            CapabilitySupport::Unsupported
+        );
+        assert_eq!(
+            effort_max_capability("claude-sonnet-4-5-20250929"),
+            CapabilitySupport::Unsupported
+        );
+        assert_eq!(
+            effort_max_capability("claude-sonnet-4-50-20270101"),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(
+            effort_max_capability("claude-opus-4-10-20270101"),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(
+            effort_max_capability("claude-opus-4-7-20270101"),
+            CapabilitySupport::Unknown
+        );
+        assert_eq!(
+            effort_max_capability(CLAUDE_3_7_SONNET),
+            CapabilitySupport::Unsupported
+        );
+    }
+
+    #[test]
+    fn test_unknown_thinking_type_fails_validation() {
+        let request = sample_anthropic_request(
+            Some(json!({
+                "thinking": { "type": "experimental" },
+            })),
+            None,
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_6,
+            request,
+            prompt_caching: false,
+        })
+        .expect_err("unknown thinking.type should fail before request is built");
+
+        assert!(matches!(err, CompletionError::RequestError(_)));
     }
 }
