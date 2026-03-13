@@ -111,15 +111,14 @@ impl Counter {
 #[tool_handler]
 impl ServerHandler for Counter {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder()
+        ServerInfo::new(
+            ServerCapabilities::builder()
                 .enable_resources()
                 .enable_tools()
                 .build(),
-            server_info: Implementation::from_build_env(),
-            instructions: Some("This server provides a counter tool that can increment and decrement values. The counter starts at 0 and can be modified using the 'increment' and 'decrement' tools. Use 'get_value' to check the current count.".to_string()),
-        }
+        )
+        .with_protocol_version(ProtocolVersion::V_2024_11_05)
+        .with_instructions("This server provides a counter tool that can increment and decrement values. The counter starts at 0 and can be modified using the 'increment' and 'decrement' tools. Use 'get_value' to check the current count.")
     }
 
     async fn list_resources(
@@ -145,15 +144,15 @@ impl ServerHandler for Counter {
         match uri.as_str() {
             "str:////Users/to/some/path/" => {
                 let cwd = "/Users/to/some/path/";
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(cwd, uri)],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    cwd, uri,
+                )]))
             }
             "memo://insights" => {
                 let memo = "Business Intelligence Memo\n\nAnalysis has revealed 5 key insights ...";
-                Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(memo, uri)],
-                })
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    memo, uri,
+                )]))
             }
             _ => Err(ErrorData::resource_not_found(
                 "resource_not_found",
@@ -238,16 +237,10 @@ async fn main() -> anyhow::Result<()> {
     let transport =
         rmcp::transport::StreamableHttpClientTransport::from_uri("http://localhost:8080");
 
-    let client_info = ClientInfo {
-        protocol_version: Default::default(),
-        capabilities: ClientCapabilities::default(),
-        client_info: Implementation {
-            name: "rig-core".to_string(),
-            version: "0.13.0".to_string(),
-            ..Default::default()
-        },
-        meta: None,
-    };
+    let client_info = ClientInfo::new(
+        ClientCapabilities::default(),
+        Implementation::new("rig-core", "0.13.0"),
+    );
 
     let client = client_info.serve(transport).await.inspect_err(|e| {
         tracing::error!("client error: {:?}", e);
