@@ -80,7 +80,7 @@ term_size = "0.3.2"
 testcontainers = "0.27"
 textwrap = "0.16.2"
 thiserror = "2.0.12"
-tokio = "1.45.1"
+tokio = "1.50.0"
 tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
