@@ -68,13 +68,61 @@ where
             .collect()
     }
 
-    /// Parses FT.SEARCH response into results
+    /// Extracts string value from Redis value
+    fn extract_string(value: &redis::Value) -> Option<String> {
+        match value {
+            redis::Value::BulkString(bytes) => Some(String::from_utf8_lossy(bytes).to_string()),
+            redis::Value::SimpleString(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    /// Extracts score from Redis value
+    fn extract_score(value: &redis::Value) -> f64 {
+        match value {
+            redis::Value::BulkString(bytes) => {
+                String::from_utf8_lossy(bytes).parse().unwrap_or(0.0)
+            }
+            redis::Value::SimpleString(s) => s.parse().unwrap_or(0.0),
+            _ => 0.0,
+        }
+    }
+
+    /// Parses FT.SEARCH response into results with documents
     fn parse_search_response<T>(
         response: redis::Value,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError>
     where
         T: for<'a> Deserialize<'a>,
     {
+        Self::parse_response_generic(response, true).and_then(|items| {
+            items
+                .into_iter()
+                .map(|(score, id, doc_json)| {
+                    let doc = serde_json::from_str::<T>(&doc_json)?;
+                    Ok((score, id, doc))
+                })
+                .collect()
+        })
+    }
+
+    /// Parses FT.SEARCH response for IDs only
+    fn parse_search_response_ids(
+        response: redis::Value,
+    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        Self::parse_response_generic(response, false).map(|items| {
+            items
+                .into_iter()
+                .map(|(score, id, _)| (score, id))
+                .collect()
+        })
+    }
+
+    /// Generic response parser for both full and ID-only results
+    fn parse_response_generic(
+        response: redis::Value,
+        include_document: bool,
+    ) -> Result<Vec<(f64, String, String)>, VectorStoreError> {
         match response {
             redis::Value::Array(ref items) if !items.is_empty() => {
                 let count = match &items[0] {
@@ -97,58 +145,39 @@ where
                         continue;
                     }
 
-                    let id = match &chunk[0] {
-                        redis::Value::BulkString(bytes) => {
-                            String::from_utf8_lossy(bytes).to_string()
-                        }
-                        redis::Value::SimpleString(s) => s.clone(),
-                        _ => continue,
+                    let id = match Self::extract_string(&chunk[0]) {
+                        Some(id) => id,
+                        None => continue,
                     };
 
                     if let redis::Value::Array(fields) = &chunk[1] {
                         let mut score = 0.0;
-                        let mut document_json = None;
+                        let mut document_json = String::new();
 
                         for field_chunk in fields.chunks(2) {
                             if field_chunk.len() != 2 {
                                 continue;
                             }
 
-                            let field_name = match &field_chunk[0] {
-                                redis::Value::BulkString(bytes) => {
-                                    String::from_utf8_lossy(bytes).to_string()
-                                }
-                                redis::Value::SimpleString(s) => s.clone(),
-                                _ => continue,
+                            let field_name = match Self::extract_string(&field_chunk[0]) {
+                                Some(name) => name,
+                                None => continue,
                             };
 
                             if field_name == "__vector_score" {
-                                score = match &field_chunk[1] {
-                                    redis::Value::BulkString(bytes) => {
-                                        String::from_utf8_lossy(bytes).parse().unwrap_or(0.0)
-                                    }
-                                    redis::Value::SimpleString(s) => s.parse().unwrap_or(0.0),
-                                    _ => 0.0,
-                                };
-                            } else if field_name == "document" {
-                                document_json = match &field_chunk[1] {
-                                    redis::Value::BulkString(bytes) => {
-                                        Some(String::from_utf8_lossy(bytes).to_string())
-                                    }
-                                    redis::Value::SimpleString(s) => Some(s.clone()),
-                                    _ => None,
-                                };
+                                score = Self::extract_score(&field_chunk[1]);
+                                if !include_document {
+                                    break;
+                                }
+                            } else if include_document
+                                && field_name == "document"
+                                && let Some(json) = Self::extract_string(&field_chunk[1])
+                            {
+                                document_json = json;
                             }
                         }
 
-                        if let Some(json_str) = document_json {
-                            match serde_json::from_str::<T>(&json_str) {
-                                Ok(doc) => results.push((score, id, doc)),
-                                Err(e) => {
-                                    return Err(VectorStoreError::JsonError(e));
-                                }
-                            }
-                        }
+                        results.push((score, id, document_json));
                     }
                 }
 
@@ -160,78 +189,58 @@ where
         }
     }
 
-    /// Parses FT.SEARCH response for IDs only
-    fn parse_search_response_ids(
-        response: redis::Value,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        match response {
-            redis::Value::Array(ref items) if !items.is_empty() => {
-                let count = match &items[0] {
-                    redis::Value::Int(n) => *n as usize,
-                    _ => {
-                        return Err(VectorStoreError::DatastoreError(
-                            "Invalid response format: expected count as first element".into(),
-                        ));
-                    }
-                };
+    /// Builds and executes FT.SEARCH command, optionally including document field
+    async fn execute_search(
+        &self,
+        vector_bytes: Vec<u8>,
+        req: &VectorSearchRequest<Filter>,
+        include_document: bool,
+    ) -> Result<redis::Value, VectorStoreError> {
+        let mut con = self
+            .client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-                if count == 0 {
-                    return Ok(Vec::new());
-                }
+        let filter_str = req
+            .filter()
+            .as_ref()
+            .map(|f| f.clone().into_inner())
+            .unwrap_or_else(|| "*".to_string());
 
-                let mut results = Vec::new();
+        let knn_query = format!(
+            "{}=>[KNN {} @{} $vec AS __vector_score]",
+            filter_str,
+            req.samples(),
+            self.vector_field
+        );
 
-                for chunk in items[1..].chunks(2) {
-                    if chunk.len() != 2 {
-                        continue;
-                    }
+        let mut cmd = redis::cmd("FT.SEARCH");
+        cmd.arg(&self.index_name)
+            .arg(&knn_query)
+            .arg("PARAMS")
+            .arg(2)
+            .arg("vec")
+            .arg(vector_bytes)
+            .arg("SORTBY")
+            .arg("__vector_score")
+            .arg("RETURN");
 
-                    let id = match &chunk[0] {
-                        redis::Value::BulkString(bytes) => {
-                            String::from_utf8_lossy(bytes).to_string()
-                        }
-                        redis::Value::SimpleString(s) => s.clone(),
-                        _ => continue,
-                    };
-
-                    if let redis::Value::Array(fields) = &chunk[1] {
-                        let mut score = 0.0;
-
-                        for field_chunk in fields.chunks(2) {
-                            if field_chunk.len() != 2 {
-                                continue;
-                            }
-
-                            let field_name = match &field_chunk[0] {
-                                redis::Value::BulkString(bytes) => {
-                                    String::from_utf8_lossy(bytes).to_string()
-                                }
-                                redis::Value::SimpleString(s) => s.clone(),
-                                _ => continue,
-                            };
-
-                            if field_name == "__vector_score" {
-                                score = match &field_chunk[1] {
-                                    redis::Value::BulkString(bytes) => {
-                                        String::from_utf8_lossy(bytes).parse().unwrap_or(0.0)
-                                    }
-                                    redis::Value::SimpleString(s) => s.parse().unwrap_or(0.0),
-                                    _ => 0.0,
-                                };
-                                break;
-                            }
-                        }
-
-                        results.push((score, id));
-                    }
-                }
-
-                Ok(results)
-            }
-            _ => Err(VectorStoreError::DatastoreError(
-                "Invalid FT.SEARCH response format".into(),
-            )),
+        if include_document {
+            cmd.arg(2).arg("__vector_score").arg("document");
+        } else {
+            cmd.arg(1).arg("__vector_score");
         }
+
+        cmd.arg("DIALECT").arg(2);
+
+        if req.threshold().is_some() {
+            cmd.arg("LIMIT").arg(0).arg(req.samples());
+        }
+
+        cmd.query_async(&mut con)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))
     }
 }
 
@@ -290,49 +299,7 @@ where
         let embedding = self.model.embed_text(req.query()).await?;
         let vector_bytes = Self::embedding_to_bytes(&embedding.vec);
 
-        let mut con = self
-            .client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let filter_str = req
-            .filter()
-            .as_ref()
-            .map(|f| f.clone().into_inner())
-            .unwrap_or_else(|| "*".to_string());
-
-        let knn_query = format!(
-            "{}=>[KNN {} @{} $vec AS __vector_score]",
-            filter_str,
-            req.samples(),
-            self.vector_field
-        );
-
-        let mut cmd = redis::cmd("FT.SEARCH");
-        cmd.arg(&self.index_name)
-            .arg(&knn_query)
-            .arg("PARAMS")
-            .arg(2)
-            .arg("vec")
-            .arg(vector_bytes)
-            .arg("SORTBY")
-            .arg("__vector_score")
-            .arg("RETURN")
-            .arg(2)
-            .arg("__vector_score")
-            .arg("document")
-            .arg("DIALECT")
-            .arg(2);
-
-        if req.threshold().is_some() {
-            cmd.arg("LIMIT").arg(0).arg(req.samples());
-        }
-
-        let response: redis::Value = cmd
-            .query_async(&mut con)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let response = self.execute_search(vector_bytes, &req, true).await?;
 
         let mut results = Self::parse_search_response(response)?;
 
@@ -350,48 +317,7 @@ where
         let embedding = self.model.embed_text(req.query()).await?;
         let vector_bytes = Self::embedding_to_bytes(&embedding.vec);
 
-        let mut con = self
-            .client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let filter_str = req
-            .filter()
-            .as_ref()
-            .map(|f| f.clone().into_inner())
-            .unwrap_or_else(|| "*".to_string());
-
-        let knn_query = format!(
-            "{}=>[KNN {} @{} $vec AS __vector_score]",
-            filter_str,
-            req.samples(),
-            self.vector_field
-        );
-
-        let mut cmd = redis::cmd("FT.SEARCH");
-        cmd.arg(&self.index_name)
-            .arg(&knn_query)
-            .arg("PARAMS")
-            .arg(2)
-            .arg("vec")
-            .arg(vector_bytes)
-            .arg("SORTBY")
-            .arg("__vector_score")
-            .arg("RETURN")
-            .arg(1)
-            .arg("__vector_score")
-            .arg("DIALECT")
-            .arg(2);
-
-        if req.threshold().is_some() {
-            cmd.arg("LIMIT").arg(0).arg(req.samples());
-        }
-
-        let response: redis::Value = cmd
-            .query_async(&mut con)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let response = self.execute_search(vector_bytes, &req, false).await?;
 
         let mut results = Self::parse_search_response_ids(response)?;
 
