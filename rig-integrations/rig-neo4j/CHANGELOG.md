@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [0.5.2](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.5.1...rig-neo4j-v0.5.2) - 2026-03-13
+
+### Fixed
+
+- *(gemini)* correct ProviderBuilder impl for GeminiInteractionsBuilder ([#1482](https://github.com/0xPlaygrounds/rig/pull/1482)) (by @adrianncovaci)
+
+### Contributors
+
+* @adrianncovaci
+
+
 ## [0.5.1](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.5.0...rig-neo4j-v0.5.1) - 2026-03-05
 
 ### Other
