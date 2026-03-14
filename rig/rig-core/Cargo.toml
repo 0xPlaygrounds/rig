@@ -183,6 +183,10 @@ name = "hyperbolic_audio_generation"
 required-features = ["audio"]
 
 [[example]]
+name = "xai_audio_generation"
+required-features = ["audio"]
+
+[[example]]
 name = "mistral_embeddings"
 required-features = ["derive"]
 

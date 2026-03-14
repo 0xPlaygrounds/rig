@@ -10,12 +10,16 @@
 //! ```
 
 mod api;
+#[cfg(feature = "audio")]
+pub mod audio_generation;
 pub mod client;
 pub mod completion;
 #[cfg(feature = "image")]
 pub mod image_generation;
 mod streaming;
 
+#[cfg(feature = "audio")]
+pub use audio_generation::{AudioGenerationModel, TTS_1};
 pub use client::Client;
 pub use completion::{
     CompletionModel, CompletionResponse, GROK_2_1212, GROK_2_IMAGE_1212, GROK_2_VISION_1212,
