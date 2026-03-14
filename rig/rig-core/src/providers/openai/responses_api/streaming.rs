@@ -170,7 +170,7 @@ pub struct ContentPartChunk {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPartChunkPart {
     OutputText { text: String },
     SummaryText { text: String },
@@ -227,7 +227,7 @@ pub struct SummaryTextChunk {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum SummaryPartChunkPart {
     SummaryText { text: String },
 }
@@ -430,13 +430,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::reasoning_choices_from_done_item;
+    use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
     use crate::message::ReasoningContent;
     use crate::providers::openai::responses_api::ReasoningSummary;
     use crate::streaming::RawStreamingChoice;
     use futures::StreamExt;
     use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
-    use serde_json;
+    use serde_json::{self, json};
 
     use crate::{
         completion::ToolDefinition,
@@ -519,6 +519,106 @@ mod tests {
                 id: Some(id),
                 content: ReasoningContent::Summary(text),
             }) if id == "rs_2" && text == "only summary"
+        ));
+    }
+
+    #[test]
+    fn content_part_added_deserializes_snake_case_part_type() {
+        let chunk: StreamingCompletionChunk = serde_json::from_value(json!({
+            "type": "response.content_part.added",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 3,
+            "part": {
+                "type": "output_text",
+                "text": "hello"
+            }
+        }))
+        .expect("content part event should deserialize");
+
+        assert!(matches!(
+            chunk,
+            StreamingCompletionChunk::Delta(chunk)
+                if matches!(
+                    chunk.data,
+                    ItemChunkKind::ContentPartAdded(_)
+                )
+        ));
+    }
+
+    #[test]
+    fn content_part_done_deserializes_snake_case_part_type() {
+        let chunk: StreamingCompletionChunk = serde_json::from_value(json!({
+            "type": "response.content_part.done",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 4,
+            "part": {
+                "type": "summary_text",
+                "text": "done"
+            }
+        }))
+        .expect("content part done event should deserialize");
+
+        assert!(matches!(
+            chunk,
+            StreamingCompletionChunk::Delta(chunk)
+                if matches!(
+                    chunk.data,
+                    ItemChunkKind::ContentPartDone(_)
+                )
+        ));
+    }
+
+    #[test]
+    fn reasoning_summary_part_added_deserializes_snake_case_part_type() {
+        let chunk: StreamingCompletionChunk = serde_json::from_value(json!({
+            "type": "response.reasoning_summary_part.added",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "summary_index": 0,
+            "sequence_number": 5,
+            "part": {
+                "type": "summary_text",
+                "text": "step 1"
+            }
+        }))
+        .expect("reasoning summary part event should deserialize");
+
+        assert!(matches!(
+            chunk,
+            StreamingCompletionChunk::Delta(chunk)
+                if matches!(
+                    chunk.data,
+                    ItemChunkKind::ReasoningSummaryPartAdded(_)
+                )
+        ));
+    }
+
+    #[test]
+    fn reasoning_summary_part_done_deserializes_snake_case_part_type() {
+        let chunk: StreamingCompletionChunk = serde_json::from_value(json!({
+            "type": "response.reasoning_summary_part.done",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "summary_index": 0,
+            "sequence_number": 6,
+            "part": {
+                "type": "summary_text",
+                "text": "step 2"
+            }
+        }))
+        .expect("reasoning summary part done event should deserialize");
+
+        assert!(matches!(
+            chunk,
+            StreamingCompletionChunk::Delta(chunk)
+                if matches!(
+                    chunk.data,
+                    ItemChunkKind::ReasoningSummaryPartDone(_)
+                )
         ));
     }
 

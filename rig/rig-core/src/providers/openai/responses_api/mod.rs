@@ -31,6 +31,8 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
+#[cfg(not(target_family = "wasm"))]
+pub mod websocket;
 
 /// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].

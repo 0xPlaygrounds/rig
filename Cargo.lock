@@ -9438,6 +9438,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
+ "tokio-tungstenite 0.23.1",
  "tracing",
  "tracing-futures",
  "tracing-opentelemetry",
