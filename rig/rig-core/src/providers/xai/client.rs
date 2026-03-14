@@ -31,7 +31,7 @@ impl<H> Capabilities<H> for XAiExt {
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
+    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
 }
