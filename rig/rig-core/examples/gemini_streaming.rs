@@ -13,8 +13,9 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     let gen_cfg = GenerationConfig {
         thinking_config: Some(ThinkingConfig {
+            thinking_budget: Some(2048),
+            thinking_level: None,
             include_thoughts: Some(true),
-            thinking_budget: 2048,
         }),
         ..Default::default()
     };
