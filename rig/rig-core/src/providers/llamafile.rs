@@ -33,6 +33,7 @@ use crate::json_utils::empty_or_none;
 use crate::providers::openai::{self, StreamingToolCall};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
+    embeddings::{self, EmbeddingError},
     json_utils,
 };
 use async_stream::stream;
@@ -64,7 +65,7 @@ impl Provider for LlamafileExt {
 
 impl<H> Capabilities<H> for LlamafileExt {
     type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
+    type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
@@ -252,7 +253,7 @@ where
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "llamafile",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.system_instructions = completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -261,8 +262,6 @@ where
         } else {
             tracing::Span::current()
         };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
 
         let request =
             LlamafileCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -337,7 +336,7 @@ where
                 gen_ai.operation.name = "chat_streaming",
                 gen_ai.provider.name = "llamafile",
                 gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
+                gen_ai.system_instructions = completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -346,8 +345,6 @@ where
         } else {
             tracing::Span::current()
         };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
 
         let mut request =
             LlamafileCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -543,6 +540,105 @@ where
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         Box::pin(stream),
     ))
+}
+
+// ================================================================
+// Embedding Model
+// ================================================================
+
+/// Llamafile embedding model.
+///
+/// Llamafile supports the OpenAI-compatible `/v1/embeddings` endpoint.
+#[derive(Clone)]
+pub struct EmbeddingModel<T = reqwest::Client> {
+    client: Client<T>,
+    /// The model identifier.
+    pub model: String,
+    ndims: usize,
+}
+
+impl<T> EmbeddingModel<T> {
+    /// Create a new embedding model for the given client, model name, and dimensions.
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            ndims,
+        }
+    }
+}
+
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+{
+    const MAX_DOCUMENTS: usize = 1024;
+
+    type Client = Client<T>;
+
+    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, ndims.unwrap_or_default())
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let documents = documents.into_iter().collect::<Vec<_>>();
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "input": documents,
+        });
+
+        let body = serde_json::to_vec(&body)?;
+
+        let req = self
+            .client
+            .post("v1/embeddings")?
+            .body(body)
+            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
+
+        let response = self.client.send(req).await?;
+
+        if response.status().is_success() {
+            let body: Vec<u8> = response.into_body().await?;
+            let body: ApiResponse<openai::EmbeddingResponse> = serde_json::from_slice(&body)?;
+
+            match body {
+                ApiResponse::Ok(response) => {
+                    tracing::info!(target: "rig",
+                        "Llamafile embedding token usage: {:?}",
+                        response.usage
+                    );
+
+                    if response.data.len() != documents.len() {
+                        return Err(EmbeddingError::ResponseError(
+                            "Response data length does not match input length".into(),
+                        ));
+                    }
+
+                    Ok(response
+                        .data
+                        .into_iter()
+                        .zip(documents.into_iter())
+                        .map(|(embedding, document)| embeddings::Embedding {
+                            document,
+                            vec: embedding.embedding,
+                        })
+                        .collect())
+                }
+                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+            }
+        } else {
+            let text = http_client::text(response).await?;
+            Err(EmbeddingError::ProviderError(text))
+        }
+    }
 }
 
 // ================================================================
