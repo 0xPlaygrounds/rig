@@ -99,7 +99,7 @@ where
                         .zip(documents.into_iter())
                         .map(|(embedding, document)| embeddings::Embedding {
                             document,
-                            vec: embedding.embedding,
+                            vec: embedding.embedding.into_iter().filter_map(|n| n.as_f64()).collect(),
                         })
                         .collect())
                 }
@@ -124,6 +124,6 @@ pub struct EmbeddingResponse {
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingData {
     pub object: String,
-    pub embedding: Vec<f64>,
+    pub embedding: Vec<serde_json::Number>,
     pub index: usize,
 }
