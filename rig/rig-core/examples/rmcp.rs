@@ -239,19 +239,10 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let transport =
-        rmcp::transport::StreamableHttpClientTransport::from_uri("http://localhost:8080");
-
-    let client_info = ClientInfo {
-        protocol_version: Default::default(),
-        capabilities: ClientCapabilities::default(),
-        client_info: Implementation {
-            name: "rig-core".to_string(),
-            version: "0.13.0".to_string(),
-            ..Default::default()
-        },
-        meta: None,
-    };
+    let client_info = ClientInfo::new(
+        ClientCapabilities::default(),
+        Implementation::new("rig-core", "0.13.0"),
+    );
 
     // Create a shared ToolServer so the MCP handler can update tools at runtime.
     let tool_server_handle = ToolServer::new().run();
