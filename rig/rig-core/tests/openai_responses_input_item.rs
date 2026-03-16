@@ -342,7 +342,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
             temperature: None,
             max_tokens: None,
             tool_choice: None,
-            additional_params: Some(serde_json::json!(true)),
+            additional_params: Some(serde_json::json!("not_a_valid_object")),
             model: None,
             output_schema: None,
         };
