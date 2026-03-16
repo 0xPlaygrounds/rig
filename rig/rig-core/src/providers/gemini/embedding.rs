@@ -121,7 +121,11 @@ where
                     .zip(response.embeddings)
                     .map(|(document, embedding)| embeddings::Embedding {
                         document,
-                        vec: embedding.values,
+                        vec: embedding
+                            .values
+                            .into_iter()
+                            .filter_map(|n| n.as_f64())
+                            .collect(),
                     })
                     .collect();
 
@@ -248,7 +252,7 @@ mod gemini_api_types {
 
     #[derive(Debug, Deserialize)]
     pub struct EmbeddingValues {
-        pub values: Vec<f64>,
+        pub values: Vec<serde_json::Number>,
     }
 }
 
