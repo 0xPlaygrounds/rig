@@ -6,8 +6,9 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
-    apply_cache_control,
+    AdditionalParameters, CapabilitySupport, CompletionModel, Content, Message, OutputConfig,
+    OutputFormat, ReasoningEffort, SystemContent, Thinking, ToolChoice, ToolDefinition, Usage,
+    anthropic_model_capabilities, apply_cache_control, sanitize_schema,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -239,6 +240,90 @@ where
             );
         }
 
+        let typed_additional_params = if let Some(params) = completion_request.additional_params {
+            serde_json::from_value::<AdditionalParameters>(params).map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid Anthropic additional_params payload: {err}").into(),
+                )
+            })?
+        } else {
+            AdditionalParameters::default()
+        };
+        let model_capabilities = anthropic_model_capabilities(&request_model);
+
+        if matches!(
+            typed_additional_params.thinking.as_ref(),
+            Some(Thinking::Adaptive)
+        ) && matches!(
+            model_capabilities.supports_adaptive_thinking,
+            CapabilitySupport::Unsupported
+        ) {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "`thinking.type = \"adaptive\"` is only supported for Claude Opus 4.6 and Claude Sonnet 4.6 models (got: {request_model})"
+                )
+                .into(),
+            ));
+        }
+
+        let mut output_config = completion_request.output_schema.map(|schema| {
+            let mut schema_value = schema.to_value();
+            sanitize_schema(&mut schema_value);
+            OutputConfig {
+                format: Some(OutputFormat::JsonSchema {
+                    schema: schema_value,
+                }),
+                ..Default::default()
+            }
+        });
+
+        if let Some(user_output_config) = typed_additional_params.output_config {
+            let has_schema_format = output_config.is_some();
+            let mut merged = output_config.take().unwrap_or_default();
+            merged.effort = user_output_config.effort;
+            merged.additional.extend(user_output_config.additional);
+            if has_schema_format {
+                merged.additional.remove("format");
+            } else if user_output_config.format.is_some() {
+                merged.format = user_output_config.format;
+            }
+
+            output_config = if merged.format.is_some()
+                || merged.effort.is_some()
+                || !merged.additional.is_empty()
+            {
+                Some(merged)
+            } else {
+                None
+            };
+        }
+
+        if let Some(ref oc) = output_config
+            && matches!(oc.effort, Some(ReasoningEffort::Max))
+            && matches!(
+                model_capabilities.supports_effort_max,
+                CapabilitySupport::Unsupported
+            )
+        {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "`effort: \"max\" is only supported for claude-opus-4-6 models (got: {request_model})"
+                )
+                .into(),
+            ));
+        }
+
+        if let Some(thinking) = &typed_additional_params.thinking {
+            merge_inplace(&mut body, json!({ "thinking": thinking }));
+        }
+        if let Some(output_config) = &output_config {
+            merge_inplace(&mut body, json!({ "output_config": output_config }));
+        }
+        if !typed_additional_params.passthrough.is_empty() {
+            merge_inplace(
+                &mut body,
+                serde_json::Value::Object(typed_additional_params.passthrough),
+            );
         if !additional_params_payload.is_null() {
             merge_inplace(&mut body, additional_params_payload)
         }

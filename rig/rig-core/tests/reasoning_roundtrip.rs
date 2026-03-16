@@ -205,6 +205,23 @@ async fn test_anthropic_reasoning_roundtrip() {
 
     let client = anthropic::Client::from_env();
     run_reasoning_roundtrip_streaming(TestAgent {
+        model: client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6),
+        preamble: PREAMBLE.into(),
+        additional_params: Some(serde_json::json!({
+            "thinking": { "type": "adaptive" },
+            "output_config": { "effort": "medium" }
+        })),
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires ANTHROPIC_API_KEY"]
+async fn test_anthropic_reasoning_roundtrip_legacy_manual() {
+    use rig::providers::anthropic;
+
+    let client = anthropic::Client::from_env();
+    run_reasoning_roundtrip_streaming(TestAgent {
         model: client.completion_model("claude-sonnet-4-5-20250929"),
         preamble: PREAMBLE.into(),
         additional_params: Some(serde_json::json!({
@@ -429,6 +446,23 @@ async fn test_xai_reasoning_roundtrip_nonstreaming() {
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn test_anthropic_reasoning_roundtrip_nonstreaming() {
+    use rig::providers::anthropic;
+
+    let client = anthropic::Client::from_env();
+    run_reasoning_roundtrip_nonstreaming(TestAgent {
+        model: client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6),
+        preamble: PREAMBLE.into(),
+        additional_params: Some(serde_json::json!({
+            "thinking": { "type": "adaptive" },
+            "output_config": { "effort": "medium" }
+        })),
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires ANTHROPIC_API_KEY"]
+async fn test_anthropic_reasoning_roundtrip_nonstreaming_legacy_manual() {
     use rig::providers::anthropic;
 
     let client = anthropic::Client::from_env();
