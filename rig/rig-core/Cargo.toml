@@ -202,3 +202,7 @@ name = "custom_vector_store"
 [[example]]
 name = "gemini_extractor_with_rag"
 required-features = ["derive"]
+
+[[example]]
+name = "xai_image_generation"
+required-features = ["image"]

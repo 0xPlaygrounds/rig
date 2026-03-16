@@ -12,7 +12,7 @@ pub struct EmbeddingResponse {
     #[serde(default)]
     pub response_type: Option<String>,
     pub id: String,
-    pub embeddings: Vec<Vec<f64>>,
+    pub embeddings: Vec<Vec<serde_json::Number>>,
     pub texts: Vec<String>,
     #[serde(default)]
     pub meta: Option<Meta>,
@@ -144,7 +144,7 @@ where
                         .zip(documents.into_iter())
                         .map(|(embedding, document)| embeddings::Embedding {
                             document,
-                            vec: embedding,
+                            vec: embedding.into_iter().filter_map(|n| n.as_f64()).collect(),
                         })
                         .collect())
                 }

@@ -12,9 +12,16 @@ Interested in having your project added here? Feel free to open an issue or PR.
 - [VT Code](https://github.com/vinhnx/vtcode) - a (currently research-preview) terminal coding agent
 - [rv](https://github.com/gi-dellav/rv) - a non-invasive AI code review tool
 - [Cortex Memory](https://github.com/sopaco/cortex-mem) - The production-ready memory system for intelligent agents. A complete solution for memory management, from extraction and vector search to automated optimization, with a REST API, MCP, CLI, and insights dashboard out-of-the-box.
+- [ChatShell](https://github.com/chatshellapp/chatshell-desktop) - an open-source agentic desktop AI client built on rig-core and Tauri 2. 9 built-in tools (web search, bash, file ops, grep), 40+ AI providers, MCP integration, and a composable skills system — all zero-config out of the box.
 
 ## Tutorials
 Nothing here yet. Maybe you'd like to be the first person to add something here?
+
+## Rig in the wild
+- [Rust and Rig: Building for Stability in a Rapidly Changing AI Landscape](https://www.youtube.com/watch?v=nLlY2nNgBgM) - a talk by Joshua Mo (previous lead Rig maintainer)
+- [Is Rig better than Langchain?](https://www.youtube.com/watch?v=nLlY2nNgBgM) - a video by Francesco Ciulla on Rig (and talking about Rust vs Python)
+- [Building the Rig AI Framework with Rust](https://www.youtube.com/watch?v=nLlY2nNgBgM) - a podcast episode by Coding Chats on Rig
+- [Rust Crate of the Year, IMO](https://www.youtube.com/watch?v=9L9oOmqD6zc&pp=ygUQY29kZSB0byB0aGUgbW9vbg%3D%3D) - a video by Code to the Moon introducing Rig and its core features
 
 ## Companies using Rig publicly
 - [HelixDB](https://www.helix-db.com/) - Using Rig as part of a new internal project as well as using Rust internally, extensively
