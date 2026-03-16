@@ -135,6 +135,7 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
                 gen_ai.input.messages = request_messages,
                 gen_ai.output.messages = tracing::field::Empty,
             )
@@ -310,6 +311,14 @@ where
         if !span.is_disabled() {
             span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
             span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
+            span.record(
+                "gen_ai.usage.cached_tokens",
+                final_usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map(|d| d.cached_tokens)
+                    .unwrap_or(0),
+            );
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
