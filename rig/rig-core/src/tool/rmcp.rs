@@ -466,11 +466,10 @@ mod tests {
 
         let server_clone = server.clone();
         let server_service_handle = tokio::spawn(async move {
-            let service = server_clone
+            server_clone
                 .serve((server_from_client, server_to_client))
                 .await
-                .expect("server failed to start");
-            service
+                .expect("server failed to start")
         });
 
         let client_info = ClientInfo::default();
