@@ -2,6 +2,10 @@
 //! Google Gemini Completion Integration
 //! From [Gemini API Reference](https://ai.google.dev/api/generate-content)
 // ================================================================
+/// `gemini-3.1-flash-lite-preview` completion model
+pub const GEMINI_3_1_FLASH_LITE_PREVIEW: &str = "gemini-3.1-flash-lite-preview";
+/// `gemini-3-flash-preview` completion model
+pub const GEMINI_3_FLASH_PREVIEW: &str = "gemini-3-flash-preview";
 /// `gemini-2.5-pro-preview-06-05` completion model
 pub const GEMINI_2_5_PRO_PREVIEW_06_05: &str = "gemini-2.5-pro-preview-06-05";
 /// `gemini-2.5-pro-preview-05-06` completion model
@@ -1514,10 +1518,30 @@ pub mod gemini_api_types {
         }
     }
 
+    /// Thinking depth level for Gemini 3 models.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ThinkingLevel {
+        Minimal,
+        Low,
+        Medium,
+        High,
+    }
+
+    /// Configuration for the model's thinking/reasoning process.
+    /// Note: `thinking_budget` (Gemini 2.5) and `thinking_level` (Gemini 3) are mutually exclusive
+    /// and cannot be set in the same request.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ThinkingConfig {
-        pub thinking_budget: u32,
+        /// Token budget for thinking. Used by Gemini 2.5 models. Range: 0 to 32768.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thinking_budget: Option<u32>,
+        /// Thinking depth level. Used by Gemini 3 models.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thinking_level: Option<ThinkingLevel>,
+        /// When true, includes summarized versions of the model's reasoning in the response.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub include_thoughts: Option<bool>,
     }
 
