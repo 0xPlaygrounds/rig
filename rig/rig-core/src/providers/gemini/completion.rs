@@ -1518,6 +1518,16 @@ pub mod gemini_api_types {
         }
     }
 
+    /// Thinking depth level for Gemini 3 models.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ThinkingLevel {
+        Minimal,
+        Low,
+        Medium,
+        High,
+    }
+
     /// Configuration for the model's thinking/reasoning process.
     /// Note: `thinking_budget` (Gemini 2.5) and `thinking_level` (Gemini 3) are mutually exclusive
     /// and cannot be set in the same request.
@@ -1528,9 +1538,8 @@ pub mod gemini_api_types {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_budget: Option<u32>,
         /// Thinking depth level. Used by Gemini 3 models.
-        /// Values: "minimal", "low", "medium", "high".
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub thinking_level: Option<String>,
+        pub thinking_level: Option<ThinkingLevel>,
         /// When true, includes summarized versions of the model's reasoning in the response.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub include_thoughts: Option<bool>,

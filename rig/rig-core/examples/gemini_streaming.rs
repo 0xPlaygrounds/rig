@@ -1,7 +1,7 @@
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig,
+    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
 use rig::{
     providers::gemini::{self},
@@ -13,8 +13,8 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     let gen_cfg = GenerationConfig {
         thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(2048),
-            thinking_level: None,
+            thinking_budget: None,
+            thinking_level: Some(ThinkingLevel::Medium),
             include_thoughts: Some(true),
         }),
         ..Default::default()
@@ -22,7 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cfg = AdditionalParameters::default().with_config(gen_cfg);
     // Create streaming agent with a single context prompt
     let agent = gemini::Client::from_env()
-        .agent(gemini::completion::GEMINI_2_0_FLASH)
+        .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(serde_json::to_value(cfg).unwrap())
