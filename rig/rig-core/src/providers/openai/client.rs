@@ -150,6 +150,32 @@ where
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+impl Client<reqwest::Client> {
+    /// WebSocket mode currently uses a native `tokio-tungstenite` transport and does
+    /// not reuse custom `HttpClientExt` backends, so this API is only exposed for the
+    /// default `reqwest::Client` transport.
+    pub fn responses_websocket_builder(
+        &self,
+        model: impl Into<String>,
+    ) -> super::responses_api::websocket::ResponsesWebSocketSessionBuilder {
+        super::responses_api::websocket::ResponsesWebSocketSessionBuilder::new(
+            self.completion_model(model),
+        )
+    }
+
+    /// This API is OpenAI-specific and only available on non-wasm targets in `rig-core`.
+    pub async fn responses_websocket(
+        &self,
+        model: impl Into<String>,
+    ) -> Result<
+        super::responses_api::websocket::ResponsesWebSocketSession,
+        crate::completion::CompletionError,
+    > {
+        self.responses_websocket_builder(model).connect().await
+    }
+}
+
 impl<H> CompletionsClient<H>
 where
     H: HttpClientExt
