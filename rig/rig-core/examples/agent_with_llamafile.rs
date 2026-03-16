@@ -1,5 +1,6 @@
 /// This example requires that you have a [llamafile](https://github.com/Mozilla-Ocho/llamafile)
 /// server running locally at http://localhost:8080 (the default).
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::llamafile;
 
@@ -17,7 +18,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Prompt the agent and print the response
-    let response = agent.prompt("Explain what llamafile is in two sentences.").await?;
+    let response = agent
+        .prompt("Explain what llamafile is in two sentences.")
+        .await?;
 
     println!("{response}");
 

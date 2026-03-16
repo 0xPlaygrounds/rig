@@ -41,7 +41,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{info_span, Level};
+use tracing::{Level, info_span};
 use tracing_futures::Instrument;
 
 // ================================================================
@@ -96,8 +96,7 @@ impl ProviderBuilder for LlamafileBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<LlamafileExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
-    client::ClientBuilder<LlamafileBuilder, Nothing, H>;
+pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<LlamafileBuilder, Nothing, H>;
 
 impl Client {
     /// Create a client pointing at the given llamafile base URL
@@ -687,9 +686,8 @@ mod tests {
             output_schema: None,
         };
 
-        let request =
-            LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
-                .expect("Failed to create request");
+        let request = LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
+            .expect("Failed to create request");
 
         assert_eq!(request.model, LLAMA_CPP);
         assert_eq!(request.messages.len(), 2); // system + user
