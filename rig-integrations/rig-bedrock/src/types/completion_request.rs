@@ -94,10 +94,27 @@ impl AwsCompletionRequest {
     }
 
     pub fn system_prompt(&self) -> Option<Vec<SystemContentBlock>> {
-        self.0
-            .preamble
-            .to_owned()
-            .map(|system_prompt| vec![SystemContentBlock::Text(system_prompt)])
+        let mut system_blocks = Vec::new();
+
+        if let Some(system_prompt) = self.0.preamble.to_owned()
+            && !system_prompt.is_empty()
+        {
+            system_blocks.push(SystemContentBlock::Text(system_prompt));
+        }
+
+        for message in self.0.chat_history.iter() {
+            if let Message::System { content } = message
+                && !content.is_empty()
+            {
+                system_blocks.push(SystemContentBlock::Text(content.clone()));
+            }
+        }
+
+        if system_blocks.is_empty() {
+            None
+        } else {
+            Some(system_blocks)
+        }
     }
 
     pub fn messages(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
@@ -121,7 +138,9 @@ impl AwsCompletionRequest {
         }
 
         self.0.chat_history.iter().for_each(|message| {
-            full_history.push(message.clone());
+            if !matches!(message, Message::System { .. }) {
+                full_history.push(message.clone());
+            }
         });
 
         full_history
@@ -392,5 +411,57 @@ mod tests {
                 && spec.description() == Some("Get weather for a location")
             )
         );
+    }
+
+    #[test]
+    fn test_system_prompt_includes_system_history() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("History system instruction"),
+                Message::User {
+                    content: OneOrMany::one(UserContent::Text(Text {
+                        text: "test".to_string(),
+                    })),
+                },
+            ])
+            .expect("history should be non-empty"),
+            ..minimal_request()
+        };
+
+        let aws_request = AwsCompletionRequest(request);
+        let system_prompt = aws_request.system_prompt();
+
+        assert!(system_prompt.is_some());
+        let system_prompt = system_prompt.unwrap();
+        assert_eq!(system_prompt.len(), 1);
+        assert_eq!(
+            system_prompt[0],
+            aws_bedrock::SystemContentBlock::Text("History system instruction".to_string())
+        );
+    }
+
+    #[test]
+    fn test_messages_exclude_system_history() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("History system instruction"),
+                Message::User {
+                    content: OneOrMany::one(UserContent::Text(Text {
+                        text: "test".to_string(),
+                    })),
+                },
+            ])
+            .expect("history should be non-empty"),
+            ..minimal_request()
+        };
+
+        let aws_request = AwsCompletionRequest(request);
+        let messages = aws_request.messages().expect("messages should convert");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
     }
 }

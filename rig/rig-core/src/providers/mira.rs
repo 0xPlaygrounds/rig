@@ -108,6 +108,9 @@ impl TryFrom<RawMessage> for message::Message {
 
     fn try_from(raw: RawMessage) -> Result<Self, Self::Error> {
         match raw.role.as_str() {
+            "system" => Ok(message::Message::System {
+                content: raw.content,
+            }),
             "user" => Ok(message::Message::User {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: raw.content })),
             }),
@@ -259,6 +262,7 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
 
         for msg in req.chat_history {
             let (role, content) = match msg {
+                Message::System { content } => ("system", content),
                 Message::User { content } => {
                     let text = content
                         .iter()
@@ -556,6 +560,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                             "Received user message in response where assistant message was expected".to_owned()
                         ));
                     }
+                    Message::System { .. } => {
+                        tracing::warn!(target: "rig", "Received system message in response where assistant message was expected");
+                        return Err(CompletionError::ResponseError(
+                            "Received system message in response where assistant message was expected".to_owned(),
+                        ));
+                    }
                 };
 
                 (content, usage)
@@ -600,6 +610,10 @@ impl std::fmt::Display for Usage {
 impl From<Message> for serde_json::Value {
     fn from(msg: Message) -> Self {
         match msg {
+            Message::System { content } => serde_json::json!({
+                "role": "system",
+                "content": content
+            }),
             Message::User { content } => {
                 let text = content
                     .iter()
@@ -667,6 +681,7 @@ impl TryFrom<serde_json::Value> for Message {
         };
 
         match role {
+            "system" => Ok(Message::System { content }),
             "user" => Ok(Message::User {
                 content: OneOrMany::one(UserContent::Text(message::Text { text: content })),
             }),

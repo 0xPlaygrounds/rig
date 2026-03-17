@@ -355,6 +355,11 @@ impl TryFrom<message::Message> for Message {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(Self {
+                role: "system".to_string(),
+                content: Some(content),
+                tool_calls: vec![],
+            }),
             message::Message::User { content } => Ok(Self {
                 role: "user".to_string(),
                 content: content.iter().find_map(|c| match c {

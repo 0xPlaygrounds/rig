@@ -7,7 +7,7 @@ use tracing_futures::Instrument;
 
 use super::completion::{
     CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
-    apply_cache_control,
+    apply_cache_control, split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -168,6 +168,7 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
+        let (history_system, full_history) = split_system_messages_from_history(full_history);
 
         let mut messages = full_history
             .into_iter()
@@ -188,6 +189,7 @@ where
             } else {
                 vec![]
             };
+        system.extend(history_system);
 
         // Apply cache control breakpoints only if prompt_caching is enabled
         if self.prompt_caching {

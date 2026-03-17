@@ -387,6 +387,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                     )),
                 })
                 .collect::<Result<Vec<_>, _>>()?,
+            message::Message::System { content } => {
+                vec![Message::System { content }]
+            }
             message::Message::Assistant { content, .. } => {
                 let mut text_content = vec![];
                 let mut tool_calls = vec![];

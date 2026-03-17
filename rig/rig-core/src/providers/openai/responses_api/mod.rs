@@ -256,6 +256,13 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
     fn try_from(value: crate::completion::Message) -> Result<Self, Self::Error> {
         match value {
+            crate::completion::Message::System { content } => Ok(vec![InputItem {
+                role: Some(Role::System),
+                input: InputContent::Message(Message::System {
+                    content: OneOrMany::one(content.into()),
+                    name: None,
+                }),
+            }]),
             crate::completion::Message::User { content } => {
                 let mut items = Vec::new();
 
@@ -1567,6 +1574,10 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::System {
+                content: OneOrMany::one(content.into()),
+                name: None,
+            }]),
             message::Message::User { content } => {
                 let (tool_results, other_content): (Vec<_>, Vec<_>) = content
                     .into_iter()

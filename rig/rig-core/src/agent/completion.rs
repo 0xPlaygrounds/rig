@@ -52,6 +52,15 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
             .find_map(|message| message.rag_text())
     });
 
+    let chat_history = if let Some(preamble) = preamble {
+        let mut with_system = Vec::with_capacity(chat_history.len() + 1);
+        with_system.push(Message::system(preamble.to_owned()));
+        with_system.extend(chat_history);
+        with_system
+    } else {
+        chat_history
+    };
+
     let completion_request = model
         .completion_request(prompt)
         .messages(chat_history)
@@ -60,12 +69,6 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         .additional_params_opt(additional_params.cloned())
         .output_schema_opt(output_schema.cloned())
         .documents(static_context.to_vec());
-
-    let completion_request = if let Some(preamble) = preamble {
-        completion_request.preamble(preamble.to_owned())
-    } else {
-        completion_request
-    };
 
     let completion_request = if let Some(tool_choice) = tool_choice {
         completion_request.tool_choice(tool_choice.clone())

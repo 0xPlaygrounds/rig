@@ -257,6 +257,10 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::System {
+                content,
+                name: None,
+            }]),
             message::Message::User { content } => {
                 // extract tool results
                 let mut messages = vec![];

@@ -9,6 +9,9 @@ impl VertexCompletionRequest {
         let mut contents = Vec::new();
 
         for message in self.0.chat_history.iter() {
+            if matches!(message, rig::completion::Message::System { .. }) {
+                continue;
+            }
             let content = RigMessage(message.clone()).try_into()?;
             contents.push(content);
         }
@@ -17,11 +20,30 @@ impl VertexCompletionRequest {
     }
 
     pub fn system_instruction(&self) -> Option<vertexai::model::Content> {
-        self.0.preamble.as_ref().map(|preamble| {
+        let mut system_texts = Vec::new();
+        if let Some(preamble) = self.0.preamble.as_ref()
+            && !preamble.is_empty()
+        {
+            system_texts.push(preamble.clone());
+        }
+
+        for message in self.0.chat_history.iter() {
+            if let rig::completion::Message::System { content } = message
+                && !content.is_empty()
+            {
+                system_texts.push(content.clone());
+            }
+        }
+
+        if system_texts.is_empty() {
+            return None;
+        }
+
+        Some(
             vertexai::model::Content::new()
                 .set_role("user")
-                .set_parts([vertexai::model::Part::new().set_text(preamble.clone())])
-        })
+                .set_parts([vertexai::model::Part::new().set_text(system_texts.join("\n\n"))]),
+        )
     }
 
     pub fn tools(&self) -> Option<vertexai::model::Tool> {
@@ -267,6 +289,39 @@ mod tests {
             content.parts[0].text(),
             Some(&"You are a helpful assistant.".to_string())
         );
+    }
+
+    #[test]
+    fn test_system_instruction_from_system_history_and_contents_skip_system() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System from history"),
+                Message::User {
+                    content: OneOrMany::one(UserContent::Text(Text {
+                        text: "hello".to_string(),
+                    })),
+                },
+            ])
+            .expect("history should be non-empty"),
+            ..minimal_request()
+        };
+
+        let vertex_request = VertexCompletionRequest(request);
+
+        let system_instruction = vertex_request.system_instruction();
+        assert!(system_instruction.is_some());
+        let system_instruction = system_instruction.unwrap();
+        assert_eq!(system_instruction.parts.len(), 1);
+        assert_eq!(
+            system_instruction.parts[0].text(),
+            Some(&"System from history".to_string())
+        );
+
+        let contents = vertex_request.contents().expect("contents should convert");
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].role.as_str(), "user");
     }
 
     #[test]
