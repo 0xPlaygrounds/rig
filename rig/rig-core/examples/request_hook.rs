@@ -48,6 +48,7 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
             "[Session {}] Sending prompt: {}",
             self.session_id,
             match prompt {
+                Message::System { content } => content.clone(),
                 Message::User { content } => content
                     .iter()
                     .filter_map(|c| {

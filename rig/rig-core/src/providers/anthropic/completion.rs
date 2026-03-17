@@ -645,6 +645,14 @@ impl TryFrom<message::Message> for Message {
                 })?,
             },
 
+            message::Message::System { content } => Message {
+                role: Role::User,
+                content: OneOrMany::one(Content::Text {
+                    text: content,
+                    cache_control: None,
+                }),
+            },
+
             message::Message::Assistant { content, .. } => {
                 let converted_content = content.into_iter().try_fold(
                     Vec::new(),

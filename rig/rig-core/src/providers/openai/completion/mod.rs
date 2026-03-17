@@ -606,6 +606,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => content.try_into(),
             message::Message::Assistant { content, .. } => content.try_into(),
         }

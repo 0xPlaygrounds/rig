@@ -293,6 +293,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Vec<Message>, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => {
                 let (tool_results, other_content): (Vec<_>, Vec<_>) = content
                     .into_iter()

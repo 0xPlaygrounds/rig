@@ -1500,6 +1500,10 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::System {
+                content: OneOrMany::one(content.into()),
+                name: None,
+            }]),
             message::Message::User { content } => {
                 // Use OpenRouter's own conversion for User content
                 // This supports images and PDF files via the file content type

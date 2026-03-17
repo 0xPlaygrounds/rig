@@ -276,6 +276,10 @@ impl TryFrom<message::Message> for Message {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         Ok(match message {
+            message::Message::System { content } => Message {
+                role: Role::System,
+                content,
+            },
             message::Message::User { content } => {
                 let collapsed_content = content
                     .into_iter()

@@ -817,6 +817,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
     fn try_from(internal_msg: crate::message::Message) -> Result<Self, Self::Error> {
         use crate::message::Message as InternalMessage;
         match internal_msg {
+            InternalMessage::System { content } => Ok(vec![Message::System {
+                content,
+                images: None,
+                name: None,
+            }]),
             InternalMessage::User { content, .. } => {
                 let (tool_results, other_content): (Vec<_>, Vec<_>) =
                     content.into_iter().partition(|content| {

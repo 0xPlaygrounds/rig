@@ -645,6 +645,10 @@ pub mod gemini_api_types {
 
         fn try_from(msg: message::Message) -> Result<Self, Self::Error> {
             Ok(match msg {
+                message::Message::System { content } => Content {
+                    parts: vec![content.into()],
+                    role: Some(Role::User),
+                },
                 message::Message::User { content } => Content {
                     parts: content
                         .into_iter()

@@ -34,6 +34,9 @@ pub trait ConvertMessage: Sized + Send + Sync {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
+    /// System message containing instruction text.
+    System { content: String },
+
     /// User message containing one or more content types defined by `UserContent`.
     User { content: OneOrMany<UserContent> },
 
@@ -556,7 +559,15 @@ impl Message {
                 }
                 None
             }
+            Message::System { .. } => None,
             _ => None,
+        }
+    }
+
+    /// Helper constructor to make creating system messages easier.
+    pub fn system(text: impl Into<String>) -> Self {
+        Message::System {
+            content: text.into(),
         }
     }
 
@@ -1290,7 +1301,7 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{Reasoning, ReasoningContent};
+    use super::{Message, Reasoning, ReasoningContent};
 
     #[test]
     fn reasoning_constructors_and_accessors_work() {
@@ -1338,5 +1349,19 @@ mod tests {
             let roundtrip: ReasoningContent = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(roundtrip, variant);
         }
+    }
+
+    #[test]
+    fn system_message_constructor_and_serde_roundtrip() {
+        let message = Message::system("You are concise.");
+
+        match &message {
+            Message::System { content } => assert_eq!(content, "You are concise."),
+            _ => panic!("Expected system message"),
+        }
+
+        let json = serde_json::to_string(&message).expect("serialize");
+        let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(roundtrip, message);
     }
 }

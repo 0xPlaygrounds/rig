@@ -1287,6 +1287,10 @@ pub mod interactions_api_types {
 
         fn try_from(message: crate::completion::Message) -> Result<Self, Self::Error> {
             match message {
+                crate::completion::Message::System { content } => Ok(Self {
+                    role: Role::User,
+                    content: TurnContent::Text(content),
+                }),
                 crate::completion::Message::User { content } => {
                     let contents = content
                         .into_iter()
