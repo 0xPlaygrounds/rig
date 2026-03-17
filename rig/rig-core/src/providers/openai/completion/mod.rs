@@ -169,6 +169,9 @@ pub enum Message {
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
+        /// Additional provider-specific fields (e.g., `encrypted_content` from some providers)
+        #[serde(flatten, skip_serializing_if = "Option::is_none")]
+        additional_params: Option<serde_json::Value>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -597,6 +600,7 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                 .into_iter()
                 .map(|tool_call| tool_call.into())
                 .collect::<Vec<_>>(),
+            additional_params: None,
         }])
     }
 }
@@ -1519,5 +1523,63 @@ mod tests {
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn test_assistant_message_with_encrypted_content_deserializes() {
+        // Regression test for issue #1515: some providers (e.g., Doubao) return
+        // encrypted_content field in the assistant message which should be handled
+        // gracefully via additional_params.
+        let json = r#"{
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hello"}],
+            "encrypted_content": "some_encrypted_data"
+        }"#;
+
+        let message: Message =
+            serde_json::from_str(json).expect("should deserialize with encrypted_content");
+
+        match message {
+            Message::Assistant {
+                content,
+                additional_params,
+                ..
+            } => {
+                assert_eq!(content.len(), 1);
+                assert!(additional_params.is_some());
+                let params = additional_params.unwrap();
+                assert_eq!(
+                    params.get("encrypted_content").unwrap(),
+                    "some_encrypted_data"
+                );
+            }
+            _ => panic!("expected assistant message"),
+        }
+    }
+
+    #[test]
+    fn test_assistant_message_with_unknown_fields_deserializes() {
+        // Test that any unknown fields are captured in additional_params
+        let json = r#"{
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hello"}],
+            "custom_field": "custom_value",
+            "another_field": 123
+        }"#;
+
+        let message: Message =
+            serde_json::from_str(json).expect("should deserialize with unknown fields");
+
+        match message {
+            Message::Assistant {
+                additional_params, ..
+            } => {
+                assert!(additional_params.is_some());
+                let params = additional_params.unwrap();
+                assert_eq!(params.get("custom_field").unwrap(), "custom_value");
+                assert_eq!(params.get("another_field").unwrap(), 123);
+            }
+            _ => panic!("expected assistant message"),
+        }
     }
 }

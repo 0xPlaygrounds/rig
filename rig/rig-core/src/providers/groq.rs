@@ -792,7 +792,8 @@ where
             refusal: None,
             audio: None,
             name: None,
-            tool_calls
+            tool_calls,
+            additional_params: None,
         };
 
         span.record("gen_ai.output.messages", serde_json::to_string(&vec![response_message]).unwrap());
