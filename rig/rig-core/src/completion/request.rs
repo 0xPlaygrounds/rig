@@ -575,7 +575,7 @@ pub struct CompletionRequest {
     pub model: Option<String>,
     /// Legacy preamble field preserved for backwards compatibility.
     ///
-    /// New code should prefer a leading [`Message::System`](crate::completion::Message::System)
+    /// New code should prefer a leading [`Message::System`]
     /// in `chat_history` as the canonical representation of system instructions.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
