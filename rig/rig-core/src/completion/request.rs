@@ -573,7 +573,10 @@ where
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// The preamble to be sent to the completion model provider
+    /// Legacy preamble field preserved for backwards compatibility.
+    ///
+    /// New code should prefer a leading [`Message::System`](crate::completion::Message::System)
+    /// in `chat_history` as the canonical representation of system instructions.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message will always be the prompt (hence why there is *always* one)
@@ -769,6 +772,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
+        // Legacy public API: funnel preamble into canonical system messages at build-time.
         self.preamble = Some(preamble);
         self
     }
@@ -924,7 +928,11 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
-        let chat_history = OneOrMany::many([self.chat_history, vec![self.prompt]].concat())
+        let mut chat_history = self.chat_history;
+        if let Some(preamble) = self.preamble {
+            chat_history.insert(0, Message::system(preamble));
+        }
+        let chat_history = OneOrMany::many([chat_history, vec![self.prompt]].concat())
             .expect("There will always be atleast the prompt");
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
@@ -933,7 +941,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
         CompletionRequest {
             model: self.request_model,
-            preamble: self.preamble,
+            preamble: None,
             chat_history,
             documents: self.documents,
             tools: self.tools,
@@ -968,6 +976,48 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 mod tests {
 
     use super::*;
+    use crate::streaming::StreamingCompletionResponse;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone)]
+    struct DummyModel;
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct DummyStreamingResponse;
+
+    impl GetTokenUsage for DummyStreamingResponse {
+        fn token_usage(&self) -> Option<Usage> {
+            None
+        }
+    }
+
+    impl CompletionModel for DummyModel {
+        type Response = serde_json::Value;
+        type StreamingResponse = DummyStreamingResponse;
+        type Client = ();
+
+        fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
+            Self
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "dummy completion model".to_string(),
+            ))
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "dummy completion model".to_string(),
+            ))
+        }
+    }
 
     #[test]
     fn test_document_display_without_metadata() {
@@ -1062,5 +1112,37 @@ mod tests {
         };
 
         assert_eq!(request.normalized_documents(), None);
+    }
+
+    #[test]
+    fn preamble_builder_funnels_to_system_message() {
+        let request = CompletionRequestBuilder::new(DummyModel, Message::user("Prompt"))
+            .preamble("System prompt".to_string())
+            .message(Message::user("History"))
+            .build();
+
+        assert_eq!(request.preamble, None);
+
+        let history = request.chat_history.into_iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            &history[0],
+            Message::System { content } if content == "System prompt"
+        ));
+        assert!(matches!(&history[1], Message::User { .. }));
+        assert!(matches!(&history[2], Message::User { .. }));
+    }
+
+    #[test]
+    fn without_preamble_removes_legacy_preamble_injection() {
+        let request = CompletionRequestBuilder::new(DummyModel, Message::user("Prompt"))
+            .preamble("System prompt".to_string())
+            .without_preamble()
+            .build();
+
+        assert_eq!(request.preamble, None);
+        let history = request.chat_history.into_iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 1);
+        assert!(matches!(&history[0], Message::User { .. }));
     }
 }
