@@ -194,6 +194,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 serde_json::to_string_pretty(content)
                     .expect("Failed to serialize assistant message")
             ),
+            _ => {
+                // Ignore other message types - the only other type of message that exists is system messages
+                // which can be ignored
+            }
         }
     }
 
