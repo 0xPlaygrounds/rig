@@ -3,18 +3,13 @@ use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
 use reqwest::Body;
-
 pub mod multipart;
 pub mod retry;
 pub mod sse;
-
-pub use multipart::MultipartForm;
-
-use std::pin::Pin;
-
 use crate::wasm_compat::*;
-
+pub use multipart::MultipartForm;
 pub use reqwest::Client as ReqwestClient;
+use std::pin::Pin;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -414,6 +409,71 @@ impl HttpClientExt for reqwest_middleware::ClientWithMiddleware {
                 );
 
             res.body(mapped_stream).map_err(Error::Protocol)
+        }
+    }
+}
+
+/// Test utilities for mocking HTTP clients.
+#[cfg(test)]
+pub(crate) mod mock {
+    use super::*;
+    use bytes::Bytes;
+
+    /// A mock HTTP client that returns pre-built SSE bytes from `send_streaming`.
+    ///
+    /// `send` and `send_multipart` always return `NOT_IMPLEMENTED`.
+    #[derive(Clone)]
+    pub struct MockStreamingClient {
+        pub sse_bytes: Bytes,
+    }
+
+    impl HttpClientExt for MockStreamingClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            T: Into<Bytes>,
+            T: WasmCompatSend,
+            U: From<Bytes>,
+            U: WasmCompatSend + 'static,
+        {
+            std::future::ready(Err(Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<MultipartForm>,
+        ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            U: From<Bytes>,
+            U: WasmCompatSend + 'static,
+        {
+            std::future::ready(Err(Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes>,
+        {
+            let sse_bytes = self.sse_bytes.clone();
+            async move {
+                let byte_stream = futures::stream::iter(vec![Ok::<Bytes, Error>(sse_bytes)]);
+                let boxed_stream: sse::BoxedStream = Box::pin(byte_stream);
+
+                Response::builder()
+                    .status(http::StatusCode::OK)
+                    .header(http::header::CONTENT_TYPE, "text/event-stream")
+                    .body(boxed_stream)
+                    .map_err(Error::Protocol)
+            }
         }
     }
 }

@@ -220,6 +220,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
         }
 
         match msg {
+            RigMessage::System { content } => Ok(vec![Message::system(content)]),
             RigMessage::User { content } => {
                 let mut items = Vec::new();
                 let mut text_parts = Vec::new();

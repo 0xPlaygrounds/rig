@@ -29,17 +29,11 @@ impl Provider for OpenRouterExt {
     type Builder = OpenRouterExtBuilder;
 
     const VERIFY_PATH: &'static str = "/key";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<Self::Builder, OpenRouterApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for OpenRouterExt {
     type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Nothing;
+    type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
@@ -52,10 +46,22 @@ impl<H> Capabilities<H> for OpenRouterExt {
 impl DebugExt for OpenRouterExt {}
 
 impl ProviderBuilder for OpenRouterExtBuilder {
-    type Output = OpenRouterExt;
+    type Extension<H>
+        = OpenRouterExt
+    where
+        H: http_client::HttpClientExt;
     type ApiKey = OpenRouterApiKey;
 
     const BASE_URL: &'static str = OPENROUTER_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: http_client::HttpClientExt,
+    {
+        Ok(OpenRouterExt)
+    }
 }
 
 impl ProviderClient for Client {
@@ -89,8 +95,11 @@ pub(crate) enum ApiResponse<T> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
+    #[serde(default)]
     pub completion_tokens: usize,
     pub total_tokens: usize,
+    #[serde(default)]
+    pub cost: f64,
 }
 
 impl std::fmt::Display for Usage {
@@ -118,12 +127,11 @@ impl GetTokenUsage for Usage {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::openrouter::Client =
+        let _client =
             crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::openrouter::Client =
-            crate::providers::openrouter::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

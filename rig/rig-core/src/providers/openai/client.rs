@@ -49,26 +49,12 @@ pub type CompletionsClientBuilder<H = reqwest::Client> =
 
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl Provider for OpenAICompletionsExt {
     type Builder = OpenAICompletionsExtBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<Self::Builder, OpenAIApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for OpenAIResponsesExt {
@@ -98,17 +84,41 @@ impl DebugExt for OpenAIResponsesExt {}
 impl DebugExt for OpenAICompletionsExt {}
 
 impl ProviderBuilder for OpenAIResponsesExtBuilder {
-    type Output = OpenAIResponsesExt;
+    type Extension<H>
+        = OpenAIResponsesExt
+    where
+        H: HttpClientExt;
     type ApiKey = OpenAIApiKey;
 
     const BASE_URL: &'static str = OPENAI_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(OpenAIResponsesExt)
+    }
 }
 
 impl ProviderBuilder for OpenAICompletionsExtBuilder {
-    type Output = OpenAICompletionsExt;
+    type Extension<H>
+        = OpenAICompletionsExt
+    where
+        H: HttpClientExt;
     type ApiKey = OpenAIApiKey;
 
     const BASE_URL: &'static str = OPENAI_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(OpenAICompletionsExt)
+    }
 }
 
 impl<H> Client<H>
@@ -137,6 +147,32 @@ where
     /// Useful for switching to the traditional Chat Completions API.
     pub fn completions_api(self) -> CompletionsClient<H> {
         self.with_ext(OpenAICompletionsExt)
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl Client<reqwest::Client> {
+    /// WebSocket mode currently uses a native `tokio-tungstenite` transport and does
+    /// not reuse custom `HttpClientExt` backends, so this API is only exposed for the
+    /// default `reqwest::Client` transport.
+    pub fn responses_websocket_builder(
+        &self,
+        model: impl Into<String>,
+    ) -> super::responses_api::websocket::ResponsesWebSocketSessionBuilder {
+        super::responses_api::websocket::ResponsesWebSocketSessionBuilder::new(
+            self.completion_model(model),
+        )
+    }
+
+    /// This API is OpenAI-specific and only available on non-wasm targets in `rig-core`.
+    pub async fn responses_websocket(
+        &self,
+        model: impl Into<String>,
+    ) -> Result<
+        super::responses_api::websocket::ResponsesWebSocketSession,
+        crate::completion::CompletionError,
+    > {
+        self.responses_websocket_builder(model).connect().await
     }
 }
 
@@ -582,12 +618,11 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::openai::Client =
+        let _client =
             crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::openai::Client =
-            crate::providers::openai::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::openai::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

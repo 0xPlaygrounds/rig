@@ -12,20 +12,31 @@ use crate::{
     wasm_compat::WasmCompatSend,
 };
 
-/// `embedding-001` embedding model
-pub const EMBEDDING_001: &str = "embedding-001";
-/// `text-embedding-004` embedding model
+/// `gemini-embedding-001` embedding model (3072 dimensions by default)
+pub const EMBEDDING_001: &str = "gemini-embedding-001";
+/// `text-embedding-004` embedding model (768 dimensions by default)
 pub const EMBEDDING_004: &str = "text-embedding-004";
+
+/// Returns the default output dimensionality for known Gemini embedding models.
+///
+/// See <https://ai.google.dev/gemini-api/docs/models#gemini-embedding>
+fn model_default_ndims(model: &str) -> Option<usize> {
+    match model {
+        EMBEDDING_001 => Some(3072),
+        EMBEDDING_004 => Some(768),
+        _ => None,
+    }
+}
 
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
     model: String,
-    ndims: Option<usize>,
+    ndims: usize,
 }
 
 impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
             client,
             model: model.into(),
@@ -33,7 +44,7 @@ impl<T> EmbeddingModel<T> {
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
+    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
         Self {
             client,
             model: model.to_string(),
@@ -51,11 +62,13 @@ where
     const MAX_DOCUMENTS: usize = 1024;
 
     fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
+        let model = model.into();
+        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
+        Self::new(client.clone(), model, ndims)
     }
 
     fn ndims(&self) -> usize {
-        768
+        self.ndims
     }
 
     /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
@@ -108,7 +121,11 @@ where
                     .zip(response.embeddings)
                     .map(|(document, embedding)| embeddings::Embedding {
                         document,
-                        vec: embedding.values,
+                        vec: embedding
+                            .values
+                            .into_iter()
+                            .filter_map(|n| n.as_f64())
+                            .collect(),
                     })
                     .collect();
 
@@ -235,6 +252,58 @@ mod gemini_api_types {
 
     #[derive(Debug, Deserialize)]
     pub struct EmbeddingValues {
-        pub values: Vec<f64>,
+        pub values: Vec<serde_json::Number>,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_model_default_ndims_lookup() {
+        assert_eq!(model_default_ndims(EMBEDDING_001), Some(3072));
+        assert_eq!(model_default_ndims(EMBEDDING_004), Some(768));
+        assert_eq!(model_default_ndims("unknown-model"), None);
+    }
+
+    #[test]
+    fn test_make_resolves_default_dims() {
+        let client = Client::new("test_key").unwrap();
+
+        // EMBEDDING_001 defaults to 3072
+        let model =
+            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, None);
+        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 3072);
+
+        // EMBEDDING_004 defaults to 768
+        let model =
+            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_004, None);
+        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
+
+        // Unknown model falls back to 768
+        let model = <EmbeddingModel as embeddings::EmbeddingModel>::make(
+            &client,
+            "some-future-model",
+            None,
+        );
+        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
+    }
+
+    #[test]
+    fn test_make_respects_explicit_dims() {
+        let client = Client::new("test_key").unwrap();
+
+        let model =
+            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, Some(256));
+        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 256);
+    }
+
+    #[test]
+    fn test_new_uses_provided_ndims() {
+        let client = Client::new("test_key").unwrap();
+
+        let model = EmbeddingModel::new(client, EMBEDDING_001, 512);
+        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 512);
     }
 }

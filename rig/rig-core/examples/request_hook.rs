@@ -1,7 +1,7 @@
 use rig::agent::{HookAction, PromptHook, ToolCallHookAction};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
-use rig::message::{AssistantContent, UserContent};
+use rig::message::UserContent;
 use rig::providers::{self, openai};
 
 #[derive(Clone)]
@@ -44,31 +44,26 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
     }
 
     async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) -> HookAction {
+        let Message::User { content } = prompt else {
+            return HookAction::terminate(
+                "Prompt hook expects prompt input to always be a user message",
+            );
+        };
+
         println!(
             "[Session {}] Sending prompt: {}",
             self.session_id,
-            match prompt {
-                Message::User { content } => content
-                    .iter()
-                    .filter_map(|c| {
-                        if let UserContent::Text(text_content) = c {
-                            Some(text_content.text.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                Message::Assistant { content, .. } => content
-                    .iter()
-                    .filter_map(|c| if let AssistantContent::Text(text_content) = c {
+            content
+                .iter()
+                .filter_map(|c| {
+                    if let UserContent::Text(text_content) = c {
                         Some(text_content.text.clone())
                     } else {
                         None
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            }
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
         );
 
         HookAction::cont()

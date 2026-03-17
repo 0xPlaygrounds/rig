@@ -56,7 +56,7 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
 async fn main() -> Result<()> {
     // Initialize Ollama client
     // because Ollama is local and does not require an api key, we pass in `Nothing`
-    let client: ollama::Client = ollama::Client::builder()
+    let client = ollama::Client::builder()
         .api_key(Nothing)
         .base_url("http://localhost:11434/v1")
         .build()

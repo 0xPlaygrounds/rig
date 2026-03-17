@@ -5,7 +5,7 @@
 //! use rig::providers::azure;
 //! use rig::client::CompletionClient;
 //!
-//! let client: azure::Client<reqwest::Client> = azure::Client::builder()
+//! let client = azure::Client::builder()
 //!     .api_key("test")
 //!     .azure_endpoint("test".to_string()) // add your endpoint here!
 //!     .build()?;
@@ -92,30 +92,6 @@ impl Provider for AzureExt {
 
     /// Verifying Azure auth without consuming tokens is not supported
     const VERIFY_PATH: &'static str = "";
-
-    fn build<H>(
-        builder: &client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        let AzureExtBuilder {
-            endpoint,
-            api_version,
-            ..
-        } = builder.ext().clone();
-
-        match endpoint {
-            Some(endpoint) => Ok(Self {
-                endpoint,
-                api_version,
-            }),
-            None => Err(http_client::Error::Instance(
-                "Azure client must be provided an endpoint prior to building".into(),
-            )),
-        }
-    }
 }
 
 impl<H> Capabilities<H> for AzureExt {
@@ -130,10 +106,36 @@ impl<H> Capabilities<H> for AzureExt {
 }
 
 impl ProviderBuilder for AzureExtBuilder {
-    type Output = AzureExt;
+    type Extension<H>
+        = AzureExt
+    where
+        H: HttpClientExt;
     type ApiKey = AzureOpenAIAuth;
 
     const BASE_URL: &'static str = "";
+
+    fn build<H>(
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        let AzureExtBuilder {
+            endpoint,
+            api_version,
+            ..
+        } = builder.ext().clone();
+
+        match endpoint {
+            Some(endpoint) => Ok(AzureExt {
+                endpoint,
+                api_version,
+            }),
+            None => Err(http_client::Error::Instance(
+                "Azure client must be provided an endpoint prior to building".into(),
+            )),
+        }
+    }
 
     fn finish<H>(
         &self,
@@ -568,7 +570,7 @@ pub(super) struct AzureOpenAICompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<openai::ToolDefinition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
+    tool_choice: Option<crate::providers::openai::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -610,8 +612,35 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
         let tool_choice = req
             .tool_choice
             .clone()
-            .map(crate::providers::openrouter::ToolChoice::try_from)
+            .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
+
+        let additional_params = if let Some(schema) = req.output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            openai::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value
+                    }
+                }
+            });
+            Some(match req.additional_params {
+                Some(existing) => json_utils::merge(existing, response_format),
+                None => response_format,
+            })
+        } else {
+            req.additional_params
+        };
 
         Ok(Self {
             model: model.to_string(),
@@ -624,7 +653,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
                 .map(openai::ToolDefinition::from)
                 .collect::<Vec<_>>(),
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }
@@ -673,6 +702,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -772,6 +802,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -1031,19 +1062,23 @@ mod audio_generation {
 
 #[cfg(test)]
 mod azure_tests {
+    use schemars::JsonSchema;
+
     use super::*;
 
     use crate::OneOrMany;
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
+    use crate::prelude::TypedPrompt;
+    use crate::providers::openai::GPT_5_MINI;
 
     #[tokio::test]
     #[ignore]
     async fn test_azure_embedding() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
         let embeddings = model
             .embed_texts(vec!["Hello, world!".to_string()])
@@ -1059,7 +1094,7 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let ndims = 256;
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
         let embedding = model.embed_text("Hello, world!").await.unwrap();
 
@@ -1073,7 +1108,7 @@ mod azure_tests {
     async fn test_azure_completion() {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::<reqwest::Client>::from_env();
+        let client = Client::from_env();
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
@@ -1093,13 +1128,43 @@ mod azure_tests {
 
         tracing::info!("Azure completion: {:?}", completion);
     }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_azure_structured_output() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        #[derive(Debug, Deserialize, JsonSchema)]
+        struct Person {
+            name: String,
+            age: u32,
+        }
+
+        let client = Client::from_env();
+        let agent = client
+            .agent(GPT_5_MINI)
+            .preamble("You are a helpful assistant that extracts personal details.")
+            .max_tokens(100)
+            .output_schema::<Person>()
+            .build();
+
+        let result: Person = agent
+            .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
+            .await
+            .expect("failed to extract person");
+
+        assert!(result.name == "John Doe");
+        assert!(result.age == 54);
+
+        tracing::info!("Extracted person: {:?}", result);
+    }
+
     #[tokio::test]
     async fn test_client_initialization() {
-        let _client: crate::providers::azure::Client<reqwest::Client> =
-            crate::providers::azure::Client::builder()
-                .api_key("test")
-                .azure_endpoint("test".to_string()) // add your endpoint here!
-                .build()
-                .expect("Client::builder() failed");
+        let _client = crate::providers::azure::Client::builder()
+            .api_key("test")
+            .azure_endpoint("test".to_string()) // add your endpoint here!
+            .build()
+            .expect("Client::builder() failed");
     }
 }

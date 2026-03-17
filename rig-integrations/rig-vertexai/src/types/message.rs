@@ -9,6 +9,9 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
 
     fn try_from(value: RigMessage) -> Result<Self, Self::Error> {
         match value.0 {
+            Message::System { .. } => Err(CompletionError::ProviderError(
+                "System messages must be sent via Vertex AI system_instruction".to_string(),
+            )),
             Message::User { content } => {
                 let parts: Result<Vec<vertexai::model::Part>, _> = content
                     .into_iter()

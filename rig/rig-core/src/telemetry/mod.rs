@@ -62,6 +62,7 @@ impl SpanCombinator for tracing::Span {
         if let Some(usage) = usage.token_usage() {
             self.record("gen_ai.usage.input_tokens", usage.input_tokens);
             self.record("gen_ai.usage.output_tokens", usage.output_tokens);
+            self.record("gen_ai.usage.cached_tokens", usage.cached_input_tokens);
         }
     }
 

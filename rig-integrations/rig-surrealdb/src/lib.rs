@@ -9,7 +9,10 @@ use rig::{
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use surrealdb::{Connection, Surreal, sql::Thing};
+use surrealdb::{
+    Connection, Surreal,
+    types::{RecordId, RecordIdKey, SurrealValue, ToSql, Value},
+};
 
 pub use surrealdb::engine::local::Mem;
 pub use surrealdb::engine::remote::ws::{Ws, Wss};
@@ -46,23 +49,23 @@ impl Display for SurrealDistanceFunction {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, SurrealValue)]
 struct SearchResult {
-    id: Thing,
+    id: RecordId,
     document: String,
     distance: f64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, SurrealValue)]
 pub struct CreateRecord {
     document: String,
     embedded_text: String,
     embedding: Vec<f64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, SurrealValue)]
 pub struct SearchResultOnlyId {
-    id: Thing,
+    id: RecordId,
     distance: f64,
 }
 
@@ -71,7 +74,16 @@ impl SearchResult {
         let document: T =
             serde_json::from_str(&self.document).map_err(VectorStoreError::JsonError)?;
 
-        Ok((self.distance, self.id.id.to_string(), document))
+        Ok((self.distance, record_key_to_string(&self.id.key), document))
+    }
+}
+
+fn record_key_to_string(key: &RecordIdKey) -> String {
+    match key {
+        RecordIdKey::Number(value) => value.to_string(),
+        RecordIdKey::String(value) => value.clone(),
+        RecordIdKey::Uuid(value) => value.to_string(),
+        RecordIdKey::Array(_) | RecordIdKey::Object(_) | RecordIdKey::Range(_) => key.to_sql(),
     }
 }
 
@@ -85,8 +97,10 @@ where
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         for (document, embeddings) in documents {
-            let json_document: serde_json::Value = serde_json::to_value(&document).unwrap();
-            let json_document_as_string = serde_json::to_string(&json_document).unwrap();
+            let json_document: serde_json::Value =
+                serde_json::to_value(&document).map_err(VectorStoreError::JsonError)?;
+            let json_document_as_string =
+                serde_json::to_string(&json_document).map_err(VectorStoreError::JsonError)?;
 
             for embedding in embeddings {
                 let embedded_text = embedding.document;
@@ -126,18 +140,18 @@ impl std::fmt::Display for SurrealSearchFilter {
 }
 
 impl SearchFilter for SurrealSearchFilter {
-    type Value = surrealdb::Value;
+    type Value = Value;
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("{} = {value}", key.as_ref()))
+        Self(format!("{} = {}", key.as_ref(), value.to_sql()))
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("{} > {value}", key.as_ref()))
+        Self(format!("{} > {}", key.as_ref(), value.to_sql()))
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("{} < {value}", key.as_ref()))
+        Self(format!("{} < {}", key.as_ref(), value.to_sql()))
     }
 
     fn and(self, rhs: Self) -> Self {
@@ -157,52 +171,52 @@ impl SurrealSearchFilter {
 
     /// Test if the value at `key` contains `val`
     pub fn contains(key: String, val: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINS {val}"))
+        Self(format!("{key} CONTAINS {}", val.to_sql()))
     }
 
     /// Test if the value at `key` does *not* contain `val`
     pub fn does_not_contain(key: String, val: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINSNOT {val}"))
+        Self(format!("{key} CONTAINSNOT {}", val.to_sql()))
     }
 
     /// Test if the value at `key` contains every element of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn all(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINSALL {vals}"))
+        Self(format!("{key} CONTAINSALL {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` contains any elements of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn any(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINSANY {vals}"))
+        Self(format!("{key} CONTAINSANY {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` is a member of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} IN {vals}"))
+        Self(format!("{key} IN {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` is *not* a member of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn not_member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} NOTIN {vals}"))
+        Self(format!("{key} NOTIN {}", vals.to_sql()))
     }
 
     // Geospatial filters
     /// Test if the value at `key` is inside `geometry`
     pub fn inside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} INSIDE {geometry}"))
+        Self(format!("{key} INSIDE {}", geometry.to_sql()))
     }
 
     /// Test if the value at `key` is outside `geometry`
     pub fn outside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} OUTSIDE {geometry}"))
+        Self(format!("{key} OUTSIDE {}", geometry.to_sql()))
     }
 
     /// Test if the value at `key` intersects `geometry`
     pub fn intersects(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} INTERSECTS {geometry}"))
+        Self(format!("{key} INTERSECTS {}", geometry.to_sql()))
     }
 
     // String ops
@@ -310,8 +324,8 @@ where
 
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
-            .flat_map(SearchResult::into_result)
-            .collect();
+            .map(SearchResult::into_result)
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(rows)
     }
@@ -347,11 +361,13 @@ where
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-        let rows: Vec<(f64, String)> = response
+        let rows: Vec<SearchResultOnlyId> = response
             .take::<Vec<SearchResultOnlyId>>(0)
-            .unwrap()
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let rows: Vec<(f64, String)> = rows
             .into_iter()
-            .map(|row| (row.distance, row.id.id.to_string()))
+            .map(|row| (row.distance, record_key_to_string(&row.id.key)))
             .collect();
 
         Ok(rows)

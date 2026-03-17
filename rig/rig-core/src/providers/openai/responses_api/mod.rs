@@ -31,6 +31,8 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
+#[cfg(not(target_family = "wasm"))]
+pub mod websocket;
 
 /// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].
@@ -56,7 +58,8 @@ pub struct CompletionRequest {
     /// If none provided, the default option is "auto".
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<ToolChoice>,
-    /// The tools you want to use. Currently this is limited to functions, but will be expanded on in future.
+    /// The tools you want to use. This supports both function tools and hosted tools
+    /// such as `web_search`, `file_search`, and `computer_use`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ResponsesToolDefinition>,
     /// Additional parameters
@@ -77,6 +80,25 @@ impl CompletionRequest {
     pub fn with_reasoning(mut self, reasoning: Reasoning) -> Self {
         self.additional_parameters.reasoning = Some(reasoning);
 
+        self
+    }
+
+    /// Adds a provider-native hosted tool (e.g. `web_search`, `file_search`, `computer_use`)
+    /// to the request. These tools are executed by OpenAI's infrastructure, not by Rig's
+    /// agent loop.
+    pub fn with_tool(mut self, tool: impl Into<ResponsesToolDefinition>) -> Self {
+        self.tools.push(tool.into());
+        self
+    }
+
+    /// Adds multiple provider-native hosted tools to the request. These tools are executed
+    /// by OpenAI's infrastructure, not by Rig's agent loop.
+    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Tool>,
+        Tool: Into<ResponsesToolDefinition>,
+    {
+        self.tools.extend(tools.into_iter().map(Into::into));
         self
     }
 }
@@ -234,6 +256,13 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
     fn try_from(value: crate::completion::Message) -> Result<Self, Self::Error> {
         match value {
+            crate::completion::Message::System { content } => Ok(vec![InputItem {
+                role: Some(Role::System),
+                input: InputContent::Message(Message::System {
+                    content: OneOrMany::one(content.into()),
+                    name: None,
+                }),
+            }]),
             crate::completion::Message::User { content } => {
                 let mut items = Vec::new();
 
@@ -480,38 +509,106 @@ fn openai_reasoning_from_core(
 }
 
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct ResponsesToolDefinition {
-    /// Tool name
-    pub name: String,
-    /// Parameters - this should be a JSON schema. Tools should additionally ensure an "additionalParameters" field has been added with the value set to false, as this is required if using OpenAI's strict mode (enabled by default).
-    pub parameters: serde_json::Value,
-    /// Whether to use strict mode. Enabled by default as it allows for improved efficiency.
-    pub strict: bool,
-    /// The type of tool. This should always be "function".
+    /// The type of tool.
     #[serde(rename = "type")]
     pub kind: String,
+    /// Tool name
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// Parameters - this should be a JSON schema. Tools should additionally ensure an "additionalParameters" field has been added with the value set to false, as this is required if using OpenAI's strict mode (enabled by default).
+    #[serde(default, skip_serializing_if = "is_json_null")]
+    pub parameters: serde_json::Value,
+    /// Whether to use strict mode. Enabled by default as it allows for improved efficiency.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub strict: bool,
     /// Tool description.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+    /// Additional provider-specific configuration for hosted tools.
+    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+    pub config: Map<String, Value>,
+}
+
+fn is_json_null(value: &Value) -> bool {
+    value.is_null()
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
+impl ResponsesToolDefinition {
+    /// Creates a function tool definition.
+    pub fn function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        mut parameters: serde_json::Value,
+    ) -> Self {
+        super::sanitize_schema(&mut parameters);
+
+        Self {
+            kind: "function".to_string(),
+            name: name.into(),
+            parameters,
+            strict: true,
+            description: description.into(),
+            config: Map::new(),
+        }
+    }
+
+    /// Creates a hosted tool definition for an arbitrary hosted tool type.
+    pub fn hosted(kind: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            name: String::new(),
+            parameters: Value::Null,
+            strict: false,
+            description: String::new(),
+            config: Map::new(),
+        }
+    }
+
+    /// Creates a hosted `web_search` tool definition.
+    pub fn web_search() -> Self {
+        Self::hosted("web_search")
+    }
+
+    /// Creates a hosted `file_search` tool definition.
+    pub fn file_search() -> Self {
+        Self::hosted("file_search")
+    }
+
+    /// Creates a hosted `computer_use` tool definition.
+    pub fn computer_use() -> Self {
+        Self::hosted("computer_use")
+    }
+
+    /// Adds hosted-tool configuration fields.
+    pub fn with_config(mut self, key: impl Into<String>, value: Value) -> Self {
+        self.config.insert(key.into(), value);
+        self
+    }
+
+    fn normalize(mut self) -> Self {
+        if self.kind == "function" {
+            super::sanitize_schema(&mut self.parameters);
+            self.strict = true;
+        }
+        self
+    }
 }
 
 impl From<completion::ToolDefinition> for ResponsesToolDefinition {
     fn from(value: completion::ToolDefinition) -> Self {
         let completion::ToolDefinition {
             name,
-            mut parameters,
+            parameters,
             description,
         } = value;
 
-        super::sanitize_schema(&mut parameters);
-
-        Self {
-            name,
-            parameters,
-            description,
-            kind: "function".to_string(),
-            strict: true,
-        }
+        Self::function(name, description, parameters)
     }
 }
 
@@ -655,7 +752,7 @@ pub enum ResponseStatus {
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = CompletionError;
     fn try_from(
-        (model, req): (String, crate::completion::CompletionRequest),
+        (model, mut req): (String, crate::completion::CompletionRequest),
     ) -> Result<Self, Self::Error> {
         let model = req.model.clone().unwrap_or(model);
         let input = {
@@ -687,21 +784,51 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             )
         })?;
 
-        let stream = req
-            .additional_params
-            .clone()
-            .unwrap_or(Value::Null)
-            .as_bool();
+        let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
+        let stream = match &additional_params_payload {
+            Value::Bool(stream) => Some(*stream),
+            Value::Object(map) => map.get("stream").and_then(Value::as_bool),
+            _ => None,
+        };
 
-        let mut additional_parameters = if let Some(map) = req.additional_params {
-            serde_json::from_value::<AdditionalParameters>(map).map_err(|err| {
-                CompletionError::RequestError(
-                    format!("Invalid OpenAI Responses additional_params payload: {err}").into(),
+        let mut additional_tools = Vec::new();
+        if let Some(additional_params_map) = additional_params_payload.as_object_mut() {
+            if let Some(raw_tools) = additional_params_map.remove("tools") {
+                additional_tools = serde_json::from_value::<Vec<ResponsesToolDefinition>>(
+                    raw_tools,
                 )
-            })?
-        } else {
+                .map_err(|err| {
+                    CompletionError::RequestError(
+                        format!(
+                            "Invalid OpenAI Responses tools payload in additional_params: {err}"
+                        )
+                        .into(),
+                    )
+                })?;
+            }
+            additional_params_map.remove("stream");
+        }
+
+        if additional_params_payload.is_boolean() {
+            additional_params_payload = Value::Null;
+        }
+
+        additional_tools = additional_tools
+            .into_iter()
+            .map(ResponsesToolDefinition::normalize)
+            .collect();
+
+        let mut additional_parameters = if additional_params_payload.is_null() {
             // If there's no additional parameters, initialise an empty object
             AdditionalParameters::default()
+        } else {
+            serde_json::from_value::<AdditionalParameters>(additional_params_payload).map_err(
+                |err| {
+                    CompletionError::RequestError(
+                        format!("Invalid OpenAI Responses additional_params payload: {err}").into(),
+                    )
+                },
+            )?
         };
         if additional_parameters.reasoning.is_some() {
             let include = additional_parameters.include.get_or_insert_with(Vec::new);
@@ -729,6 +856,12 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
         }
 
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
+        let mut tools: Vec<ResponsesToolDefinition> = req
+            .tools
+            .into_iter()
+            .map(ResponsesToolDefinition::from)
+            .collect();
+        tools.append(&mut additional_tools);
 
         Ok(Self {
             input,
@@ -737,11 +870,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             max_output_tokens: req.max_tokens,
             stream,
             tool_choice,
-            tools: req
-                .tools
-                .into_iter()
-                .map(ResponsesToolDefinition::from)
-                .collect(),
+            tools,
             temperature: req.temperature,
             additional_parameters,
         })
@@ -755,6 +884,8 @@ pub struct ResponsesCompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
     pub model: String,
+    /// Model-level default tools that are always added to outgoing requests.
+    pub tools: Vec<ResponsesToolDefinition>,
 }
 
 impl<T> ResponsesCompletionModel<T>
@@ -766,6 +897,7 @@ where
         Self {
             client,
             model: model.into(),
+            tools: Vec::new(),
         }
     }
 
@@ -773,7 +905,24 @@ where
         Self {
             client,
             model: model.to_string(),
+            tools: Vec::new(),
         }
+    }
+
+    /// Adds a default tool to all requests from this model.
+    pub fn with_tool(mut self, tool: impl Into<ResponsesToolDefinition>) -> Self {
+        self.tools.push(tool.into());
+        self
+    }
+
+    /// Adds default tools to all requests from this model.
+    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Tool>,
+        Tool: Into<ResponsesToolDefinition>,
+    {
+        self.tools.extend(tools.into_iter().map(Into::into));
+        self
     }
 
     /// Use the Completions API instead of Responses.
@@ -786,7 +935,8 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionRequest, CompletionError> {
-        let req = CompletionRequest::try_from((self.model.clone(), completion_request))?;
+        let mut req = CompletionRequest::try_from((self.model.clone(), completion_request))?;
+        req.tools.extend(self.tools.clone());
 
         Ok(req)
     }
@@ -925,6 +1075,7 @@ pub struct StructuredOutputsInput {
     /// Your required output schema. It is recommended that you use the JsonSchema macro, which you can check out at <https://docs.rs/schemars/latest/schemars/trait.JsonSchema.html>.
     pub schema: serde_json::Value,
     /// Enable strict output. If you are using your AI agent in a data pipeline or another scenario that requires the data to be absolutely fixed to a given schema, it is recommended to set this to true.
+    #[serde(default)]
     pub strict: bool,
 }
 
@@ -1156,6 +1307,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
@@ -1194,6 +1346,14 @@ where
                 if let Some(ref usage) = response.usage {
                     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
                     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                    span.record(
+                        "gen_ai.usage.cached_tokens",
+                        usage
+                            .input_tokens_details
+                            .as_ref()
+                            .map(|d| d.cached_tokens)
+                            .unwrap_or(0),
+                    );
                 }
                 if enabled!(Level::TRACE) {
                     tracing::trace!(
@@ -1415,6 +1575,10 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::System {
+                content: OneOrMany::one(content.into()),
+                name: None,
+            }]),
             message::Message::User { content } => {
                 let (tool_results, other_content): (Vec<_>, Vec<_>) = content
                     .into_iter()
@@ -1496,11 +1660,13 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 data,
                                 ..
                             }) => {
-                                let (file_data, file_url) = match data {
-                                    DocumentSourceKind::Base64(data) => {
-                                        (Some(format!("data:application/pdf;base64,{data}")), None)
-                                    }
-                                    DocumentSourceKind::Url(url) => (None, Some(url)),
+                                let (file_data, file_url, filename) = match data {
+                                    DocumentSourceKind::Base64(data) => (
+                                        Some(format!("data:application/pdf;base64,{data}")),
+                                        None,
+                                        Some("document.pdf".to_string()),
+                                    ),
+                                    DocumentSourceKind::Url(url) => (None, Some(url), None),
                                     DocumentSourceKind::Raw(_) => {
                                         return Err(MessageError::ConversionError(
                                             "Raw files not supported, encode as base64 first"
@@ -1517,7 +1683,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 Ok(UserContent::InputFile {
                                     file_url,
                                     file_data,
-                                    filename: Some("document.pdf".into()),
+                                    filename,
                                 })
                             }
                             message::UserContent::Document(message::Document {

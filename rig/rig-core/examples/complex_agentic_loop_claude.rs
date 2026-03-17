@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create Anthropic client
     let anthropic_api_key = env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
-    let anthropic_client: anthropic::Client = Client::builder()
+    let anthropic_client = Client::builder()
         .api_key(&anthropic_api_key)
         .anthropic_beta("token-efficient-tools-2025-02-19") // Enable efficient tool calling
         .build()?;
@@ -194,6 +194,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 serde_json::to_string_pretty(content)
                     .expect("Failed to serialize assistant message")
             ),
+            _ => {
+                // Ignore other message types - the only other type of message that exists is system messages
+                // which can be ignored
+            }
         }
     }
 

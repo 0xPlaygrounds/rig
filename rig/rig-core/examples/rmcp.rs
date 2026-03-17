@@ -1,12 +1,17 @@
 //! An example of how you can use `rmcp` with Rig to create an MCP friendly agent.
+//!
+//! This example demonstrates two approaches:
+//! - **Basic**: Fetch tools once and build an agent (tools are static).
+//! - **Auto-updating**: Use [`McpClientHandler`] so the agent automatically
+//!   picks up tool changes when the MCP server sends
+//!   `notifications/tools/list_changed`.
 use std::sync::Arc;
-
-use rmcp::ServiceExt;
 
 use rig::{
     client::{CompletionClient, ProviderClient},
     completion::Prompt,
     providers::openai,
+    tool::{rmcp::McpClientHandler, server::ToolServer},
 };
 use rmcp::{
     RoleServer, ServerHandler,
@@ -124,7 +129,7 @@ impl ServerHandler for Counter {
 
     async fn list_resources(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         Ok(ListResourcesResult {
@@ -139,7 +144,7 @@ impl ServerHandler for Counter {
 
     async fn read_resource(
         &self,
-        ReadResourceRequestParam { uri }: ReadResourceRequestParam,
+        ReadResourceRequestParams { uri, .. }: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
         match uri.as_str() {
@@ -166,7 +171,7 @@ impl ServerHandler for Counter {
 
     async fn list_resource_templates(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, ErrorData> {
         Ok(ListResourceTemplatesResult {
@@ -178,7 +183,7 @@ impl ServerHandler for Counter {
 
     async fn initialize(
         &self,
-        _request: InitializeRequestParam,
+        _request: InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
         if let Some(http_request_part) = context.extensions.get::<axum::http::request::Parts>() {
@@ -235,9 +240,6 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let transport =
-        rmcp::transport::StreamableHttpClientTransport::from_uri("http://localhost:8080");
-
     let client_info = ClientInfo {
         protocol_version: Default::default(),
         capabilities: ClientCapabilities::default(),
@@ -246,25 +248,31 @@ async fn main() -> anyhow::Result<()> {
             version: "0.13.0".to_string(),
             ..Default::default()
         },
+        meta: None,
     };
 
-    let client = client_info.serve(transport).await.inspect_err(|e| {
-        tracing::error!("client error: {:?}", e);
+    // Create a shared ToolServer so the MCP handler can update tools at runtime.
+    let tool_server_handle = ToolServer::new().run();
+
+    // McpClientHandler connects to the MCP server and auto-refreshes tools
+    // whenever the server sends `notifications/tools/list_changed`.
+    let handler = McpClientHandler::new(client_info, tool_server_handle.clone());
+
+    let transport =
+        rmcp::transport::StreamableHttpClientTransport::from_uri("http://localhost:8080");
+
+    let mcp_service = handler.connect(transport).await.inspect_err(|e| {
+        tracing::error!("MCP client error: {:?}", e);
     })?;
 
-    // Initialize
-    let server_info = client.peer_info();
+    let server_info = mcp_service.peer_info();
     tracing::info!("Connected to server: {server_info:#?}");
 
-    // List tools
-    let tools: Vec<Tool> = client.list_tools(Default::default()).await?.tools;
-
-    // takes the `OPENAI_API_KEY` as an env var on usage
     let openai_client = openai::Client::from_env();
     let agent = openai_client
         .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
-        .rmcp_tools(tools, client.peer().to_owned())
+        .tool_server_handle(tool_server_handle)
         .build();
 
     let res = agent.prompt("What is 2+5?").max_turns(2).await.unwrap();

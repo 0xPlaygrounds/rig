@@ -54,6 +54,7 @@ pub mod gemini;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
+pub mod llamafile;
 pub mod mira;
 pub mod mistral;
 pub mod moonshot;

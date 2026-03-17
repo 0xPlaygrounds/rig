@@ -34,6 +34,9 @@ pub trait ConvertMessage: Sized + Send + Sync {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
+    /// System message containing instruction text.
+    System { content: String },
+
     /// User message containing one or more content types defined by `UserContent`.
     User { content: OneOrMany<UserContent> },
 
@@ -512,6 +515,9 @@ pub enum AudioMediaType {
     AAC,
     OGG,
     FLAC,
+    M4A,
+    PCM16,
+    PCM24,
 }
 
 /// Describes the video media type of the content. Not every provider supports every media type.
@@ -522,6 +528,8 @@ pub enum VideoMediaType {
     AVI,
     MP4,
     MPEG,
+    MOV,
+    WEBM,
 }
 
 /// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
@@ -551,7 +559,15 @@ impl Message {
                 }
                 None
             }
+            Message::System { .. } => None,
             _ => None,
+        }
+    }
+
+    /// Helper constructor to make creating system messages easier.
+    pub fn system(text: impl Into<String>) -> Self {
+        Message::System {
+            content: text.into(),
         }
     }
 
@@ -1031,6 +1047,9 @@ impl MimeType for AudioMediaType {
             "audio/aac" => Some(AudioMediaType::AAC),
             "audio/ogg" => Some(AudioMediaType::OGG),
             "audio/flac" => Some(AudioMediaType::FLAC),
+            "audio/m4a" => Some(AudioMediaType::M4A),
+            "audio/pcm16" => Some(AudioMediaType::PCM16),
+            "audio/pcm24" => Some(AudioMediaType::PCM24),
             _ => None,
         }
     }
@@ -1043,6 +1062,9 @@ impl MimeType for AudioMediaType {
             AudioMediaType::AAC => "audio/aac",
             AudioMediaType::OGG => "audio/ogg",
             AudioMediaType::FLAC => "audio/flac",
+            AudioMediaType::M4A => "audio/m4a",
+            AudioMediaType::PCM16 => "audio/pcm16",
+            AudioMediaType::PCM24 => "audio/pcm24",
         }
     }
 }
@@ -1056,6 +1078,8 @@ impl MimeType for VideoMediaType {
             "video/avi" => Some(VideoMediaType::AVI),
             "video/mp4" => Some(VideoMediaType::MP4),
             "video/mpeg" => Some(VideoMediaType::MPEG),
+            "video/mov" => Some(VideoMediaType::MOV),
+            "video/webm" => Some(VideoMediaType::WEBM),
             &_ => None,
         }
     }
@@ -1065,6 +1089,8 @@ impl MimeType for VideoMediaType {
             VideoMediaType::AVI => "video/avi",
             VideoMediaType::MP4 => "video/mp4",
             VideoMediaType::MPEG => "video/mpeg",
+            VideoMediaType::MOV => "video/mov",
+            VideoMediaType::WEBM => "video/webm",
         }
     }
 }
@@ -1275,7 +1301,7 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
-    use super::{Reasoning, ReasoningContent};
+    use super::{Message, Reasoning, ReasoningContent};
 
     #[test]
     fn reasoning_constructors_and_accessors_work() {
@@ -1323,5 +1349,19 @@ mod tests {
             let roundtrip: ReasoningContent = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(roundtrip, variant);
         }
+    }
+
+    #[test]
+    fn system_message_constructor_and_serde_roundtrip() {
+        let message = Message::system("You are concise.");
+
+        match &message {
+            Message::System { content } => assert_eq!(content, "You are concise."),
+            _ => panic!("Expected system message"),
+        }
+
+        let json = serde_json::to_string(&message).expect("serialize");
+        let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(roundtrip, message);
     }
 }

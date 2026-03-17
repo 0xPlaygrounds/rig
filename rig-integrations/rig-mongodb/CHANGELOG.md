@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.4.1...rig-mongodb-v0.4.2) - 2026-03-17
+
+### Other
+
+- updated the following local packages: rig-core
+
+
+## [0.4.1](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.4.0...rig-mongodb-v0.4.1) - 2026-03-05
+
+### Other
+
+- updated the following local packages: rig-core
+
 ## [0.3.7](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.3.6...rig-mongodb-v0.3.7) - 2026-02-17
 
 ### Other

@@ -2,6 +2,10 @@
 //! Google Gemini Completion Integration
 //! From [Gemini API Reference](https://ai.google.dev/api/generate-content)
 // ================================================================
+/// `gemini-3.1-flash-lite-preview` completion model
+pub const GEMINI_3_1_FLASH_LITE_PREVIEW: &str = "gemini-3.1-flash-lite-preview";
+/// `gemini-3-flash-preview` completion model
+pub const GEMINI_3_FLASH_PREVIEW: &str = "gemini-3-flash-preview";
 /// `gemini-2.5-pro-preview-06-05` completion model
 pub const GEMINI_2_5_PRO_PREVIEW_06_05: &str = "gemini-2.5-pro-preview-06-05";
 /// `gemini-2.5-pro-preview-05-06` completion model
@@ -98,6 +102,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -187,49 +192,85 @@ where
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
-    let mut full_history = Vec::new();
-    full_history.extend(completion_request.chat_history);
+    let documents_message = completion_request.normalized_documents();
 
-    let additional_params = completion_request
-        .additional_params
+    let CompletionRequest {
+        model: _,
+        preamble,
+        chat_history,
+        documents: _,
+        tools: function_tools,
+        temperature,
+        max_tokens,
+        tool_choice,
+        mut additional_params,
+        output_schema,
+    } = completion_request;
+
+    let mut full_history = Vec::new();
+    if let Some(msg) = documents_message {
+        full_history.push(msg);
+    }
+    full_history.extend(chat_history);
+    let (history_system, full_history) = split_system_messages_from_history(full_history);
+
+    let mut additional_params_payload = additional_params
+        .take()
         .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut additional_tools =
+        extract_tools_from_additional_params(&mut additional_params_payload)?;
 
     let AdditionalParameters {
         mut generation_config,
         additional_params,
-    } = serde_json::from_value::<AdditionalParameters>(additional_params)?;
+    } = serde_json::from_value::<AdditionalParameters>(additional_params_payload)?;
 
     // Apply output_schema to generation_config, creating one if needed
-    if let Some(schema) = completion_request.output_schema {
+    if let Some(schema) = output_schema {
         let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
         cfg.response_mime_type = Some("application/json".to_string());
         cfg.response_json_schema = Some(schema.to_value());
     }
 
     generation_config = generation_config.map(|mut cfg| {
-        if let Some(temp) = completion_request.temperature {
+        if let Some(temp) = temperature {
             cfg.temperature = Some(temp);
         };
 
-        if let Some(max_tokens) = completion_request.max_tokens {
+        if let Some(max_tokens) = max_tokens {
             cfg.max_output_tokens = Some(max_tokens);
         };
 
         cfg
     });
 
-    let system_instruction = completion_request.preamble.clone().map(|preamble| Content {
-        parts: vec![preamble.into()],
-        role: Some(Role::Model),
-    });
-
-    let tools = if completion_request.tools.is_empty() {
+    let mut system_parts: Vec<Part> = Vec::new();
+    if let Some(preamble) = preamble.filter(|preamble| !preamble.is_empty()) {
+        system_parts.push(preamble.into());
+    }
+    for content in history_system {
+        if !content.is_empty() {
+            system_parts.push(content.into());
+        }
+    }
+    let system_instruction = if system_parts.is_empty() {
         None
     } else {
-        Some(vec![Tool::try_from(completion_request.tools)?])
+        Some(Content {
+            parts: system_parts,
+            role: Some(Role::Model),
+        })
     };
 
-    let tool_config = if let Some(cfg) = completion_request.tool_choice {
+    let mut tools = if function_tools.is_empty() {
+        Vec::new()
+    } else {
+        vec![serde_json::to_value(Tool::try_from(function_tools)?)?]
+    };
+    tools.append(&mut additional_tools);
+    let tools = if tools.is_empty() { None } else { Some(tools) };
+
+    let tool_config = if let Some(cfg) = tool_choice {
         Some(ToolConfig {
             function_calling_config: Some(FunctionCallingMode::try_from(cfg)?),
         })
@@ -254,6 +295,38 @@ pub(crate) fn create_request_body(
     };
 
     Ok(request)
+}
+
+fn split_system_messages_from_history(
+    history: Vec<completion::Message>,
+) -> (Vec<String>, Vec<completion::Message>) {
+    let mut system = Vec::new();
+    let mut remaining = Vec::new();
+
+    for message in history {
+        match message {
+            completion::Message::System { content } => system.push(content),
+            other => remaining.push(other),
+        }
+    }
+
+    (system, remaining)
+}
+
+fn extract_tools_from_additional_params(
+    additional_params: &mut Value,
+) -> Result<Vec<Value>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid Gemini `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
 }
 
 pub(crate) fn resolve_request_model(
@@ -602,6 +675,10 @@ pub mod gemini_api_types {
 
         fn try_from(msg: message::Message) -> Result<Self, Self::Error> {
             Ok(match msg {
+                message::Message::System { content } => Content {
+                    parts: vec![content.into()],
+                    role: Some(Role::User),
+                },
                 message::Message::User { content } => Content {
                     parts: content
                         .into_iter()
@@ -848,7 +925,63 @@ pub mod gemini_api_types {
                         ));
                     };
 
-                    if !media_type.is_code() {
+                    // For text-like documents (RAG context), convert inline content to plain text.
+                    // URL-backed files should stay as file_data references so Gemini can fetch them.
+                    if matches!(
+                        media_type,
+                        message::DocumentMediaType::TXT
+                            | message::DocumentMediaType::RTF
+                            | message::DocumentMediaType::HTML
+                            | message::DocumentMediaType::CSS
+                            | message::DocumentMediaType::MARKDOWN
+                            | message::DocumentMediaType::CSV
+                            | message::DocumentMediaType::XML
+                            | message::DocumentMediaType::Javascript
+                            | message::DocumentMediaType::Python
+                    ) {
+                        use base64::Engine;
+                        let part = match data {
+                            DocumentSourceKind::String(text) => PartKind::Text(text),
+                            DocumentSourceKind::Base64(data) => {
+                                // Decode base64 text payloads.
+                                let text = String::from_utf8(
+                                    base64::engine::general_purpose::STANDARD
+                                        .decode(&data)
+                                        .map_err(|e| {
+                                            MessageError::ConversionError(format!(
+                                                "Failed to decode base64: {e}"
+                                            ))
+                                        })?,
+                                )
+                                .map_err(|e| {
+                                    MessageError::ConversionError(format!(
+                                        "Invalid UTF-8 in document: {e}"
+                                    ))
+                                })?;
+                                PartKind::Text(text)
+                            }
+                            DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
+                                mime_type: Some(media_type.to_mime_type().to_string()),
+                                file_uri,
+                            }),
+                            DocumentSourceKind::Raw(_) => {
+                                return Err(MessageError::ConversionError(
+                                    "Raw files not supported, encode as base64 first".to_string(),
+                                ));
+                            }
+                            DocumentSourceKind::Unknown => {
+                                return Err(MessageError::ConversionError(
+                                    "Document has no body".to_string(),
+                                ));
+                            }
+                        };
+
+                        Ok(Part {
+                            thought: Some(false),
+                            part,
+                            ..Default::default()
+                        })
+                    } else if !media_type.is_code() {
                         let mime_type = media_type.to_mime_type().to_string();
 
                         let part = match data {
@@ -1419,10 +1552,30 @@ pub mod gemini_api_types {
         }
     }
 
+    /// Thinking depth level for Gemini 3 models.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ThinkingLevel {
+        Minimal,
+        Low,
+        Medium,
+        High,
+    }
+
+    /// Configuration for the model's thinking/reasoning process.
+    /// Note: `thinking_budget` (Gemini 2.5) and `thinking_level` (Gemini 3) are mutually exclusive
+    /// and cannot be set in the same request.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ThinkingConfig {
-        pub thinking_budget: u32,
+        /// Token budget for thinking. Used by Gemini 2.5 models. Range: 0 to 32768.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thinking_budget: Option<u32>,
+        /// Thinking depth level. Used by Gemini 3 models.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub thinking_level: Option<ThinkingLevel>,
+        /// When true, includes summarized versions of the model's reasoning in the response.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub include_thoughts: Option<bool>,
     }
 
@@ -1684,8 +1837,33 @@ pub mod gemini_api_types {
                     obj.clone()
                 };
 
+                let schema_type = infer_type(obj);
+                let items = obj
+                    .get("items")
+                    .and_then(|v| v.clone().try_into().ok())
+                    .map(Box::new);
+
+                // Gemini requires `items` on array-typed schemas; default to
+                // string items when the source schema omits it.
+                let items = if schema_type == "array" && items.is_none() {
+                    Some(Box::new(Schema {
+                        r#type: "string".to_string(),
+                        format: None,
+                        description: None,
+                        nullable: None,
+                        r#enum: None,
+                        max_items: None,
+                        min_items: None,
+                        properties: None,
+                        required: None,
+                        items: None,
+                    }))
+                } else {
+                    items
+                };
+
                 Ok(Schema {
-                    r#type: infer_type(obj),
+                    r#type: schema_type,
                     format: obj.get("format").and_then(|v| v.as_str()).map(String::from),
                     description: obj
                         .get("description")
@@ -1723,10 +1901,7 @@ pub mod gemini_api_types {
                                 .filter_map(|v| v.as_str().map(String::from))
                                 .collect()
                         }),
-                    items: obj
-                        .get("items")
-                        .and_then(|v| v.clone().try_into().ok())
-                        .map(Box::new),
+                    items,
                 })
             } else {
                 Err(CompletionError::ResponseError(
@@ -1741,7 +1916,7 @@ pub mod gemini_api_types {
     pub struct GenerateContentRequest {
         pub contents: Vec<Content>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub tools: Option<Vec<Tool>>,
+        pub tools: Option<Vec<Value>>,
         pub tool_config: Option<ToolConfig>,
         /// Optional. Configuration options for model generation and outputs.
         pub generation_config: Option<GenerationConfig>,
@@ -2294,6 +2469,60 @@ mod tests {
     }
 
     #[test]
+    fn test_array_without_items_gets_default() {
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "service_ids": {
+                    "type": "array",
+                    "description": "A list of service IDs"
+                }
+            }
+        });
+
+        let schema: Schema = schema_json.try_into().unwrap();
+        let props = schema.properties.unwrap();
+        let service_ids = props.get("service_ids").unwrap();
+        assert_eq!(service_ids.r#type, "array");
+        let items = service_ids
+            .items
+            .as_ref()
+            .expect("array schema missing items should get a default");
+        assert_eq!(items.r#type, "string");
+    }
+
+    #[test]
+    fn test_txt_document_conversion_to_text_part() {
+        // Test that TXT documents are converted to plain text parts, not inline data
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "Note: test.md\nPath: /test.md\nContent: Hello World!",
+            Some(DocumentMediaType::TXT),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert!(text.contains("Note: test.md"));
+            assert!(text.contains("Hello World!"));
+        } else {
+            panic!(
+                "Expected text part for TXT document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
     fn test_tool_result_with_image_content() {
         // Test that a ToolResult with image content converts correctly to Gemini's Part format
         use crate::OneOrMany;
@@ -2325,7 +2554,6 @@ mod tests {
 
         // Convert to Gemini Content
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 1);
 
@@ -2358,6 +2586,73 @@ mod tests {
     }
 
     #[test]
+    fn test_markdown_document_conversion_to_text_part() {
+        // Test that MARKDOWN documents are converted to plain text parts
+        use crate::message::{DocumentMediaType, UserContent};
+
+        let doc = UserContent::document(
+            "# Heading\n\n* List item",
+            Some(DocumentMediaType::MARKDOWN),
+        );
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &content.parts[0]
+        {
+            assert_eq!(text, "# Heading\n\n* List item");
+        } else {
+            panic!(
+                "Expected text part for MARKDOWN document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
+    fn test_markdown_url_document_conversion_to_file_data_part() {
+        // URL-backed MARKDOWN documents should be represented as file_data.
+        use crate::message::{DocumentMediaType, DocumentSourceKind, UserContent};
+
+        let doc = UserContent::Document(message::Document {
+            data: DocumentSourceKind::Url(
+                "https://generativelanguage.googleapis.com/v1beta/files/test-markdown".to_string(),
+            ),
+            media_type: Some(DocumentMediaType::MARKDOWN),
+            additional_params: None,
+        });
+
+        let content: Content = message::Message::User {
+            content: crate::OneOrMany::one(doc),
+        }
+        .try_into()
+        .unwrap();
+
+        if let Part {
+            part: PartKind::FileData(file_data),
+            ..
+        } = &content.parts[0]
+        {
+            assert_eq!(
+                file_data.file_uri,
+                "https://generativelanguage.googleapis.com/v1beta/files/test-markdown"
+            );
+            assert_eq!(file_data.mime_type.as_deref(), Some("text/markdown"));
+        } else {
+            panic!(
+                "Expected file_data part for URL MARKDOWN document, got: {:?}",
+                content.parts[0]
+            );
+        }
+    }
+
+    #[test]
     fn test_tool_result_with_url_image() {
         // Test that a ToolResult with a URL-based image converts to file_data
         use crate::OneOrMany;
@@ -2382,7 +2677,6 @@ mod tests {
         };
 
         let content: Content = msg.try_into().expect("Should convert to Gemini Content");
-
         assert_eq!(content.role, Some(Role::User));
         assert_eq!(content.parts.len(), 1);
 
@@ -2405,6 +2699,122 @@ mod tests {
             assert_eq!(file_data.mime_type.as_ref().unwrap(), "image/png");
         } else {
             panic!("Expected FunctionResponse part");
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_with_documents() {
+        // Test that documents are injected into chat history
+        use crate::OneOrMany;
+        use crate::completion::request::{CompletionRequest, Document};
+        use crate::message::Message;
+
+        let documents = vec![
+            Document {
+                id: "doc1".to_string(),
+                text: "Note: first.md\nContent: First note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+            Document {
+                id: "doc2".to_string(),
+                text: "Note: second.md\nContent: Second note".to_string(),
+                additional_props: std::collections::HashMap::new(),
+            },
+        ];
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("What are my notes about?")),
+            documents: documents.clone(),
+            tools: vec![],
+            temperature: None,
+            model: None,
+            output_schema: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have 2 contents: 1 for documents, 1 for user message
+        assert_eq!(
+            request.contents.len(),
+            2,
+            "Expected 2 contents (documents + user message)"
+        );
+
+        // First content should be documents with role User
+        assert_eq!(request.contents[0].role, Some(Role::User));
+        assert_eq!(
+            request.contents[0].parts.len(),
+            2,
+            "Expected 2 document parts"
+        );
+
+        // Check that documents are text parts
+        for part in &request.contents[0].parts {
+            if let Part {
+                part: PartKind::Text(text),
+                ..
+            } = part
+            {
+                assert!(
+                    text.contains("Note:") && text.contains("Content:"),
+                    "Document should contain note metadata"
+                );
+            } else {
+                panic!("Document parts should be text, not {:?}", part);
+            }
+        }
+
+        // Second content should be the user message
+        assert_eq!(request.contents[1].role, Some(Role::User));
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[1].parts[0]
+        {
+            assert_eq!(text, "What are my notes about?");
+        } else {
+            panic!("Expected user message to be text");
+        }
+    }
+
+    #[test]
+    fn test_create_request_body_without_documents() {
+        // Test backward compatibility: requests without documents work as before
+        use crate::OneOrMany;
+        use crate::completion::request::CompletionRequest;
+        use crate::message::Message;
+
+        let completion_request = CompletionRequest {
+            preamble: Some("You are a helpful assistant".to_string()),
+            chat_history: OneOrMany::one(Message::user("Hello")),
+            documents: vec![], // No documents
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            model: None,
+            output_schema: None,
+            additional_params: None,
+        };
+
+        let request = create_request_body(completion_request).unwrap();
+
+        // Should have only 1 content (the user message)
+        assert_eq!(request.contents.len(), 1, "Expected only user message");
+        assert_eq!(request.contents[0].role, Some(Role::User));
+
+        if let Part {
+            part: PartKind::Text(text),
+            ..
+        } = &request.contents[0].parts[0]
+        {
+            assert_eq!(text, "Hello");
+        } else {
+            panic!("Expected user message to be text");
         }
     }
 

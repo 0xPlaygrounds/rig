@@ -219,7 +219,7 @@ async fn insert_documents_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client: openai::Client = openai::Client::builder()
+    let openai_client = openai::Client::builder()
         .api_key("TEST")
         .base_url(server.base_url())
         .build()

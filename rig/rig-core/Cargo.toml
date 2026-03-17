@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.31.0"
+version = "0.33.0"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -28,19 +28,19 @@ epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
 lopdf = { workspace = true, optional = true }
-mime_guess.workspace = true
+mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-rig-derive = { version = "0.1.10", path = "../rig-derive", optional = true }
+rig-derive = { version = "0.1.11", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { version = "0.13", optional = true, features = ["client"] }
+rmcp = { version = "0.16", optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = "1.3.1"
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
@@ -59,6 +59,11 @@ reqwest-middleware = { version = "0.5.1", optional = true, features = [
   "charset",
   "http2",
 ] }
+
+# Native-only dependency for OpenAI Responses websocket mode.
+# Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio-tungstenite = { version = "0.23.1", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -79,7 +84,7 @@ reqwest-middleware = { version = "0.5", features = [
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.13", features = [
+rmcp = { version = "0.16", features = [
   "client",
   "macros",
   "reqwest",                                  # required for some strange reason
@@ -121,6 +126,7 @@ reqwest-rustls = [
   "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",
+  "reqwest/system-proxy",
 ]
 reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
@@ -197,3 +203,11 @@ required-features = ["discord-bot"]
 
 [[example]]
 name = "custom_vector_store"
+
+[[example]]
+name = "gemini_extractor_with_rag"
+required-features = ["derive"]
+
+[[example]]
+name = "xai_image_generation"
+required-features = ["image"]

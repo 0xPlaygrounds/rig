@@ -114,6 +114,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::System { content }]),
             message::Message::User { content } => {
                 let mut tool_result_messages = Vec::new();
                 let mut other_messages = Vec::new();
@@ -604,6 +605,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()

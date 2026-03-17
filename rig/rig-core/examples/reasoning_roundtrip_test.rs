@@ -108,9 +108,8 @@ fn build_openai() -> anyhow::Result<
     })
 }
 
-fn build_openrouter() -> anyhow::Result<
-    TestAgent<rig::providers::openrouter::completion::CompletionModel<reqwest::Client>>,
-> {
+fn build_openrouter()
+-> anyhow::Result<TestAgent<rig::providers::openrouter::CompletionModel<reqwest::Client>>> {
     use rig::providers::openrouter;
     let client = openrouter::Client::from_env();
     Ok(TestAgent {

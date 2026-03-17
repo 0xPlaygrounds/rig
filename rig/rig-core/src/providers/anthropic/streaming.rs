@@ -1,13 +1,13 @@
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
     CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
-    apply_cache_control,
+    apply_cache_control, split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -127,7 +127,7 @@ where
 {
     pub(crate) async fn stream(
         &self,
-        completion_request: CompletionRequest,
+        mut completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
         let request_model = completion_request
@@ -146,6 +146,7 @@ where
                 gen_ai.response.model = &request_model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
@@ -167,6 +168,7 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
+        let (history_system, full_history) = split_system_messages_from_history(full_history);
 
         let mut messages = full_history
             .into_iter()
@@ -187,6 +189,7 @@ where
             } else {
                 vec![]
             };
+        system.extend(history_system);
 
         // Apply cache control breakpoints only if prompt_caching is enabled
         if self.prompt_caching {
@@ -209,26 +212,37 @@ where
             merge_inplace(&mut body, json!({ "temperature": temperature }));
         }
 
-        if !completion_request.tools.is_empty() {
+        let mut additional_params_payload = completion_request
+            .additional_params
+            .take()
+            .unwrap_or(Value::Null);
+        let mut additional_tools =
+            extract_tools_from_additional_params(&mut additional_params_payload)?;
+
+        let mut tools = completion_request
+            .tools
+            .into_iter()
+            .map(|tool| ToolDefinition {
+                name: tool.name,
+                description: Some(tool.description),
+                input_schema: tool.parameters,
+            })
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        tools.append(&mut additional_tools);
+
+        if !tools.is_empty() {
             merge_inplace(
                 &mut body,
                 json!({
-                    "tools": completion_request
-                        .tools
-                        .into_iter()
-                        .map(|tool| ToolDefinition {
-                            name: tool.name,
-                            description: Some(tool.description),
-                            input_schema: tool.parameters,
-                        })
-                        .collect::<Vec<_>>(),
+                    "tools": tools,
                     "tool_choice": ToolChoice::Auto,
                 }),
             );
         }
 
-        if let Some(ref params) = completion_request.additional_params {
-            merge_inplace(&mut body, params.clone())
+        if !additional_params_payload.is_null() {
+            merge_inplace(&mut body, additional_params_payload)
         }
 
         if enabled!(Level::TRACE) {
@@ -323,6 +337,22 @@ where
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
+}
+
+fn extract_tools_from_additional_params(
+    additional_params: &mut Value,
+) -> Result<Vec<Value>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid Anthropic `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
 }
 
 fn handle_event(

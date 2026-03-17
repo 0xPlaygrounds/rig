@@ -3,7 +3,7 @@ use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
         Chat, Completion, CompletionError, CompletionModel, CompletionRequestBuilder, Document,
-        GetTokenUsage, Message, Prompt, PromptError,
+        GetTokenUsage, Message, Prompt, PromptError, TypedPrompt,
     },
     message::ToolChoice,
     streaming::{StreamingChat, StreamingCompletion, StreamingPrompt},
@@ -52,6 +52,15 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
             .find_map(|message| message.rag_text())
     });
 
+    let chat_history = if let Some(preamble) = preamble {
+        let mut with_system = Vec::with_capacity(chat_history.len() + 1);
+        with_system.push(Message::system(preamble.to_owned()));
+        with_system.extend(chat_history);
+        with_system
+    } else {
+        chat_history
+    };
+
     let completion_request = model
         .completion_request(prompt)
         .messages(chat_history)
@@ -60,12 +69,6 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         .additional_params_opt(additional_params.cloned())
         .output_schema_opt(output_schema.cloned())
         .documents(static_context.to_vec());
-
-    let completion_request = if let Some(preamble) = preamble {
-        completion_request.preamble(preamble.to_owned())
-    } else {
-        completion_request
-    };
 
     let completion_request = if let Some(tool_choice) = tool_choice {
         completion_request.tool_choice(tool_choice.clone())
@@ -334,7 +337,7 @@ where
     }
 }
 
-use crate::{agent::prompt_request::TypedPromptRequest, completion::TypedPrompt};
+use crate::agent::prompt_request::TypedPromptRequest;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
@@ -345,7 +348,7 @@ where
     P: PromptHook<M> + 'static,
 {
     type TypedRequest<'a, T>
-        = TypedPromptRequest<'a, T, M, P>
+        = TypedPromptRequest<'a, T, prompt_request::Standard, M, P>
     where
         Self: 'a,
         T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
@@ -385,7 +388,7 @@ where
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<'_, T, M, P>
+    ) -> TypedPromptRequest<'_, T, prompt_request::Standard, M, P>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
@@ -400,7 +403,7 @@ where
     P: PromptHook<M> + 'static,
 {
     type TypedRequest<'a, T>
-        = TypedPromptRequest<'a, T, M, P>
+        = TypedPromptRequest<'a, T, prompt_request::Standard, M, P>
     where
         Self: 'a,
         T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
@@ -408,7 +411,7 @@ where
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<'_, T, M, P>
+    ) -> TypedPromptRequest<'_, T, prompt_request::Standard, M, P>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {

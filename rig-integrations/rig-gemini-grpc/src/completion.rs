@@ -81,40 +81,72 @@ pub(crate) fn create_grpc_request(
     model: String,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
+    let CompletionRequest {
+        model: _,
+        preamble,
+        chat_history,
+        documents: _,
+        tools,
+        temperature,
+        max_tokens,
+        tool_choice: _,
+        additional_params: _,
+        output_schema: _,
+    } = completion_request;
+
+    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
     let mut contents = Vec::new();
 
     // Convert chat history to gRPC Content messages
-    for msg in completion_request.chat_history {
+    for msg in chat_history {
         contents.push(rig_message_to_grpc_content(msg)?);
     }
 
     // Handle system instruction (preamble)
-    let system_instruction = completion_request.preamble.map(|preamble| proto::Content {
-        parts: vec![proto::Part {
+    let mut system_parts = Vec::new();
+    if let Some(preamble) = preamble
+        && !preamble.is_empty()
+    {
+        system_parts.push(proto::Part {
             data: Some(proto::part::Data::Text(preamble)),
             thought: false,
             thought_signature: Vec::new(),
             part_metadata: None,
-        }],
-        role: "model".to_string(),
-    });
+        });
+    }
+    for content in history_system {
+        if !content.is_empty() {
+            system_parts.push(proto::Part {
+                data: Some(proto::part::Data::Text(content)),
+                thought: false,
+                thought_signature: Vec::new(),
+                part_metadata: None,
+            });
+        }
+    }
+    let system_instruction = if system_parts.is_empty() {
+        None
+    } else {
+        Some(proto::Content {
+            parts: system_parts,
+            role: "model".to_string(),
+        })
+    };
 
     // Handle generation config
-    let generation_config =
-        if completion_request.temperature.is_some() || completion_request.max_tokens.is_some() {
-            Some(proto::GenerationConfig {
-                temperature: completion_request.temperature.map(|t| t as f32),
-                max_output_tokens: completion_request.max_tokens.map(|t| t as i32),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
+    let generation_config = if temperature.is_some() || max_tokens.is_some() {
+        Some(proto::GenerationConfig {
+            temperature: temperature.map(|t| t as f32),
+            max_output_tokens: max_tokens.map(|t| t as i32),
+            ..Default::default()
+        })
+    } else {
+        None
+    };
 
     // Handle tools (functions)
-    let tools = if !completion_request.tools.is_empty() {
-        let function_declarations = completion_request
-            .tools
+    let tools = if !tools.is_empty() {
+        let function_declarations = tools
             .into_iter()
             .map(|tool| proto::FunctionDeclaration {
                 name: tool.name,
@@ -146,6 +178,9 @@ pub(crate) fn create_grpc_request(
 // Convert Rig message to gRPC Content
 fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, CompletionError> {
     match msg {
+        message::Message::System { .. } => Err(CompletionError::RequestError(
+            "System messages must be sent via Gemini gRPC system_instruction".into(),
+        )),
         message::Message::User { content } => {
             let parts = content
                 .into_iter()
@@ -169,6 +204,22 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
             })
         }
     }
+}
+
+fn split_system_messages_from_history(
+    history: OneOrMany<message::Message>,
+) -> (Vec<String>, Vec<message::Message>) {
+    let mut system = Vec::new();
+    let mut remaining = Vec::new();
+
+    for message in history {
+        match message {
+            message::Message::System { content } => system.push(content),
+            other => remaining.push(other),
+        }
+    }
+
+    (system, remaining)
 }
 
 // Convert Rig UserContent to gRPC Part

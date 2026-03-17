@@ -622,6 +622,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
+            message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => content.try_into(),
             message::Message::Assistant { content, .. } => content.try_into(),
         }
@@ -1034,6 +1035,8 @@ pub struct CompletionRequest {
     tool_choice: Option<ToolChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u64>,
     #[serde(flatten)]
     additional_params: Option<serde_json::Value>,
 }
@@ -1066,6 +1069,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             chat_history,
             tools,
             temperature,
+            max_tokens,
             additional_params,
             tool_choice,
             output_schema,
@@ -1149,6 +1153,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             tools,
             tool_choice,
             temperature,
+            max_tokens,
             additional_params,
         };
 
@@ -1248,6 +1253,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -1445,6 +1451,62 @@ mod tests {
             }
             _ => panic!("expected assistant message"),
         }
+    }
+
+    #[test]
+    fn test_max_tokens_is_forwarded_to_request() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(4096),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["max_tokens"], 4096);
+    }
+
+    #[test]
+    fn test_max_tokens_omitted_when_none() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert!(serialized.get("max_tokens").is_none());
     }
 
     #[test]

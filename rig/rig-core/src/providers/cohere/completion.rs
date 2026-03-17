@@ -387,6 +387,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                     )),
                 })
                 .collect::<Result<Vec<_>, _>>()?,
+            message::Message::System { content } => {
+                vec![Message::System { content }]
+            }
             message::Message::Assistant { content, .. } => {
                 let mut text_content = vec![];
                 let mut tool_calls = vec![];
@@ -630,6 +633,7 @@ where
             gen_ai.response.model = self.model,
             gen_ai.usage.output_tokens = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()

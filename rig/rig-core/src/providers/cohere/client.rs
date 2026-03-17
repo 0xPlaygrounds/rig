@@ -29,14 +29,7 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CohereBuilde
 
 impl Provider for CohereExt {
     type Builder = CohereBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &client::ClientBuilder<Self::Builder, CohereApiKey, H>,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for CohereExt {
@@ -54,16 +47,21 @@ impl<H> Capabilities<H> for CohereExt {
 impl DebugExt for CohereExt {}
 
 impl ProviderBuilder for CohereBuilder {
-    type Output = CohereExt;
+    type Extension<H>
+        = CohereExt
+    where
+        H: HttpClientExt;
     type ApiKey = CohereApiKey;
 
     const BASE_URL: &'static str = "https://api.cohere.ai";
 
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, CohereApiKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, CohereApiKey, H>> {
-        Ok(builder)
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(CohereExt)
     }
 }
 
@@ -133,12 +131,11 @@ where
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::cohere::Client =
+        let _client =
             crate::providers::cohere::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::cohere::Client =
-            crate::providers::cohere::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::cohere::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

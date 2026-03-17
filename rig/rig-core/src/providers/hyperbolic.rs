@@ -40,16 +40,6 @@ impl Provider for HyperbolicExt {
     type Builder = HyperbolicBuilder;
 
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for HyperbolicExt {
@@ -66,10 +56,22 @@ impl<H> Capabilities<H> for HyperbolicExt {
 impl DebugExt for HyperbolicExt {}
 
 impl ProviderBuilder for HyperbolicBuilder {
-    type Output = HyperbolicExt;
+    type Extension<H>
+        = HyperbolicExt
+    where
+        H: HttpClientExt;
     type ApiKey = HyperbolicApiKey;
 
     const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(HyperbolicExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
@@ -359,6 +361,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -429,6 +432,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -705,12 +709,11 @@ mod audio_generation {
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::hyperbolic::Client =
+        let _client =
             crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::hyperbolic::Client =
-            crate::providers::hyperbolic::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::hyperbolic::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

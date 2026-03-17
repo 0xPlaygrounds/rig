@@ -15,6 +15,11 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
 
     fn try_from(value: RigMessage) -> Result<Self, Self::Error> {
         let result = match value.0 {
+            Message::System { .. } => {
+                return Err(CompletionError::ProviderError(
+                    "System messages must be sent via Bedrock system blocks".to_string(),
+                ));
+            }
             Message::User { content } => {
                 let message_content = content
                     .into_iter()

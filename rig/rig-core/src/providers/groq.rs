@@ -10,7 +10,7 @@
 //! ```
 use bytes::Bytes;
 use http::Request;
-use serde_json::Map;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_futures::Instrument;
@@ -54,18 +54,7 @@ type GroqApiKey = BearerAuth;
 
 impl Provider for GroqExt {
     type Builder = GroqBuilder;
-
     const VERIFY_PATH: &'static str = "/models";
-
-    fn build<H>(
-        _: &crate::client::ClientBuilder<
-            Self::Builder,
-            <Self::Builder as crate::client::ProviderBuilder>::ApiKey,
-            H,
-        >,
-    ) -> http_client::Result<Self> {
-        Ok(Self)
-    }
 }
 
 impl<H> Capabilities<H> for GroqExt {
@@ -83,10 +72,22 @@ impl<H> Capabilities<H> for GroqExt {
 impl DebugExt for GroqExt {}
 
 impl ProviderBuilder for GroqBuilder {
-    type Output = GroqExt;
+    type Extension<H>
+        = GroqExt
+    where
+        H: HttpClientExt;
     type ApiKey = GroqApiKey;
 
     const BASE_URL: &'static str = GROQ_API_BASE_URL;
+
+    fn build<H>(
+        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> http_client::Result<Self::Extension<H>>
+    where
+        H: HttpClientExt,
+    {
+        Ok(GroqExt)
+    }
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
@@ -183,7 +184,7 @@ pub(super) struct StreamOptions {
 impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
     type Error = CompletionError;
 
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+    fn try_from((model, mut req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Groq");
         }
@@ -218,12 +219,17 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             .map(crate::providers::openai::ToolChoice::try_from)
             .transpose()?;
 
-        let additional_params: Option<GroqAdditionalParameters> =
-            if let Some(params) = req.additional_params {
-                Some(serde_json::from_value(params)?)
-            } else {
+        let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
+        let native_tools =
+            extract_native_tools_from_additional_params(&mut additional_params_payload)?;
+
+        let mut additional_params: Option<GroqAdditionalParameters> =
+            if additional_params_payload.is_null() {
                 None
+            } else {
+                Some(serde_json::from_value(additional_params_payload)?)
             };
+        apply_native_tools_to_additional_params(&mut additional_params, native_tools);
 
         Ok(Self {
             model: model.to_string(),
@@ -240,6 +246,75 @@ impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
             stream: false,
             stream_options: None,
         })
+    }
+}
+
+fn extract_native_tools_from_additional_params(
+    additional_params: &mut Value,
+) -> Result<Vec<Value>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
+            )
+        });
+    }
+
+    Ok(Vec::new())
+}
+
+fn apply_native_tools_to_additional_params(
+    additional_params: &mut Option<GroqAdditionalParameters>,
+    native_tools: Vec<Value>,
+) {
+    if native_tools.is_empty() {
+        return;
+    }
+
+    let params = additional_params.get_or_insert_with(GroqAdditionalParameters::default);
+    let extra = params.extra.get_or_insert_with(Map::new);
+
+    let mut compound_custom = match extra.remove("compound_custom") {
+        Some(Value::Object(map)) => map,
+        _ => Map::new(),
+    };
+
+    let mut enabled_tools = match compound_custom.remove("enabled_tools") {
+        Some(Value::Array(values)) => values,
+        _ => Vec::new(),
+    };
+
+    for native_tool in native_tools {
+        let already_enabled = enabled_tools
+            .iter()
+            .any(|existing| native_tools_match(existing, &native_tool));
+        if !already_enabled {
+            enabled_tools.push(native_tool);
+        }
+    }
+
+    compound_custom.insert("enabled_tools".to_string(), Value::Array(enabled_tools));
+    extra.insert(
+        "compound_custom".to_string(),
+        Value::Object(compound_custom),
+    );
+}
+
+fn native_tools_match(lhs: &Value, rhs: &Value) -> bool {
+    if let (Some(lhs_type), Some(rhs_type)) = (native_tool_kind(lhs), native_tool_kind(rhs)) {
+        return lhs_type == rhs_type;
+    }
+
+    lhs == rhs
+}
+
+fn native_tool_kind(value: &Value) -> Option<&str> {
+    match value {
+        Value::String(kind) => Some(kind),
+        Value::Object(map) => map.get("type").and_then(Value::as_str),
+        _ => None,
     }
 }
 
@@ -302,6 +377,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -341,6 +417,14 @@ where
                             span.record(
                                 "gen_ai.usage.output_tokens",
                                 usage.total_tokens - usage.prompt_tokens,
+                            );
+                            span.record(
+                                "gen_ai.usage.cached_tokens",
+                                usage
+                                    .prompt_tokens_details
+                                    .as_ref()
+                                    .map(|d| d.cached_tokens)
+                                    .unwrap_or(0),
                             );
                         }
 
@@ -384,6 +468,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -713,6 +798,14 @@ where
         span.record("gen_ai.output.messages", serde_json::to_string(&vec![response_message]).unwrap());
         span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
         span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
+        span.record(
+            "gen_ai.usage.cached_tokens",
+            final_usage
+                .prompt_tokens_details
+                .as_ref()
+                .map(|d| d.cached_tokens)
+                .unwrap_or(0),
+        );
 
         // Final response
         yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
@@ -779,12 +872,11 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client: crate::providers::groq::Client =
+        let _client =
             crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: crate::providers::groq::Client =
-            crate::providers::groq::Client::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("Client::builder() failed");
+        let _client_from_builder = crate::providers::groq::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
     }
 }

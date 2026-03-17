@@ -213,6 +213,36 @@ pub struct ToolDefinition {
     pub parameters: serde_json::Value,
 }
 
+/// Provider-native tool definition.
+///
+/// Stored under `additional_params.tools` and forwarded by providers that support
+/// provider-managed tools.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ProviderToolDefinition {
+    /// Tool type/kind name as expected by the target provider (for example `web_search`).
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// Additional provider-specific configuration for this hosted tool.
+    #[serde(flatten, default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub config: serde_json::Map<String, serde_json::Value>,
+}
+
+impl ProviderToolDefinition {
+    /// Creates a provider-hosted tool definition by type.
+    pub fn new(kind: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            config: serde_json::Map::new(),
+        }
+    }
+
+    /// Adds a provider-specific configuration key/value.
+    pub fn with_config(mut self, key: impl Into<String>, value: serde_json::Value) -> Self {
+        self.config.insert(key.into(), value);
+        self
+    }
+}
+
 // ================================================================
 // Implementations
 // ================================================================
@@ -543,7 +573,10 @@ where
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// The preamble to be sent to the completion model provider
+    /// Legacy preamble field preserved for backwards compatibility.
+    ///
+    /// New code should prefer a leading [`Message::System`]
+    /// in `chat_history` as the canonical representation of system instructions.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message will always be the prompt (hence why there is *always* one)
@@ -606,6 +639,56 @@ impl CompletionRequest {
             content: OneOrMany::many(messages).expect("There will be atleast one document"),
         })
     }
+
+    /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
+    pub fn with_provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.additional_params =
+            merge_provider_tools_into_additional_params(self.additional_params, vec![tool]);
+        self
+    }
+
+    /// Adds provider-hosted tools by storing them in `additional_params.tools`.
+    pub fn with_provider_tools(mut self, tools: Vec<ProviderToolDefinition>) -> Self {
+        self.additional_params =
+            merge_provider_tools_into_additional_params(self.additional_params, tools);
+        self
+    }
+}
+
+fn merge_provider_tools_into_additional_params(
+    additional_params: Option<serde_json::Value>,
+    provider_tools: Vec<ProviderToolDefinition>,
+) -> Option<serde_json::Value> {
+    if provider_tools.is_empty() {
+        return additional_params;
+    }
+
+    let mut provider_tools_json = provider_tools
+        .into_iter()
+        .map(|ProviderToolDefinition { kind, mut config }| {
+            // Force the provider tool type from the strongly-typed field.
+            config.insert("type".to_string(), serde_json::Value::String(kind));
+            serde_json::Value::Object(config)
+        })
+        .collect::<Vec<_>>();
+
+    let mut params_map = match additional_params {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(serde_json::Value::Bool(stream)) => {
+            let mut map = serde_json::Map::new();
+            map.insert("stream".to_string(), serde_json::Value::Bool(stream));
+            map
+        }
+        _ => serde_json::Map::new(),
+    };
+
+    let mut merged_tools = match params_map.remove("tools") {
+        Some(serde_json::Value::Array(existing)) => existing,
+        _ => Vec::new(),
+    };
+    merged_tools.append(&mut provider_tools_json);
+    params_map.insert("tools".to_string(), serde_json::Value::Array(merged_tools));
+    Some(serde_json::Value::Object(params_map))
 }
 
 /// Builder struct for constructing a completion request.
@@ -660,6 +743,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     chat_history: Vec<Message>,
     documents: Vec<Document>,
     tools: Vec<ToolDefinition>,
+    provider_tools: Vec<ProviderToolDefinition>,
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     tool_choice: Option<ToolChoice>,
@@ -677,6 +761,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             chat_history: Vec::new(),
             documents: Vec::new(),
             tools: Vec::new(),
+            provider_tools: Vec::new(),
             temperature: None,
             max_tokens: None,
             tool_choice: None,
@@ -687,6 +772,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
+        // Legacy public API: funnel preamble into canonical system messages at build-time.
         self.preamble = Some(preamble);
         self
     }
@@ -745,6 +831,19 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         tools
             .into_iter()
             .fold(self, |builder, tool| builder.tool(tool))
+    }
+
+    /// Adds a provider-hosted tool to the completion request.
+    pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.provider_tools.push(tool);
+        self
+    }
+
+    /// Adds provider-hosted tools to the completion request.
+    pub fn provider_tools(self, tools: Vec<ProviderToolDefinition>) -> Self {
+        tools
+            .into_iter()
+            .fold(self, |builder, tool| builder.provider_tool(tool))
     }
 
     /// Adds additional parameters to the completion request.
@@ -829,19 +928,27 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
-        let chat_history = OneOrMany::many([self.chat_history, vec![self.prompt]].concat())
+        let mut chat_history = self.chat_history;
+        if let Some(preamble) = self.preamble {
+            chat_history.insert(0, Message::system(preamble));
+        }
+        let chat_history = OneOrMany::many([chat_history, vec![self.prompt]].concat())
             .expect("There will always be atleast the prompt");
+        let additional_params = merge_provider_tools_into_additional_params(
+            self.additional_params,
+            self.provider_tools,
+        );
 
         CompletionRequest {
             model: self.request_model,
-            preamble: self.preamble,
+            preamble: None,
             chat_history,
             documents: self.documents,
             tools: self.tools,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             tool_choice: self.tool_choice,
-            additional_params: self.additional_params,
+            additional_params,
             output_schema: self.output_schema,
         }
     }
@@ -869,6 +976,48 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 mod tests {
 
     use super::*;
+    use crate::streaming::StreamingCompletionResponse;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone)]
+    struct DummyModel;
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct DummyStreamingResponse;
+
+    impl GetTokenUsage for DummyStreamingResponse {
+        fn token_usage(&self) -> Option<Usage> {
+            None
+        }
+    }
+
+    impl CompletionModel for DummyModel {
+        type Response = serde_json::Value;
+        type StreamingResponse = DummyStreamingResponse;
+        type Client = ();
+
+        fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
+            Self
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "dummy completion model".to_string(),
+            ))
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "dummy completion model".to_string(),
+            ))
+        }
+    }
 
     #[test]
     fn test_document_display_without_metadata() {
@@ -963,5 +1112,37 @@ mod tests {
         };
 
         assert_eq!(request.normalized_documents(), None);
+    }
+
+    #[test]
+    fn preamble_builder_funnels_to_system_message() {
+        let request = CompletionRequestBuilder::new(DummyModel, Message::user("Prompt"))
+            .preamble("System prompt".to_string())
+            .message(Message::user("History"))
+            .build();
+
+        assert_eq!(request.preamble, None);
+
+        let history = request.chat_history.into_iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            &history[0],
+            Message::System { content } if content == "System prompt"
+        ));
+        assert!(matches!(&history[1], Message::User { .. }));
+        assert!(matches!(&history[2], Message::User { .. }));
+    }
+
+    #[test]
+    fn without_preamble_removes_legacy_preamble_injection() {
+        let request = CompletionRequestBuilder::new(DummyModel, Message::user("Prompt"))
+            .preamble("System prompt".to_string())
+            .without_preamble()
+            .build();
+
+        assert_eq!(request.preamble, None);
+        let history = request.chat_history.into_iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 1);
+        assert!(matches!(&history[0], Message::User { .. }));
     }
 }

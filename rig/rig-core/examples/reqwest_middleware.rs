@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("'ANTHROPIC_API_KEY' not set");
 
     // Create an Anthropic client using the middleware-enabled HTTP client
-    let client = anthropic::Client::<reqwest_middleware::ClientWithMiddleware>::builder()
+    let client = anthropic::Client::builder()
         .http_client(http_client)
         .api_key(api_key)
         .build()

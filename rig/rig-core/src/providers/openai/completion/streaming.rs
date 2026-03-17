@@ -12,7 +12,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
-use crate::providers::openai::completion::{self, CompletionModel, OpenAIRequestParams, Usage};
+use crate::providers::openai::completion::{CompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
@@ -35,6 +35,8 @@ pub(crate) struct StreamingToolCall {
 struct StreamingDelta {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>, // This is not part of the official OpenAI API
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     tool_calls: Vec<StreamingToolCall>,
 }
@@ -73,6 +75,11 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .map_or(0, |d| d.cached_tokens as u64);
         Some(usage)
     }
 }
@@ -128,6 +135,7 @@ where
                 gen_ai.response.model = self.model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
                 gen_ai.input.messages = request_messages,
                 gen_ai.output.messages = tracing::field::Empty,
             )
@@ -158,7 +166,6 @@ where
         // Accumulate tool calls by index while streaming
         let mut tool_calls: HashMap<usize, streaming::RawStreamingToolCall> = HashMap::new();
         let mut text_content = String::new();
-        let mut final_tool_calls: Vec<completion::ToolCall> = Vec::new();
         let mut final_usage = None;
 
         while let Some(event_result) = event_source.next().await {
@@ -197,24 +204,43 @@ where
                         for tool_call in &delta.tool_calls {
                             let index = tool_call.index;
 
-                            // Get or create tool call entry
+                            // Some API gateways (e.g. LiteLLM, OneAPI) emit multiple
+                            // distinct tool calls all sharing index 0.  Detect this by
+                            // comparing both the `id` and `name`: only evict when a new
+                            // chunk carries a different non-empty id AND a different
+                            // non-empty name.  Checking the name prevents false evictions
+                            // from providers (e.g. GLM-4) that send a unique id on every
+                            // SSE chunk for the same logical tool call.
+                            if let Some(new_id) = &tool_call.id
+                                && !new_id.is_empty()
+                                && let Some(new_name) = &tool_call.function.name
+                                && !new_name.is_empty()
+                                && let Some(existing) = tool_calls.get(&index)
+                                && !existing.id.is_empty()
+                                && existing.id != *new_id
+                                && !existing.name.is_empty()
+                                && existing.name != *new_name
+                            {
+                                let evicted = tool_calls.remove(&index).expect("checked above");
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(evicted));
+                            }
+
                             let existing_tool_call = tool_calls.entry(index).or_insert_with(streaming::RawStreamingToolCall::empty);
 
-                            // Update fields if present
                             if let Some(id) = &tool_call.id && !id.is_empty() {
-                                    existing_tool_call.id = id.clone();
+                                existing_tool_call.id = id.clone();
                             }
 
                             if let Some(name) = &tool_call.function.name && !name.is_empty() {
-                                    existing_tool_call.name = name.clone();
-                                    yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
-                                        id: existing_tool_call.id.clone(),
-                                        internal_call_id: existing_tool_call.internal_call_id.clone(),
-                                        content: streaming::ToolCallDeltaContent::Name(name.clone()),
-                                    });
+                                existing_tool_call.name = name.clone();
+                                yield Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                                    id: existing_tool_call.id.clone(),
+                                    internal_call_id: existing_tool_call.internal_call_id.clone(),
+                                    content: streaming::ToolCallDeltaContent::Name(name.clone()),
+                                });
                             }
 
-                                // Convert current arguments to string if needed
+                            // Convert current arguments to string if needed
                             if let Some(chunk) = &tool_call.function.arguments && !chunk.is_empty() {
                                 let current_args = match &existing_tool_call.arguments {
                                     serde_json::Value::Null => String::new(),
@@ -245,6 +271,14 @@ where
                         }
                     }
 
+                    // Streamed reasoning/thinking content (e.g. GLM-4, DeepSeek via compatible endpoint)
+                    if let Some(reasoning) = &delta.reasoning_content && !reasoning.is_empty() {
+                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                            id: None,
+                            reasoning: reasoning.clone(),
+                        });
+                    }
+
                     // Streamed text content
                     if let Some(content) = &delta.content && !content.is_empty() {
                         text_content += content;
@@ -254,14 +288,6 @@ where
                     // Finish reason
                     if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
                         for (_idx, tool_call) in tool_calls.into_iter() {
-                            final_tool_calls.push(completion::ToolCall {
-                                id: tool_call.id.clone(),
-                                r#type: completion::ToolType::Function,
-                                function: completion::Function {
-                                    name: tool_call.name.clone(),
-                                    arguments: tool_call.arguments.clone(),
-                                },
-                            });
                             yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
                         }
                         tool_calls = HashMap::new();
@@ -291,6 +317,14 @@ where
         if !span.is_disabled() {
             span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
             span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
+            span.record(
+                "gen_ai.usage.cached_tokens",
+                final_usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map(|d| d.cached_tokens)
+                    .unwrap_or(0),
+            );
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
@@ -483,78 +517,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_usage_only_chunk_is_not_ignored() {
+        use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
-
-        #[derive(Clone)]
-        struct MockHttpClient {
-            sse_bytes: Bytes,
-        }
-
-        impl crate::http_client::HttpClientExt for MockHttpClient {
-            fn send<T, U>(
-                &self,
-                _req: http::Request<T>,
-            ) -> impl std::future::Future<
-                Output = crate::http_client::Result<
-                    http::Response<crate::http_client::LazyBody<U>>,
-                >,
-            > + crate::wasm_compat::WasmCompatSend
-            + 'static
-            where
-                T: Into<Bytes>,
-                T: crate::wasm_compat::WasmCompatSend,
-                U: From<Bytes>,
-                U: crate::wasm_compat::WasmCompatSend + 'static,
-            {
-                std::future::ready(Err(crate::http_client::Error::InvalidStatusCode(
-                    http::StatusCode::NOT_IMPLEMENTED,
-                )))
-            }
-
-            fn send_multipart<U>(
-                &self,
-                _req: http::Request<crate::http_client::MultipartForm>,
-            ) -> impl std::future::Future<
-                Output = crate::http_client::Result<
-                    http::Response<crate::http_client::LazyBody<U>>,
-                >,
-            > + crate::wasm_compat::WasmCompatSend
-            + 'static
-            where
-                U: From<Bytes>,
-                U: crate::wasm_compat::WasmCompatSend + 'static,
-            {
-                std::future::ready(Err(crate::http_client::Error::InvalidStatusCode(
-                    http::StatusCode::NOT_IMPLEMENTED,
-                )))
-            }
-
-            fn send_streaming<T>(
-                &self,
-                _req: http::Request<T>,
-            ) -> impl std::future::Future<
-                Output = crate::http_client::Result<crate::http_client::StreamingResponse>,
-            > + crate::wasm_compat::WasmCompatSend
-            where
-                T: Into<Bytes>,
-            {
-                let sse_bytes = self.sse_bytes.clone();
-                async move {
-                    let byte_stream = futures::stream::iter(vec![Ok::<
-                        Bytes,
-                        crate::http_client::Error,
-                    >(sse_bytes)]);
-                    let boxed_stream: crate::http_client::sse::BoxedStream = Box::pin(byte_stream);
-
-                    http::Response::builder()
-                        .status(http::StatusCode::OK)
-                        .header(reqwest::header::CONTENT_TYPE, "text/event-stream")
-                        .body(boxed_stream)
-                        .map_err(crate::http_client::Error::Protocol)
-                }
-            }
-        }
 
         // Some providers emit a final "usage-only" chunk where `choices` is empty.
         let sse = concat!(
@@ -563,7 +528,7 @@ mod tests {
             "data: [DONE]\n\n",
         );
 
-        let client = MockHttpClient {
+        let client = MockStreamingClient {
             sse_bytes: Bytes::from(sse),
         };
 
@@ -588,5 +553,199 @@ mod tests {
         let usage = final_usage.expect("expected a final response with usage");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_cached_input_tokens_populated() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        // Usage chunk includes prompt_tokens_details with cached_tokens.
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut final_response = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+                final_response = Some(res);
+                break;
+            }
+        }
+
+        let res = final_response.expect("expected a final response");
+
+        // Verify provider-level usage has the cached_tokens
+        assert_eq!(
+            res.usage
+                .prompt_tokens_details
+                .as_ref()
+                .unwrap()
+                .cached_tokens,
+            80
+        );
+
+        // Verify core Usage also has cached_input_tokens via GetTokenUsage
+        let core_usage = res.token_usage().expect("token_usage should return Some");
+        assert_eq!(core_usage.cached_input_tokens, 80);
+        assert_eq!(core_usage.input_tokens, 100);
+        assert_eq!(core_usage.total_tokens, 110);
+    }
+
+    /// Reproduces the bug where a proxy/gateway sends multiple parallel tool
+    /// calls all sharing `index: 0` but with distinct `id` values.  Without
+    /// the fix, rig merges both calls into one corrupted entry.
+    #[tokio::test]
+    async fn test_duplicate_index_different_id_tool_calls() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        // Simulate a gateway that sends two tool calls both at index 0.
+        // First tool call: id="call_aaa", name="command", args={"cmd":"ls"}
+        // Second tool call: id="call_bbb", name="git", args={"action":"log"}
+        let sse = concat!(
+            // First tool call starts
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_aaa\",\"function\":{\"name\":\"command\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // First tool call argument chunks
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"ls\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // Second tool call starts AT THE SAME index 0 but with a NEW id
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bbb\",\"function\":{\"name\":\"git\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // Second tool call argument chunks
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"action\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"log\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            // Finish with tool_calls reason
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
+            // Usage chunk
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            } = chunk.unwrap()
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(
+            collected_tool_calls.len(),
+            2,
+            "expected 2 separate tool calls, got {collected_tool_calls:?}"
+        );
+
+        assert_eq!(collected_tool_calls[0].id, "call_aaa");
+        assert_eq!(collected_tool_calls[0].function.name, "command");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({"cmd": "ls"})
+        );
+
+        assert_eq!(collected_tool_calls[1].id, "call_bbb");
+        assert_eq!(collected_tool_calls[1].function.name, "git");
+        assert_eq!(
+            collected_tool_calls[1].function.arguments,
+            serde_json::json!({"action": "log"})
+        );
+    }
+
+    /// Reproduces the bug where a provider (e.g. GLM-4 via OpenAI-compatible
+    /// endpoint) sends a unique `id` on every SSE delta chunk for the same
+    /// logical tool call.  Without the fix, each chunk triggers an eviction,
+    /// yielding incomplete fragments as "completed" tool calls.
+    #[tokio::test]
+    async fn test_unique_id_per_chunk_single_tool_call() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        // Each chunk carries a different id but they all represent delta
+        // fragments of the SAME tool call at index 0.
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-aaa\",\"function\":{\"name\":\"web_search\",\"arguments\":\"null\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-bbb\",\"function\":{\"name\":\"\",\"arguments\":\"{\\\"query\\\": \\\"META\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-ccc\",\"function\":{\"name\":\"\",\"arguments\":\" Platforms news\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":8,\"total_tokens\":23}}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            } = chunk.unwrap()
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(
+            collected_tool_calls.len(),
+            1,
+            "expected 1 tool call (all chunks are fragments of the same call), got {collected_tool_calls:?}"
+        );
+
+        assert_eq!(collected_tool_calls[0].function.name, "web_search");
+        // The arguments should be the fully accumulated string, not fragments
+        let args_str = match &collected_tool_calls[0].function.arguments {
+            serde_json::Value::String(s) => s.clone(),
+            v => v.to_string(),
+        };
+        assert!(
+            args_str.contains("META Platforms news"),
+            "expected accumulated arguments containing the full query, got: {args_str}"
+        );
     }
 }
