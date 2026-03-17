@@ -1075,6 +1075,7 @@ pub struct StructuredOutputsInput {
     /// Your required output schema. It is recommended that you use the JsonSchema macro, which you can check out at <https://docs.rs/schemars/latest/schemars/trait.JsonSchema.html>.
     pub schema: serde_json::Value,
     /// Enable strict output. If you are using your AI agent in a data pipeline or another scenario that requires the data to be absolutely fixed to a given schema, it is recommended to set this to true.
+    #[serde(default)]
     pub strict: bool,
 }
 
