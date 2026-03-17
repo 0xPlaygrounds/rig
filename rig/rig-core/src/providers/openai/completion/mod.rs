@@ -410,6 +410,9 @@ pub struct Function {
     pub arguments: serde_json::Value,
 }
 
+/// the arguments for tool calls in the openai API are an JSON object encoded as a string
+/// the arguments for tool calls in llama.cpp are already an JSON object (that is not stringified)
+/// therefore we handle both cases here
 fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
 where
     D: Deserializer<'de>,
