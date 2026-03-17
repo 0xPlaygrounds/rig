@@ -212,6 +212,7 @@ pub(crate) fn create_request_body(
         full_history.push(msg);
     }
     full_history.extend(chat_history);
+    let (history_system, full_history) = split_system_messages_from_history(full_history);
 
     let mut additional_params_payload = additional_params
         .take()
@@ -243,10 +244,23 @@ pub(crate) fn create_request_body(
         cfg
     });
 
-    let system_instruction = preamble.clone().map(|preamble| Content {
-        parts: vec![preamble.into()],
-        role: Some(Role::Model),
-    });
+    let mut system_parts: Vec<Part> = Vec::new();
+    if let Some(preamble) = preamble.filter(|preamble| !preamble.is_empty()) {
+        system_parts.push(preamble.into());
+    }
+    for content in history_system {
+        if !content.is_empty() {
+            system_parts.push(content.into());
+        }
+    }
+    let system_instruction = if system_parts.is_empty() {
+        None
+    } else {
+        Some(Content {
+            parts: system_parts,
+            role: Some(Role::Model),
+        })
+    };
 
     let mut tools = if function_tools.is_empty() {
         Vec::new()
@@ -281,6 +295,22 @@ pub(crate) fn create_request_body(
     };
 
     Ok(request)
+}
+
+fn split_system_messages_from_history(
+    history: Vec<completion::Message>,
+) -> (Vec<String>, Vec<completion::Message>) {
+    let mut system = Vec::new();
+    let mut remaining = Vec::new();
+
+    for message in history {
+        match message {
+            completion::Message::System { content } => system.push(content),
+            other => remaining.push(other),
+        }
+    }
+
+    (system, remaining)
 }
 
 fn extract_tools_from_additional_params(

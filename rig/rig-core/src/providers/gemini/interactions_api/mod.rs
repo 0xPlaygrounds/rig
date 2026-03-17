@@ -298,6 +298,7 @@ pub(crate) fn create_request_body(
         history.push(docs);
     }
     history.extend(completion_request.chat_history);
+    let (history_system, history) = split_system_messages_from_history(history);
 
     let turns = history
         .into_iter()
@@ -331,6 +332,13 @@ pub(crate) fn create_request_body(
 
     let system_instruction = completion_request
         .preamble
+        .or_else(|| {
+            if history_system.is_empty() {
+                None
+            } else {
+                Some(history_system.join("\n\n"))
+            }
+        })
         .or(params.system_instruction.take());
 
     let mut tools = Vec::new();
@@ -385,6 +393,22 @@ pub(crate) fn create_request_body(
         previous_interaction_id: params.previous_interaction_id.take(),
         additional_params: params.additional_params.take(),
     })
+}
+
+fn split_system_messages_from_history(
+    history: Vec<completion::Message>,
+) -> (Vec<String>, Vec<completion::Message>) {
+    let mut system = Vec::new();
+    let mut remaining = Vec::new();
+
+    for message in history {
+        match message {
+            completion::Message::System { content } => system.push(content),
+            other => remaining.push(other),
+        }
+    }
+
+    (system, remaining)
 }
 
 async fn send_interaction_request<T>(

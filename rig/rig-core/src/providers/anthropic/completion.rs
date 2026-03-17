@@ -1047,6 +1047,29 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
     }
 }
 
+pub(super) fn split_system_messages_from_history(
+    history: Vec<message::Message>,
+) -> (Vec<SystemContent>, Vec<message::Message>) {
+    let mut system = Vec::new();
+    let mut remaining = Vec::new();
+
+    for message in history {
+        match message {
+            message::Message::System { content } => {
+                if !content.is_empty() {
+                    system.push(SystemContent::Text {
+                        text: content,
+                        cache_control: None,
+                    });
+                }
+            }
+            other => remaining.push(other),
+        }
+    }
+
+    (system, remaining)
+}
+
 /// Parameters for building an AnthropicCompletionRequest
 pub struct AnthropicRequestParams<'a> {
     pub model: &'a str,
@@ -1076,6 +1099,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             full_history.push(docs);
         }
         full_history.extend(req.chat_history);
+        let (history_system, full_history) = split_system_messages_from_history(full_history);
 
         let mut messages = full_history
             .into_iter()
@@ -1114,6 +1138,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
         } else {
             vec![]
         };
+        system.extend(history_system);
 
         // Apply cache control breakpoints only if prompt_caching is enabled
         if prompt_caching {
