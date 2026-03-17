@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.32.0...rig-core-v0.33.0) - 2026-03-17
+
+### Added
+
+- *(rig-core)* add stateful WebSocket session for OpenAI Responses API ([#1500](https://github.com/0xPlaygrounds/rig/pull/1500))
+- *(gemini)* add Gemini 3 model constants and thinking_level support ([#1520](https://github.com/0xPlaygrounds/rig/pull/1520))
+- add llamafile provider ([#1519](https://github.com/0xPlaygrounds/rig/pull/1519))
+- add grok imagine as image generation ([#1516](https://github.com/0xPlaygrounds/rig/pull/1516))
+- *(rmcp)* `McpClientHandler` ([#1525](https://github.com/0xPlaygrounds/rig/pull/1525))
+- *(telemetry)* emit gen_ai.usage.cached_tokens across all providers ([#1497](https://github.com/0xPlaygrounds/rig/pull/1497))
+- add provider-native hosted tool support ([#1430](https://github.com/0xPlaygrounds/rig/pull/1430))
+
+### Fixed
+
+- *(openai)* make strict field optional in StructuredOutputsInput ([#1528](https://github.com/0xPlaygrounds/rig/pull/1528))
+- *(llamafile)* apply embedding Number->f64 conversion for arbitrary_precision compat ([#1526](https://github.com/0xPlaygrounds/rig/pull/1526))
+- embedding deserialization breaks with serde_json/arbitrary_precision ([#1518](https://github.com/0xPlaygrounds/rig/pull/1518))
+- *(openai)* strengthen streaming tool call dedup to prevent false evictions ([#1510](https://github.com/0xPlaygrounds/rig/pull/1510))
+- *(gemini)* [**breaking**] resolve embedding dimensions dynamically instead of hardcoding ([#1513](https://github.com/0xPlaygrounds/rig/pull/1513))
+- *(gemini)* support URL-backed text documents ([#1507](https://github.com/0xPlaygrounds/rig/pull/1507))
+- forward max_tokens in Chat Completions API requests ([#1495](https://github.com/0xPlaygrounds/rig/pull/1495))
+- populate cached_input_tokens in Chat Completions streaming ([#1485](https://github.com/0xPlaygrounds/rig/pull/1485))
+- *(gemini)* correct ProviderBuilder impl for GeminiInteractionsBuilder ([#1482](https://github.com/0xPlaygrounds/rig/pull/1482))
+- *(rig-1218)* gemini MCP tool invalid tool argument ([#1462](https://github.com/0xPlaygrounds/rig/pull/1462))
+
+### Other
+
+- Change preamble to system message internally ([#1527](https://github.com/0xPlaygrounds/rig/pull/1527))
+- fix link in rig-core README ([#1502](https://github.com/0xPlaygrounds/rig/pull/1502))
+- Feat/gemini interactions api ([#1230](https://github.com/0xPlaygrounds/rig/pull/1230))
+
 
 ## [0.32.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.31.0...rig-core-v0.32.0) - 2026-03-05
 

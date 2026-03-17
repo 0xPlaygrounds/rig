@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.1...rig-bedrock-v0.4.2) - 2026-03-17
+
+### Other
+
+- Change preamble to system message internally ([#1527](https://github.com/0xPlaygrounds/rig/pull/1527))
+
 
 ## [0.4.1](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.0...rig-bedrock-v0.4.1) - 2026-03-05
 
