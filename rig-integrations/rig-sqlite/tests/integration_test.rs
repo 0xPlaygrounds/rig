@@ -2,7 +2,7 @@ use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use serde_json::json;
 
 use rig::client::EmbeddingsClient;
-use rig::vector_store::VectorStoreIndex;
+use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingsBuilder},
@@ -15,7 +15,7 @@ use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use tokio_rusqlite::Connection;
 
-#[derive(Embed, Clone, serde::Deserialize, Debug)]
+#[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {
     id: String,
     #[embed]
@@ -49,22 +49,28 @@ impl SqliteVectorStoreTable for Word {
 type SqliteExtensionFn =
     unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
 
-#[tokio::test]
-async fn vector_search_test() {
+fn register_sqlite_vec_extension() {
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html
+
     unsafe {
         sqlite3_auto_extension(Some(std::mem::transmute::<*const (), SqliteExtensionFn>(
             sqlite3_vec_init as *const (),
         )));
     }
+}
 
-    // Initialize SQLite connection
-    let conn = Connection::open("vector_store.db")
+async fn open_test_connection(name: &str) -> Connection {
+    Connection::open(format!("file:{name}?mode=memory"))
         .await
-        .expect("Could not initialize SQLite connection");
+        .expect("Could not initialize SQLite connection")
+}
 
-    // Setup mock openai API
+#[tokio::test]
+async fn vector_search_test() {
+    register_sqlite_vec_extension();
+
+    let conn = open_test_connection("vector_search_test").await;
     let server = httpmock::MockServer::start();
 
     server.mock(|when, then| {
@@ -108,6 +114,7 @@ async fn vector_search_test() {
             }
         ));
     });
+
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
             .path("/embeddings")
@@ -138,14 +145,11 @@ async fn vector_search_test() {
             ));
     });
 
-    // Initialize OpenAI client
     let openai_client = openai::Client::builder()
         .api_key("TEST")
         .base_url(server.base_url())
         .build()
         .unwrap();
-
-    // Select the embedding model and generate our embeddings
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let embeddings = create_embeddings(model.clone()).await;
@@ -175,6 +179,90 @@ async fn vector_search_test() {
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
     assert!(results.is_empty());
+}
+
+#[tokio::test]
+async fn insert_documents_test() {
+    register_sqlite_vec_extension();
+
+    let conn = open_test_connection("insert_documents_test").await;
+    let server = httpmock::MockServer::start();
+
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST")
+            .json_body(json!({
+                "input": [
+                    "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
+                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
+                ],
+                "model": "text-embedding-ada-002",
+            }));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "object": "list",
+                "data": [
+                  {
+                    "object": "embedding",
+                    "embedding": vec![-0.001; 1536],
+                    "index": 0
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![0.0023064255; 1536],
+                    "index": 1
+                  },
+                  {
+                    "object": "embedding",
+                    "embedding": vec![-0.001; 1536],
+                    "index": 2
+                  },
+                ],
+                "model": "text-embedding-ada-002",
+                "usage": {
+                  "prompt_tokens": 8,
+                  "total_tokens": 8
+                }
+            }
+        ));
+    });
+
+    let openai_client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let embeddings = create_embeddings(model.clone()).await;
+
+    let vector_store: SqliteVectorStore<_, Word> = SqliteVectorStore::new(conn.clone(), &model)
+        .await
+        .expect("Could not initialize SQLite vector store");
+
+    vector_store
+        .insert_documents(embeddings)
+        .await
+        .expect("Could not add embeddings to vector store");
+
+    let (document_count, embedding_count) = conn
+        .call(|conn| {
+            let document_count: i64 =
+                conn.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))?;
+            let embedding_count: i64 =
+                conn.query_row("SELECT COUNT(*) FROM documents_embeddings", [], |row| {
+                    row.get(0)
+                })?;
+
+            Ok((document_count, embedding_count))
+        })
+        .await
+        .expect("Could not verify inserted rows");
+
+    assert_eq!(document_count, 3);
+    assert_eq!(embedding_count, 3);
 }
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {

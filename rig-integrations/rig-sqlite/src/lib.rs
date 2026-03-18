@@ -1,7 +1,8 @@
-use rig::OneOrMany;
 use rig::embeddings::{Embedding, EmbeddingModel};
 use rig::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
-use rig::vector_store::{VectorStoreError, VectorStoreIndex};
+use rig::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig::{Embed, OneOrMany};
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -46,10 +47,10 @@ impl Column {
 /// Example of a document type that can be used with SqliteVectorStore
 /// ```rust
 /// use rig::Embed;
-/// use serde::Deserialize;
+/// use serde::{Deserialize, Serialize};
 /// use rig_sqlite::{Column, ColumnValue, SqliteVectorStoreTable};
 ///
-/// #[derive(Embed, Clone, Debug, Deserialize)]
+/// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 /// struct Document {
 ///     id: String,
 ///     #[embed]
@@ -245,6 +246,39 @@ where
     }
 }
 
+impl<E, T> InsertDocuments for SqliteVectorStore<E, T>
+where
+    E: EmbeddingModel + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    T: SqliteVectorStoreTable
+        + for<'de> Deserialize<'de>
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+{
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        if documents.is_empty() {
+            return Ok(());
+        }
+
+        let rows = documents
+            .into_iter()
+            .map(|(document, embeddings)| {
+                let document = serde_json::to_value(document)?;
+                let row = serde_json::from_value::<T>(document)?;
+
+                Ok((row, embeddings))
+            })
+            .collect::<Result<Vec<_>, VectorStoreError>>()?;
+
+        self.add_rows(rows).await?;
+
+        Ok(())
+    }
+}
+
 #[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct SqliteSearchFilter {
     condition: String,
@@ -405,14 +439,15 @@ impl SqliteSearchFilter {
 /// use rig::{
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
-///     vector_store::VectorStoreIndex,
+///     vector_store::{InsertDocuments, VectorStoreIndex},
 ///     Embed,
 /// };
 /// use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
-/// use serde::Deserialize;
+/// use rig::vector_store::request::VectorSearchRequest;
+/// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
 ///
-/// #[derive(Embed, Clone, Debug, Deserialize)]
+/// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 /// struct Document {
 ///     id: String,
 ///     #[embed]
@@ -469,13 +504,15 @@ impl SqliteSearchFilter {
 ///     .await?;
 ///
 /// // Add to vector store
-/// vector_store.add_rows(embeddings).await?;
+/// vector_store.insert_documents(embeddings).await?;
 ///
 /// // Create index and search
 /// let index = vector_store.index(model);
-/// let results = index
-///     .top_n::<Document>("Example query", 2)
-///     .await?;
+/// let req = VectorSearchRequest::builder()
+///     .query("Example query")
+///     .samples(2)
+///     .build()?;
+/// let results = index.top_n::<Document>(req).await?;
 /// ```
 pub struct SqliteVectorIndex<E, T>
 where
