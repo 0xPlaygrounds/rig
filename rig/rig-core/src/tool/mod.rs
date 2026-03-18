@@ -9,7 +9,10 @@
 //! The [ToolSet] struct is a collection of tools that can be used by an [Agent](crate::agent::Agent)
 //! and optionally RAGged.
 
+pub mod context;
 pub mod server;
+
+pub use context::ToolCallContext;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -138,6 +141,19 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         &self,
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
+
+    /// Tool execution with per-call runtime context.
+    ///
+    /// Override this to access runtime values (auth, session IDs, etc.)
+    /// injected by the caller via [`ToolCallContext`]. The default ignores
+    /// context and delegates to [`Tool::call`].
+    fn call_with_context(
+        &self,
+        args: Self::Args,
+        _ctx: &ToolCallContext,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend {
+        self.call(args)
+    }
 }
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
@@ -174,6 +190,19 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition>;
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
+
+    /// Dynamic dispatch variant of tool execution with per-call runtime context.
+    ///
+    /// The default ignores context and delegates to [`ToolDyn::call`].
+    /// The blanket impl for [`Tool`] types overrides this to thread context
+    /// through to [`Tool::call_with_context`].
+    fn call_with_context<'a>(
+        &'a self,
+        args: String,
+        _ctx: ToolCallContext,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        self.call(args)
+    }
 }
 
 impl<T: Tool> ToolDyn for T {
@@ -186,9 +215,17 @@ impl<T: Tool> ToolDyn for T {
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
+        ToolDyn::call_with_context(self, args, ToolCallContext::new())
+    }
+
+    fn call_with_context<'a>(
+        &'a self,
+        args: String,
+        ctx: ToolCallContext,
+    ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             match serde_json::from_str(&args) {
-                Ok(args) => <Self as Tool>::call(self, args)
+                Ok(args) => <Self as Tool>::call_with_context(self, args, &ctx)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| {
@@ -244,10 +281,19 @@ impl ToolType {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn call(&self, args: String) -> Result<String, ToolError> {
+        self.call_with_context(args, ToolCallContext::new()).await
+    }
+
+    pub async fn call_with_context(
+        &self,
+        args: String,
+        ctx: ToolCallContext,
+    ) -> Result<String, ToolError> {
         match self {
-            ToolType::Simple(tool) => tool.call(args).await,
-            ToolType::Embedding(tool) => tool.call(args).await,
+            ToolType::Simple(tool) => tool.call_with_context(args, ctx).await,
+            ToolType::Embedding(tool) => tool.call_with_context(args, ctx).await,
         }
     }
 }
@@ -340,12 +386,26 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
+        self.call_with_context(toolname, args, ToolCallContext::new())
+            .await
+    }
+
+    /// Call a tool with the given name, arguments, and per-call runtime context.
+    ///
+    /// The context is threaded through to [`Tool::call_with_context`], allowing
+    /// tools to access caller-provided values (auth tokens, session IDs, etc.).
+    pub async fn call_with_context(
+        &self,
+        toolname: &str,
+        args: String,
+        ctx: ToolCallContext,
+    ) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
                 serde_json::to_string_pretty(&args).unwrap()
             );
-            Ok(tool.call(args).await?)
+            Ok(tool.call_with_context(args, ctx).await?)
         } else {
             Err(ToolSetError::ToolNotFoundError(toolname.to_string()))
         }
