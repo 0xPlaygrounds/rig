@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolDyn, ToolSet, ToolSetError},
+    tool::{Tool, ToolCallContext, ToolDyn, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
@@ -146,6 +146,22 @@ impl ToolServerHandle {
     /// The tool handle is cloned under a brief read lock so that
     /// long-running tool executions never block writers.
     pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
+        self.call_tool_with_context(tool_name, args, ToolCallContext::new())
+            .await
+    }
+
+    /// Look up and execute a tool by name with per-call runtime context.
+    ///
+    /// The context is threaded through to [`Tool::call_with_context`], allowing
+    /// tools to access caller-provided values (auth tokens, session IDs, etc.).
+    /// The tool handle is cloned under a brief read lock so that long-running
+    /// tool executions never block writers.
+    pub async fn call_tool_with_context(
+        &self,
+        tool_name: &str,
+        args: &str,
+        ctx: ToolCallContext,
+    ) -> Result<String, ToolServerError> {
         let tool = {
             let state = self.0.read().await;
             state.toolset.get(tool_name).cloned()
@@ -157,7 +173,7 @@ impl ToolServerHandle {
                     "Calling tool {tool_name} with args:\n{}",
                     serde_json::to_string_pretty(&args).unwrap_or_default()
                 );
-                tool.call(args.to_string())
+                tool.call_with_context(args.to_string(), ctx)
                     .await
                     .map_err(|e| ToolSetError::ToolCallError(e).into())
             }
@@ -494,5 +510,89 @@ mod tests {
         let tool_names: Vec<&str> = defs.iter().map(|t| t.name.as_str()).collect();
         assert!(tool_names.contains(&"add"));
         assert!(tool_names.contains(&"subtract"));
+    }
+
+    // --- call_with_context tests ---
+
+    #[derive(Clone)]
+    struct SessionId(String);
+
+    #[derive(serde::Deserialize, serde::Serialize)]
+    struct ContextReader;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("context reader error")]
+    struct ContextReaderError;
+
+    impl crate::tool::Tool for ContextReader {
+        const NAME: &'static str = "context_reader";
+        type Error = ContextReaderError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+            crate::completion::ToolDefinition {
+                name: "context_reader".to_string(),
+                description: "Reads SessionId from context".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("no context".to_string())
+        }
+
+        async fn call_with_context(
+            &self,
+            _args: Self::Args,
+            ctx: &crate::tool::ToolCallContext,
+        ) -> Result<Self::Output, Self::Error> {
+            match ctx.get::<SessionId>() {
+                Some(session) => Ok(format!("session:{}", session.0)),
+                None => Ok("no session".to_string()),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_with_context_reaches_tool() {
+        let server = ToolServer::new().tool(ContextReader);
+        let handle = server.run();
+
+        let mut ctx = crate::tool::ToolCallContext::new();
+        ctx.insert(SessionId("abc-123".to_string()));
+
+        let result = handle
+            .call_tool_with_context("context_reader", "{}", ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "\"session:abc-123\"");
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_without_context_uses_default() {
+        let server = ToolServer::new().tool(ContextReader);
+        let handle = server.run();
+
+        let result = handle.call_tool("context_reader", "{}").await.unwrap();
+        assert_eq!(result, "\"no session\"");
+    }
+
+    #[tokio::test]
+    async fn test_tool_ignoring_context_still_works() {
+        let server = ToolServer::new().tool(MockAddTool);
+        let handle = server.run();
+
+        let mut ctx = crate::tool::ToolCallContext::new();
+        ctx.insert(SessionId("ignored".to_string()));
+
+        let args = serde_json::to_string(&serde_json::json!({"x": 3, "y": 7})).unwrap();
+        let result = handle
+            .call_tool_with_context("add", &args, ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "10");
     }
 }
