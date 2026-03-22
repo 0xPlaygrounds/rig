@@ -278,7 +278,7 @@ where
             .client
             .post("/chat/completions")?
             .body(body)
-            .map_err(|e| http_client::Error::from(e))?;
+            .map_err(http_client::Error::from)?;
 
         async move {
             let response = self.client.send::<_, Bytes>(req).await?;
@@ -368,7 +368,7 @@ where
             .client
             .post("/chat/completions")?
             .body(body)
-            .map_err(|e| http_client::Error::from(e))?;
+            .map_err(http_client::Error::from)?;
 
         send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
