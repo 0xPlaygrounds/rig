@@ -6,15 +6,16 @@
 
 use neo4rs::{Graph, Query};
 use rig::{
+    Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::Error};
 
-use crate::{Neo4jClient, Neo4jSearchFilter};
+use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 
 pub struct Neo4jVectorIndex<M>
 where
@@ -266,5 +267,78 @@ where
             .collect::<Vec<_>>();
 
         Ok(results)
+    }
+}
+
+impl<M> InsertDocuments for Neo4jVectorIndex<M>
+where
+    M: EmbeddingModel + Send + Sync,
+{
+    /// Insert documents with their embeddings into Neo4j.
+    ///
+    /// For each document, creates a node with:
+    /// - A `document` property containing the serialized JSON
+    /// - An embedding property (configured via `IndexConfig`) containing the vector
+    /// - An `embedded_text` property containing the text that was embedded
+    ///
+    /// Uses UNWIND + CREATE for efficient batch insertion.
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        if documents.is_empty() {
+            return Ok(());
+        }
+
+        // Build a list of parameter maps for batch insertion
+        let mut items = Vec::new();
+        for (doc, embeddings) in documents {
+            let json_doc = serde_json::to_value(&doc)
+                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+            for embedding in embeddings {
+                let mut item = neo4rs::BoltMap::new();
+                item.put(
+                    neo4rs::BoltString::new("document"),
+                    json_doc.to_bolt_type(),
+                );
+                item.put(
+                    neo4rs::BoltString::new(&self.index_config.embedding_property),
+                    neo4rs::BoltType::List(
+                        embedding
+                            .vec
+                            .iter()
+                            .map(|v| neo4rs::BoltType::Float(neo4rs::BoltFloat::new(*v)))
+                            .collect::<Vec<_>>()
+                            .into(),
+                    ),
+                );
+                item.put(
+                    neo4rs::BoltString::new("embedded_text"),
+                    neo4rs::BoltType::String(neo4rs::BoltString::new(&embedding.document)),
+                );
+                items.push(neo4rs::BoltType::Map(item));
+            }
+        }
+
+        let query = neo4rs::query(
+            "UNWIND $items AS item \
+             CREATE (n) \
+             SET n.document = item.document, \
+                 n.embedded_text = item.embedded_text, \
+                 n[$embedding_prop] = item[$embedding_prop]",
+        )
+        .param("items", neo4rs::BoltType::List(items.into()))
+        .param(
+            "embedding_prop",
+            self.index_config.embedding_property.clone(),
+        );
+
+        self.graph
+            .run(query)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        Ok(())
     }
 }
