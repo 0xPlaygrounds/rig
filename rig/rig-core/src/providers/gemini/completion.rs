@@ -1744,6 +1744,9 @@ pub mod gemini_api_types {
                     obj.get("type").and_then(extract_type).or_else(|| {
                         if obj.contains_key("properties") {
                             Some("object".to_string())
+                        } else if obj.contains_key("enum") {
+                            // Enum schemas without explicit type are string-backed
+                            Some("string".to_string())
                         } else {
                             None
                         }
