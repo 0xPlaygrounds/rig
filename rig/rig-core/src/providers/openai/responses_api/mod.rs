@@ -999,8 +999,8 @@ pub struct AdditionalParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
-    #[serde(skip_serializing_if = "Map::is_empty", default)]
-    pub metadata: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
     /// Whether or not you want tool calls to run in parallel.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
@@ -1796,5 +1796,34 @@ impl FromStr for UserContent {
         Ok(UserContent::InputText {
             text: s.to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod metadata_null_test {
+    use super::*;
+
+    #[test]
+    fn test_additional_parameters_deserializes_null_metadata() {
+        // This should deserialize without error - OpenAI can return null for metadata
+        let json_with_null = r#"{"metadata": null}"#;
+        let result: Result<AdditionalParameters, _> = serde_json::from_str(json_with_null);
+        assert!(result.is_ok(), "Failed to deserialize null metadata: {:?}", result);
+    }
+    
+    #[test]
+    fn test_additional_parameters_deserializes_missing_metadata() {
+        // Missing metadata should also work
+        let json_without = r#"{}"#;
+        let result: Result<AdditionalParameters, _> = serde_json::from_str(json_without);
+        assert!(result.is_ok(), "Failed to deserialize missing metadata: {:?}", result);
+    }
+    
+    #[test]
+    fn test_additional_parameters_deserializes_object_metadata() {
+        // Object metadata should work
+        let json_with_obj = r#"{"metadata": {"key": "value"}}"#;
+        let result: Result<AdditionalParameters, _> = serde_json::from_str(json_with_obj);
+        assert!(result.is_ok(), "Failed to deserialize object metadata: {:?}", result);
     }
 }
