@@ -25,14 +25,15 @@ pub struct PartialUsage {
     pub candidates_token_count: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thoughts_token_count: Option<i32>,
-    pub prompt_token_count: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_token_count: Option<i32>,
 }
 
 impl GetTokenUsage for PartialUsage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let mut usage = crate::completion::Usage::new();
 
-        usage.input_tokens = self.prompt_token_count as u64;
+        usage.input_tokens = self.prompt_token_count.unwrap_or_default() as u64;
         usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
             + self.candidates_token_count.unwrap_or_default()
             + self.thoughts_token_count.unwrap_or_default()) as u64;
@@ -65,7 +66,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
             .candidates_token_count
             .map(|x| x as u64)
             .unwrap_or(0);
-        usage.input_tokens = self.usage_metadata.prompt_token_count as u64;
+        usage.input_tokens = self.usage_metadata.prompt_token_count.unwrap_or(0) as u64;
         Some(usage)
     }
 }
@@ -515,7 +516,7 @@ mod tests {
             cached_content_token_count: Some(20),
             candidates_token_count: Some(30),
             thoughts_token_count: Some(10),
-            prompt_token_count: 40,
+            prompt_token_count: Some(40),
         };
 
         let token_usage = usage.token_usage().unwrap();
@@ -531,7 +532,7 @@ mod tests {
             cached_content_token_count: None,
             candidates_token_count: Some(30),
             thoughts_token_count: None,
-            prompt_token_count: 20,
+            prompt_token_count: Some(20),
         };
 
         let token_usage = usage.token_usage().unwrap();
@@ -548,7 +549,7 @@ mod tests {
                 cached_content_token_count: None,
                 candidates_token_count: Some(75),
                 thoughts_token_count: None,
-                prompt_token_count: 75,
+                prompt_token_count: Some(75),
             },
         };
 
