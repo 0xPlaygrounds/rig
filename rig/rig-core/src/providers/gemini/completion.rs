@@ -1300,6 +1300,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Clone, Default, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
+        #[serde(default)]
         pub prompt_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub cached_content_token_count: Option<i32>,
