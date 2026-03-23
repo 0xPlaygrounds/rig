@@ -503,7 +503,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             .usage_metadata
             .as_ref()
             .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_token_count.unwrap_or(0) as u64,
+                input_tokens: usage.prompt_token_count as u64,
                 output_tokens: usage.candidates_token_count.unwrap_or(0) as u64,
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: 0,
@@ -1300,8 +1300,8 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Clone, Default, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub prompt_token_count: Option<i32>,
+        #[serde(default)]
+        pub prompt_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub cached_content_token_count: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1316,10 +1316,7 @@ pub mod gemini_api_types {
             write!(
                 f,
                 "Prompt token count: {}\nCached content token count: {}\nCandidates token count: {}\nTotal token count: {}",
-                match self.prompt_token_count {
-                    Some(count) => count.to_string(),
-                    None => "n/a".to_string(),
-                },
+                self.prompt_token_count,
                 match self.cached_content_token_count {
                     Some(count) => count.to_string(),
                     None => "n/a".to_string(),
@@ -1337,7 +1334,7 @@ pub mod gemini_api_types {
         fn token_usage(&self) -> Option<crate::completion::Usage> {
             let mut usage = crate::completion::Usage::new();
 
-            usage.input_tokens = self.prompt_token_count.unwrap_or_default() as u64;
+            usage.input_tokens = self.prompt_token_count as u64;
             usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
                 + self.candidates_token_count.unwrap_or_default()
                 + self.thoughts_token_count.unwrap_or_default())
