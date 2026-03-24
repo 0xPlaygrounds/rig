@@ -616,7 +616,9 @@ where
         } = self;
 
         if let Some((k, v)) = api_key.into_header().transpose()? {
-            headers.insert(k, v);
+            if !headers.contains_key(&k) {
+                headers.insert(k, v);
+            }
         }
 
         let http_client = http_client.unwrap_or_default();
