@@ -615,7 +615,9 @@ where
             ..
         } = self;
 
-        if let Some((k, v)) = api_key.into_header().transpose()? {
+        if let Some((k, v)) = api_key.into_header().transpose()?
+            && !headers.contains_key(&k)
+        {
             headers.insert(k, v);
         }
 
