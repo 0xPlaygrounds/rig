@@ -74,6 +74,10 @@ Rig supports the following LLM providers out of the box:
 - Voyage AI
 - xAI
 
+OpenAI-compatible providers such as Venice can also be used through
+`rig::providers::openai::CompletionsClient` by setting a custom base URL (for
+Venice, `https://api.venice.ai/api/v1`).
+
 Vector stores are available as separate companion-crates:
 
 - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/rig-mongodb)

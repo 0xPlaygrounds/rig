@@ -120,6 +120,8 @@ or just `full` to enable all features (`cargo add tokio --features macros,rt-mul
 
 You can find more examples each crate's `examples` (ie. [`rig/rig-core/examples`](./rig/rig-core/examples)) directory. More detailed use cases walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation [(docs.rig.rs)](http://docs.rig.rs).
 
+OpenAI-compatible providers such as Venice can be used through Rig's OpenAI integration by overriding the base URL and using the Chat Completions client.
+
 ## Supported Integrations
 
 Vector stores are available as separate companion-crates:

@@ -1,16 +1,29 @@
 //! This module contains clients for the different LLM providers that Rig supports.
 //!
 //! Currently, the following providers are supported:
-//! - Cohere
-//! - OpenAI
-//! - Perplexity
 //! - Anthropic
-//! - Google Gemini
-//! - xAI
-//! - EternalAI
-//! - DeepSeek
 //! - Azure OpenAI
+//! - Cohere
+//! - DeepSeek
+//! - Galadriel
+//! - Google Gemini
+//! - Groq
+//! - Huggingface
+//! - Hyperbolic
+//! - Llamafile
 //! - Mira
+//! - Mistral
+//! - Moonshot
+//! - Ollama
+//! - OpenAI
+//! - OpenRouter
+//! - Perplexity
+//! - Together
+//! - Voyage AI
+//! - xAI
+//!
+//! OpenAI-compatible providers such as Venice can use the [`openai`] module with a
+//! custom base URL and the Chat Completions client.
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.

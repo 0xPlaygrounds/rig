@@ -80,6 +80,10 @@
 //! - Voyage AI
 //! - xAI
 //!
+//! Venice can be used through the OpenAI-compatible Chat Completions path by creating an
+//! [`openai::CompletionsClient`](crate::providers::openai::CompletionsClient) with
+//! `https://api.venice.ai/api/v1` as the base URL.
+//!
 //! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
 //!

@@ -31,6 +31,30 @@ let embedder = client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 let embedder = client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 ```
 
+### Venice (OpenAI-compatible)
+
+Venice exposes an OpenAI-compatible Chat Completions API, so you can use Rig's
+OpenAI integration with a Venice base URL override.
+
+```rust
+use rig::{client::CompletionClient, completion::Prompt, providers::openai};
+
+let venice_api_key = std::env::var("VENICE_API_KEY").expect("VENICE_API_KEY not set");
+
+let client = openai::CompletionsClient::builder()
+    .api_key(&venice_api_key)
+    .base_url("https://api.venice.ai/api/v1")
+    .build()
+    .expect("failed to build Venice client");
+
+let agent = client.agent("venice-uncensored").build();
+let response = agent.prompt("Hello from Venice!").await?;
+```
+
+Use `openai::CompletionsClient` for Venice because Rig's default `openai::Client`
+targets OpenAI's Responses API, while Venice documents a Chat Completions endpoint.
+If you prefer `from_env()`, set `OPENAI_API_KEY` and `OPENAI_BASE_URL` instead.
+
 ### Anthropic
 
 ```rust
