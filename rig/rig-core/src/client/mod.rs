@@ -615,10 +615,10 @@ where
             ..
         } = self;
 
-        if let Some((k, v)) = api_key.into_header().transpose()? {
-            if !headers.contains_key(&k) {
-                headers.insert(k, v);
-            }
+        if let Some((k, v)) = api_key.into_header().transpose()?
+            && !headers.contains_key(&k)
+        {
+            headers.insert(k, v);
         }
 
         let http_client = http_client.unwrap_or_default();
