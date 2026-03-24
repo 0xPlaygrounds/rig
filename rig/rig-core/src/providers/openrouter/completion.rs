@@ -1356,6 +1356,7 @@ impl From<openai::Message> for Message {
                 audio,
                 name,
                 tool_calls,
+                ..
             } => Self::Assistant {
                 content,
                 refusal,

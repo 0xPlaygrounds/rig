@@ -527,6 +527,7 @@ mod tests {
             audio: None,
             name: None,
             tool_calls: vec![],
+            additional_params: None,
         };
 
         let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
