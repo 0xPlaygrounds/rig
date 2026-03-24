@@ -9,7 +9,7 @@ use tracing::Instrument;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolDyn, ToolError, ToolSet, ToolSetError},
+    tool::{Tool, ToolCallContext, ToolDyn, ToolError, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
@@ -156,13 +156,23 @@ impl ToolServer {
                     .send(ToolServerResponse::ToolDeleted)
                     .unwrap();
             }
-            ToolServerRequestMessageKind::CallTool { name, args, span } => {
+            ToolServerRequestMessageKind::CallTool {
+                name,
+                args,
+                ctx,
+                span,
+            } => {
                 let toolset = Arc::clone(&self.toolset);
 
                 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
                 tokio::spawn(
                     async move {
-                        match toolset.read().await.call(&name, args.clone()).await {
+                        match toolset
+                            .read()
+                            .await
+                            .call_with_context(&name, args.clone(), ctx)
+                            .await
+                        {
                             Ok(result) => {
                                 let _ = callback_channel
                                     .send(ToolServerResponse::ToolExecuted { result });
@@ -180,7 +190,12 @@ impl ToolServer {
                 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
                 wasm_bindgen_futures::spawn_local(
                     async move {
-                        match toolset.read().await.call(&name, args.clone()).await {
+                        match toolset
+                            .read()
+                            .await
+                            .call_with_context(&name, args.clone(), ctx)
+                            .await
+                        {
                             Ok(result) => {
                                 let _ = callback_channel
                                     .send(ToolServerResponse::ToolExecuted { result });
@@ -329,6 +344,20 @@ impl ToolServerHandle {
     }
 
     pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
+        self.call_tool_with_context(tool_name, args, ToolCallContext::new())
+            .await
+    }
+
+    /// Call a tool by name with per-call runtime context.
+    ///
+    /// The context is sent across the channel to the tool server and threaded
+    /// through to [`Tool::call_with_context`].
+    pub async fn call_tool_with_context(
+        &self,
+        tool_name: &str,
+        args: &str,
+        ctx: ToolCallContext,
+    ) -> Result<String, ToolServerError> {
         let (tx, rx) = futures::channel::oneshot::channel();
 
         self.0
@@ -337,6 +366,7 @@ impl ToolServerHandle {
                 data: ToolServerRequestMessageKind::CallTool {
                     name: tool_name.to_string(),
                     args: args.to_string(),
+                    ctx,
                     span: tracing::Span::current(),
                 },
             })
@@ -390,6 +420,7 @@ pub enum ToolServerRequestMessageKind {
     CallTool {
         name: String,
         args: String,
+        ctx: ToolCallContext,
         span: tracing::Span,
     },
     GetToolDefs {
@@ -663,6 +694,90 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(self.sleep_duration_ms)).await;
             Ok(self.sleep_duration_ms)
         }
+    }
+
+    /// A tool that reads a value from ToolCallContext and returns it.
+    #[derive(Deserialize, Serialize)]
+    struct ContextReader;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("context reader error")]
+    struct ContextReaderError;
+
+    #[derive(Clone)]
+    struct SessionId(String);
+
+    impl Tool for ContextReader {
+        const NAME: &'static str = "context_reader";
+        type Error = ContextReaderError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: "context_reader".to_string(),
+                description: "Reads SessionId from context".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("no context".to_string())
+        }
+
+        async fn call_with_context(
+            &self,
+            _args: Self::Args,
+            ctx: &crate::tool::ToolCallContext,
+        ) -> Result<Self::Output, Self::Error> {
+            match ctx.get::<SessionId>() {
+                Some(session) => Ok(format!("session:{}", session.0)),
+                None => Ok("no session".to_string()),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_with_context_reaches_tool() {
+        let server = ToolServer::new().tool(ContextReader);
+        let handle = server.run();
+
+        let mut ctx = crate::tool::ToolCallContext::new();
+        ctx.insert(SessionId("abc-123".to_string()));
+
+        let result = handle
+            .call_tool_with_context("context_reader", "{}", ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "\"session:abc-123\"");
+    }
+
+    #[tokio::test]
+    async fn test_call_tool_without_context_uses_default() {
+        let server = ToolServer::new().tool(ContextReader);
+        let handle = server.run();
+
+        let result = handle.call_tool("context_reader", "{}").await.unwrap();
+
+        assert_eq!(result, "\"no session\"");
+    }
+
+    #[tokio::test]
+    async fn test_tool_ignoring_context_still_works() {
+        let server = ToolServer::new().tool(Adder);
+        let handle = server.run();
+
+        let mut ctx = crate::tool::ToolCallContext::new();
+        ctx.insert(SessionId("ignored".to_string()));
+
+        let args = serde_json::to_string(&json!({"x": 3, "y": 7})).unwrap();
+        let result = handle
+            .call_tool_with_context("add", &args, ctx)
+            .await
+            .unwrap();
+
+        assert_eq!(result, "10");
     }
 
     #[tokio::test]
