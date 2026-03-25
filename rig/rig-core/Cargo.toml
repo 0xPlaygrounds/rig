@@ -62,8 +62,6 @@ reqwest-middleware = { version = "0.5.1", optional = true, features = [
 
 # Native-only dependency for OpenAI Responses websocket mode.
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
-# Made optional so that the TLS backend (rustls or native-tls) can be selected via
-# the `reqwest-rustls` / `reqwest-native-tls` / `native-tls` feature flags.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio-tungstenite = { version = "0.23.1", optional = true }
 
@@ -106,7 +104,7 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-default = ["reqwest-rustls"]
+default = ["reqwest", "rustls"]
 all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
@@ -123,36 +121,17 @@ wasm = [
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
-# Enables WebSocket support (tokio-tungstenite). Activated automatically by the
-# TLS features below; you only need this directly if you are supplying TLS yourself.
+reqwest = [
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/system-proxy",
+]
 websocket = ["dep:tokio-tungstenite"]
-# Enable rustls as the TLS backend for both HTTP (reqwest) and WebSocket (tokio-tungstenite).
-# This is the default.
-reqwest-rustls = [
-  "reqwest/rustls",
-  "reqwest/charset",
-  "reqwest/http2",
-  "reqwest/system-proxy",
-  "websocket",
-  "tokio-tungstenite?/rustls-tls-webpki-roots",
-]
-# Enable the platform-native TLS backend for both HTTP (reqwest) and WebSocket
-# (tokio-tungstenite).  Disable the default features and enable this when you
-# need to use the OS certificate store or link against OpenSSL / SChannel /
-# Secure Transport instead of the bundled rustls.
-reqwest-native-tls = [
-  "reqwest/native-tls",
-  "reqwest/charset",
-  "reqwest/http2",
-  "reqwest/system-proxy",
-  "websocket",
-  "tokio-tungstenite?/native-tls",
-]
-# Convenience alias: selects native-tls for every transport (reqwest + WebSocket).
-native-tls = ["reqwest-native-tls"]
+rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
+native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
 reqwest-middleware = ["dep:reqwest-middleware"]
-reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
-reqwest-middleware-native-tls = ["reqwest-middleware", "reqwest-native-tls"]
+reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
+reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls", "reqwest/native-tls"]
 
 [[test]]
 name = "embed_macro"
