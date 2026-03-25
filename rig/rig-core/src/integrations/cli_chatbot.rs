@@ -52,7 +52,7 @@ where
         prompt: &str,
         history: Vec<Message>,
     ) -> Result<String, PromptError> {
-        let res = self.0.chat(prompt, history).await?;
+        let res = self.0.chat(prompt, &history).await?;
         println!("{res}");
 
         Ok(res)
@@ -71,7 +71,7 @@ where
         let mut response_stream = self
             .agent
             .stream_prompt(prompt)
-            .with_history(history)
+            .with_history(&history)
             .multi_turn(self.max_turns)
             .await;
 

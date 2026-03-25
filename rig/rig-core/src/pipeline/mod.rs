@@ -280,6 +280,7 @@ impl<E> PipelineBuilder<E> {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum ChainError {
     #[error("Failed to prompt agent: {0}")]
     PromptError(#[from] completion::PromptError),

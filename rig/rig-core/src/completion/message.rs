@@ -1138,6 +1138,12 @@ impl FromStr for Text {
     }
 }
 
+impl From<&Message> for Message {
+    fn from(msg: &Message) -> Self {
+        msg.clone()
+    }
+}
+
 impl From<String> for Message {
     fn from(text: String) -> Self {
         Message::User {

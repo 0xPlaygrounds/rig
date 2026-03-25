@@ -448,7 +448,7 @@ mod tests {
     use serde_json::{self, json};
 
     use crate::{
-        completion::ToolDefinition,
+        completion::{Message, ToolDefinition},
         tool::{Tool, ToolError},
     };
 
@@ -646,9 +646,9 @@ mod tests {
             }))
             .build();
 
-        let chat_history = Vec::new();
+        let chat_history: Vec<Message> = Vec::new();
         let mut stream = agent
-            .stream_chat("Call my example tool", chat_history)
+            .stream_chat("Call my example tool", &chat_history)
             .multi_turn(5)
             .await;
 

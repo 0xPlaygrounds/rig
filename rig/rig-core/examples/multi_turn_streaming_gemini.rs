@@ -82,7 +82,7 @@ where
 
         'outer: loop {
             let mut stream = agent
-                .stream_completion(current_prompt.clone(), chat_history.clone())
+                .stream_completion(current_prompt.clone(), &chat_history)
                 .await?
                 .stream()
                 .await?;

@@ -63,7 +63,9 @@ reqwest-middleware = { version = "0.5.1", optional = true, features = [
 # Native-only dependency for OpenAI Responses websocket mode.
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio-tungstenite = { version = "0.23.1", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.23.1", features = [
+  "rustls-tls-webpki-roots",
+] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -134,6 +136,9 @@ reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
 [[test]]
 name = "embed_macro"
 required-features = ["derive"]
+
+[[example]]
+name = "context_fold"
 
 [[example]]
 name = "rag"

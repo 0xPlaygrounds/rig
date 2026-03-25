@@ -489,25 +489,28 @@ where
     /// ```
     type Hook: PromptHook<M>;
 
-    /// Stream a chat with history to the model
-    ///
-    /// The updated history (including the new prompt and response) is returned
-    /// in [`FinalResponse::history()`](crate::agent::prompt_request::streaming::FinalResponse::history).
-    fn stream_chat(
+    /// Stream a chat with history to the model.
+    fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> StreamingPromptRequest<M, Self::Hook>;
+        chat_history: I,
+    ) -> StreamingPromptRequest<M, Self::Hook>
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// Trait for low-level streaming completion interface
 pub trait StreamingCompletion<M: CompletionModel> {
     /// Generate a streaming completion from a request
-    fn stream_completion(
+    fn stream_completion<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
+        chat_history: I,
+    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 pub(crate) struct StreamingResultDyn<R: Clone + Unpin + GetTokenUsage> {

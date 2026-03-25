@@ -119,6 +119,7 @@ pub enum CompletionError {
 }
 
 /// Prompt errors
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 pub enum PromptError {
     /// Something went wrong with the completion
@@ -139,28 +140,32 @@ pub enum PromptError {
     #[error("MaxTurnError: (reached max turn limit: {max_turns})")]
     MaxTurnsError {
         max_turns: usize,
-        chat_history: Box<Vec<Message>>,
-        prompt: Box<Message>,
+        chat_history: Vec<Message>,
+        prompt: Message,
     },
 
     /// A prompting loop was cancelled.
     #[error("PromptCancelled: {reason}")]
     PromptCancelled {
-        chat_history: Box<Vec<Message>>,
+        chat_history: Vec<Message>,
         reason: String,
     },
 }
 
 impl PromptError {
-    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>, reason: impl Into<String>) -> Self {
+    pub(crate) fn prompt_cancelled(
+        chat_history: impl IntoIterator<Item = Message>,
+        reason: impl Into<String>,
+    ) -> Self {
         Self::PromptCancelled {
-            chat_history: Box::new(chat_history),
+            chat_history: chat_history.into_iter().collect(),
             reason: reason.into(),
         }
     }
 }
 
 /// Errors that can occur when using typed structured output via [`TypedPrompt::prompt_typed`].
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 pub enum StructuredOutputError {
     /// An error occurred during the prompt execution.
@@ -272,11 +277,14 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
     /// is returned as a string.
     ///
     /// If the tool does not exist, or the tool call fails, then an error is returned.
-    fn chat(
+    fn chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
+        chat_history: I,
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// Trait defining a high-level typed prompt interface for structured output.
@@ -304,10 +312,9 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
 /// ```
 pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
     /// The type of the typed prompt request returned by `prompt_typed`.
-    type TypedRequest<'a, T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
+    type TypedRequest<T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
     where
-        Self: 'a,
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
     /// Send a prompt and receive a typed structured response.
     ///
@@ -328,10 +335,7 @@ pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
     /// // Or specified explicitly with turbofish
     /// let forecast = agent.prompt_typed::<WeatherForecast>("What's the weather?").await?;
     /// ```
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> Self::TypedRequest<'_, T>
+    fn prompt_typed<T>(&self, prompt: impl Into<Message> + WasmCompatSend) -> Self::TypedRequest<T>
     where
         T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
@@ -349,12 +353,15 @@ pub trait Completion<M: CompletionModel> {
     ///
     /// For example, the request builder returned by [`Agent::completion`](crate::agent::Agent::completion) will already
     /// contain the `preamble` provided when creating the agent.
-    fn completion(
+    fn completion<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
+        chat_history: I,
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
-    + WasmCompatSend;
+    + WasmCompatSend
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// General completion response struct that contains the high-level completion choice
@@ -797,14 +804,15 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Adds a message to the chat history for the completion request.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);
+
         self
     }
 
     /// Adds a list of messages to the chat history for the completion request.
-    pub fn messages(self, messages: Vec<Message>) -> Self {
-        messages
-            .into_iter()
-            .fold(self, |builder, msg| builder.message(msg))
+    pub fn messages(mut self, messages: impl IntoIterator<Item = Message>) -> Self {
+        self.chat_history.extend(messages);
+
+        self
     }
 
     /// Adds a document to the completion request.
@@ -814,7 +822,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Adds a list of documents to the completion request.
-    pub fn documents(self, documents: Vec<Document>) -> Self {
+    pub fn documents(self, documents: impl IntoIterator<Item = Document>) -> Self {
         documents
             .into_iter()
             .fold(self, |builder, doc| builder.document(doc))
@@ -928,12 +936,15 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
+        // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
         if let Some(preamble) = self.preamble {
             chat_history.insert(0, Message::system(preamble));
         }
-        let chat_history = OneOrMany::many([chat_history, vec![self.prompt]].concat())
-            .expect("There will always be atleast the prompt");
+        chat_history.push(self.prompt);
+
+        let chat_history =
+            OneOrMany::many(chat_history).expect("There will always be at least the prompt");
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
