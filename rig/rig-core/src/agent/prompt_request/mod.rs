@@ -758,7 +758,7 @@ where
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
-        let response = self.inner.send().await?;
+        let response = self.inner.send().await.map_err(Box::new)?;
 
         if response.is_empty() {
             return Err(StructuredOutputError::EmptyResponse);
@@ -777,7 +777,7 @@ where
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
-        let response = self.inner.send().await?;
+        let response = self.inner.send().await.map_err(Box::new)?;
 
         if response.output.is_empty() {
             return Err(StructuredOutputError::EmptyResponse);
