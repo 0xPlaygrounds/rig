@@ -119,7 +119,6 @@ pub enum CompletionError {
 }
 
 /// Prompt errors
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 pub enum PromptError {
     /// Something went wrong with the completion
@@ -132,7 +131,7 @@ pub enum PromptError {
 
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]
-    ToolServerError(#[from] ToolServerError),
+    ToolServerError(#[from] Box<ToolServerError>),
 
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
@@ -140,8 +139,8 @@ pub enum PromptError {
     #[error("MaxTurnError: (reached max turn limit: {max_turns})")]
     MaxTurnsError {
         max_turns: usize,
-        chat_history: Vec<Message>,
-        prompt: Message,
+        chat_history: Box<Vec<Message>>,
+        prompt: Box<Message>,
     },
 
     /// A prompting loop was cancelled.
@@ -165,12 +164,11 @@ impl PromptError {
 }
 
 /// Errors that can occur when using typed structured output via [`TypedPrompt::prompt_typed`].
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Error)]
 pub enum StructuredOutputError {
     /// An error occurred during the prompt execution.
     #[error("PromptError: {0}")]
-    PromptError(#[from] PromptError),
+    PromptError(#[from] Box<PromptError>),
 
     /// Failed to deserialize the model's response into the target type.
     #[error("DeserializationError: {0}")]

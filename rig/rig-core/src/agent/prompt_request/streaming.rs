@@ -124,29 +124,29 @@ fn merge_reasoning_blocks(
 
 /// Build full history for error reporting (input + new messages).
 fn build_full_history(
-    input_history: Option<&[Message]>,
+    chat_history: Option<&[Message]>,
     new_messages: Vec<Message>,
 ) -> Vec<Message> {
-    let input = input_history.unwrap_or(&[]);
+    let input = chat_history.unwrap_or(&[]);
     input.iter().cloned().chain(new_messages).collect()
 }
 
 /// Combine input history with new messages for building completion requests.
 fn build_history_for_request(
-    input_history: Option<&[Message]>,
+    chat_history: Option<&[Message]>,
     new_messages: &[Message],
 ) -> Vec<Message> {
-    let input = input_history.unwrap_or(&[]);
+    let input = chat_history.unwrap_or(&[]);
     input.iter().chain(new_messages.iter()).cloned().collect()
 }
 
 async fn cancelled_prompt_error(
-    input_history: Option<&[Message]>,
+    chat_history: Option<&[Message]>,
     new_messages: Vec<Message>,
     reason: String,
 ) -> StreamingError {
     StreamingError::Prompt(
-        PromptError::prompt_cancelled(build_full_history(input_history, new_messages), reason)
+        PromptError::prompt_cancelled(build_full_history(chat_history, new_messages), reason)
             .into(),
     )
 }
@@ -195,7 +195,7 @@ where
     /// The prompt message to send to the model
     prompt: Message,
     /// Optional chat history provided by the caller.
-    input_history: Option<Vec<Message>>,
+    chat_history: Option<Vec<Message>>,
     /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
 
@@ -237,7 +237,7 @@ where
     pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M, ()> {
         StreamingPromptRequest {
             prompt: prompt.into(),
-            input_history: None,
+            chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or_default(),
             model: agent.model.clone(),
             agent_name: agent.name.clone(),
@@ -264,7 +264,7 @@ where
     {
         StreamingPromptRequest {
             prompt: prompt.into(),
-            input_history: None,
+            chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or_default(),
             model: agent.model.clone(),
             agent_name: agent.name.clone(),
@@ -293,12 +293,23 @@ where
     }
 
     /// Add chat history to the prompt request.
+    ///
+    /// When history is provided, the final [`FinalResponse`] will include the
+    /// updated chat history (original messages + new user prompt + assistant response).
+    /// ```ignore
+    /// let mut stream = agent
+    ///     .stream_prompt("Hello")
+    ///     .with_history(vec![])
+    ///     .await;
+    /// // ... consume stream ...
+    /// // Access updated history from FinalResponse::history()
+    /// ```
     pub fn with_history<I, T>(mut self, history: I) -> Self
     where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        self.input_history = Some(history.into_iter().map(Into::into).collect());
+        self.chat_history = Some(history.into_iter().map(Into::into).collect());
         self
     }
 
@@ -310,7 +321,7 @@ where
     {
         StreamingPromptRequest {
             prompt: self.prompt,
-            input_history: self.input_history,
+            chat_history: self.chat_history,
             max_turns: self.max_turns,
             model: self.model,
             agent_name: self.agent_name,
@@ -360,8 +371,8 @@ where
         let dynamic_context = self.dynamic_context.clone();
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
-        let has_history = self.input_history.is_some();
-        let input_history = self.input_history;
+        let has_history = self.chat_history.is_some();
+        let chat_history = self.chat_history;
         let mut new_messages: Vec<Message> = vec![prompt.clone()];
 
         let mut current_max_turns = 0;
@@ -401,10 +412,10 @@ where
                 }
 
                 if let Some(ref hook) = self.hook {
-                    let history_snapshot: Vec<Message> = build_history_for_request(input_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
+                    let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                     if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
                         .await {
-                        yield Err(cancelled_prompt_error(input_history.as_deref(), new_messages.clone(), reason).await);
+                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                         break 'outer;
                     }
                 }
@@ -427,7 +438,7 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
-                let history_snapshot: Vec<Message> = build_history_for_request(input_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
+                let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                 let mut stream = tracing::Instrument::instrument(
                     build_completion_request(
                         &model,
@@ -470,7 +481,7 @@ where
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
                                 let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
-                                    yield Err(cancelled_prompt_error(input_history.as_deref(), new_messages.clone(), reason).await);
+                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                             }
 
@@ -499,7 +510,7 @@ where
                                         .await;
 
                                     if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(cancelled_prompt_error(input_history.as_deref(), new_messages.clone(), reason).await);
+                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     }
 
                                     if let ToolCallHookAction::Skip { reason } = action {
@@ -541,7 +552,7 @@ where
                                         &tool_result.to_string()
                                     )
                                     .await {
-                                        return Err(cancelled_prompt_error(input_history.as_deref(), new_messages.clone(), reason).await);
+                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     }
 
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
@@ -573,7 +584,7 @@ where
 
                                 if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)
                                 .await {
-                                    yield Err(cancelled_prompt_error(input_history.as_deref(), new_messages.clone(), reason).await);
+                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                                 }
                             }
@@ -600,7 +611,7 @@ where
                             if is_text_response {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
-                                        yield Err(cancelled_prompt_error(input_history.as_deref(), new_messages.clone(), reason).await);
+                                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                         break 'outer;
                                     }
 
@@ -686,8 +697,8 @@ where
             if max_turns_reached {
                 yield Err(Box::new(PromptError::MaxTurnsError {
                     max_turns: self.max_turns,
-                    chat_history: build_full_history(input_history.as_deref(), new_messages.clone()),
-                    prompt: last_prompt_error.clone().into(),
+                    chat_history: build_full_history(chat_history.as_deref(), new_messages.clone()).into(),
+                    prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
             }
         };

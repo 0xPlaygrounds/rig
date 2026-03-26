@@ -50,7 +50,7 @@ where
     /// The prompt message to send to the model
     prompt: Message,
     /// Optional chat history provided by the caller.
-    input_history: Option<Vec<Message>>,
+    chat_history: Option<Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
 
@@ -95,7 +95,7 @@ where
     pub fn from_agent(agent: &Agent<M, P>, prompt: impl Into<Message>) -> Self {
         PromptRequest {
             prompt: prompt.into(),
-            input_history: None,
+            chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or_default(),
             model: agent.model.clone(),
             agent_name: agent.name.clone(),
@@ -130,7 +130,7 @@ where
     pub fn extended_details(self) -> PromptRequest<Extended, M, P> {
         PromptRequest {
             prompt: self.prompt,
-            input_history: self.input_history,
+            chat_history: self.chat_history,
             max_turns: self.max_turns,
             model: self.model,
             agent_name: self.agent_name,
@@ -169,7 +169,7 @@ where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        self.input_history = Some(history.into_iter().map(Into::into).collect());
+        self.chat_history = Some(history.into_iter().map(Into::into).collect());
         self
     }
 
@@ -181,7 +181,7 @@ where
     {
         PromptRequest {
             prompt: self.prompt,
-            input_history: self.input_history,
+            chat_history: self.chat_history,
             max_turns: self.max_turns,
             model: self.model,
             agent_name: self.agent_name,
@@ -285,19 +285,19 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 /// Combine input history with new messages for building completion requests.
 fn build_history_for_request(
-    input_history: Option<&[Message]>,
+    chat_history: Option<&[Message]>,
     new_messages: &[Message],
 ) -> Vec<Message> {
-    let input = input_history.unwrap_or(&[]);
+    let input = chat_history.unwrap_or(&[]);
     input.iter().chain(new_messages.iter()).cloned().collect()
 }
 
 /// Build the full history for error reporting (input + new messages).
 fn build_full_history(
-    input_history: Option<&[Message]>,
+    chat_history: Option<&[Message]>,
     new_messages: Vec<Message>,
 ) -> Vec<Message> {
-    let input = input_history.unwrap_or(&[]);
+    let input = chat_history.unwrap_or(&[]);
     input.iter().cloned().chain(new_messages).collect()
 }
 
@@ -332,7 +332,7 @@ where
         }
 
         let agent_name_for_span = self.agent_name.clone();
-        let input_history = self.input_history;
+        let chat_history = self.chat_history;
         let mut new_messages: Vec<Message> = vec![self.prompt.clone()];
 
         let mut current_max_turns = 0;
@@ -363,7 +363,7 @@ where
 
             // Build history for hook callback (input + new messages except last)
             let history_for_hook = build_history_for_request(
-                input_history.as_deref(),
+                chat_history.as_deref(),
                 &new_messages[..new_messages.len().saturating_sub(1)],
             );
 
@@ -372,7 +372,7 @@ where
                     hook.on_completion_call(&prompt, &history_for_hook).await
             {
                 return Err(PromptError::prompt_cancelled(
-                    build_full_history(input_history.as_deref(), new_messages),
+                    build_full_history(chat_history.as_deref(), new_messages),
                     reason,
                 ));
             }
@@ -409,7 +409,7 @@ where
 
             // Build history for completion request (input + new messages except last)
             let history_for_request = build_history_for_request(
-                input_history.as_deref(),
+                chat_history.as_deref(),
                 &new_messages[..new_messages.len().saturating_sub(1)],
             );
 
@@ -439,7 +439,7 @@ where
                     hook.on_completion_response(&prompt, &resp).await
             {
                 return Err(PromptError::prompt_cancelled(
-                    build_full_history(input_history.as_deref(), new_messages),
+                    build_full_history(chat_history.as_deref(), new_messages),
                     reason,
                 ));
             }
@@ -484,7 +484,7 @@ where
 
             // For error handling in concurrent tool execution, we need to build full history
             let full_history_for_errors =
-                build_full_history(input_history.as_deref(), new_messages.clone());
+                build_full_history(chat_history.as_deref(), new_messages.clone());
 
             let tool_calls: Vec<AssistantContent> = tool_calls.into_iter().cloned().collect();
             let tool_content = stream::iter(tool_calls)
@@ -628,8 +628,8 @@ where
         // If we reach here, we exceeded max turns without a final response
         Err(PromptError::MaxTurnsError {
             max_turns: self.max_turns,
-            chat_history: build_full_history(input_history.as_deref(), new_messages),
-            prompt: last_prompt,
+            chat_history: build_full_history(chat_history.as_deref(), new_messages).into(),
+            prompt: last_prompt.into(),
         })
     }
 }

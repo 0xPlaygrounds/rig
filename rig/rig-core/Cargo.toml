@@ -138,9 +138,6 @@ name = "embed_macro"
 required-features = ["derive"]
 
 [[example]]
-name = "context_fold"
-
-[[example]]
 name = "rag"
 required-features = ["derive"]
 

@@ -280,10 +280,9 @@ impl<E> PipelineBuilder<E> {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[allow(clippy::large_enum_variant)]
 pub enum ChainError {
     #[error("Failed to prompt agent: {0}")]
-    PromptError(#[from] completion::PromptError),
+    PromptError(#[from] Box<completion::PromptError>),
 
     #[error("Failed to lookup documents: {0}")]
     LookupError(#[from] vector_store::VectorStoreError),
