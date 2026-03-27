@@ -490,6 +490,29 @@ where
     type Hook: PromptHook<M>;
 
     /// Stream a chat with history to the model.
+    ///
+    /// The messages returned by the model can be accessed via [`FinalResponse::history()`]
+    ///
+    /// You are responsible for managing history, a simple linear solution could look like:
+    /// ```ignore
+    ///  let mut history = vec![];
+    ///
+    ///  loop {
+    ///      let prompt = "Create GPT-67, make no mistakes";
+    ///      let mut stream = agent.stream_chat(prompt, &history).await;
+    ///
+    ///      while let Some(msg) = stream.next().await {
+    ///         match msg {
+    ///              Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
+    ///                  history.extend_from_slice(fin.history().unwrap_or_default());
+    ///                  break;
+    ///             }
+    ///             Ok(_other) => { /* Do something with this chunk */ }
+    ///             Err(e) => return Err(e.into()),
+    ///         }
+    ///     }
+    /// }
+    /// ```
     fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
