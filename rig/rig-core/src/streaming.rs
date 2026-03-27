@@ -491,7 +491,7 @@ where
 
     /// Stream a chat with history to the model.
     ///
-    /// The messages returned by the model can be accessed via [`FinalResponse::history()`]
+    /// The messages returned by the model can be accessed via `FinalResponse::history()`
     ///
     /// You are responsible for managing history, a simple linear solution could look like:
     /// ```ignore
