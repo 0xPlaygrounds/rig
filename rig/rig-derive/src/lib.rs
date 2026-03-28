@@ -219,6 +219,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     // Extract function details
     let fn_name = &input_fn.sig.ident;
     let fn_name_str = fn_name.to_string();
+    let vis = &input_fn.vis;
     let is_async = input_fn.sig.asyncness.is_some();
 
     // Extract return type and get Output and Error types from Result<T, E>
@@ -311,14 +312,14 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[derive(serde::Deserialize)]
-        pub(crate) struct #params_struct_name {
-            #(#param_names: #param_types,)*
+        #vis struct #params_struct_name {
+            #(#vis #param_names: #param_types,)*
         }
 
         #input_fn
 
         #[derive(Default)]
-        pub(crate) struct #struct_name;
+        #vis struct #struct_name;
 
         impl rig::tool::Tool for #struct_name {
             const NAME: &'static str = #fn_name_str;
@@ -355,7 +356,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             #call_impl
         }
 
-        pub static #static_name: #struct_name = #struct_name;
+        #vis static #static_name: #struct_name = #struct_name;
     };
 
     TokenStream::from(expanded)
