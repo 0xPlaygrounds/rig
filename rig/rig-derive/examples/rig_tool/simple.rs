@@ -57,6 +57,12 @@ async fn main() {
         .preamble("You are an agent with tools access, always use the tools")
         .max_tokens(1024)
         .tool(Add)
+        .tool(Subtract)
+        .tool(Multiply)
+        .tool(Divide)
+        .tool(AnswerSecretQuestion)
+        .tool(HowManyRs)
+        .tool(SumNumbers)
         .build();
 
     for prompt in [
