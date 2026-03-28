@@ -269,8 +269,6 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut param_descriptions = Vec::new();
     let mut json_types = Vec::new();
 
-    let required_args = args.required;
-
     for arg in input_fn.sig.inputs.iter() {
         if let syn::FnArg::Typed(pat_type) = arg
             && let syn::Pat::Ident(param_ident) = &*pat_type.pat
@@ -291,6 +289,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             json_types.push(get_json_type(ty));
         }
     }
+
+    // Default required to all parameters when not explicitly specified
+    let required_args = if args.required.is_empty() {
+        param_names.iter().map(|n| n.to_string()).collect()
+    } else {
+        args.required
+    };
 
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
