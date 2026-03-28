@@ -150,7 +150,7 @@ where
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
 impl Client<reqwest::Client> {
     /// WebSocket mode currently uses a native `tokio-tungstenite` transport and does
     /// not reuse custom `HttpClientExt` backends, so this API is only exposed for the
