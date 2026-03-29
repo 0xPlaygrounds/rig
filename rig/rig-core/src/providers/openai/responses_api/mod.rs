@@ -31,7 +31,7 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
 pub mod websocket;
 
 /// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
