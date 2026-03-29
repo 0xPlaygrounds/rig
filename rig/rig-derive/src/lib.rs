@@ -352,6 +352,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #[derive(serde::Deserialize, rig::schemars::JsonSchema)]
+        #[schemars(crate = "rig::schemars")]
         #vis struct #params_struct_name {
             #(#field_tokens,)*
         }
