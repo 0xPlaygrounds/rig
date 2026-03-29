@@ -275,19 +275,22 @@ async fn main() -> Result<(), anyhow::Error> {
                  Lastly, how much would it cost to buy product A + 2 product B with slow shipping?
                  ";
 
-    let mut chat_history: Vec<Message> = Vec::new();
+    let empty_history: &[Message] = &[];
     let resp = agent
         .prompt(prompt)
-        .with_history(&mut chat_history)
+        .with_history(empty_history)
         .max_turns(10)
+        .extended_details()
         .await?;
 
     println!("Chat history:");
-    for entry in &chat_history {
-        println!("{}\n", serde_json::to_string_pretty(entry).unwrap());
+    if let Some(messages) = &resp.messages {
+        for entry in messages.clone().into_iter() {
+            println!("{}\n", serde_json::to_string_pretty(&entry).unwrap());
+        }
     }
 
-    println!("\n\nResponse: {}", resp);
+    println!("\n\nResponse: {}", resp.output);
 
     Ok(())
 }

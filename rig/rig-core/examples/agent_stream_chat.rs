@@ -22,7 +22,7 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     // Prompt the agent and print the response
-    let mut stream = comedian_agent.stream_chat("Entertain me!", messages).await;
+    let mut stream = comedian_agent.stream_chat("Entertain me!", &messages).await;
 
     let res = stream_to_stdout(&mut stream).await.unwrap();
 

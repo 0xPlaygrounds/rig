@@ -1082,7 +1082,21 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
             sanitize_schema(items);
         }
 
-        for key in ["anyOf", "oneOf", "allOf"] {
+        // Anthropic doesn't support oneOf, convert to anyOf
+        if let Some(one_of) = obj.remove("oneOf") {
+            match obj.get_mut("anyOf") {
+                Some(Value::Array(existing)) => {
+                    if let Value::Array(mut incoming) = one_of {
+                        existing.append(&mut incoming);
+                    }
+                }
+                _ => {
+                    obj.insert("anyOf".to_string(), one_of);
+                }
+            }
+        }
+
+        for key in ["anyOf", "allOf"] {
             if let Some(variants) = obj.get_mut(key)
                 && let Value::Array(variants_array) = variants
             {

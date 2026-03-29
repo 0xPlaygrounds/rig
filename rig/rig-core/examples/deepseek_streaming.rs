@@ -2,7 +2,11 @@ use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_CHAT;
 use rig::streaming::{StreamingChat, StreamingPrompt};
-use rig::{completion::ToolDefinition, providers, tool::Tool};
+use rig::{
+    completion::{Message, ToolDefinition},
+    providers,
+    tool::Tool,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -35,8 +39,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     println!("Calculate 2 - 5");
+    let empty_history: &[Message] = &[];
     let mut answer = calculator_agent
-        .stream_chat("Calculate 2 - 5", vec![])
+        .stream_chat("Calculate 2 - 5", empty_history)
         .await;
     print!("DeepSeek Calculator Agent Stream ");
     stream_to_stdout(&mut answer).await?;

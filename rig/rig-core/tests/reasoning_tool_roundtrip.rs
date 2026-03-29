@@ -34,6 +34,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError};
 use rig::client::{CompletionClient, ProviderClient};
+use rig::completion::Message;
 use rig::completion::request::ToolDefinition;
 use rig::message::{Reasoning, ReasoningContent};
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingChat};
@@ -411,7 +412,10 @@ async fn test_openai_tool_call_with_reasoning() {
         }))
         .build();
 
-    let stream = agent.stream_chat(USER_PROMPT, vec![]).multi_turn(3).await;
+    let stream = agent
+        .stream_chat(USER_PROMPT, Vec::<Message>::new())
+        .multi_turn(3)
+        .await;
 
     let stats = collect_stream_stats(stream, "openai").await;
     assert_universal(&stats, &call_count, "openai");
@@ -453,7 +457,10 @@ async fn test_anthropic_tool_call_with_reasoning() {
         }))
         .build();
 
-    let stream = agent.stream_chat(USER_PROMPT, vec![]).multi_turn(3).await;
+    let stream = agent
+        .stream_chat(USER_PROMPT, Vec::<Message>::new())
+        .multi_turn(3)
+        .await;
 
     let stats = collect_stream_stats(stream, "anthropic").await;
     assert_universal(&stats, &call_count, "anthropic");
@@ -502,7 +509,10 @@ async fn test_gemini_tool_call_with_reasoning() {
         }))
         .build();
 
-    let stream = agent.stream_chat(USER_PROMPT, vec![]).multi_turn(3).await;
+    let stream = agent
+        .stream_chat(USER_PROMPT, Vec::<Message>::new())
+        .multi_turn(3)
+        .await;
 
     let stats = collect_stream_stats(stream, "gemini").await;
     assert_universal(&stats, &call_count, "gemini");
@@ -529,7 +539,10 @@ async fn test_xai_tool_call_with_reasoning() {
         .tool(tool)
         .build();
 
-    let stream = agent.stream_chat(USER_PROMPT, vec![]).multi_turn(3).await;
+    let stream = agent
+        .stream_chat(USER_PROMPT, Vec::<Message>::new())
+        .multi_turn(3)
+        .await;
 
     let stats = collect_stream_stats(stream, "xai").await;
     assert_universal(&stats, &call_count, "xai");
@@ -557,7 +570,10 @@ async fn test_openrouter_tool_call_with_reasoning() {
         }))
         .build();
 
-    let stream = agent.stream_chat(USER_PROMPT, vec![]).multi_turn(3).await;
+    let stream = agent
+        .stream_chat(USER_PROMPT, Vec::<Message>::new())
+        .multi_turn(3)
+        .await;
 
     let stats = collect_stream_stats(stream, "openrouter").await;
 
@@ -703,7 +719,7 @@ async fn test_openai_tool_call_nonstreaming() {
         .build();
 
     let result = agent
-        .chat(USER_PROMPT, vec![])
+        .chat(USER_PROMPT, Vec::<Message>::new())
         .await
         .expect("[openai] Non-streaming chat failed — likely 400 from dropped reasoning");
 
@@ -734,7 +750,7 @@ async fn test_anthropic_tool_call_nonstreaming() {
         .build();
 
     let result = agent
-        .chat(USER_PROMPT, vec![])
+        .chat(USER_PROMPT, Vec::<Message>::new())
         .await
         .expect("[anthropic] Non-streaming chat failed — likely 400 from dropped reasoning");
 
@@ -767,7 +783,7 @@ async fn test_gemini_tool_call_nonstreaming() {
         .build();
 
     let result = agent
-        .chat(USER_PROMPT, vec![])
+        .chat(USER_PROMPT, Vec::<Message>::new())
         .await
         .expect("[gemini] Non-streaming chat failed — likely 400 from dropped reasoning");
 
@@ -795,7 +811,7 @@ async fn test_xai_tool_call_nonstreaming() {
         .build();
 
     let result = agent
-        .chat(USER_PROMPT, vec![])
+        .chat(USER_PROMPT, Vec::<Message>::new())
         .await
         .expect("[xai] Non-streaming chat failed — likely 400 from dropped reasoning");
 
@@ -827,7 +843,7 @@ async fn test_openrouter_tool_call_nonstreaming() {
         .build();
 
     let result = agent
-        .chat(USER_PROMPT, vec![])
+        .chat(USER_PROMPT, Vec::<Message>::new())
         .await
         .expect("[openrouter] Non-streaming chat failed — likely 400 from dropped reasoning");
 
