@@ -59,16 +59,31 @@ fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::
 
 #[tokio::test]
 async fn test_calculator_tool() {
-    // Create an instance of our tool
     let calculator = Calculator;
 
-    // Test tool information
     let definition = calculator.definition(String::default()).await;
-    println!("{definition:?}");
     assert_eq!(calculator.name(), "calculator");
     assert_eq!(
         definition.description,
         "Perform basic arithmetic operations"
+    );
+
+    // Verify schema structure from schemars
+    let props = definition.parameters["properties"].as_object().unwrap();
+    assert!(props.contains_key("x"));
+    assert!(props.contains_key("y"));
+    assert!(props.contains_key("operation"));
+
+    // schemars produces "integer" for i32 (not "number")
+    assert_eq!(props["x"]["type"], "integer");
+    assert_eq!(props["y"]["type"], "integer");
+    assert_eq!(props["operation"]["type"], "string");
+
+    // Descriptions from params() attribute
+    assert_eq!(props["x"]["description"], "First number in the calculation");
+    assert_eq!(
+        props["y"]["description"],
+        "Second number in the calculation"
     );
 
     // Test valid operations

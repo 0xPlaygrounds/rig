@@ -5,16 +5,14 @@ use rig::tool::{Tool, ToolError};
 use rig_derive::rig_tool;
 use std::time::Duration;
 
-// Example demonstrating async tool usage
-#[rig_tool(
-    description = "A tool that simulates an async operation",
-    params(
-        input = "Input value to process",
-        delay_ms = "Delay in milliseconds before returning result"
-    ),
-    required(input, delay_ms)
-)]
-async fn async_operation(input: String, delay_ms: u64) -> Result<String, ToolError> {
+/// A tool that simulates an async operation
+#[rig_tool]
+async fn async_operation(
+    /// Input value to process
+    input: String,
+    /// Delay in milliseconds before returning result
+    delay_ms: u64,
+) -> Result<String, ToolError> {
     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
     Ok(format!(

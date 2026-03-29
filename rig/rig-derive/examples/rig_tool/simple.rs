@@ -3,24 +3,47 @@ use rig::completion::Prompt;
 use rig::providers;
 use rig_derive::rig_tool;
 
-// Simple example — all parameters are required by default
+/// Add two numbers
 #[rig_tool]
-fn add(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+fn add(
+    /// First number
+    a: i32,
+    /// Second number
+    b: i32,
+) -> Result<i32, rig::tool::ToolError> {
     Ok(a + b)
 }
 
+/// Subtract two numbers
 #[rig_tool]
-fn subtract(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+fn subtract(
+    /// First number
+    a: i32,
+    /// Second number
+    b: i32,
+) -> Result<i32, rig::tool::ToolError> {
     Ok(a - b)
 }
 
+/// Multiply two numbers
 #[rig_tool]
-fn multiply(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+fn multiply(
+    /// First number
+    a: i32,
+    /// Second number
+    b: i32,
+) -> Result<i32, rig::tool::ToolError> {
     Ok(a * b)
 }
 
+/// Divide two numbers
 #[rig_tool]
-fn divide(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+fn divide(
+    /// Dividend
+    a: i32,
+    /// Divisor
+    b: i32,
+) -> Result<i32, rig::tool::ToolError> {
     if b == 0 {
         Err(rig::tool::ToolError::ToolCallError(
             "Division by zero".into(),
@@ -30,21 +53,30 @@ fn divide(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
     }
 }
 
+/// Answer the secret question
 #[rig_tool]
 fn answer_secret_question() -> Result<(bool, bool, bool, bool, bool), rig::tool::ToolError> {
     Ok((false, false, true, false, false))
 }
 
+/// Count the number of R characters in a string
 #[rig_tool]
-fn how_many_rs(s: String) -> Result<usize, rig::tool::ToolError> {
+fn how_many_rs(
+    /// The string to search
+    s: String,
+) -> Result<usize, rig::tool::ToolError> {
     Ok(s.chars()
         .filter(|c| *c == 'r' || *c == 'R')
         .collect::<Vec<_>>()
         .len())
 }
 
+/// Sum a list of numbers
 #[rig_tool]
-fn sum_numbers(numbers: Vec<i64>) -> Result<i64, rig::tool::ToolError> {
+fn sum_numbers(
+    /// Numbers to sum
+    numbers: Vec<i64>,
+) -> Result<i64, rig::tool::ToolError> {
     Ok(numbers.iter().sum())
 }
 
