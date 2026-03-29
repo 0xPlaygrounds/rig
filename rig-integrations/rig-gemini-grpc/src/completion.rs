@@ -464,6 +464,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: usage.cached_content_token_count as u64,
+                cache_creation_input_tokens: 0,
             })
             .unwrap_or_default();
 
