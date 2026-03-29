@@ -1,7 +1,7 @@
 //! Test that `#[rig_tool]` defaults `required` to all parameters when not
 //! explicitly specified, matching OpenAI's strict function calling expectations.
 
-use rig::tool::Tool;
+use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 // No `required(...)` — should default to all params required
@@ -9,7 +9,7 @@ use rig_derive::rig_tool;
     description = "Add two numbers",
     params(a = "First number", b = "Second number")
 )]
-fn add_implicit(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+fn add_implicit(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolError> {
     Ok(a + b)
 }
 
@@ -19,13 +19,13 @@ fn add_implicit(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
     params(a = "First number", b = "Second number"),
     required(a)
 )]
-fn add_explicit(a: i32, b: i32) -> Result<i32, rig::tool::ToolError> {
+fn add_explicit(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolError> {
     Ok(a + b)
 }
 
 // No params at all — required should be empty
 #[rig_tool(description = "Returns a constant")]
-fn constant() -> Result<i32, rig::tool::ToolError> {
+fn constant() -> Result<i32, rig_core::tool::ToolError> {
     Ok(42)
 }
 
