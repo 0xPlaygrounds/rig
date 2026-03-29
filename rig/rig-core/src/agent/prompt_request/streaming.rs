@@ -640,10 +640,16 @@ where
                     accumulated_reasoning.push(assembled);
                 }
 
-                // Add reasoning and tool calls to chat history.
+                // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     let mut content_items: Vec<rig::message::AssistantContent> = vec![];
+
+                    // Text before tool calls so the model sees its own prior output
+                    if !last_text_response.is_empty() {
+                        content_items.push(rig::message::AssistantContent::text(&last_text_response));
+                        last_text_response.clear();
+                    }
 
                     // Reasoning must come before tool calls (OpenAI requirement)
                     for reasoning in accumulated_reasoning.drain(..) {
