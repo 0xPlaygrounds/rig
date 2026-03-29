@@ -191,6 +191,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     output_tokens: response.usage.completion_tokens as u64,
                     total_tokens: response.usage.total_tokens as u64,
                     cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
                 },
                 raw_response: response,
                 message_id: None,

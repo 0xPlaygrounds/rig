@@ -305,7 +305,8 @@ where
                 gen_ai.completion = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -372,7 +373,8 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             );
@@ -446,7 +448,14 @@ where
                 agent_span.record("gen_ai.completion", &merged_texts);
                 agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
                 agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                agent_span.record("gen_ai.usage.cached_tokens", usage.cached_input_tokens);
+                agent_span.record(
+                    "gen_ai.usage.cache_read.input_tokens",
+                    usage.cached_input_tokens,
+                );
+                agent_span.record(
+                    "gen_ai.usage.cache_creation.input_tokens",
+                    usage.cache_creation_input_tokens,
+                );
 
                 // If there are no tool calls, depth is not relevant, we can just return the merged text response.
                 return Ok(
