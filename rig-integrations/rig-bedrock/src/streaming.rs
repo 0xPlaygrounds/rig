@@ -30,6 +30,7 @@ impl GetTokenUsage for BedrockStreamingResponse {
             output_tokens: u.output_tokens as u64,
             total_tokens: u.total_tokens as u64,
             cached_input_tokens: 0, // unsupported at time of adding this
+            cache_creation_input_tokens: 0,
         })
     }
 }

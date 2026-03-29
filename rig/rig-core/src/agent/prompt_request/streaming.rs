@@ -122,8 +122,33 @@ fn merge_reasoning_blocks(
     }
 }
 
-async fn cancelled_prompt_error(chat_history: &Vec<Message>, reason: String) -> StreamingError {
-    StreamingError::Prompt(PromptError::prompt_cancelled(chat_history.to_owned(), reason).into())
+/// Build full history for error reporting (input + new messages).
+fn build_full_history(
+    chat_history: Option<&[Message]>,
+    new_messages: Vec<Message>,
+) -> Vec<Message> {
+    let input = chat_history.unwrap_or(&[]);
+    input.iter().cloned().chain(new_messages).collect()
+}
+
+/// Combine input history with new messages for building completion requests.
+fn build_history_for_request(
+    chat_history: Option<&[Message]>,
+    new_messages: &[Message],
+) -> Vec<Message> {
+    let input = chat_history.unwrap_or(&[]);
+    input.iter().chain(new_messages.iter()).cloned().collect()
+}
+
+async fn cancelled_prompt_error(
+    chat_history: Option<&[Message]>,
+    new_messages: Vec<Message>,
+    reason: String,
+) -> StreamingError {
+    StreamingError::Prompt(
+        PromptError::prompt_cancelled(build_full_history(chat_history, new_messages), reason)
+            .into(),
+    )
 }
 
 fn tool_result_to_user_message(
@@ -169,7 +194,7 @@ where
 {
     /// The prompt message to send to the model
     prompt: Message,
-    /// Optional chat history to include with the prompt.
+    /// Optional chat history provided by the caller.
     chat_history: Option<Vec<Message>>,
     /// Maximum Turns for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
@@ -279,8 +304,12 @@ where
     /// // ... consume stream ...
     /// // Access updated history from FinalResponse::history()
     /// ```
-    pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.chat_history = Some(history);
+    pub fn with_history<I, T>(mut self, history: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<Message>,
+    {
+        self.chat_history = Some(history.into_iter().map(Into::into).collect());
         self
     }
 
@@ -320,7 +349,8 @@ where
                 gen_ai.completion = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -343,7 +373,8 @@ where
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
         let has_history = self.chat_history.is_some();
-        let mut chat_history = self.chat_history.unwrap_or_default();
+        let chat_history = self.chat_history;
+        let mut new_messages: Vec<Message> = vec![prompt.clone()];
 
         let mut current_max_turns = 0;
         let mut last_prompt_error = String::new();
@@ -382,10 +413,10 @@ where
                 }
 
                 if let Some(ref hook) = self.hook {
-                    let history_snapshot = chat_history.clone();
+                    let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                     if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
                         .await {
-                        yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                         break 'outer;
                     }
                 }
@@ -403,17 +434,18 @@ where
                     gen_ai.response.model = tracing::field::Empty,
                     gen_ai.usage.output_tokens = tracing::field::Empty,
                     gen_ai.usage.input_tokens = tracing::field::Empty,
-                    gen_ai.usage.cached_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
                     gen_ai.input.messages = tracing::field::Empty,
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
-                let history_snapshot = chat_history.clone();
+                let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                 let mut stream = tracing::Instrument::instrument(
                     build_completion_request(
                         &model,
                         current_prompt.clone(),
-                        history_snapshot,
+                        &history_snapshot,
                         preamble.as_deref(),
                         &static_context,
                         temperature,
@@ -430,7 +462,7 @@ where
 
                 .await?;
 
-                chat_history.push(current_prompt.clone());
+                new_messages.push(current_prompt.clone());
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
@@ -451,7 +483,7 @@ where
                             last_text_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
                                 let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
-                                    yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                             }
 
@@ -480,7 +512,7 @@ where
                                         .await;
 
                                     if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(cancelled_prompt_error(&chat_history, reason).await);
+                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     }
 
                                     if let ToolCallHookAction::Skip { reason } = action {
@@ -522,7 +554,7 @@ where
                                         &tool_result.to_string()
                                     )
                                     .await {
-                                        return Err(cancelled_prompt_error(&chat_history, reason).await);
+                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     }
 
                                 let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
@@ -554,7 +586,7 @@ where
 
                                 if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)
                                 .await {
-                                    yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                                 }
                             }
@@ -581,7 +613,7 @@ where
                             if is_text_response {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
-                                        yield Err(cancelled_prompt_error(&chat_history, reason).await);
+                                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                         break 'outer;
                                     }
 
@@ -608,10 +640,16 @@ where
                     accumulated_reasoning.push(assembled);
                 }
 
-                // Add reasoning and tool calls to chat history.
+                // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     let mut content_items: Vec<rig::message::AssistantContent> = vec![];
+
+                    // Text before tool calls so the model sees its own prior output
+                    if !last_text_response.is_empty() {
+                        content_items.push(rig::message::AssistantContent::text(&last_text_response));
+                        last_text_response.clear();
+                    }
 
                     // Reasoning must come before tool calls (OpenAI requirement)
                     for reasoning in accumulated_reasoning.drain(..) {
@@ -621,7 +659,7 @@ where
                     content_items.extend(tool_calls.clone());
 
                     if !content_items.is_empty() {
-                        chat_history.push(Message::Assistant {
+                        new_messages.push(Message::Assistant {
                             id: stream.message_id.clone(),
                             content: OneOrMany::many(content_items).expect("Should have at least one item"),
                         });
@@ -629,36 +667,37 @@ where
                 }
 
                 for (id, call_id, tool_result) in tool_results {
-                    chat_history.push(tool_result_to_user_message(id, call_id, tool_result));
+                    new_messages.push(tool_result_to_user_message(id, call_id, tool_result));
                 }
 
-                // Set the current prompt to the last message in the chat history
-                current_prompt = match chat_history.pop() {
+                // Set the current prompt to the last message in new_messages
+                current_prompt = match new_messages.pop() {
                     Some(prompt) => prompt,
-                    None => unreachable!("Chat history should never be empty at this point"),
+                    None => unreachable!("New messages should never be empty at this point"),
                 };
 
                 if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
-                    chat_history.push(current_prompt.clone());
+                    new_messages.push(current_prompt.clone());
                     if !last_text_response.is_empty() {
-                        chat_history.push(Message::assistant(&last_text_response));
+                        new_messages.push(Message::assistant(&last_text_response));
                     }
 
                     let current_span = tracing::Span::current();
                     current_span.record("gen_ai.usage.input_tokens", aggregated_usage.input_tokens);
                     current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
-                    current_span.record("gen_ai.usage.cached_tokens", aggregated_usage.cached_input_tokens);
+                    current_span.record("gen_ai.usage.cache_read.input_tokens", aggregated_usage.cached_input_tokens);
+                    current_span.record("gen_ai.usage.cache_creation.input_tokens", aggregated_usage.cache_creation_input_tokens);
                     tracing::info!("Agent multi-turn stream finished");
-                    let history_snapshot = if has_history {
-                        Some(chat_history.clone())
+                    let final_messages: Option<Vec<Message>> = if has_history {
+                        Some(new_messages.clone())
                     } else {
                         None
                     };
                     yield Ok(MultiTurnStreamItem::final_response_with_history(
                         &last_text_response,
                         aggregated_usage,
-                        history_snapshot,
+                        final_messages,
                     ));
                     break;
                 }
@@ -667,7 +706,7 @@ where
             if max_turns_reached {
                 yield Err(Box::new(PromptError::MaxTurnsError {
                     max_turns: self.max_turns,
-                    chat_history: Box::new(chat_history.clone()),
+                    chat_history: build_full_history(chat_history.as_deref(), new_messages.clone()).into(),
                     prompt: Box::new(last_prompt_error.clone().into()),
                 }).into());
             }
@@ -1087,9 +1126,10 @@ mod tests {
             .build();
 
         // Send streaming request with history
+        let empty_history: &[Message] = &[];
         let mut stream = agent
             .stream_prompt("Say 'hello' and nothing else.")
-            .with_history(vec![])
+            .with_history(empty_history)
             .await;
 
         // Consume the stream and collect FinalResponse

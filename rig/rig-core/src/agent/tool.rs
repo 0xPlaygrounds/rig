@@ -12,7 +12,7 @@ pub struct AgentToolArgs {
     prompt: String,
 }
 
-impl<M: CompletionModel> Tool for Agent<M> {
+impl<M: CompletionModel + 'static> Tool for Agent<M> {
     const NAME: &'static str = "agent_tool";
 
     type Error = PromptError;

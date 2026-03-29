@@ -240,7 +240,7 @@ where
         text: impl Into<Message> + WasmCompatSend,
         messages: Vec<Message>,
     ) -> Result<(T, Usage), ExtractionError> {
-        let response = self.agent.completion(text, messages).await?.send().await?;
+        let response = self.agent.completion(text, &messages).await?.send().await?;
         let usage = response.usage;
 
         if !response.choice.iter().any(|x| {

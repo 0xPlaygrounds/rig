@@ -32,7 +32,7 @@ pub type DynamicContextStore = Arc<
 pub(crate) async fn build_completion_request<M: CompletionModel>(
     model: &Arc<M>,
     prompt: Message,
-    chat_history: Vec<Message>,
+    chat_history: &[Message],
     preamble: Option<&str>,
     static_context: &[Document],
     temperature: Option<f64>,
@@ -52,13 +52,13 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
             .find_map(|message| message.rag_text())
     });
 
-    let chat_history = if let Some(preamble) = preamble {
-        let mut with_system = Vec::with_capacity(chat_history.len() + 1);
-        with_system.push(Message::system(preamble.to_owned()));
-        with_system.extend(chat_history);
-        with_system
+    // Prepend preamble as system message if present
+    let chat_history: Vec<Message> = if let Some(preamble) = preamble {
+        std::iter::once(Message::system(preamble.to_owned()))
+            .chain(chat_history.iter().cloned())
+            .collect()
     } else {
-        chat_history
+        chat_history.to_vec()
     };
 
     let completion_request = model
@@ -211,15 +211,20 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    async fn completion(
+    async fn completion<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
+        chat_history: I,
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<Message>,
+    {
+        let history: Vec<Message> = chat_history.into_iter().map(Into::into).collect();
         build_completion_request(
             &self.model,
             prompt.into(),
-            chat_history,
+            &history,
             self.preamble.as_deref(),
             &self.static_context,
             self.temperature,
@@ -244,13 +249,13 @@ where
 #[allow(refining_impl_trait)]
 impl<M, P> Prompt for Agent<M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<'_, prompt_request::Standard, M, P> {
+    ) -> PromptRequest<prompt_request::Standard, M, P> {
         PromptRequest::from_agent(self, prompt)
     }
 }
@@ -258,14 +263,14 @@ where
 #[allow(refining_impl_trait)]
 impl<M, P> Prompt for &Agent<M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<'_, prompt_request::Standard, M, P> {
+    ) -> PromptRequest<prompt_request::Standard, M, P> {
         PromptRequest::from_agent(*self, prompt)
     }
 }
@@ -273,17 +278,21 @@ where
 #[allow(refining_impl_trait)]
 impl<M, P> Chat for Agent<M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
-    async fn chat(
+    async fn chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        mut chat_history: Vec<Message>,
-    ) -> Result<String, PromptError> {
+        chat_history: I,
+    ) -> Result<String, PromptError>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<Message>,
+    {
         PromptRequest::from_agent(self, prompt)
-            .with_history(&mut chat_history)
+            .with_history(chat_history)
             .await
     }
 }
@@ -293,11 +302,15 @@ where
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    async fn stream_completion(
+    async fn stream_completion<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
+        chat_history: I,
+    ) -> Result<CompletionRequestBuilder<M>, CompletionError>
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>,
+    {
         // Reuse the existing completion implementation to build the request
         // This ensures streaming and non-streaming use the same request building logic
         self.completion(prompt, chat_history).await
@@ -328,11 +341,15 @@ where
 {
     type Hook = P;
 
-    fn stream_chat(
+    fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> StreamingPromptRequest<M, P> {
+        chat_history: I,
+    ) -> StreamingPromptRequest<M, P>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<Message>,
+    {
         StreamingPromptRequest::<M, P>::from_agent(self, prompt).with_history(chat_history)
     }
 }
@@ -344,14 +361,13 @@ use serde::de::DeserializeOwned;
 #[allow(refining_impl_trait)]
 impl<M, P> TypedPrompt for Agent<M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
-    type TypedRequest<'a, T>
-        = TypedPromptRequest<'a, T, prompt_request::Standard, M, P>
+    type TypedRequest<T>
+        = TypedPromptRequest<T, prompt_request::Standard, M, P>
     where
-        Self: 'a,
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
     /// Send a prompt and receive a typed structured response.
     ///
@@ -388,7 +404,7 @@ where
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<'_, T, prompt_request::Standard, M, P>
+    ) -> TypedPromptRequest<T, prompt_request::Standard, M, P>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
@@ -399,19 +415,18 @@ where
 #[allow(refining_impl_trait)]
 impl<M, P> TypedPrompt for &Agent<M, P>
 where
-    M: CompletionModel,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
-    type TypedRequest<'a, T>
-        = TypedPromptRequest<'a, T, prompt_request::Standard, M, P>
+    type TypedRequest<T>
+        = TypedPromptRequest<T, prompt_request::Standard, M, P>
     where
-        Self: 'a,
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<'_, T, prompt_request::Standard, M, P>
+    ) -> TypedPromptRequest<T, prompt_request::Standard, M, P>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {

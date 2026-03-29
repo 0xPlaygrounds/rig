@@ -166,37 +166,39 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Query: {}", query);
     println!("\nProcessing...\n");
 
-    // Store chat history to track the agentic loop
-    let mut chat_history: Vec<Message> = Vec::new();
-
-    // Send the query to the orchestrator agent
+    // Send the query to the orchestrator agent with extended details to get chat history
+    let empty_history: &[Message] = &[];
     let response = orchestrator_agent
         .prompt(query)
-        .with_history(&mut chat_history)
+        .with_history(empty_history)
         .max_turns(15) // Allow multiple turns to demonstrate the complex loop
+        .extended_details()
         .await?;
 
     // Print the final response
-    println!("\nFinal Response:\n{}", response);
+    println!("\nFinal Response:\n{}", response.output);
 
     // Print the chat history to show the agentic loop
     println!("\nAgentic Loop Details:");
-    for (i, message) in chat_history.iter().enumerate() {
-        match message {
-            Message::User { content } => println!(
-                "\nUser [{}]: {}",
-                i,
-                serde_json::to_string_pretty(content).expect("Failed to serialize user message")
-            ),
-            Message::Assistant { content, .. } => println!(
-                "Assistant [{}]: {}",
-                i,
-                serde_json::to_string_pretty(content)
-                    .expect("Failed to serialize assistant message")
-            ),
-            _ => {
-                // Ignore other message types - the only other type of message that exists is system messages
-                // which can be ignored
+    if let Some(messages) = &response.messages {
+        for (i, message) in messages.clone().into_iter().enumerate() {
+            match message {
+                Message::User { content } => println!(
+                    "\nUser [{}]: {}",
+                    i,
+                    serde_json::to_string_pretty(&content)
+                        .expect("Failed to serialize user message")
+                ),
+                Message::Assistant { content, .. } => println!(
+                    "Assistant [{}]: {}",
+                    i,
+                    serde_json::to_string_pretty(&content)
+                        .expect("Failed to serialize assistant message")
+                ),
+                _ => {
+                    // Ignore other message types - the only other type of message that exists is system messages
+                    // which can be ignored
+                }
             }
         }
     }

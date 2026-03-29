@@ -522,6 +522,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
                         total_tokens: usage.total_tokens as u64,
                         cached_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
                     })
                     .unwrap_or_default();
 

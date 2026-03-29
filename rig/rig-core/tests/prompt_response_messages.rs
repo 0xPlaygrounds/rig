@@ -42,6 +42,7 @@ impl CompletionModel for SimpleTextModel {
                 output_tokens: 5,
                 total_tokens: 15,
                 cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
             },
             raw_response: (),
             message_id: Some("msg_mock_1".to_string()),
@@ -103,6 +104,7 @@ impl CompletionModel for ToolThenTextModel {
                     output_tokens: 8,
                     total_tokens: 23,
                     cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
                 },
                 raw_response: (),
                 message_id: Some("msg_tool".to_string()),
@@ -118,6 +120,7 @@ impl CompletionModel for ToolThenTextModel {
                     output_tokens: 4,
                     total_tokens: 24,
                     cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
                 },
                 raw_response: (),
                 message_id: Some("msg_text".to_string()),
@@ -229,60 +232,57 @@ async fn extended_details_populates_messages() {
     }
 }
 
-/// Test 3: `with_history()` + `extended_details()` — both the external mutable
-/// history AND `PromptResponse.messages` should contain the same data.
+/// Test 3: `with_history()` + `extended_details()` — the response messages
+/// should contain the full conversation including any provided history.
 #[tokio::test]
 async fn extended_with_history_both_populated() {
     let agent = AgentBuilder::new(SimpleTextModel).build();
 
-    let mut external_history: Vec<Message> = Vec::new();
+    let initial_history: Vec<Message> = Vec::new();
 
     let resp = agent
         .prompt("hello")
-        .with_history(&mut external_history)
+        .with_history(&initial_history)
         .extended_details()
         .await
         .expect("prompt should succeed");
 
     let response_messages = resp.messages.expect("messages should be Some");
 
-    // Both should have the same length and content
-    assert_eq!(external_history.len(), response_messages.len());
-    assert_eq!(external_history.len(), 2);
+    // Response should contain the full conversation (User + Assistant)
+    assert_eq!(response_messages.len(), 2);
 
-    // Verify they contain the same data
-    for (ext, resp_msg) in external_history.iter().zip(response_messages.iter()) {
-        // Compare debug representations (Message implements Debug)
-        assert_eq!(format!("{ext:?}"), format!("{resp_msg:?}"));
+    // First message: User
+    match &response_messages[0] {
+        Message::User { .. } => {}
+        other => panic!("expected User, got: {other:?}"),
+    }
+
+    // Second message: Assistant
+    match &response_messages[1] {
+        Message::Assistant { .. } => {}
+        other => panic!("expected Assistant, got: {other:?}"),
     }
 }
 
-/// Test 4: Standard path with `with_history()` — the external history should
-/// still be mutated in place (backward compat for the mutable borrow pattern).
+/// Test 4: Standard path with `with_history()` — verify the API works with
+/// an immutable history reference.
 #[tokio::test]
-async fn standard_with_history_still_mutates() {
+async fn standard_with_history_works() {
     let agent = AgentBuilder::new(SimpleTextModel).build();
 
-    let mut history: Vec<Message> = Vec::new();
+    let history: Vec<Message> = Vec::new();
 
     let result = agent
         .prompt("test")
-        .with_history(&mut history)
+        .with_history(&history)
         .await
         .expect("prompt should succeed");
 
     assert_eq!(result, "hello from mock");
 
-    // External history should contain [User, Assistant]
-    assert_eq!(history.len(), 2);
-    match &history[0] {
-        Message::User { .. } => {}
-        other => panic!("expected User, got: {other:?}"),
-    }
-    match &history[1] {
-        Message::Assistant { .. } => {}
-        other => panic!("expected Assistant, got: {other:?}"),
-    }
+    // Note: The input history is not mutated. To get the updated history,
+    // use `.extended_details()` and access `response.messages`.
 }
 
 /// Test 5: Multi-turn agent loop with tool calls — messages should contain the
