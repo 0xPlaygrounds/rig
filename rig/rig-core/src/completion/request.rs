@@ -409,8 +409,10 @@ pub struct Usage {
     pub output_tokens: u64,
     /// We store this separately as some providers may only report one number
     pub total_tokens: u64,
-    /// The number of cached input tokens (from prompt caching). 0 if not reported by provider.
+    /// The number of input tokens read from a provider-managed cache
     pub cached_input_tokens: u64,
+    /// The number of input tokens written to a provider-managed cache
+    pub cache_creation_input_tokens: u64,
 }
 
 impl Usage {
@@ -421,6 +423,7 @@ impl Usage {
             output_tokens: 0,
             total_tokens: 0,
             cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
         }
     }
 }
@@ -440,6 +443,8 @@ impl Add for Usage {
             output_tokens: self.output_tokens + other.output_tokens,
             total_tokens: self.total_tokens + other.total_tokens,
             cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
+            cache_creation_input_tokens: self.cache_creation_input_tokens
+                + other.cache_creation_input_tokens,
         }
     }
 }
@@ -450,6 +455,7 @@ impl AddAssign for Usage {
         self.output_tokens += other.output_tokens;
         self.total_tokens += other.total_tokens;
         self.cached_input_tokens += other.cached_input_tokens;
+        self.cache_creation_input_tokens += other.cache_creation_input_tokens;
     }
 }
 
