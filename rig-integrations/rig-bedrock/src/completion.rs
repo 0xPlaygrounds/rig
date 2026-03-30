@@ -229,18 +229,13 @@ impl completion::CompletionModel for CompletionModel {
             .set_messages(Some(messages));
 
         async move {
-            let response = converse_builder
-                .send()
-                .await
-                .map_err(|sdk_error| {
-                    Into::<CompletionError>::into(AwsSdkConverseError(sdk_error))
-                })?;
+            let response = converse_builder.send().await.map_err(|sdk_error| {
+                Into::<CompletionError>::into(AwsSdkConverseError(sdk_error))
+            })?;
 
-            let response: InternalConverseOutput = response
-                .try_into()
-                .map_err(|x| {
-                    CompletionError::ProviderError(format!("Type conversion error: {x}"))
-                })?;
+            let response: InternalConverseOutput = response.try_into().map_err(|x| {
+                CompletionError::ProviderError(format!("Type conversion error: {x}"))
+            })?;
 
             let aws_output = AwsConverseOutput(response);
 

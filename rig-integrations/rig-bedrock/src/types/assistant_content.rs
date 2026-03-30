@@ -56,8 +56,8 @@ impl ProviderResponseExt for AwsConverseOutput {
             input_tokens: u.input_tokens as u64,
             output_tokens: u.output_tokens as u64,
             total_tokens: u.total_tokens as u64,
-            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64
-                + u.cache_write_input_tokens.unwrap_or_default() as u64,
+            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
+            cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
         })
     }
 }
@@ -269,10 +269,9 @@ mod tests {
             .content(aws_bedrock::ContentBlock::Text(text.into()))
             .build()
             .unwrap();
-        let mut builder =
-            aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
-                .output(aws_bedrock::ConverseOutput::Message(message))
-                .stop_reason(aws_bedrock::StopReason::EndTurn);
+        let mut builder = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .output(aws_bedrock::ConverseOutput::Message(message))
+            .stop_reason(aws_bedrock::StopReason::EndTurn);
         if let Some(u) = usage {
             builder = builder.usage(u);
         }
