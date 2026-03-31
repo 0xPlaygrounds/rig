@@ -18,7 +18,8 @@ pub struct ToolServer {
     /// These tools will always exist on the tool server for as long as they are not deleted.
     static_tool_names: Vec<String>,
     /// Dynamic tools. These tools will be dynamically fetched from a given vector store.
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    /// Wrapped in Arc to allow sharing with spawned tasks without blocking the actor loop.
+    dynamic_tools: Arc<Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>>,
     /// The toolset where tools are called (to be executed).
     /// Wrapped in Arc<RwLock<...>> to allow concurrent tool execution.
     toolset: Arc<RwLock<ToolSet>>,
@@ -34,7 +35,7 @@ impl ToolServer {
     pub fn new() -> Self {
         Self {
             static_tool_names: Vec::new(),
-            dynamic_tools: Vec::new(),
+            dynamic_tools: Arc::new(Vec::new()),
             toolset: Arc::new(RwLock::new(ToolSet::default())),
         }
     }
@@ -53,7 +54,7 @@ impl ToolServer {
         mut self,
         dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
     ) -> Self {
-        self.dynamic_tools = dyn_tools;
+        self.dynamic_tools = Arc::new(dyn_tools);
         self
     }
 
@@ -96,7 +97,9 @@ impl ToolServer {
         dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
-        self.dynamic_tools.push((sample, Box::new(dynamic_tools)));
+        Arc::get_mut(&mut self.dynamic_tools)
+            .expect("ToolServer::dynamic_tools() called after run()")
+            .push((sample, Box::new(dynamic_tools)));
         // This should be practically impossible to fail: cloning the Arc before calling
         // .dynamic_tools() is impossible since the toolset field is private, and the server cannot
         // be running prior to run(), which consumes self.
@@ -196,71 +199,121 @@ impl ToolServer {
                 );
             }
             ToolServerRequestMessageKind::GetToolDefs { prompt } => {
-                let res = self.get_tool_definitions(prompt).await.unwrap();
-                callback_channel
-                    .send(ToolServerResponse::ToolDefinitions(res))
-                    .unwrap();
-            }
-        }
-    }
+                // Snapshot shared state so the actor loop is not blocked by
+                // vector-store I/O or tool definition calls.
+                let static_tool_names = self.static_tool_names.clone();
+                let dynamic_tools = Arc::clone(&self.dynamic_tools);
+                let toolset = Arc::clone(&self.toolset);
 
-    pub async fn get_tool_definitions(
-        &mut self,
-        text: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, CompletionError> {
-        let static_tool_names = self.static_tool_names.clone();
-        let toolset = self.toolset.read().await;
-
-        let mut tools = if let Some(text) = text {
-            // First, collect all dynamic tool IDs from vector stores
-            let dynamic_tool_ids: Vec<String> = stream::iter(self.dynamic_tools.iter())
-                .then(|(num_sample, index)| async {
-                    let req = VectorSearchRequest::builder()
-                        .query(text.clone())
-                        .samples(*num_sample as u64)
-                        .build()
-                        .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
-                    Ok::<_, VectorStoreError>(
-                        index
-                            .as_ref()
-                            .top_n_ids(req.map_filter(Filter::interpret))
-                            .await?
-                            .into_iter()
-                            .map(|(_, id)| id)
-                            .collect::<Vec<String>>(),
+                #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+                tokio::spawn(async move {
+                    let res = get_tool_definitions(
+                        static_tool_names,
+                        &dynamic_tools,
+                        &toolset,
+                        prompt,
                     )
-                })
-                .try_fold(vec![], |mut acc, docs| async {
-                    acc.extend(docs);
-                    Ok(acc)
-                })
-                .await
-                .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                    .await;
+                    match res {
+                        Ok(defs) => {
+                            let _ =
+                                callback_channel.send(ToolServerResponse::ToolDefinitions(defs));
+                        }
+                        Err(err) => {
+                            let _ = callback_channel.send(ToolServerResponse::ToolError {
+                                error: err.to_string(),
+                            });
+                        }
+                    }
+                });
 
-            // Then, get tool definitions for each ID
-            let mut tools = Vec::new();
-            for doc in dynamic_tool_ids {
-                if let Some(tool) = toolset.get(&doc) {
-                    tools.push(tool.definition(text.clone()).await)
-                } else {
-                    tracing::warn!("Tool implementation not found in toolset: {}", doc);
-                }
-            }
-            tools
-        } else {
-            Vec::new()
-        };
-
-        for toolname in static_tool_names {
-            if let Some(tool) = toolset.get(&toolname) {
-                tools.push(tool.definition(String::new()).await)
-            } else {
-                tracing::warn!("Tool implementation not found in toolset: {}", toolname);
+                #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+                wasm_bindgen_futures::spawn_local(async move {
+                    let res = get_tool_definitions(
+                        static_tool_names,
+                        &dynamic_tools,
+                        &toolset,
+                        prompt,
+                    )
+                    .await;
+                    match res {
+                        Ok(defs) => {
+                            let _ =
+                                callback_channel.send(ToolServerResponse::ToolDefinitions(defs));
+                        }
+                        Err(err) => {
+                            let _ = callback_channel.send(ToolServerResponse::ToolError {
+                                error: err.to_string(),
+                            });
+                        }
+                    }
+                });
             }
         }
-
-        Ok(tools)
     }
+}
+
+/// Resolve tool definitions from static and dynamic tool sources.
+///
+/// Extracted as a free function so it can run in a spawned task without
+/// borrowing the `ToolServer` actor, keeping the actor loop responsive.
+async fn get_tool_definitions(
+    static_tool_names: Vec<String>,
+    dynamic_tools: &[(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)],
+    toolset: &RwLock<ToolSet>,
+    text: Option<String>,
+) -> Result<Vec<ToolDefinition>, CompletionError> {
+    let toolset = toolset.read().await;
+
+    let mut tools = if let Some(text) = text {
+        // First, collect all dynamic tool IDs from vector stores
+        let dynamic_tool_ids: Vec<String> = stream::iter(dynamic_tools.iter())
+            .then(|(num_sample, index)| async {
+                let req = VectorSearchRequest::builder()
+                    .query(text.clone())
+                    .samples(*num_sample as u64)
+                    .build()
+                    .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                Ok::<_, VectorStoreError>(
+                    index
+                        .as_ref()
+                        .top_n_ids(req.map_filter(Filter::interpret))
+                        .await?
+                        .into_iter()
+                        .map(|(_, id)| id)
+                        .collect::<Vec<String>>(),
+                )
+            })
+            .try_fold(vec![], |mut acc, docs| async {
+                acc.extend(docs);
+                Ok(acc)
+            })
+            .await
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+
+        // Then, get tool definitions for each ID
+        let mut tools = Vec::new();
+        for doc in dynamic_tool_ids {
+            if let Some(tool) = toolset.get(&doc) {
+                tools.push(tool.definition(text.clone()).await)
+            } else {
+                tracing::warn!("Tool implementation not found in toolset: {}", doc);
+            }
+        }
+        tools
+    } else {
+        Vec::new()
+    };
+
+    for toolname in static_tool_names {
+        if let Some(tool) = toolset.get(&toolname) {
+            tools.push(tool.definition(String::new()).await)
+        } else {
+            tracing::warn!("Tool implementation not found in toolset: {}", toolname);
+        }
+    }
+
+    Ok(tools)
 }
 
 #[derive(Clone)]
@@ -368,11 +421,13 @@ impl ToolServerHandle {
 
         let res = rx.await?;
 
-        let ToolServerResponse::ToolDefinitions(tooldefs) = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(tooldefs)
+        match res {
+            ToolServerResponse::ToolDefinitions(tooldefs) => Ok(tooldefs),
+            ToolServerResponse::ToolError { error } => Err(ToolServerError::ToolsetError(
+                ToolSetError::ToolCallError(ToolError::ToolCallError(error.into())),
+            )),
+            invalid => Err(ToolServerError::InvalidMessage(invalid)),
+        }
     }
 }
 
