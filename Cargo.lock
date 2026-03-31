@@ -3292,12 +3292,6 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
-
-[[package]]
-name = "deranged"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc3dc5ad92c2e2d1c193bbbbdf2ea477cb81331de4f3103f267ca18368b988c4"
@@ -9518,7 +9512,7 @@ version = "0.4.3"
 dependencies = [
  "anyhow",
  "arrow-array",
- "deranged 0.4.0",
+ "deranged",
  "futures",
  "httpmock",
  "lancedb",
@@ -11957,7 +11951,7 @@ version = "0.3.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
 dependencies = [
- "deranged 0.5.6",
+ "deranged",
  "itoa",
  "num-conv",
  "powerfmt",
