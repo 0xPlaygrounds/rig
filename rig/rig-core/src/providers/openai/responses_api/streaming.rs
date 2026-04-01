@@ -385,14 +385,25 @@ where
                         }
 
                         if let StreamingCompletionChunk::Response(chunk) = data {
-                            if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
-                                span.record("gen_ai.response.id", response.id);
-                                span.record("gen_ai.response.model", response.model);
-                                if let Some(usage) = response.usage {
-                                    final_usage = usage;
+                            match chunk.kind {
+                                ResponseChunkKind::ResponseCompleted => {
+                                    span.record("gen_ai.response.id", &*chunk.response.id);
+                                    span.record("gen_ai.response.model", &*chunk.response.model);
+                                    if let Some(usage) = chunk.response.usage {
+                                        final_usage = usage;
+                                    }
                                 }
-                            } else {
-                                continue;
+                                ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
+                                    let error_message = if let Some(ref error) = chunk.response.error {
+                                        format!("{}: {}", error.code, error.message)
+                                    } else {
+                                        format!("Response {:?}: {:?}", chunk.kind, chunk.response.status)
+                                    };
+                                    tracing::error!(error = %error_message, "OpenAI response failed");
+                                    yield Err(CompletionError::ProviderError(error_message));
+                                    break;
+                                }
+                                _ => { continue }
                             }
                         }
                     }
