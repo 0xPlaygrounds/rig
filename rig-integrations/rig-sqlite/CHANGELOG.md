@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.2...rig-sqlite-v0.2.3) - 2026-03-29
+
+### Added
+
+- *(rig-sqlite)* impl InsertDocuments trait for sqlite ([#1478](https://github.com/0xPlaygrounds/rig/pull/1478))
+
 ## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.1...rig-sqlite-v0.2.2) - 2026-03-17
 
 ### Other
