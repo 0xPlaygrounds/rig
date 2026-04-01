@@ -44,7 +44,7 @@ use std::fmt;
 ///     context_length: Some(8192),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Model {
     /// The unique identifier for the model (required)
     pub id: String,
@@ -404,6 +404,24 @@ impl fmt::Display for ModelListingError {
 }
 
 impl std::error::Error for ModelListingError {}
+
+impl From<crate::http_client::Error> for ModelListingError {
+    fn from(e: crate::http_client::Error) -> Self {
+        Self::request_error(e.to_string())
+    }
+}
+
+impl From<http::Error> for ModelListingError {
+    fn from(e: http::Error) -> Self {
+        Self::request_error(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ModelListingError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::parse_error(e.to_string())
+    }
+}
 
 #[cfg(test)]
 mod tests {
