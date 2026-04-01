@@ -2,18 +2,21 @@ use crate::types::json::AwsDocument;
 use crate::types::message::RigMessage;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use aws_sdk_bedrockruntime::types::{
-    InferenceConfiguration, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
-    ToolSpecification,
+    CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
+    ToolConfiguration, ToolInputSchema, ToolSpecification,
 };
 use rig::OneOrMany;
 use rig::completion::{CompletionError, Message};
 use rig::message::{DocumentMediaType, UserContent};
 
-pub struct AwsCompletionRequest(pub rig::completion::CompletionRequest);
+pub struct AwsCompletionRequest {
+    pub inner: rig::completion::CompletionRequest,
+    pub prompt_caching: bool,
+}
 
 impl AwsCompletionRequest {
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
-        self.0
+        self.inner
             .additional_params
             .to_owned()
             .map(|params| params.into())
@@ -23,12 +26,12 @@ impl AwsCompletionRequest {
     pub fn inference_config(&self) -> Option<InferenceConfiguration> {
         let mut inference_configuration = InferenceConfiguration::builder();
 
-        if let Some(temperature) = &self.0.temperature {
+        if let Some(temperature) = &self.inner.temperature {
             inference_configuration =
                 inference_configuration.set_temperature(Some(*temperature as f32));
         }
 
-        if let Some(max_tokens) = &self.0.max_tokens {
+        if let Some(max_tokens) = &self.inner.max_tokens {
             inference_configuration =
                 inference_configuration.set_max_tokens(Some(*max_tokens as i32));
         }
@@ -38,7 +41,7 @@ impl AwsCompletionRequest {
 
     pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, CompletionError> {
         let mut tools = vec![];
-        for tool_definition in self.0.tools.iter() {
+        for tool_definition in self.inner.tools.iter() {
             let doc: AwsDocument = tool_definition.parameters.clone().into();
             let schema = ToolInputSchema::Json(doc.0);
             let tool = Tool::ToolSpec(
@@ -55,7 +58,7 @@ impl AwsCompletionRequest {
         if !tools.is_empty() {
             // Convert rig's ToolChoice to AWS Bedrock ToolChoice
             use aws_sdk_bedrockruntime::types as aws_bedrock;
-            let tool_choice = self.0.tool_choice.as_ref().and_then(|choice| {
+            let tool_choice = self.inner.tool_choice.as_ref().and_then(|choice| {
                 match choice {
                     rig::message::ToolChoice::Auto => Some(aws_bedrock::ToolChoice::Auto(
                         aws_bedrock::AutoToolChoice::builder().build(),
@@ -96,13 +99,13 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Option<Vec<SystemContentBlock>> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.0.preamble.to_owned()
+        if let Some(system_prompt) = self.inner.preamble.to_owned()
             && !system_prompt.is_empty()
         {
             system_blocks.push(SystemContentBlock::Text(system_prompt));
         }
 
-        for message in self.0.chat_history.iter() {
+        for message in self.inner.chat_history.iter() {
             if let Message::System { content } = message
                 && !content.is_empty()
             {
@@ -113,6 +116,14 @@ impl AwsCompletionRequest {
         if system_blocks.is_empty() {
             None
         } else {
+            if self.prompt_caching {
+                system_blocks.push(SystemContentBlock::CachePoint(
+                    CachePointBlock::builder()
+                        .r#type(CachePointType::Default)
+                        .build()
+                        .expect("CachePointBlock type is set"),
+                ));
+            }
             Some(system_blocks)
         }
     }
@@ -120,9 +131,9 @@ impl AwsCompletionRequest {
     pub fn messages(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
         let mut full_history: Vec<Message> = Vec::new();
 
-        if !self.0.documents.is_empty() {
+        if !self.inner.documents.is_empty() {
             let messages = self
-                .0
+                .inner
                 .documents
                 .iter()
                 .map(|doc| doc.to_string())
@@ -137,16 +148,35 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
-        self.0.chat_history.iter().for_each(|message| {
+        self.inner.chat_history.iter().for_each(|message| {
             if !matches!(message, Message::System { .. }) {
                 full_history.push(message.clone());
             }
         });
 
-        full_history
+        let mut messages: Vec<aws_bedrock::Message> = full_history
             .into_iter()
             .map(|message| RigMessage(message).try_into())
-            .collect::<Result<Vec<aws_bedrock::Message>, _>>()
+            .collect::<Result<Vec<aws_bedrock::Message>, _>>()?;
+
+        if self.prompt_caching
+            && let Some(last_msg) = messages.last_mut()
+        {
+            let mut content = last_msg.content.clone();
+            content.push(aws_bedrock::ContentBlock::CachePoint(
+                CachePointBlock::builder()
+                    .r#type(CachePointType::Default)
+                    .build()
+                    .expect("CachePointBlock type is set"),
+            ));
+            *last_msg = aws_bedrock::Message::builder()
+                .role(last_msg.role.clone())
+                .set_content(Some(content))
+                .build()
+                .map_err(|e| CompletionError::RequestError(e.into()))?;
+        }
+
+        Ok(messages)
     }
 }
 
@@ -194,7 +224,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -227,7 +260,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -260,7 +296,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -290,7 +329,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -323,7 +365,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -350,7 +395,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -395,7 +443,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -430,7 +481,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let system_prompt = aws_request.system_prompt();
 
         assert!(system_prompt.is_some());
@@ -459,7 +513,10 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest(request);
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
         let messages = aws_request.messages().expect("messages should convert");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);

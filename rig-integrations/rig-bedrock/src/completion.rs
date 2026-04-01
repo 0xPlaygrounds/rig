@@ -160,6 +160,11 @@ pub const STABILITY_STABLE_IMAGE_ULTRA_1_0_V1_0: &str = "stability.stable-image-
 pub struct CompletionModel {
     pub(crate) client: Client,
     pub model: String,
+    /// When enabled, cache checkpoints are inserted into Converse API requests
+    /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
+    /// A checkpoint is placed after the system prompt and after the last message
+    /// in the chat history. Disabled by default.
+    pub prompt_caching: bool,
 }
 
 impl CompletionModel {
@@ -167,7 +172,23 @@ impl CompletionModel {
         Self {
             client,
             model: model.into(),
+            prompt_caching: false,
         }
+    }
+
+    /// Enable Bedrock prompt caching for this model.
+    ///
+    /// When enabled, `CachePoint` blocks are inserted into the system prompt
+    /// and message history of each Converse API request. This allows Bedrock
+    /// to cache and reuse the internal model state for repeated prompt prefixes,
+    /// reducing both latency and input token costs.
+    ///
+    /// Requires that the cached prefix meets the model's minimum token threshold
+    /// (e.g. 1024 tokens for Claude Sonnet 4). If the prefix is too short, the
+    /// checkpoint is silently ignored by Bedrock.
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
     }
 }
 
@@ -185,7 +206,10 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
-        let request = AwsCompletionRequest(completion_request);
+        let request = AwsCompletionRequest {
+            inner: completion_request,
+            prompt_caching: self.prompt_caching,
+        };
 
         let mut converse_builder = self
             .client

@@ -54,7 +54,10 @@ impl CompletionModel {
         &self,
         completion_request: rig::completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
-        let request = AwsCompletionRequest(completion_request);
+        let request = AwsCompletionRequest {
+            inner: completion_request,
+            prompt_caching: self.prompt_caching,
+        };
 
         let mut converse_builder = self
             .client
