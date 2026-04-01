@@ -1179,6 +1179,8 @@ pub enum Output {
         #[serde(default)]
         status: Option<ToolStatus>,
     },
+    #[serde(other)]
+    Unknown,
 }
 
 impl From<Output> for Vec<completion::AssistantContent> {
@@ -1221,6 +1223,7 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     },
                 )]
             }
+            Output::Unknown => Vec::new(),
         };
 
         res

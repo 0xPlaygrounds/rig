@@ -357,6 +357,10 @@ where
                                         StreamingItemDoneOutput { item: Output::Message(msg), .. } => {
                                             yield Ok(streaming::RawStreamingChoice::MessageId(msg.id.clone()));
                                         }
+                                        StreamingItemDoneOutput { item: Output::Unknown, .. } => {
+                                            // Unknown output types (e.g. web_search_call, file_search_call)
+                                            // are silently skipped so they don't break usage tracking
+                                        }
                                     }
                                 }
                                 ItemChunkKind::OutputTextDelta(delta) => {
