@@ -119,11 +119,12 @@ impl ToolDyn for McpTool {
         Box::pin(async move {
             let result = self
                 .client
-                .call_tool(rmcp::model::CallToolRequestParams {
-                    name,
-                    arguments,
-                    meta: None,
-                    task: None,
+                .call_tool({
+                    let mut params = rmcp::model::CallToolRequestParams::new(name);
+                    if let Some(args) = arguments {
+                        params = params.with_arguments(args);
+                    }
+                    params
                 })
                 .await
                 .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
@@ -371,16 +372,8 @@ mod tests {
 
     impl ServerHandler for DynamicToolServer {
         fn get_info(&self) -> ServerInfo {
-            ServerInfo {
-                protocol_version: ProtocolVersion::V_2024_11_05,
-                capabilities: ServerCapabilities::builder().enable_tools().build(),
-                server_info: Implementation {
-                    name: "test-dynamic-server".to_string(),
-                    version: "0.1.0".to_string(),
-                    ..Default::default()
-                },
-                instructions: None,
-            }
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_server_info(Implementation::new("test-dynamic-server", "0.1.0"))
         }
 
         async fn list_tools(
@@ -520,16 +513,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_mcp_client_handler_get_info_delegates() {
-        let client_info = ClientInfo {
-            protocol_version: Default::default(),
-            capabilities: ClientCapabilities::default(),
-            client_info: Implementation {
-                name: "test-client".to_string(),
-                version: "1.0.0".to_string(),
-                ..Default::default()
-            },
-            meta: None,
-        };
+        let client_info = ClientInfo::new(
+            ClientCapabilities::default(),
+            Implementation::new("test-client", "1.0.0"),
+        );
 
         let tool_server_handle = ToolServer::new().run();
         let handler = McpClientHandler::new(client_info.clone(), tool_server_handle);
