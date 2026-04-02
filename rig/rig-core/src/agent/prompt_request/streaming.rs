@@ -415,8 +415,12 @@ where
                     );
                 }
 
+                let history_snapshot: Vec<Message> = build_history_for_request(
+                    chat_history.as_deref(),
+                    &new_messages[..new_messages.len().saturating_sub(1)],
+                );
+
                 if let Some(ref hook) = self.hook {
-                    let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                     if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
                         .await {
                         yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
@@ -443,7 +447,6 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
-                let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                 let mut stream = tracing::Instrument::instrument(
                     build_completion_request(
                         &model,
