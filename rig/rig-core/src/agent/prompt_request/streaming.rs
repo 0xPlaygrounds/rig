@@ -420,12 +420,15 @@ where
                     &new_messages[..new_messages.len().saturating_sub(1)],
                 );
 
-                if let Some(ref hook) = self.hook {
-                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
-                        .await {
-                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                        break 'outer;
-                    }
+                if let Some(ref hook) = self.hook
+                    && let HookAction::Terminate { reason } =
+                        hook.on_completion_call(&current_prompt, &history_snapshot).await
+                {
+                    yield Err(
+                        cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason)
+                            .await,
+                    );
+                    break 'outer;
                 }
 
                 let chat_stream_span = info_span!(
@@ -1009,13 +1012,11 @@ mod tests {
                         .with_call_id("call_1".to_string()),
                     ));
                     yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(4)));
+                } else if let Some(error) = validation_error {
+                    yield Err(CompletionError::ProviderError(error));
                 } else {
-                    if let Some(error) = validation_error {
-                        yield Err(CompletionError::ProviderError(error));
-                    } else {
-                        yield Ok(RawStreamingChoice::Message("done".to_string()));
-                        yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
-                    }
+                    yield Ok(RawStreamingChoice::Message("done".to_string()));
+                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
                 }
             };
 
