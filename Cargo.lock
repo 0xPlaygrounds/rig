@@ -4082,9 +4082,9 @@ dependencies = [
 
 [[package]]
 name = "float-cmp"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
+checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
 dependencies = [
  "num-traits",
 ]
@@ -4117,6 +4117,12 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "foreign-types"
@@ -4393,6 +4399,7 @@ version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f3901269ec6d4f6068d3f09e5f02f995bd076398dcd1dfec407cd230b02d11b"
 dependencies = [
+ "earcutr",
  "float_next_after",
  "geo-types",
  "geographiclib-rs",
@@ -4404,6 +4411,7 @@ dependencies = [
  "rstar 0.12.2",
  "serde",
  "sif-itree",
+ "spade",
 ]
 
 [[package]]
@@ -4901,11 +4909,11 @@ dependencies = [
 
 [[package]]
 name = "halfbrown"
-version = "0.2.5"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8588661a8607108a5ca69cab034063441a0413a0b041c13618a7dd348021ef6f"
+checksum = "0c7ed2f2edad8a14c8186b847909a41fbb9c3eafa44f88bd891114ed5019da09"
 dependencies = [
- "hashbrown 0.14.5",
+ "hashbrown 0.16.1",
  "serde",
 ]
 
@@ -4963,7 +4971,7 @@ checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
  "allocator-api2",
  "equivalent",
- "foldhash",
+ "foldhash 0.1.5",
  "serde",
 ]
 
@@ -4972,6 +4980,11 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+]
 
 [[package]]
 name = "hashlink"
@@ -4989,16 +5002,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
 dependencies = [
  "hashbrown 0.15.5",
-]
-
-[[package]]
-name = "hdrhistogram"
-version = "7.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "765c9198f173dd59ce26ff9f95ef0aafd0a0fe01fb9d72841bc5066a4c06511d"
-dependencies = [
- "byteorder",
- "num-traits",
 ]
 
 [[package]]
@@ -5278,12 +5281,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-range-header"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
-
-[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5473,7 +5470,6 @@ dependencies = [
  "socket2 0.6.2",
  "system-configuration",
  "tokio",
- "tower-layer",
  "tower-service",
  "tracing",
  "windows-registry",
@@ -10945,13 +10941,11 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "simd-json"
-version = "0.13.11"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0228a564470f81724e30996bbc2b171713b37b15254a6440c7e2d5449b95691"
+checksum = "4255126f310d2ba20048db6321c81ab376f6a6735608bf11f0785c41f01f64e3"
 dependencies = [
- "getrandom 0.2.17",
  "halfbrown",
- "lexical-core",
  "ref-cast",
  "serde",
  "serde_json",
@@ -11717,7 +11711,7 @@ dependencies = [
  "chrono",
  "flatbuffers",
  "futures",
- "geo 0.31.0",
+ "geo 0.32.0",
  "prost 0.14.3",
  "prost-types 0.14.3",
  "rust_decimal",
@@ -12496,10 +12490,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
- "futures-util",
- "hashbrown 0.15.5",
  "pin-project-lite",
- "slab",
  "tokio",
 ]
 
@@ -12689,7 +12680,6 @@ checksum = "ebe5ef63511595f1344e2d5cfa636d973292adc0eec1f0ad45fae9f0851ab1d4"
 dependencies = [
  "futures-core",
  "futures-util",
- "hdrhistogram",
  "indexmap 2.13.0",
  "pin-project-lite",
  "slab",
@@ -12708,7 +12698,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "async-compression",
- "base64 0.22.1",
  "bitflags",
  "bytes",
  "futures-core",
@@ -12716,12 +12705,7 @@ dependencies = [
  "http 1.4.0",
  "http-body 1.0.1",
  "http-body-util",
- "http-range-header",
- "httpdate",
  "iri-string",
- "mime",
- "mime_guess",
- "percent-encoding",
  "pin-project-lite",
  "tokio",
  "tokio-util",
@@ -12729,7 +12713,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -12923,9 +12906,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b639e02c04c8bea85f3c0e94c9d824bfe22e4d56de1d53d3fbb3a4d78704c8"
+version = "3.0.11"
 dependencies = [
  "axum 0.8.8",
  "schemars 1.2.1",
@@ -12945,9 +12926,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-client"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27a373d794ef27a64cbb16f27215eead6db78a6d07b6759de55d3715a818fc25"
+version = "3.0.11"
 dependencies = [
  "chrono",
  "futures",
@@ -12969,9 +12948,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-core"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c063aaa881276d093f38fcceea0f77827ec2472b08df58c5b6c79e39ce43a2"
+version = "3.0.11"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -12987,9 +12964,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-http"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0383267ccfed935896f191b7e3746377dabf58f4c980df19e36c231598a50b65"
+version = "3.0.11"
 dependencies = [
  "bytes",
  "futures",
@@ -13005,9 +12980,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-macros"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4933ccdb1a18ffbd7b4f76fdaf2f654e1d77981900e31249b4bbfce359389e0a"
+version = "3.0.11"
 dependencies = [
  "axum 0.8.8",
  "proc-macro-crate 3.5.0",
@@ -13022,9 +12995,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-protocol"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4d3a99536d82545e9c36034f5c9d7a1c0427e4721cbdef69a03074e15d4a4fc"
+version = "3.0.11"
 dependencies = [
  "ahash 0.8.12",
  "arc-swap",
@@ -13058,9 +13029,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-server"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d579a0ca9f16af73dc566f4de9cde8877a9e981225a2cd54cba0d4f84669b7c"
+version = "3.0.11"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -13089,9 +13058,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-stdio"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "891f40d7673ff0e673abfc5abdc9535103ed57f243265aeab0738c02b902500c"
+version = "3.0.11"
 dependencies = [
  "bytes",
  "futures",
@@ -13107,9 +13074,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-transport"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5233024757a74bf896c4e707b9c5a02f61ca778678095627a8226dbc36d1d58"
+version = "3.0.11"
 dependencies = [
  "ahash 0.8.12",
  "anyhow",
@@ -13122,13 +13087,12 @@ dependencies = [
  "fastrand",
  "futures",
  "futures-util",
- "hyper 1.8.1",
- "hyper-util",
  "parking_lot",
  "pin-project-lite",
  "rand 0.9.2",
  "serde",
  "serde_json",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite 0.28.0",
@@ -13147,9 +13111,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-transport-traits"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba02ddb5412c1bd70fa4d86213c29704f7987acdec02b04a075daffeb3da7a39"
+version = "3.0.11"
 dependencies = [
  "bytes",
  "futures",
@@ -13162,9 +13124,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-types"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24ed5d1c155421b03a832cf9b85f0d1ca7775439e7fdb78776f2dcf5e863672e"
+version = "3.0.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -13172,9 +13132,7 @@ dependencies = [
 
 [[package]]
 name = "turbomcp-websocket"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f159c03aec9af6f4548d46a8593ae28ec4787bf0725ab02768156fcd85d99784"
+version = "3.0.11"
 dependencies = [
  "bytes",
  "chrono",
@@ -13490,9 +13448,9 @@ checksum = "7ba6f5989077681266825251a52748b8c1d8a4ad098cc37e440103d0ea717fc0"
 
 [[package]]
 name = "value-trait"
-version = "0.8.1"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dad8db98c1e677797df21ba03fca7d3bf9bec3ca38db930954e4fe6e1ea27eb4"
+checksum = "8e80f0c733af0720a501b3905d22e2f97662d8eacfe082a75ed7ffb5ab08cb59"
 dependencies = [
  "float-cmp",
  "halfbrown",
