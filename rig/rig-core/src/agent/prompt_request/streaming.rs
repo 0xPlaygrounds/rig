@@ -774,7 +774,7 @@ mod tests {
     use crate::completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
     };
-    use crate::message::ReasoningContent;
+    use crate::message::{AssistantContent, Message, ReasoningContent, UserContent};
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
     use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
@@ -913,6 +913,52 @@ mod tests {
         }
     }
 
+    fn assistant_tool_call_position(history: &[Message]) -> Option<usize> {
+        history.iter().position(|message| {
+            matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if matches!(
+                        content.first(),
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.id == "tool_call_1"
+                                && tool_call.call_id.as_deref() == Some("call_1")
+                    )
+            )
+        })
+    }
+
+    fn user_tool_result_position(history: &[Message]) -> Option<usize> {
+        history.iter().position(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if matches!(
+                        content.first(),
+                        UserContent::ToolResult(tool_result)
+                            if tool_result.id == "tool_call_1"
+                                && tool_result.call_id.as_deref() == Some("call_1")
+                    )
+            )
+        })
+    }
+
+    fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
+        let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
+        let assistant_tool_call_index = assistant_tool_call_position(&history)
+            .ok_or_else(|| format!("follow-up request is missing assistant tool call history: {history:?}"))?;
+        let user_tool_result_index = user_tool_result_position(&history)
+            .ok_or_else(|| format!("follow-up request is missing user tool result history: {history:?}"))?;
+
+        if assistant_tool_call_index > user_tool_result_index {
+            return Err(format!(
+                "assistant tool call must precede the user tool result in follow-up history: {history:?}"
+            ));
+        }
+
+        Ok(())
+    }
+
     #[derive(Clone, Default)]
     struct MultiTurnMockModel {
         turn_counter: Arc<AtomicUsize>,
@@ -939,9 +985,14 @@ mod tests {
 
         async fn stream(
             &self,
-            _request: CompletionRequest,
+            request: CompletionRequest,
         ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
             let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+            let validation_error = if turn == 0 {
+                None
+            } else {
+                validate_follow_up_tool_history(&request).err()
+            };
             let stream = async_stream::stream! {
                 if turn == 0 {
                     yield Ok(RawStreamingChoice::ToolCall(
@@ -954,8 +1005,12 @@ mod tests {
                     ));
                     yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(4)));
                 } else {
-                    yield Ok(RawStreamingChoice::Message("done".to_string()));
-                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
+                    if let Some(error) = validation_error {
+                        yield Err(CompletionError::ProviderError(error));
+                    } else {
+                        yield Ok(RawStreamingChoice::Message("done".to_string()));
+                        yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
+                    }
                 }
             };
 
