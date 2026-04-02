@@ -551,6 +551,49 @@ mod tests {
         ))
     }
 
+    async fn first_error_from_event(
+        event: serde_json::Value,
+    ) -> crate::completion::CompletionError {
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_event_bytes(event),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        stream
+            .next()
+            .await
+            .expect("stream should yield an item")
+            .expect_err("stream should surface a provider error")
+    }
+
+    async fn final_usage_from_event(event: serde_json::Value) -> ResponsesUsage {
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_event_bytes(event),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            match item.expect("completed stream should not error") {
+                StreamedAssistantContent::Final(res) => return res.usage,
+                _ => continue,
+            }
+        }
+
+        panic!("stream should yield a final response");
+    }
+
     impl Tool for ExampleTool {
         type Args = ();
         type Error = ToolError;
@@ -742,22 +785,7 @@ mod tests {
             "response": response,
         });
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        let err = stream
-            .next()
-            .await
-            .expect("stream should yield an item")
-            .expect_err("failed response should surface as an error");
+        let err = first_error_from_event(event).await;
 
         assert_eq!(
             err.to_string(),
@@ -779,22 +807,7 @@ mod tests {
             "response": response,
         });
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        let err = stream
-            .next()
-            .await
-            .expect("stream should yield an item")
-            .expect_err("failed response should surface as an error");
+        let err = first_error_from_event(event).await;
 
         assert_eq!(
             err.to_string(),
@@ -815,22 +828,7 @@ mod tests {
             "response": response,
         });
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        let err = stream
-            .next()
-            .await
-            .expect("stream should yield an item")
-            .expect_err("incomplete response should surface as an error");
+        let err = first_error_from_event(event).await;
 
         assert_eq!(
             err.to_string(),
@@ -857,32 +855,10 @@ mod tests {
             "response": response,
         });
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        let mut final_response = None;
-        while let Some(item) = stream.next().await {
-            match item.expect("completed stream should not error") {
-                StreamedAssistantContent::Final(res) => {
-                    final_response = Some(res);
-                    break;
-                }
-                _ => continue,
-            }
-        }
-
-        let final_response = final_response.expect("stream should yield a final response");
-        assert_eq!(final_response.usage.input_tokens, 10);
-        assert_eq!(final_response.usage.output_tokens, 5);
-        assert_eq!(final_response.usage.total_tokens, 15);
+        let usage = final_usage_from_event(event).await;
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
     }
 
     // requires `derive` rig-core feature due to using tool macro
