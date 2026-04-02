@@ -938,6 +938,7 @@ mod tests {
             "expected exactly two OpenAI streaming turns"
         );
 
+        // Intentionally redundant to keep the expected follow-up request shape explicit here.
         let second_request: Value = serde_json::from_slice(&requests[1])
             .expect("recorded second request should be valid JSON");
         validate_openai_follow_up_request(&second_request)
