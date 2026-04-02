@@ -21,6 +21,10 @@ pub struct BedrockUsage {
     pub input_tokens: i32,
     pub output_tokens: i32,
     pub total_tokens: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_input_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_input_tokens: Option<i32>,
 }
 
 impl GetTokenUsage for BedrockStreamingResponse {
@@ -29,7 +33,8 @@ impl GetTokenUsage for BedrockStreamingResponse {
             input_tokens: u.input_tokens as u64,
             output_tokens: u.output_tokens as u64,
             total_tokens: u.total_tokens as u64,
-            cached_input_tokens: 0, // unsupported at time of adding this
+            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64
+                + u.cache_write_input_tokens.unwrap_or_default() as u64,
             cache_creation_input_tokens: 0,
         })
     }
@@ -202,6 +207,8 @@ impl CompletionModel {
                                     input_tokens: usage.input_tokens,
                                     output_tokens: usage.output_tokens,
                                     total_tokens: usage.total_tokens,
+                                    cache_read_input_tokens: usage.cache_read_input_tokens,
+                                    cache_write_input_tokens: usage.cache_write_input_tokens,
                                 }),
                             }));
                         }
@@ -225,6 +232,8 @@ mod tests {
             input_tokens: 100,
             output_tokens: 50,
             total_tokens: 150,
+            cache_read_input_tokens: None,
+            cache_write_input_tokens: None,
         };
 
         assert_eq!(usage.input_tokens, 100);
@@ -239,6 +248,8 @@ mod tests {
                 input_tokens: 200,
                 output_tokens: 75,
                 total_tokens: 275,
+                cache_read_input_tokens: Some(40),
+                cache_write_input_tokens: Some(10),
             }),
         };
 
@@ -249,6 +260,8 @@ mod tests {
         assert_eq!(usage.input_tokens, 200);
         assert_eq!(usage.output_tokens, 75);
         assert_eq!(usage.total_tokens, 275);
+        assert_eq!(usage.cached_input_tokens, 50);
+        assert_eq!(usage.cache_creation_input_tokens, 0);
     }
 
     #[test]
@@ -266,6 +279,8 @@ mod tests {
                 input_tokens: 448,
                 output_tokens: 68,
                 total_tokens: 516,
+                cache_read_input_tokens: Some(80),
+                cache_write_input_tokens: Some(20),
             }),
         };
 
@@ -274,6 +289,8 @@ mod tests {
         assert_eq!(usage.input_tokens, 448);
         assert_eq!(usage.output_tokens, 68);
         assert_eq!(usage.total_tokens, 516);
+        assert_eq!(usage.cached_input_tokens, 100);
+        assert_eq!(usage.cache_creation_input_tokens, 0);
     }
 
     #[test]
@@ -282,6 +299,8 @@ mod tests {
             input_tokens: 100,
             output_tokens: 50,
             total_tokens: 150,
+            cache_read_input_tokens: Some(25),
+            cache_write_input_tokens: Some(5),
         };
 
         // Test serialization
@@ -295,6 +314,14 @@ mod tests {
         assert_eq!(deserialized.input_tokens, usage.input_tokens);
         assert_eq!(deserialized.output_tokens, usage.output_tokens);
         assert_eq!(deserialized.total_tokens, usage.total_tokens);
+        assert_eq!(
+            deserialized.cache_read_input_tokens,
+            usage.cache_read_input_tokens
+        );
+        assert_eq!(
+            deserialized.cache_write_input_tokens,
+            usage.cache_write_input_tokens
+        );
     }
 
     #[test]
@@ -304,6 +331,8 @@ mod tests {
                 input_tokens: 200,
                 output_tokens: 75,
                 total_tokens: 275,
+                cache_read_input_tokens: Some(30),
+                cache_write_input_tokens: Some(15),
             }),
         };
 
@@ -319,6 +348,8 @@ mod tests {
         assert_eq!(usage.input_tokens, 200);
         assert_eq!(usage.output_tokens, 75);
         assert_eq!(usage.total_tokens, 275);
+        assert_eq!(usage.cache_read_input_tokens, Some(30));
+        assert_eq!(usage.cache_write_input_tokens, Some(15));
     }
 
     #[test]

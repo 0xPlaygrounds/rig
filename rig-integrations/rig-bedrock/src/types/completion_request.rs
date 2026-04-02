@@ -497,6 +497,32 @@ mod tests {
     }
 
     #[test]
+    fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
+        let request = CompletionRequest {
+            preamble: Some("System prompt".to_string()),
+            ..minimal_request()
+        };
+
+        let aws_request = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: true,
+        };
+        let system_prompt = aws_request
+            .system_prompt()
+            .expect("system prompt should exist");
+
+        assert_eq!(system_prompt.len(), 2);
+        assert_eq!(
+            system_prompt[0],
+            aws_bedrock::SystemContentBlock::Text("System prompt".to_string())
+        );
+        assert!(matches!(
+            system_prompt.last(),
+            Some(aws_bedrock::SystemContentBlock::CachePoint(_))
+        ));
+    }
+
+    #[test]
     fn test_messages_exclude_system_history() {
         let request = CompletionRequest {
             model: None,
@@ -520,5 +546,23 @@ mod tests {
         let messages = aws_request.messages().expect("messages should convert");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
+    }
+
+    #[test]
+    fn test_messages_append_cache_point_when_prompt_caching_enabled() {
+        let aws_request = AwsCompletionRequest {
+            inner: minimal_request(),
+            prompt_caching: true,
+        };
+
+        let messages = aws_request.messages().expect("messages should convert");
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
+        assert_eq!(messages[0].content.len(), 2);
+        assert!(matches!(
+            messages[0].content.last(),
+            Some(aws_bedrock::ContentBlock::CachePoint(_))
+        ));
     }
 }
