@@ -1,6 +1,8 @@
 [workspace]
-git_release_body = """
+git_release_body = """{{ changelog }}"""
 
+[changelog]
+body = """
 ## [{{ version }}]\
     {%- if release_link -%}\
         ({{ release_link }})\
