@@ -385,25 +385,43 @@ where
                         }
 
                         if let StreamingCompletionChunk::Response(chunk) = data {
-                            match chunk.kind {
+                            let ResponseChunk { kind, response, .. } = *chunk;
+
+                            match kind {
                                 ResponseChunkKind::ResponseCompleted => {
-                                    span.record("gen_ai.response.id", &*chunk.response.id);
-                                    span.record("gen_ai.response.model", &*chunk.response.model);
-                                    if let Some(usage) = chunk.response.usage {
+                                    span.record("gen_ai.response.id", response.id.as_str());
+                                    span.record("gen_ai.response.model", response.model.as_str());
+                                    if let Some(usage) = response.usage {
                                         final_usage = usage;
                                     }
                                 }
-                                ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
-                                    let error_message = if let Some(ref error) = chunk.response.error {
-                                        format!("{}: {}", error.code, error.message)
+                                ResponseChunkKind::ResponseFailed => {
+                                    let error_message = if let Some(ref error) = response.error {
+                                        if error.code.is_empty() {
+                                            error.message.clone()
+                                        } else {
+                                            format!("{}: {}", error.code, error.message)
+                                        }
                                     } else {
-                                        format!("Response {:?}: {:?}", chunk.kind, chunk.response.status)
+                                        "OpenAI response stream returned a failed response".to_string()
                                     };
-                                    tracing::error!(error = %error_message, "OpenAI response failed");
+
                                     yield Err(CompletionError::ProviderError(error_message));
                                     break;
                                 }
-                                _ => { continue }
+                                ResponseChunkKind::ResponseIncomplete => {
+                                    let reason = response
+                                        .incomplete_details
+                                        .as_ref()
+                                        .map(|details| details.reason.as_str())
+                                        .unwrap_or("unknown reason");
+
+                                    let error_message =
+                                        format!("OpenAI response stream was incomplete: {reason}");
+                                    yield Err(CompletionError::ProviderError(error_message));
+                                    break;
+                                }
+                                _ => continue,
                             }
                         }
                     }
