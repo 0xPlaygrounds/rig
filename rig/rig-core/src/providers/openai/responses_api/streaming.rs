@@ -441,8 +441,14 @@ where
 mod tests {
     use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
-    use crate::message::ReasoningContent;
-    use crate::providers::openai::responses_api::ReasoningSummary;
+    use crate::message::{ReasoningContent, Text};
+    use crate::providers::openai::responses_api::{
+        AdditionalParameters, AssistantContent as ResponsesAssistantContent,
+        CompletionResponse as ResponsesCompletionResponse, InputTokensDetails,
+        Message as ResponsesMessage, Output, OutputFunctionCall, OutputMessage, OutputRole,
+        OutputTokensDetails, ReasoningSummary, ResponseObject, ResponseStatus, ResponsesUsage,
+        ToolResult as ResponsesToolResult, ToolStatus, UserContent as ResponsesUserContent,
+    };
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent, StreamingPrompt};
     use bytes::Bytes;
     use futures::StreamExt;
@@ -528,9 +534,7 @@ mod tests {
                 match turn {
                     0 => sse_response(first_turn_sse_bytes()),
                     1 => {
-                        let request_json: Value = serde_json::from_slice(&body)
-                            .expect("streaming request body should be valid JSON");
-                        validate_openai_follow_up_request(&request_json).map_err(|message| {
+                        validate_openai_follow_up_request(body.as_ref()).map_err(|message| {
                             http_client::Error::InvalidStatusCodeWithMessage(
                                 http::StatusCode::BAD_REQUEST,
                                 message,
@@ -598,100 +602,120 @@ mod tests {
         Bytes::from(payload)
     }
 
-    fn response_usage_json() -> Value {
+    fn sample_response(response_id: &str, model: &str) -> ResponsesCompletionResponse {
+        ResponsesCompletionResponse {
+            id: response_id.to_string(),
+            object: ResponseObject::Response,
+            created_at: 0,
+            status: ResponseStatus::Completed,
+            error: None,
+            incomplete_details: None,
+            instructions: None,
+            max_output_tokens: None,
+            model: model.to_string(),
+            usage: Some(ResponsesUsage {
+                input_tokens: 10,
+                input_tokens_details: Some(InputTokensDetails { cached_tokens: 0 }),
+                output_tokens: 5,
+                output_tokens_details: OutputTokensDetails {
+                    reasoning_tokens: 0,
+                },
+                total_tokens: 15,
+            }),
+            output: Vec::new(),
+            tools: Vec::new(),
+            additional_parameters: AdditionalParameters::default(),
+        }
+    }
+
+    fn response_completed_event(
+        sequence_number: u64,
+        response: ResponsesCompletionResponse,
+    ) -> Value {
         json!({
-            "input_tokens": 10,
-            "input_tokens_details": {
-                "cached_tokens": 0
-            },
-            "output_tokens": 5,
-            "output_tokens_details": {
-                "reasoning_tokens": 0
-            },
-            "total_tokens": 15
+            "type": "response.completed",
+            "sequence_number": sequence_number,
+            "response": response
         })
     }
 
-    fn completed_response_json(response_id: &str, model: &str) -> Value {
+    fn output_item_done_event(
+        item_id: &str,
+        output_index: u64,
+        sequence_number: u64,
+        item: Output,
+    ) -> Value {
         json!({
-            "id": response_id,
-            "object": "response",
-            "created_at": 0,
-            "status": "completed",
-            "error": null,
-            "incomplete_details": null,
-            "instructions": null,
-            "max_output_tokens": null,
-            "model": model,
-            "usage": response_usage_json(),
-            "output": [],
-            "tools": []
+            "type": "response.output_item.done",
+            "item_id": item_id,
+            "output_index": output_index,
+            "sequence_number": sequence_number,
+            "item": item
+        })
+    }
+
+    fn output_text_delta_event(
+        item_id: &str,
+        output_index: u64,
+        content_index: u64,
+        sequence_number: u64,
+        delta: &str,
+    ) -> Value {
+        json!({
+            "type": "response.output_text.delta",
+            "item_id": item_id,
+            "output_index": output_index,
+            "content_index": content_index,
+            "sequence_number": sequence_number,
+            "delta": delta
         })
     }
 
     fn first_turn_sse_bytes() -> Bytes {
         sse_event_bytes(&[
-            json!({
-                "type": "response.output_item.done",
-                "item_id": "tool_call_1",
-                "output_index": 0,
-                "sequence_number": 1,
-                "item": {
-                    "type": "function_call",
-                    "id": "tool_call_1",
-                    "arguments": "null",
-                    "call_id": "call_1",
-                    "name": "example_tool",
-                    "status": "completed"
-                }
-            }),
-            json!({
-                "type": "response.completed",
-                "sequence_number": 2,
-                "response": completed_response_json("resp_turn_1", "gpt-5.4")
-            }),
+            output_item_done_event(
+                "tool_call_1",
+                0,
+                1,
+                Output::FunctionCall(OutputFunctionCall {
+                    id: "tool_call_1".to_string(),
+                    arguments: Value::Null,
+                    call_id: "call_1".to_string(),
+                    name: "example_tool".to_string(),
+                    status: ToolStatus::Completed,
+                }),
+            ),
+            response_completed_event(2, sample_response("resp_turn_1", "gpt-5.4")),
         ])
     }
 
     fn second_turn_sse_bytes() -> Bytes {
         sse_event_bytes(&[
-            json!({
-                "type": "response.output_text.delta",
-                "item_id": "msg_1",
-                "output_index": 0,
-                "content_index": 0,
-                "sequence_number": 1,
-                "delta": "done"
-            }),
-            json!({
-                "type": "response.output_item.done",
-                "item_id": "msg_1",
-                "output_index": 0,
-                "sequence_number": 2,
-                "item": {
-                    "type": "message",
-                    "id": "msg_1",
-                    "role": "assistant",
-                    "status": "completed",
-                    "content": [{
-                        "type": "output_text",
-                        "text": "done"
-                    }]
-                }
-            }),
-            json!({
-                "type": "response.completed",
-                "sequence_number": 3,
-                "response": completed_response_json("resp_turn_2", "gpt-5.4")
-            }),
+            output_text_delta_event("msg_1", 0, 0, 1, "done"),
+            output_item_done_event(
+                "msg_1",
+                0,
+                2,
+                Output::Message(OutputMessage {
+                    id: "msg_1".to_string(),
+                    role: OutputRole::Assistant,
+                    status: ResponseStatus::Completed,
+                    content: vec![ResponsesAssistantContent::OutputText(Text {
+                        text: "done".to_string(),
+                    })],
+                }),
+            ),
+            response_completed_event(3, sample_response("resp_turn_2", "gpt-5.4")),
         ])
     }
 
-    fn validate_openai_follow_up_request(body: &Value) -> Result<(), String> {
-        let input = body
+    fn validate_openai_follow_up_request(body: &[u8]) -> Result<(), String> {
+        let body_json: Value = serde_json::from_slice(body)
+            .map_err(|err| format!("expected valid OpenAI Responses request JSON: {err}"))?;
+        let input = body_json
             .get("input")
             .and_then(Value::as_array)
-            .ok_or_else(|| format!("expected OpenAI request input array, got {body:?}"))?;
+            .ok_or_else(|| format!("expected OpenAI request input array, got {body_json:?}"))?;
 
         if input.len() != 3 {
             return Err(format!(
@@ -699,50 +723,43 @@ mod tests {
             ));
         }
 
-        let user_prompt = &input[0];
-        let prompt_content = user_prompt
-            .get("content")
-            .and_then(Value::as_array)
-            .and_then(|items| items.first())
-            .ok_or_else(|| format!("expected prompt content in first input item, got {input:?}"))?;
-
-        if user_prompt.get("type").and_then(Value::as_str) != Some("message")
-            || user_prompt.get("role").and_then(Value::as_str) != Some("user")
-            || prompt_content.get("type").and_then(Value::as_str) != Some("input_text")
-            || prompt_content.get("text").and_then(Value::as_str) != Some("Call my example tool")
-        {
+        let user_prompt: ResponsesMessage = serde_json::from_value(input[0].clone())
+            .map_err(|err| format!("expected typed OpenAI user prompt, got {input:?}: {err}"))?;
+        if !matches!(
+            user_prompt,
+            ResponsesMessage::User { content, .. }
+                if matches!(
+                    content.first(),
+                    ResponsesUserContent::InputText { text } if text == "Call my example tool"
+                )
+        ) {
             return Err(format!(
                 "expected first second-turn input item to be the original user prompt, got {input:?}"
             ));
         }
 
-        let function_call = &input[1];
-        if function_call.get("type").and_then(Value::as_str) != Some("function_call")
-            || function_call.get("id").and_then(Value::as_str) != Some("tool_call_1")
-            || function_call.get("call_id").and_then(Value::as_str) != Some("call_1")
-            || function_call.get("name").and_then(Value::as_str) != Some("example_tool")
+        let function_call: OutputFunctionCall =
+            serde_json::from_value(input[1].clone()).map_err(|err| {
+                format!("expected typed OpenAI function_call item, got {input:?}: {err}")
+            })?;
+        if !(function_call.id == "tool_call_1"
+            && function_call.call_id == "call_1"
+            && function_call.name == "example_tool")
         {
             return Err(format!(
                 "expected assistant function_call to be preserved before the tool result, got {input:?}"
             ));
         }
 
-        let function_call_output = &input[2];
-        if function_call_output.get("type").and_then(Value::as_str) != Some("function_call_output")
-            || function_call_output.get("call_id").and_then(Value::as_str) != Some("call_1")
+        let function_call_output: ResponsesToolResult = serde_json::from_value(input[2].clone())
+            .map_err(|err| {
+                format!("expected typed OpenAI function_call_output item, got {input:?}: {err}")
+            })?;
+        if !(function_call_output.call_id == "call_1"
+            && function_call_output.output.contains("Example answer"))
         {
             return Err(format!(
                 "expected tool result to be serialized as the third second-turn input item, got {input:?}"
-            ));
-        }
-
-        let output = function_call_output
-            .get("output")
-            .and_then(Value::as_str)
-            .ok_or_else(|| format!("expected string tool result output, got {input:?}"))?;
-        if !output.contains("Example answer") {
-            return Err(format!(
-                "expected tool result output to preserve the tool response text, got {input:?}"
             ));
         }
 
@@ -939,9 +956,7 @@ mod tests {
         );
 
         // Intentionally redundant to keep the expected follow-up request shape explicit here.
-        let second_request: Value = serde_json::from_slice(&requests[1])
-            .expect("recorded second request should be valid JSON");
-        validate_openai_follow_up_request(&second_request)
+        validate_openai_follow_up_request(requests[1].as_ref())
             .expect("second OpenAI request should preserve tool call history");
     }
 
