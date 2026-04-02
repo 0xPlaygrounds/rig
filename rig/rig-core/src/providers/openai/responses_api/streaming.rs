@@ -429,15 +429,9 @@ where
                                         final_usage = usage;
                                     }
                                 }
-                                ResponseChunkKind::ResponseFailed => {
+                                ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
                                     let error_message = response_chunk_error_message(&kind, &response)
-                                        .expect("failed response should have an error message");
-                                    yield Err(CompletionError::ProviderError(error_message));
-                                    break;
-                                }
-                                ResponseChunkKind::ResponseIncomplete => {
-                                    let error_message = response_chunk_error_message(&kind, &response)
-                                        .expect("incomplete response should have an error message");
+                                        .expect("terminal response should have an error message");
                                     yield Err(CompletionError::ProviderError(error_message));
                                     break;
                                 }
