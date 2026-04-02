@@ -95,3 +95,11 @@ zerocopy = "0.8.26"
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
 exclude-members = ["rig/rig-core", "rig/rig-derive"]
+
+# Use local turbomcp crates for development (new features not yet published)
+[patch.crates-io]
+turbomcp = { path = "/Users/nickpaterno/work/turbomcp/crates/turbomcp" }
+turbomcp-client = { path = "/Users/nickpaterno/work/turbomcp/crates/turbomcp-client" }
+turbomcp-server = { path = "/Users/nickpaterno/work/turbomcp/crates/turbomcp-server" }
+turbomcp-protocol = { path = "/Users/nickpaterno/work/turbomcp/crates/turbomcp-protocol" }
+turbomcp-transport = { path = "/Users/nickpaterno/work/turbomcp/crates/turbomcp-transport" }

@@ -204,6 +204,10 @@ impl<T: Tool> ToolDyn for T {
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod rmcp;
 
+#[cfg(feature = "turbomcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "turbomcp")))]
+pub mod turbomcp;
+
 /// Wrapper trait to allow for dynamic dispatch of raggable tools
 pub trait ToolEmbeddingDyn: ToolDyn {
     fn context(&self) -> serde_json::Result<serde_json::Value>;
@@ -548,3 +552,4 @@ mod tests {
         assert_eq!(toolset.tools.len(), 1);
     }
 }
+
