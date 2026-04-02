@@ -14,6 +14,13 @@ pub struct AwsCompletionRequest {
     pub prompt_caching: bool,
 }
 
+fn cache_point_block() -> CachePointBlock {
+    CachePointBlock::builder()
+        .r#type(CachePointType::Default)
+        .build()
+        .expect("CachePointBlock type is set")
+}
+
 impl AwsCompletionRequest {
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
         self.inner
@@ -117,12 +124,7 @@ impl AwsCompletionRequest {
             None
         } else {
             if self.prompt_caching {
-                system_blocks.push(SystemContentBlock::CachePoint(
-                    CachePointBlock::builder()
-                        .r#type(CachePointType::Default)
-                        .build()
-                        .expect("CachePointBlock type is set"),
-                ));
+                system_blocks.push(SystemContentBlock::CachePoint(cache_point_block()));
             }
             Some(system_blocks)
         }
@@ -163,12 +165,7 @@ impl AwsCompletionRequest {
             && let Some(last_msg) = messages.last_mut()
         {
             let mut content = last_msg.content.clone();
-            content.push(aws_bedrock::ContentBlock::CachePoint(
-                CachePointBlock::builder()
-                    .r#type(CachePointType::Default)
-                    .build()
-                    .expect("CachePointBlock type is set"),
-            ));
+            content.push(aws_bedrock::ContentBlock::CachePoint(cache_point_block()));
             *last_msg = aws_bedrock::Message::builder()
                 .role(last_msg.role.clone())
                 .set_content(Some(content))
@@ -207,6 +204,13 @@ mod tests {
         }
     }
 
+    fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletionRequest {
+        AwsCompletionRequest {
+            inner: request,
+            prompt_caching,
+        }
+    }
+
     #[test]
     fn test_tool_choice_auto_conversion() {
         // Test that rig's ToolChoice::Auto converts to AWS Auto
@@ -224,10 +228,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -260,10 +261,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -296,10 +294,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -329,10 +324,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -365,10 +357,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -395,10 +384,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -443,10 +429,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let tool_config = aws_request
             .tools_config()
             .expect("Should build tool config");
@@ -481,10 +464,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let system_prompt = aws_request.system_prompt();
 
         assert!(system_prompt.is_some());
@@ -503,10 +483,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: true,
-        };
+        let aws_request = aws_request(request, true);
         let system_prompt = aws_request
             .system_prompt()
             .expect("system prompt should exist");
@@ -539,10 +516,7 @@ mod tests {
             ..minimal_request()
         };
 
-        let aws_request = AwsCompletionRequest {
-            inner: request,
-            prompt_caching: false,
-        };
+        let aws_request = aws_request(request, false);
         let messages = aws_request.messages().expect("messages should convert");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, aws_bedrock::ConversationRole::User);
@@ -550,10 +524,7 @@ mod tests {
 
     #[test]
     fn test_messages_append_cache_point_when_prompt_caching_enabled() {
-        let aws_request = AwsCompletionRequest {
-            inner: minimal_request(),
-            prompt_caching: true,
-        };
+        let aws_request = aws_request(minimal_request(), true);
 
         let messages = aws_request.messages().expect("messages should convert");
 

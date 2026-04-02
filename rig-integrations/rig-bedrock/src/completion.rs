@@ -178,14 +178,19 @@ impl CompletionModel {
 
     /// Enable Bedrock prompt caching for this model.
     ///
-    /// When enabled, `CachePoint` blocks are inserted into the system prompt
-    /// and message history of each Converse API request. This allows Bedrock
-    /// to cache and reuse the internal model state for repeated prompt prefixes,
-    /// reducing both latency and input token costs.
+    /// When enabled, `CachePoint` blocks are inserted after the serialized
+    /// `system` content and after the final `messages` entry in each Converse
+    /// API request. This allows Bedrock to cache and reuse repeated prompt
+    /// prefixes, reducing both latency and input token costs.
     ///
-    /// Requires that the cached prefix meets the model's minimum token threshold
-    /// (e.g. 1024 tokens for Claude Sonnet 4). If the prefix is too short, the
-    /// checkpoint is silently ignored by Bedrock.
+    /// This currently covers the `system` and `messages` request fields only.
+    /// Some Bedrock models also support caching `tools`, but that is not wired
+    /// up here yet.
+    ///
+    /// Cacheability and token thresholds are model-specific. If the cached
+    /// prefix is too short or the model does not support caching for a given
+    /// field, Bedrock ignores the checkpoint. See the Bedrock prompt caching
+    /// support table for current limits and field support.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
