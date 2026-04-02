@@ -440,12 +440,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
-    use crate::client::CompletionClient;
     use crate::message::ReasoningContent;
-    use crate::providers::openai;
     use crate::providers::openai::responses_api::ReasoningSummary;
-    use crate::streaming::{RawStreamingChoice, StreamingChat};
+    use crate::streaming::RawStreamingChoice;
     use futures::StreamExt;
+    use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
     use serde_json::{self, json};
 
     use crate::{
