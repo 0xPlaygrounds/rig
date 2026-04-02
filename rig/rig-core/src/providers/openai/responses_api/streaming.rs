@@ -440,17 +440,112 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
+    use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
     use crate::message::ReasoningContent;
     use crate::providers::openai::responses_api::ReasoningSummary;
-    use crate::streaming::RawStreamingChoice;
+    use crate::streaming::{RawStreamingChoice, StreamedAssistantContent, StreamingPrompt};
+    use bytes::Bytes;
     use futures::StreamExt;
-    use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
-    use serde_json::{self, json};
+    use rig::{
+        agent::MultiTurnStreamItem, client::CompletionClient, providers::openai,
+        streaming::StreamingChat,
+    };
+    use serde_json::{self, Value, json};
+    use std::sync::{Arc, Mutex};
 
     use crate::{
         completion::{Message, ToolDefinition},
         tool::{Tool, ToolError},
     };
+
+    #[derive(Clone, Debug, Default)]
+    struct RecordingResponsesStreamingClient {
+        requests: Arc<Mutex<Vec<Bytes>>>,
+    }
+
+    impl RecordingResponsesStreamingClient {
+        fn recorded_requests(&self) -> Vec<Bytes> {
+            self.requests
+                .lock()
+                .expect("request capture should not be poisoned")
+                .clone()
+        }
+    }
+
+    impl HttpClientExt for RecordingResponsesStreamingClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>>
+        + crate::wasm_compat::WasmCompatSend
+        + 'static
+        where
+            T: Into<Bytes>,
+            T: crate::wasm_compat::WasmCompatSend,
+            U: From<Bytes>,
+            U: crate::wasm_compat::WasmCompatSend + 'static,
+        {
+            std::future::ready(Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>>
+        + crate::wasm_compat::WasmCompatSend
+        + 'static
+        where
+            U: From<Bytes>,
+            U: crate::wasm_compat::WasmCompatSend + 'static,
+        {
+            std::future::ready(Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>>
+        + crate::wasm_compat::WasmCompatSend
+        where
+            T: Into<Bytes>,
+        {
+            let client = self.clone();
+            let body: Bytes = req.into_body().into();
+            async move {
+                let turn = {
+                    let mut requests = client
+                        .requests
+                        .lock()
+                        .expect("request capture should not be poisoned");
+                    requests.push(body.clone());
+                    requests.len() - 1
+                };
+
+                match turn {
+                    0 => sse_response(first_turn_sse_bytes()),
+                    1 => {
+                        let request_json: Value = serde_json::from_slice(&body)
+                            .expect("streaming request body should be valid JSON");
+                        validate_openai_follow_up_request(&request_json).map_err(|message| {
+                            http_client::Error::InvalidStatusCodeWithMessage(
+                                http::StatusCode::BAD_REQUEST,
+                                message,
+                            )
+                        })?;
+                        sse_response(second_turn_sse_bytes())
+                    }
+                    _ => Err(http_client::Error::InvalidStatusCodeWithMessage(
+                        http::StatusCode::BAD_REQUEST,
+                        format!("unexpected extra streaming turn {turn}"),
+                    )),
+                }
+            }
+        }
+    }
 
     struct ExampleTool;
 
@@ -476,6 +571,182 @@ mod tests {
             let result = "Example answer".to_string();
             Ok(result)
         }
+    }
+
+    fn sse_response(bytes: Bytes) -> http_client::Result<http_client::StreamingResponse> {
+        let byte_stream = futures::stream::iter(vec![Ok::<Bytes, http_client::Error>(bytes)]);
+        let boxed_stream: crate::http_client::sse::BoxedStream = Box::pin(byte_stream);
+
+        Response::builder()
+            .status(http::StatusCode::OK)
+            .header(http::header::CONTENT_TYPE, "text/event-stream")
+            .body(boxed_stream)
+            .map_err(http_client::Error::Protocol)
+    }
+
+    fn sse_event_bytes(events: &[Value]) -> Bytes {
+        let payload = events
+            .iter()
+            .map(|event| {
+                format!(
+                    "data: {}\n\n",
+                    serde_json::to_string(event).expect("event should serialize")
+                )
+            })
+            .collect::<String>();
+
+        Bytes::from(payload)
+    }
+
+    fn response_usage_json() -> Value {
+        json!({
+            "input_tokens": 10,
+            "input_tokens_details": {
+                "cached_tokens": 0
+            },
+            "output_tokens": 5,
+            "output_tokens_details": {
+                "reasoning_tokens": 0
+            },
+            "total_tokens": 15
+        })
+    }
+
+    fn completed_response_json(response_id: &str, model: &str) -> Value {
+        json!({
+            "id": response_id,
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "model": model,
+            "usage": response_usage_json(),
+            "output": [],
+            "tools": []
+        })
+    }
+
+    fn first_turn_sse_bytes() -> Bytes {
+        sse_event_bytes(&[
+            json!({
+                "type": "response.output_item.done",
+                "item_id": "tool_call_1",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "tool_call_1",
+                    "arguments": "null",
+                    "call_id": "call_1",
+                    "name": "example_tool",
+                    "status": "completed"
+                }
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 2,
+                "response": completed_response_json("resp_turn_1", "gpt-5.4")
+            }),
+        ])
+    }
+
+    fn second_turn_sse_bytes() -> Bytes {
+        sse_event_bytes(&[
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "done"
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "sequence_number": 2,
+                "item": {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [{
+                        "type": "output_text",
+                        "text": "done"
+                    }]
+                }
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 3,
+                "response": completed_response_json("resp_turn_2", "gpt-5.4")
+            }),
+        ])
+    }
+
+    fn validate_openai_follow_up_request(body: &Value) -> Result<(), String> {
+        let input = body
+            .get("input")
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("expected OpenAI request input array, got {body:?}"))?;
+
+        if input.len() != 3 {
+            return Err(format!(
+                "expected second turn input to contain [user prompt, function_call, function_call_output], got {input:?}"
+            ));
+        }
+
+        let user_prompt = &input[0];
+        let prompt_content = user_prompt
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .ok_or_else(|| format!("expected prompt content in first input item, got {input:?}"))?;
+
+        if user_prompt.get("type").and_then(Value::as_str) != Some("message")
+            || user_prompt.get("role").and_then(Value::as_str) != Some("user")
+            || prompt_content.get("type").and_then(Value::as_str) != Some("input_text")
+            || prompt_content.get("text").and_then(Value::as_str) != Some("Call my example tool")
+        {
+            return Err(format!(
+                "expected first second-turn input item to be the original user prompt, got {input:?}"
+            ));
+        }
+
+        let function_call = &input[1];
+        if function_call.get("type").and_then(Value::as_str) != Some("function_call")
+            || function_call.get("id").and_then(Value::as_str) != Some("tool_call_1")
+            || function_call.get("call_id").and_then(Value::as_str) != Some("call_1")
+            || function_call.get("name").and_then(Value::as_str) != Some("example_tool")
+        {
+            return Err(format!(
+                "expected assistant function_call to be preserved before the tool result, got {input:?}"
+            ));
+        }
+
+        let function_call_output = &input[2];
+        if function_call_output.get("type").and_then(Value::as_str) != Some("function_call_output")
+            || function_call_output.get("call_id").and_then(Value::as_str) != Some("call_1")
+        {
+            return Err(format!(
+                "expected tool result to be serialized as the third second-turn input item, got {input:?}"
+            ));
+        }
+
+        let output = function_call_output
+            .get("output")
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("expected string tool result output, got {input:?}"))?;
+        if !output.contains("Example answer") {
+            return Err(format!(
+                "expected tool result output to preserve the tool response text, got {input:?}"
+            ));
+        }
+
+        Ok(())
     }
 
     #[test]
@@ -629,6 +900,48 @@ mod tests {
                     ItemChunkKind::ReasoningSummaryPartDone(_)
                 )
         ));
+    }
+
+    #[tokio::test]
+    async fn openai_stream_prompt_preserves_tool_call_history_between_turns() {
+        let http_client = RecordingResponsesStreamingClient::default();
+        let client = openai::Client::builder()
+            .http_client(http_client.clone())
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let agent = client.agent("gpt-5.4").tool(ExampleTool).build();
+
+        let mut stream = agent
+            .stream_prompt("Call my example tool")
+            .multi_turn(3)
+            .await;
+        let mut final_text = String::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => final_text.push_str(&text.text),
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Err(err) => panic!("unexpected OpenAI streaming error: {err:?}"),
+                _ => {}
+            }
+        }
+
+        assert_eq!(final_text, "done");
+
+        let requests = http_client.recorded_requests();
+        assert_eq!(
+            requests.len(),
+            2,
+            "expected exactly two OpenAI streaming turns"
+        );
+
+        let second_request: Value = serde_json::from_slice(&requests[1])
+            .expect("recorded second request should be valid JSON");
+        validate_openai_follow_up_request(&second_request)
+            .expect("second OpenAI request should preserve tool call history");
     }
 
     // requires `derive` rig-core feature due to using tool macro
