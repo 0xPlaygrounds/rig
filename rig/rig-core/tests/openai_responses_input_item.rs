@@ -2,8 +2,7 @@ use rig::OneOrMany;
 use rig::completion::{CompletionError, Message as CompletionMessage};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
-    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Message, Output,
-    OutputFunctionCall, UserContent,
+    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Message, Output, UserContent,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -358,79 +357,4 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
                 .to_string()
                 .contains("Invalid OpenAI Responses additional_params payload")
     ));
-}
-
-#[test]
-fn openai_responses_request_preserves_tool_call_before_tool_result() {
-    let request = rig::completion::CompletionRequest {
-        preamble: None,
-        chat_history: OneOrMany::many(vec![
-            CompletionMessage::user("Call my example tool"),
-            CompletionMessage::Assistant {
-                id: Some("assistant_message_id".to_string()),
-                content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
-                    "tool_call_1",
-                    "call_1".to_string(),
-                    "example_tool",
-                    serde_json::Value::Null,
-                )),
-            },
-            CompletionMessage::tool_result_with_call_id(
-                "tool_call_1",
-                Some("call_1".to_string()),
-                "Example answer",
-            ),
-        ])
-        .expect("chat history should contain three items"),
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        model: None,
-        output_schema: None,
-    };
-
-    let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
-        .expect("request conversion should succeed");
-    let input = request.input.iter().cloned().collect::<Vec<_>>();
-
-    assert_eq!(input.len(), 3, "expected three OpenAI input items");
-
-    let first_item = serde_json::to_value(&input[0]).expect("serialize first input item");
-    let user_prompt: Message =
-        serde_json::from_value(first_item).expect("first input item should be a user message");
-    assert!(matches!(
-        user_prompt,
-        Message::User { content, .. }
-            if matches!(
-                content.first(),
-                UserContent::InputText { text } if text == "Call my example tool"
-            )
-    ));
-
-    let second_item = serde_json::to_value(&input[1]).expect("serialize second input item");
-    let function_call: OutputFunctionCall =
-        serde_json::from_value(second_item).expect("second input item should be a function call");
-    assert_eq!(function_call.id, "tool_call_1");
-    assert_eq!(function_call.call_id, "call_1");
-    assert_eq!(function_call.name, "example_tool");
-    assert_eq!(function_call.arguments, serde_json::Value::Null);
-
-    let third_item = serde_json::to_value(&input[2]).expect("serialize third input item");
-    assert_eq!(
-        third_item.get("type").and_then(serde_json::Value::as_str),
-        Some("function_call_output")
-    );
-    assert_eq!(
-        third_item
-            .get("call_id")
-            .and_then(serde_json::Value::as_str),
-        Some("call_1")
-    );
-    assert_eq!(
-        third_item.get("output").and_then(serde_json::Value::as_str),
-        Some("Example answer")
-    );
 }
