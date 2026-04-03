@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.4.4](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.3...rig-bedrock-v0.4.4) - 2026-04-03
+
+### Other
+
+- Add support for prompt caching in rig-bedrock ([#1584](https://github.com/0xPlaygrounds/rig/pull/1584)) (by @marcbrooker) - #1584
+
+### Contributors
+
+* @marcbrooker
 
 ## [0.4.3](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.2...rig-bedrock-v0.4.3) - 2026-03-29
 

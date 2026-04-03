@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.4.4](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.3...rig-lancedb-v0.4.4) - 2026-04-03
+
+### Other
+
+- updated the following local packages: rig-core
 
 ## [0.4.3](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.2...rig-lancedb-v0.4.3) - 2026-03-29
 
