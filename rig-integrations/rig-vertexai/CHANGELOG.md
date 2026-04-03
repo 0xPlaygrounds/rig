@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.2...rig-vertexai-v0.3.3) - 2026-03-29
+
+### Other
+
+- OTel GenAI semconv fix +  anthropic automatic prompt caching  ([#1572](https://github.com/0xPlaygrounds/rig/pull/1572))
+
 ## [0.3.2](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.1...rig-vertexai-v0.3.2) - 2026-03-17
 
 ### Other
