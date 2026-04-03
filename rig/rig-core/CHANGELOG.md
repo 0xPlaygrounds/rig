@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.33.0...rig-core-v0.34.0) - 2026-03-29
+
+### Added
+
+- *(rig-core)* respect custom Authorization headers set via http_headers() ([#1553](https://github.com/0xPlaygrounds/rig/pull/1553))
+- make history generic and immutable ([#1563](https://github.com/0xPlaygrounds/rig/pull/1563))
+- add grok xAI TTS ([#1530](https://github.com/0xPlaygrounds/rig/pull/1530))
+
+### Fixed
+
+- *(gemini)* infer string type for enum schemas in anyOf/oneOf ([#1547](https://github.com/0xPlaygrounds/rig/pull/1547))
+- include assistant text in chat_history during multi-turn streaming ([#1560](https://github.com/0xPlaygrounds/rig/pull/1560))
+- skip serializing encrypted_content when None ([#1534](https://github.com/0xPlaygrounds/rig/pull/1534))
+
+### Other
+
+- enable specifying native-tls instead of default rustls ([#1558](https://github.com/0xPlaygrounds/rig/pull/1558))
+- Fix VoyageAI Usage deserialization failure on missing prompt_tokens ([#1568](https://github.com/0xPlaygrounds/rig/pull/1568))
+- OTel GenAI semconv fix +  anthropic automatic prompt caching  ([#1572](https://github.com/0xPlaygrounds/rig/pull/1572))
+- *(gemini)* Make `prompt_token_count` optional in gemini response ([#1548](https://github.com/0xPlaygrounds/rig/pull/1548))
+
 ## [0.33.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.32.0...rig-core-v0.33.0) - 2026-03-17
 
 ### Added

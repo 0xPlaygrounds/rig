@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.2...rig-lancedb-v0.4.3) - 2026-03-29
+
+### Other
+
+- enable specifying native-tls instead of default rustls ([#1558](https://github.com/0xPlaygrounds/rig/pull/1558))
+
 ## [0.4.2](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.1...rig-lancedb-v0.4.2) - 2026-03-17
 
 ### Other
