@@ -199,7 +199,9 @@ impl From<MultipartForm> for reqwest::multipart::Form {
                         req_part = req_part.file_name(filename);
                     }
                     if let Some(content_type) = part.content_type {
-                        req_part = req_part.mime_str(content_type.as_ref()).unwrap();
+                        if let Ok(part_with_mime) = req_part.mime_str(content_type.as_ref()) {
+                            req_part = part_with_mime;
+                        }
                     }
 
                     form = form.part(part.name, req_part);
