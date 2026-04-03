@@ -40,7 +40,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { version = "0.16", optional = true, features = ["client"] }
+rmcp = { version = "1.3", optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = "1.3.1"
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
@@ -84,7 +84,7 @@ reqwest-middleware = { version = "0.5", features = [
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.16", features = [
+rmcp = { version = "1.3", features = [
   "client",
   "macros",
   "reqwest",                                  # required for some strange reason
@@ -158,6 +158,10 @@ name = "vector_search_cohere"
 required-features = ["derive"]
 
 [[example]]
+name = "vector_search_ollama"
+required-features = ["derive"]
+
+[[example]]
 name = "gemini_embeddings"
 required-features = ["derive"]
 
@@ -173,20 +177,40 @@ name = "agent_with_together"
 required-features = ["derive"]
 
 [[example]]
+name = "complex_agentic_loop_claude"
+required-features = ["derive"]
+
+[[example]]
 name = "together_embeddings"
 required-features = ["derive"]
+
+[[example]]
+name = "openai_websocket_mode"
+required-features = ["websocket"]
 
 [[example]]
 name = "openai_audio_generation"
 required-features = ["audio"]
 
 [[example]]
+name = "openai_image_generation"
+required-features = ["image"]
+
+[[example]]
 name = "hyperbolic_audio_generation"
 required-features = ["audio"]
 
 [[example]]
+name = "hyperbolic_image_generation"
+required-features = ["image"]
+
+[[example]]
 name = "xai_audio_generation"
 required-features = ["audio"]
+
+[[example]]
+name = "huggingface_image_generation"
+required-features = ["image"]
 
 [[example]]
 name = "mistral_embeddings"
