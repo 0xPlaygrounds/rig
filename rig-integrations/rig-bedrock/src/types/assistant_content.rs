@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::message::RigMessage;
 
 use super::{
-    converse_output::{ContentBlock, InternalConverseOutput},
+    converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
     json::AwsDocument,
 };
 use rig::completion::{self, GetTokenUsage};
@@ -18,6 +18,16 @@ use rig::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AwsConverseOutput(pub InternalConverseOutput);
+
+fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
+    completion::Usage {
+        input_tokens: usage.input_tokens as u64,
+        output_tokens: usage.output_tokens as u64,
+        total_tokens: usage.total_tokens as u64,
+        cached_input_tokens: usage.cache_read_input_tokens.unwrap_or_default() as u64,
+        cache_creation_input_tokens: usage.cache_write_input_tokens.unwrap_or_default() as u64,
+    }
+}
 
 impl ProviderResponseExt for AwsConverseOutput {
     type OutputMessage = serde_json::Value;
@@ -42,23 +52,25 @@ impl ProviderResponseExt for AwsConverseOutput {
     fn get_text_response(&self) -> Option<String> {
         let output = self.0.output.as_ref()?;
         let message = output.as_message().ok()?;
-        message.content.iter().find_map(|block| {
-            if let ContentBlock::Text(text) = block {
-                Some(text.clone())
-            } else {
-                None
-            }
-        })
+        let response = message
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if response.is_empty() {
+            None
+        } else {
+            Some(response)
+        }
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        self.0.usage().map(|u| completion::Usage {
-            input_tokens: u.input_tokens as u64,
-            output_tokens: u.output_tokens as u64,
-            total_tokens: u.total_tokens as u64,
-            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
-            cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
-        })
+        self.0.usage().map(normalize_usage)
     }
 }
 
@@ -95,18 +107,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             )),
         }?;
 
-        let usage = value
-            .0
-            .usage()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.input_tokens as u64,
-                output_tokens: usage.output_tokens as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage.cache_read_input_tokens.unwrap_or_default() as u64
-                    + usage.cache_write_input_tokens.unwrap_or_default() as u64,
-                cache_creation_input_tokens: 0,
-            })
-            .unwrap_or_default();
+        let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
 
         if let Some(tool_use) = choice.iter().find_map(|content| match content {
             AssistantContent::ToolCall(tool_call) => Some(tool_call.to_owned()),
