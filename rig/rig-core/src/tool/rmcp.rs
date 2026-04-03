@@ -382,7 +382,7 @@ mod tests {
     impl ServerHandler for DynamicToolServer {
         fn get_info(&self) -> ServerInfo {
             ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-                .with_protocol_version(ProtocolVersion::V_2024_11_05)
+                .with_protocol_version(ProtocolVersion::LATEST)
                 .with_server_info(Implementation::new("test-dynamic-server", "0.1.0"))
         }
 

@@ -122,7 +122,7 @@ impl ServerHandler for Counter {
                 .enable_tools()
                 .build(),
         )
-        .with_protocol_version(ProtocolVersion::V_2024_11_05)
+        .with_protocol_version(ProtocolVersion::LATEST)
         .with_server_info(Implementation::from_build_env())
         .with_instructions("This server provides a counter tool that can increment and decrement values. The counter starts at 0 and can be modified using the 'increment' and 'decrement' tools. Use 'get_value' to check the current count.")
     }
