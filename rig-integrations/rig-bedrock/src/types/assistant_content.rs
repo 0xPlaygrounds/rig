@@ -9,11 +9,76 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::message::RigMessage;
 
-use super::{converse_output::InternalConverseOutput, json::AwsDocument};
-use rig::completion;
+use super::{
+    converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
+    json::AwsDocument,
+};
+use rig::completion::{self, GetTokenUsage};
+use rig::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AwsConverseOutput(pub InternalConverseOutput);
+
+fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
+    completion::Usage {
+        input_tokens: usage.input_tokens as u64,
+        output_tokens: usage.output_tokens as u64,
+        total_tokens: usage.total_tokens as u64,
+        cached_input_tokens: usage.cache_read_input_tokens.unwrap_or_default() as u64,
+        cache_creation_input_tokens: usage.cache_write_input_tokens.unwrap_or_default() as u64,
+    }
+}
+
+impl ProviderResponseExt for AwsConverseOutput {
+    type OutputMessage = serde_json::Value;
+    type Usage = completion::Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        None // Bedrock Converse API doesn't return a response ID
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        None // Bedrock doesn't echo model name in response
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.0
+            .output
+            .as_ref()
+            .map(|output| vec![serde_json::to_value(output).unwrap_or_default()])
+            .unwrap_or_default()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        let output = self.0.output.as_ref()?;
+        let message = output.as_message().ok()?;
+        let response = message
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if response.is_empty() {
+            None
+        } else {
+            Some(response)
+        }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.0.usage().map(normalize_usage)
+    }
+}
+
+impl GetTokenUsage for AwsConverseOutput {
+    fn token_usage(&self) -> Option<completion::Usage> {
+        self.get_usage()
+    }
+}
 
 impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOutput> {
     type Error = CompletionError;
@@ -42,18 +107,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             )),
         }?;
 
-        let usage = value
-            .0
-            .usage()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.input_tokens as u64,
-                output_tokens: usage.output_tokens as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage.cache_read_input_tokens.unwrap_or_default() as u64
-                    + usage.cache_write_input_tokens.unwrap_or_default() as u64,
-                cache_creation_input_tokens: 0,
-            })
-            .unwrap_or_default();
+        let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
 
         if let Some(tool_use) = choice.iter().find_map(|content| match content {
             AssistantContent::ToolCall(tool_call) => Some(tool_call.to_owned()),
@@ -204,8 +258,88 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig::{
         OneOrMany, completion,
+        completion::GetTokenUsage,
         message::{AssistantContent, ReasoningContent},
+        telemetry::ProviderResponseExt,
     };
+
+    /// Helper: build an AwsConverseOutput with text content and optional usage.
+    fn make_output(text: &str, usage: Option<aws_bedrock::TokenUsage>) -> AwsConverseOutput {
+        let message = aws_bedrock::Message::builder()
+            .role(aws_bedrock::ConversationRole::Assistant)
+            .content(aws_bedrock::ContentBlock::Text(text.into()))
+            .build()
+            .unwrap();
+        let mut builder = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .output(aws_bedrock::ConverseOutput::Message(message))
+            .stop_reason(aws_bedrock::StopReason::EndTurn);
+        if let Some(u) = usage {
+            builder = builder.usage(u);
+        }
+        let internal: InternalConverseOutput = builder.build().unwrap().try_into().unwrap();
+        AwsConverseOutput(internal)
+    }
+
+    fn make_usage(input: i32, output: i32, total: i32) -> aws_bedrock::TokenUsage {
+        aws_bedrock::TokenUsage::builder()
+            .input_tokens(input)
+            .output_tokens(output)
+            .total_tokens(total)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn provider_response_ext_get_text_response() {
+        let out = make_output("hello world", None);
+        assert_eq!(out.get_text_response(), Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn provider_response_ext_response_id_is_none() {
+        let out = make_output("x", None);
+        assert!(out.get_response_id().is_none());
+        assert!(out.get_response_model_name().is_none());
+    }
+
+    #[test]
+    fn provider_response_ext_get_usage_with_tokens() {
+        let out = make_output("x", Some(make_usage(100, 50, 150)));
+        let usage = out.get_usage().unwrap();
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 50);
+        assert_eq!(usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn provider_response_ext_get_usage_none_when_missing() {
+        let out = make_output("x", None);
+        assert!(out.get_usage().is_none());
+    }
+
+    #[test]
+    fn provider_response_ext_output_messages_serializable() {
+        let out = make_output("test", None);
+        let msgs = out.get_output_messages();
+        assert_eq!(msgs.len(), 1);
+        // Should be valid JSON
+        assert!(msgs[0].is_object());
+    }
+
+    #[test]
+    fn get_token_usage_delegates_to_provider_response_ext() {
+        let out = make_output("x", Some(make_usage(10, 20, 30)));
+        let usage = out.token_usage().unwrap();
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 20);
+        assert_eq!(usage.total_tokens, 30);
+    }
+
+    #[test]
+    fn get_token_usage_none_when_no_usage() {
+        let out = make_output("x", None);
+        assert!(out.token_usage().is_none());
+    }
 
     #[test]
     fn aws_converse_output_to_completion_response() {

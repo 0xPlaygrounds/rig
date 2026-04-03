@@ -1,5 +1,8 @@
 use crate::types::completion_request::AwsCompletionRequest;
-use crate::{completion::CompletionModel, types::errors::AwsSdkConverseStreamError};
+use crate::{
+    completion::{CompletionModel, resolve_request_model},
+    types::errors::AwsSdkConverseStreamError,
+};
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::completion::GetTokenUsage;
@@ -33,9 +36,8 @@ impl GetTokenUsage for BedrockStreamingResponse {
             input_tokens: u.input_tokens as u64,
             output_tokens: u.output_tokens as u64,
             total_tokens: u.total_tokens as u64,
-            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64
-                + u.cache_write_input_tokens.unwrap_or_default() as u64,
-            cache_creation_input_tokens: 0,
+            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
+            cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
         })
     }
 }
@@ -59,6 +61,7 @@ impl CompletionModel {
         &self,
         completion_request: rig::completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
+        let request_model = resolve_request_model(&self.model, &completion_request);
         let request = AwsCompletionRequest {
             inner: completion_request,
             prompt_caching: self.prompt_caching,
@@ -69,7 +72,7 @@ impl CompletionModel {
             .get_inner()
             .await
             .converse_stream()
-            .model_id(self.model.as_str());
+            .model_id(request_model);
 
         let tool_config = request.tools_config()?;
         let prompt_with_history = request.messages()?;
@@ -260,8 +263,8 @@ mod tests {
         assert_eq!(usage.input_tokens, 200);
         assert_eq!(usage.output_tokens, 75);
         assert_eq!(usage.total_tokens, 275);
-        assert_eq!(usage.cached_input_tokens, 50);
-        assert_eq!(usage.cache_creation_input_tokens, 0);
+        assert_eq!(usage.cached_input_tokens, 40);
+        assert_eq!(usage.cache_creation_input_tokens, 10);
     }
 
     #[test]
@@ -289,8 +292,8 @@ mod tests {
         assert_eq!(usage.input_tokens, 448);
         assert_eq!(usage.output_tokens, 68);
         assert_eq!(usage.total_tokens, 516);
-        assert_eq!(usage.cached_input_tokens, 100);
-        assert_eq!(usage.cache_creation_input_tokens, 0);
+        assert_eq!(usage.cached_input_tokens, 80);
+        assert_eq!(usage.cache_creation_input_tokens, 20);
     }
 
     #[test]
