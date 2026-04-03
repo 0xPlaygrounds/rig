@@ -22,6 +22,16 @@ use tracing::{Instrument, Level, enabled, info_span};
 // Anthropic Completion API
 // ================================================================
 
+/// `claude-opus-4-6` completion model
+pub const CLAUDE_4_6_OPUS: &str = "claude-opus-4-6";
+/// `claude-sonnet-4-6` completion model
+pub const CLAUDE_4_6_SONNET: &str = "claude-sonnet-4-6";
+/// `claude-opus-4-5` completion model
+pub const CLAUDE_4_5_OPUS: &str = "claude-opus-4-5";
+/// `claude-sonnet-4-5` completion model
+pub const CLAUDE_4_5_SONNET: &str = "claude-sonnet-4-5";
+/// `claude-haiku-4-5` completion model
+pub const CLAUDE_4_5_HAIKU: &str = "claude-haiku-4-5";
 /// `claude-opus-4-0` completion model
 pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
 /// `claude-sonnet-4-0` completion model
@@ -955,6 +965,8 @@ fn calculate_max_tokens(model: &str) -> Option<u64> {
         Some(32000)
     } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
         Some(64000)
+    } else if model.starts_with("claude-haiku-4") {
+        Some(8192)
     } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
         Some(8192)
     } else if model.starts_with("claude-3-opus")
