@@ -188,6 +188,10 @@ pub enum ItemChunkKind {
     ReasoningSummaryTextDelta(SummaryTextChunk),
     #[serde(rename = "response.reasoning_summary_text.done")]
     ReasoningSummaryTextDone(SummaryTextChunk),
+    /// Catch-all for unknown item chunk types (e.g., `web_search_call` events).
+    /// This prevents unknown streaming events from breaking deserialization.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -390,6 +394,10 @@ where
                                         }
                                         StreamingItemDoneOutput { item: Output::Message(msg), .. } => {
                                             yield Ok(streaming::RawStreamingChoice::MessageId(msg.id.clone()));
+                                        }
+                                        StreamingItemDoneOutput { item: Output::Unknown, .. } => {
+                                            // Unknown output types (e.g., web_search_call) are silently skipped
+                                            // to avoid breaking streaming when hosted tools are used.
                                         }
                                     }
                                 }
