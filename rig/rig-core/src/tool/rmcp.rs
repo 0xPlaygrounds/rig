@@ -114,17 +114,19 @@ impl ToolDyn for McpTool {
 
     fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
         let name = self.definition.name.clone();
-        let arguments = serde_json::from_str(&args).unwrap_or_default();
+        let arguments: Option<rmcp::model::JsonObject> =
+            serde_json::from_str(&args).unwrap_or_default();
 
         Box::pin(async move {
+            let request = arguments
+                .map(|arguments| {
+                    rmcp::model::CallToolRequestParams::new(name.clone()).with_arguments(arguments)
+                })
+                .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
+
             let result = self
                 .client
-                .call_tool(rmcp::model::CallToolRequestParams {
-                    name,
-                    arguments,
-                    meta: None,
-                    task: None,
-                })
+                .call_tool(request)
                 .await
                 .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
@@ -144,10 +146,10 @@ impl ToolDyn for McpTool {
                 }
             };
 
-            Ok(result
-                .content
-                .into_iter()
-                .map(|c| match c.raw {
+            let mut content = String::new();
+
+            for item in result.content {
+                let chunk = match item.raw {
                     rmcp::model::RawContent::Text(raw) => raw.text,
                     rmcp::model::RawContent::Image(raw) => {
                         format!("data:{};base64,{}", raw.mime_type, raw.data)
@@ -161,9 +163,8 @@ impl ToolDyn for McpTool {
                         } => {
                             format!(
                                 "{mime_type}{uri}:{text}",
-                                mime_type = mime_type
-                                    .map(|m| format!("data:{m};"))
-                                    .unwrap_or_default(),
+                                mime_type =
+                                    mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
                             )
                         }
                         rmcp::model::ResourceContents::BlobResourceContents {
@@ -173,19 +174,28 @@ impl ToolDyn for McpTool {
                             ..
                         } => format!(
                             "{mime_type}{uri}:{blob}",
-                            mime_type = mime_type
-                                .map(|m| format!("data:{m};"))
-                                .unwrap_or_default(),
+                            mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
                         ),
                     },
                     RawContent::Audio(_) => {
-                        panic!("Support for audio results from an MCP tool is currently unimplemented. Come back later!")
+                        return Err(McpToolError(
+                            "MCP tool returned audio content, which Rig does not support yet"
+                                .to_string(),
+                        )
+                        .into());
                     }
                     thing => {
-                        panic!("Unsupported type found: {thing:?}")
+                        return Err(McpToolError(format!(
+                            "MCP tool returned unsupported content: {thing:?}"
+                        ))
+                        .into());
                     }
-                })
-                .collect::<String>())
+                };
+
+                content.push_str(&chunk);
+            }
+
+            Ok(content)
         })
     }
 }
@@ -371,16 +381,9 @@ mod tests {
 
     impl ServerHandler for DynamicToolServer {
         fn get_info(&self) -> ServerInfo {
-            ServerInfo {
-                protocol_version: ProtocolVersion::V_2024_11_05,
-                capabilities: ServerCapabilities::builder().enable_tools().build(),
-                server_info: Implementation {
-                    name: "test-dynamic-server".to_string(),
-                    version: "0.1.0".to_string(),
-                    ..Default::default()
-                },
-                instructions: None,
-            }
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("test-dynamic-server", "0.1.0"))
         }
 
         async fn list_tools(
@@ -389,11 +392,7 @@ mod tests {
             _context: RequestContext<RoleServer>,
         ) -> Result<ListToolsResult, ErrorData> {
             let tools = self.tools.read().await.clone();
-            Ok(ListToolsResult {
-                tools,
-                next_cursor: None,
-                meta: None,
-            })
+            Ok(ListToolsResult::with_all_items(tools))
         }
 
         async fn call_tool(
@@ -520,16 +519,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_mcp_client_handler_get_info_delegates() {
-        let client_info = ClientInfo {
-            protocol_version: Default::default(),
-            capabilities: ClientCapabilities::default(),
-            client_info: Implementation {
-                name: "test-client".to_string(),
-                version: "1.0.0".to_string(),
-                ..Default::default()
-            },
-            meta: None,
-        };
+        let client_info = ClientInfo::new(
+            ClientCapabilities::default(),
+            Implementation::new("test-client", "1.0.0"),
+        );
 
         let tool_server_handle = ToolServer::new().run();
         let handler = McpClientHandler::new(client_info.clone(), tool_server_handle);
