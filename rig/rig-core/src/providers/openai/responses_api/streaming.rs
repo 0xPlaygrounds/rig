@@ -109,6 +109,40 @@ pub enum ResponseChunkKind {
     ResponseIncomplete,
 }
 
+fn response_error_message(error: Option<&super::ResponseError>, fallback: &str) -> String {
+    if let Some(error) = error {
+        if error.code.is_empty() {
+            error.message.clone()
+        } else {
+            format!("{}: {}", error.code, error.message)
+        }
+    } else {
+        format!("OpenAI response stream returned a {fallback}")
+    }
+}
+
+fn response_chunk_error_message(
+    kind: &ResponseChunkKind,
+    response: &CompletionResponse,
+) -> Option<String> {
+    match kind {
+        ResponseChunkKind::ResponseFailed => Some(response_error_message(
+            response.error.as_ref(),
+            "failed response",
+        )),
+        ResponseChunkKind::ResponseIncomplete => {
+            let reason = response
+                .incomplete_details
+                .as_ref()
+                .map(|details| details.reason.as_str())
+                .unwrap_or("unknown reason");
+
+            Some(format!("OpenAI response stream was incomplete: {reason}"))
+        }
+        _ => None,
+    }
+}
+
 /// An item message chunk from OpenAI's Responses API.
 /// See
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -385,14 +419,23 @@ where
                         }
 
                         if let StreamingCompletionChunk::Response(chunk) = data {
-                            if let ResponseChunk { kind: ResponseChunkKind::ResponseCompleted, response, .. } = *chunk {
-                                span.record("gen_ai.response.id", response.id);
-                                span.record("gen_ai.response.model", response.model);
-                                if let Some(usage) = response.usage {
-                                    final_usage = usage;
+                            let ResponseChunk { kind, response, .. } = *chunk;
+
+                            match kind {
+                                ResponseChunkKind::ResponseCompleted => {
+                                    span.record("gen_ai.response.id", response.id.as_str());
+                                    span.record("gen_ai.response.model", response.model.as_str());
+                                    if let Some(usage) = response.usage {
+                                        final_usage = usage;
+                                    }
                                 }
-                            } else {
-                                continue;
+                                ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
+                                    let error_message = response_chunk_error_message(&kind, &response)
+                                        .expect("terminal response should have an error message");
+                                    yield Err(CompletionError::ProviderError(error_message));
+                                    break;
+                                }
+                                _ => continue,
                             }
                         }
                     }
@@ -440,19 +483,110 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
+    use crate::completion::CompletionModel;
+    use crate::http_client::mock::MockStreamingClient;
     use crate::message::ReasoningContent;
-    use crate::providers::openai::responses_api::ReasoningSummary;
-    use crate::streaming::RawStreamingChoice;
+    use crate::providers::openai::responses_api::{
+        AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
+        ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
+    };
+    use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
+    use bytes::Bytes;
     use futures::StreamExt;
-    use rig::{client::CompletionClient, providers::openai, streaming::StreamingChat};
     use serde_json::{self, json};
 
     use crate::{
-        completion::ToolDefinition,
+        client::CompletionClient,
+        completion::{Message, ToolDefinition},
+        providers::openai,
+        streaming::StreamingChat,
         tool::{Tool, ToolError},
     };
 
     struct ExampleTool;
+
+    impl Default for MockStreamingClient {
+        fn default() -> Self {
+            Self {
+                sse_bytes: Bytes::new(),
+            }
+        }
+    }
+
+    impl std::fmt::Debug for MockStreamingClient {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("MockStreamingClient")
+                .finish_non_exhaustive()
+        }
+    }
+
+    fn sample_response(status: ResponseStatus) -> CompletionResponse {
+        CompletionResponse {
+            id: "resp_123".to_string(),
+            object: ResponseObject::Response,
+            created_at: 0,
+            status,
+            error: None,
+            incomplete_details: None,
+            instructions: None,
+            max_output_tokens: None,
+            model: "gpt-5.4".to_string(),
+            usage: None,
+            output: Vec::new(),
+            tools: Vec::new(),
+            additional_parameters: AdditionalParameters::default(),
+        }
+    }
+
+    fn sse_event_bytes(event: serde_json::Value) -> Bytes {
+        Bytes::from(format!(
+            "data: {}\n\n",
+            serde_json::to_string(&event).expect("event should serialize")
+        ))
+    }
+
+    async fn first_error_from_event(
+        event: serde_json::Value,
+    ) -> crate::completion::CompletionError {
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_event_bytes(event),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        stream
+            .next()
+            .await
+            .expect("stream should yield an item")
+            .expect_err("stream should surface a provider error")
+    }
+
+    async fn final_usage_from_event(event: serde_json::Value) -> ResponsesUsage {
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_event_bytes(event),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            match item.expect("completed stream should not error") {
+                StreamedAssistantContent::Final(res) => return res.usage,
+                _ => continue,
+            }
+        }
+
+        panic!("stream should yield a final response");
+    }
 
     impl Tool for ExampleTool {
         type Args = ();
@@ -631,6 +765,96 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn response_failed_chunk_surfaces_provider_error_without_empty_code_prefix() {
+        let mut response = sample_response(ResponseStatus::Failed);
+        response.error = Some(ResponseError {
+            code: String::new(),
+            message: "maximum context length exceeded".to_string(),
+        });
+
+        let event = json!({
+            "type": "response.failed",
+            "sequence_number": 1,
+            "response": response,
+        });
+
+        let err = first_error_from_event(event).await;
+
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: maximum context length exceeded"
+        );
+    }
+
+    #[tokio::test]
+    async fn response_failed_chunk_surfaces_provider_error_with_code_prefix() {
+        let mut response = sample_response(ResponseStatus::Failed);
+        response.error = Some(ResponseError {
+            code: "context_length_exceeded".to_string(),
+            message: "maximum context length exceeded".to_string(),
+        });
+
+        let event = json!({
+            "type": "response.failed",
+            "sequence_number": 1,
+            "response": response,
+        });
+
+        let err = first_error_from_event(event).await;
+
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: context_length_exceeded: maximum context length exceeded"
+        );
+    }
+
+    #[tokio::test]
+    async fn response_incomplete_chunk_uses_incomplete_details_reason() {
+        let mut response = sample_response(ResponseStatus::Incomplete);
+        response.incomplete_details = Some(IncompleteDetailsReason {
+            reason: "max_output_tokens".to_string(),
+        });
+
+        let event = json!({
+            "type": "response.incomplete",
+            "sequence_number": 1,
+            "response": response,
+        });
+
+        let err = first_error_from_event(event).await;
+
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: OpenAI response stream was incomplete: max_output_tokens"
+        );
+    }
+
+    #[tokio::test]
+    async fn response_completed_chunk_populates_final_usage() {
+        let mut response = sample_response(ResponseStatus::Completed);
+        response.usage = Some(ResponsesUsage {
+            input_tokens: 10,
+            input_tokens_details: None,
+            output_tokens: 5,
+            output_tokens_details: OutputTokensDetails {
+                reasoning_tokens: 0,
+            },
+            total_tokens: 15,
+        });
+
+        let event = json!({
+            "type": "response.completed",
+            "sequence_number": 1,
+            "response": response,
+        });
+
+        let usage = final_usage_from_event(event).await;
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
+    }
+
     // requires `derive` rig-core feature due to using tool macro
     #[tokio::test]
     #[ignore = "requires API key"]
@@ -646,9 +870,9 @@ mod tests {
             }))
             .build();
 
-        let chat_history = Vec::new();
+        let chat_history: Vec<Message> = Vec::new();
         let mut stream = agent
-            .stream_chat("Call my example tool", chat_history)
+            .stream_chat("Call my example tool", &chat_history)
             .multi_turn(5)
             .await;
 

@@ -1,6 +1,6 @@
 [package]
 name = "rig-lancedb"
-version = "0.4.2"
+version = "0.4.3"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 lancedb = { workspace = true }
-rig-core = { path = "../../rig/rig-core", version = "0.33.0", default-features = false }
+rig-core = { path = "../../rig/rig-core", version = "0.34.0", default-features = false }
 arrow-array = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -29,8 +29,8 @@ httpmock = { workspace = true }
 [features]
 # No TLS by default - rustls is now the default in reqwest 0.13
 default = []
-rig-native-tls = ["rig-core/reqwest-native-tls"]
-rig-rustls = ["rig-core/reqwest-rustls"]
+rig-native-tls = ["rig-core/native-tls"]
+rig-rustls = ["rig-core/rustls"]
 
 [[example]]
 name = "vector_search_local_ann"

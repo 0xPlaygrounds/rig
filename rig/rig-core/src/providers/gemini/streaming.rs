@@ -25,6 +25,7 @@ pub struct PartialUsage {
     pub candidates_token_count: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thoughts_token_count: Option<i32>,
+    #[serde(default)]
     pub prompt_token_count: i32,
 }
 

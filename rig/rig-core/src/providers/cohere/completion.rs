@@ -179,6 +179,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     output_tokens: output_tokens as u64,
                     total_tokens: (input_tokens + output_tokens) as u64,
                     cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
                 }
             })
             .unwrap_or_default();

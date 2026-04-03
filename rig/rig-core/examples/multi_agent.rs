@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
     agent::{Agent, AgentBuilder},
-    completion::{Chat, CompletionModel, PromptError, ToolDefinition},
+    completion::{Chat, CompletionModel, Message, PromptError, ToolDefinition},
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
@@ -21,7 +21,7 @@ struct TranslatorArgs {
     prompt: String,
 }
 
-impl<M: CompletionModel> Tool for TranslatorTool<M> {
+impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     const NAME: &'static str = "translator";
 
     type Args = TranslatorArgs;
@@ -47,7 +47,8 @@ impl<M: CompletionModel> Tool for TranslatorTool<M> {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        match self.0.chat(&args.prompt, vec![]).await {
+        let empty_history: &[Message] = &[];
+        match self.0.chat(&args.prompt, empty_history).await {
             Ok(response) => {
                 println!("Translated prompt: {response}");
                 Ok(response)

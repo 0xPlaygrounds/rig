@@ -61,6 +61,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                 output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: 0, // unreported at time of writing
+                cache_creation_input_tokens: 0,
             })
             .unwrap_or_default();
 

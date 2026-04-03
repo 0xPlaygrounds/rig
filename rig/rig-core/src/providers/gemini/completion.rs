@@ -507,6 +507,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 output_tokens: usage.candidates_token_count.unwrap_or(0) as u64,
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
             })
             .unwrap_or_default();
 
@@ -1300,6 +1301,7 @@ pub mod gemini_api_types {
     #[derive(Debug, Deserialize, Clone, Default, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UsageMetadata {
+        #[serde(default)]
         pub prompt_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub cached_content_token_count: Option<i32>,
@@ -1744,6 +1746,9 @@ pub mod gemini_api_types {
                     obj.get("type").and_then(extract_type).or_else(|| {
                         if obj.contains_key("properties") {
                             Some("object".to_string())
+                        } else if obj.contains_key("enum") {
+                            // Enum schemas without explicit type are string-backed
+                            Some("string".to_string())
                         } else {
                             None
                         }

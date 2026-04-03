@@ -1,6 +1,19 @@
 pub mod hooks;
 pub mod streaming;
 
+use super::{
+    Agent,
+    completion::{DynamicContextStore, build_completion_request},
+};
+use crate::{
+    OneOrMany,
+    completion::{CompletionModel, Document, Message, PromptError, Usage},
+    json_utils,
+    message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
+    tool::server::ToolServerHandle,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+};
+use futures::{StreamExt, stream};
 use hooks::{HookAction, PromptHook, ToolCallHookAction};
 use std::{
     future::IntoFuture,
@@ -10,24 +23,8 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
-use tracing::{Instrument, span::Id};
-
-use futures::{StreamExt, stream};
 use tracing::info_span;
-
-use crate::{
-    OneOrMany,
-    completion::{CompletionModel, Document, Message, PromptError, Usage},
-    json_utils,
-    message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
-    tool::server::ToolServerHandle,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
-};
-
-use super::{
-    Agent,
-    completion::{DynamicContextStore, build_completion_request},
-};
+use tracing::{Instrument, span::Id};
 
 pub trait PromptType {}
 pub struct Standard;
@@ -44,7 +41,7 @@ impl PromptType for Extended {}
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct PromptRequest<'a, S, M, P>
+pub struct PromptRequest<S, M, P>
 where
     S: PromptType,
     M: CompletionModel,
@@ -52,9 +49,8 @@ where
 {
     /// The prompt message to send to the model
     prompt: Message,
-    /// Optional chat history to include with the prompt
-    /// Note: chat history needs to outlive the agent as it might be used with other agents
-    chat_history: Option<&'a mut Vec<Message>>,
+    /// Optional chat history provided by the caller.
+    chat_history: Option<Vec<Message>>,
     /// Maximum depth for multi-turn conversations (0 means no multi-turn)
     max_turns: usize,
 
@@ -90,7 +86,7 @@ where
     output_schema: Option<schemars::Schema>,
 }
 
-impl<'a, M, P> PromptRequest<'a, Standard, M, P>
+impl<M, P> PromptRequest<Standard, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
@@ -119,7 +115,7 @@ where
     }
 }
 
-impl<'a, S, M, P> PromptRequest<'a, S, M, P>
+impl<S, M, P> PromptRequest<S, M, P>
 where
     S: PromptType,
     M: CompletionModel,
@@ -131,7 +127,7 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<'a, Extended, M, P> {
+    pub fn extended_details(self) -> PromptRequest<Extended, M, P> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -167,15 +163,19 @@ where
         self
     }
 
-    /// Add chat history to the prompt request
-    pub fn with_history(mut self, history: &'a mut Vec<Message>) -> Self {
-        self.chat_history = Some(history);
+    /// Add chat history to the prompt request.
+    pub fn with_history<I, T>(mut self, history: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<Message>,
+    {
+        self.chat_history = Some(history.into_iter().map(Into::into).collect());
         self
     }
 
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<'a, S, M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2>
     where
         P2: PromptHook<M>,
     {
@@ -204,33 +204,33 @@ where
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<'a, M, P> IntoFuture for PromptRequest<'a, Standard, M, P>
+impl<M, P> IntoFuture for PromptRequest<Standard, M, P>
 where
-    M: CompletionModel + 'a,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
-    type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
+    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
     }
 }
 
-impl<'a, M, P> IntoFuture for PromptRequest<'a, Extended, M, P>
+impl<M, P> IntoFuture for PromptRequest<Extended, M, P>
 where
-    M: CompletionModel + 'a,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
-    type IntoFuture = WasmBoxedFuture<'a, Self::Output>; // This future should not outlive the agent
+    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
     }
 }
 
-impl<M, P> PromptRequest<'_, Standard, M, P>
+impl<M, P> PromptRequest<Standard, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
@@ -245,8 +245,6 @@ where
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
-    /// The message history accumulated during the agent loop.
-    /// Always populated when using `extended_details()`.
     pub messages: Option<Vec<Message>>,
 }
 
@@ -285,7 +283,25 @@ impl<T> TypedPromptResponse<T> {
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
-impl<M, P> PromptRequest<'_, Extended, M, P>
+/// Combine input history with new messages for building completion requests.
+fn build_history_for_request(
+    chat_history: Option<&[Message]>,
+    new_messages: &[Message],
+) -> Vec<Message> {
+    let input = chat_history.unwrap_or(&[]);
+    input.iter().chain(new_messages.iter()).cloned().collect()
+}
+
+/// Build the full history for error reporting (input + new messages).
+fn build_full_history(
+    chat_history: Option<&[Message]>,
+    new_messages: Vec<Message>,
+) -> Vec<Message> {
+    let input = chat_history.unwrap_or(&[]);
+    input.iter().cloned().chain(new_messages).collect()
+}
+
+impl<M, P> PromptRequest<Extended, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
@@ -294,7 +310,7 @@ where
         self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    async fn send(mut self) -> Result<PromptResponse, PromptError> {
+    async fn send(self) -> Result<PromptResponse, PromptError> {
         let agent_span = if tracing::Span::current().is_disabled() {
             info_span!(
                 "invoke_agent",
@@ -305,7 +321,8 @@ where
                 gen_ai.completion = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -315,15 +332,9 @@ where
             agent_span.record("gen_ai.prompt", text);
         }
 
-        // Capture agent_name before borrowing chat_history
         let agent_name_for_span = self.agent_name.clone();
-
-        let chat_history = if let Some(history) = self.chat_history.as_mut() {
-            history.push(self.prompt.to_owned());
-            history
-        } else {
-            &mut vec![self.prompt.to_owned()]
-        };
+        let chat_history = self.chat_history;
+        let mut new_messages: Vec<Message> = vec![self.prompt.clone()];
 
         let mut current_max_turns = 0;
         let mut usage = Usage::new();
@@ -331,10 +342,11 @@ where
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
         let last_prompt = loop {
-            let prompt = chat_history
+            // Get the last message (the current prompt)
+            let prompt = new_messages
                 .last()
-                .cloned()
-                .expect("there should always be at least one message in the chat history");
+                .expect("there should always be at least one message")
+                .clone();
 
             if current_max_turns > self.max_turns + 1 {
                 break prompt;
@@ -350,12 +362,20 @@ where
                 );
             }
 
+            // Build history for hook callback (input + new messages except last)
+            let history_for_hook = build_history_for_request(
+                chat_history.as_deref(),
+                &new_messages[..new_messages.len().saturating_sub(1)],
+            );
+
             if let Some(ref hook) = self.hook
-                && let HookAction::Terminate { reason } = hook
-                    .on_completion_call(&prompt, &chat_history[..chat_history.len() - 1])
-                    .await
+                && let HookAction::Terminate { reason } =
+                    hook.on_completion_call(&prompt, &history_for_hook).await
             {
-                return Err(PromptError::prompt_cancelled(chat_history.to_vec(), reason));
+                return Err(PromptError::prompt_cancelled(
+                    build_full_history(chat_history.as_deref(), new_messages),
+                    reason,
+                ));
             }
 
             let span = tracing::Span::current();
@@ -372,7 +392,8 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             );
@@ -388,10 +409,16 @@ where
                 current_span_id.store(id.into_u64(), Ordering::SeqCst);
             };
 
+            // Build history for completion request (input + new messages except last)
+            let history_for_request = build_history_for_request(
+                chat_history.as_deref(),
+                &new_messages[..new_messages.len().saturating_sub(1)],
+            );
+
             let resp = build_completion_request(
                 &self.model,
                 prompt.clone(),
-                chat_history[..chat_history.len() - 1].to_vec(),
+                &history_for_request,
                 self.preamble.as_deref(),
                 &self.static_context,
                 self.temperature,
@@ -413,7 +440,10 @@ where
                 && let HookAction::Terminate { reason } =
                     hook.on_completion_response(&prompt, &resp).await
             {
-                return Err(PromptError::prompt_cancelled(chat_history.to_vec(), reason));
+                return Err(PromptError::prompt_cancelled(
+                    build_full_history(chat_history.as_deref(), new_messages),
+                    reason,
+                ));
             }
 
             let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
@@ -421,7 +451,7 @@ where
                 .iter()
                 .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
 
-            chat_history.push(Message::Assistant {
+            new_messages.push(Message::Assistant {
                 id: resp.message_id.clone(),
                 content: resp.choice.clone(),
             });
@@ -446,16 +476,24 @@ where
                 agent_span.record("gen_ai.completion", &merged_texts);
                 agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
                 agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                agent_span.record("gen_ai.usage.cached_tokens", usage.cached_input_tokens);
-
-                // If there are no tool calls, depth is not relevant, we can just return the merged text response.
-                return Ok(
-                    PromptResponse::new(merged_texts, usage).with_messages(chat_history.to_vec())
+                agent_span.record(
+                    "gen_ai.usage.cache_read.input_tokens",
+                    usage.cached_input_tokens,
                 );
+                agent_span.record(
+                    "gen_ai.usage.cache_creation.input_tokens",
+                    usage.cache_creation_input_tokens,
+                );
+
+                return Ok(PromptResponse::new(merged_texts, usage).with_messages(new_messages));
             }
 
             let hook = self.hook.clone();
             let tool_server_handle = self.tool_server_handle.clone();
+
+            // For error handling in concurrent tool execution, we need to build full history
+            let full_history_for_errors =
+                build_full_history(chat_history.as_deref(), new_messages.clone());
 
             let tool_calls: Vec<AssistantContent> = tool_calls.into_iter().cloned().collect();
             let tool_content = stream::iter(tool_calls)
@@ -485,7 +523,8 @@ where
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
-                    let cloned_chat_history = chat_history.clone().to_vec();
+                    // Clone full history for error reporting in concurrent tool execution
+                    let cloned_history_for_error = full_history_for_errors.clone();
 
                     async move {
                         if let AssistantContent::ToolCall(tool_call) = choice {
@@ -509,7 +548,7 @@ where
 
                                 if let ToolCallHookAction::Terminate { reason } = action {
                                     return Err(PromptError::prompt_cancelled(
-                                        cloned_chat_history,
+                                        cloned_history_for_error,
                                         reason,
                                     ));
                                 }
@@ -555,7 +594,7 @@ where
                                     .await
                             {
                                 return Err(PromptError::prompt_cancelled(
-                                    cloned_chat_history,
+                                    cloned_history_for_error,
                                     reason,
                                 ));
                             }
@@ -590,16 +629,16 @@ where
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>()?;
 
-            chat_history.push(Message::User {
-                content: OneOrMany::many(tool_content).expect("There is atleast one tool call"),
+            new_messages.push(Message::User {
+                content: OneOrMany::many(tool_content).expect("There is at least one tool call"),
             });
         };
 
-        // If we reach here, we never resolved the final tool call. We need to do ... something.
+        // If we reach here, we exceeded max turns without a final response
         Err(PromptError::MaxTurnsError {
             max_turns: self.max_turns,
-            chat_history: Box::new(chat_history.clone()),
-            prompt: Box::new(last_prompt),
+            chat_history: build_full_history(chat_history.as_deref(), new_messages).into(),
+            prompt: last_prompt.into(),
         })
     }
 }
@@ -628,18 +667,18 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<'a, T, S, M, P>
+pub struct TypedPromptRequest<T, S, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
 {
-    inner: PromptRequest<'a, S, M, P>,
+    inner: PromptRequest<S, M, P>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a, T, M, P> TypedPromptRequest<'a, T, Standard, M, P>
+impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
@@ -659,7 +698,7 @@ where
     }
 }
 
-impl<'a, T, S, M, P> TypedPromptRequest<'a, T, S, M, P>
+impl<T, S, M, P> TypedPromptRequest<T, S, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
@@ -671,7 +710,7 @@ where
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<'a, T, Extended, M, P> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M, P> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -697,7 +736,11 @@ where
     }
 
     /// Add chat history to the prompt request.
-    pub fn with_history(mut self, history: &'a mut Vec<Message>) -> Self {
+    pub fn with_history<I, H>(mut self, history: I) -> Self
+    where
+        I: IntoIterator<Item = H>,
+        H: Into<Message>,
+    {
         self.inner = self.inner.with_history(history);
         self
     }
@@ -705,7 +748,7 @@ where
     /// Attach a per-request hook for tool call events.
     ///
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<'a, T, S, M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<T, S, M, P2>
     where
         P2: PromptHook<M>,
     {
@@ -716,7 +759,7 @@ where
     }
 }
 
-impl<'a, T, M, P> TypedPromptRequest<'a, T, Standard, M, P>
+impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
@@ -724,7 +767,7 @@ where
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
-        let response = self.inner.send().await?;
+        let response = self.inner.send().await.map_err(Box::new)?;
 
         if response.is_empty() {
             return Err(StructuredOutputError::EmptyResponse);
@@ -735,7 +778,7 @@ where
     }
 }
 
-impl<'a, T, M, P> TypedPromptRequest<'a, T, Extended, M, P>
+impl<T, M, P> TypedPromptRequest<T, Extended, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
@@ -743,7 +786,7 @@ where
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
-        let response = self.inner.send().await?;
+        let response = self.inner.send().await.map_err(Box::new)?;
 
         if response.output.is_empty() {
             return Err(StructuredOutputError::EmptyResponse);
@@ -754,28 +797,28 @@ where
     }
 }
 
-impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, Standard, M, P>
+impl<T, M, P> IntoFuture for TypedPromptRequest<T, Standard, M, P>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a,
-    M: CompletionModel + 'a,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'a, Self::Output>;
+    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
     }
 }
 
-impl<'a, T, M, P> IntoFuture for TypedPromptRequest<'a, T, Extended, M, P>
+impl<T, M, P> IntoFuture for TypedPromptRequest<T, Extended, M, P>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'a,
-    M: CompletionModel + 'a,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
+    M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'a, Self::Output>;
+    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())

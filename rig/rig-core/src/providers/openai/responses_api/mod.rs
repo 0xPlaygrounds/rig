@@ -31,7 +31,7 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
 pub mod websocket;
 
 /// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
@@ -176,6 +176,7 @@ pub enum InputContent {
 pub struct OpenAIReasoning {
     id: String,
     pub summary: Vec<ReasoningSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub encrypted_content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<ToolStatus>,
@@ -1424,6 +1425,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .as_ref()
                     .map(|d| d.cached_tokens)
                     .unwrap_or(0),
+                cache_creation_input_tokens: 0,
             })
             .unwrap_or_default();
 
