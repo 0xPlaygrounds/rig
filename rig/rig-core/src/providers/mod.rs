@@ -11,6 +11,7 @@
 //! - DeepSeek
 //! - Azure OpenAI
 //! - Mira
+//! - MiniMax
 //!
 //! Each provider has its own module, which contains a `Client` implementation that can
 //! be used to initialize completion and embedding models and execute requests to those models.
@@ -55,6 +56,7 @@ pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
 pub mod llamafile;
+pub mod minimax;
 pub mod mira;
 pub mod mistral;
 pub mod moonshot;

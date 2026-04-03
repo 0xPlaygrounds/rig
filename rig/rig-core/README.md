@@ -63,6 +63,7 @@ Rig supports the following LLM providers out of the box:
 - Groq
 - Huggingface
 - Hyperbolic
+- MiniMax
 - Mira
 - Mistral
 - Moonshot

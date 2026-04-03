@@ -69,6 +69,7 @@
 //! - Groq
 //! - Huggingface
 //! - Hyperbolic
+//! - MiniMax
 //! - Mira
 //! - Mistral
 //! - Moonshot
