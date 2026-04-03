@@ -162,6 +162,11 @@ pub const STABILITY_STABLE_IMAGE_ULTRA_1_0_V1_0: &str = "stability.stable-image-
 pub struct CompletionModel {
     pub(crate) client: Client,
     pub model: String,
+    /// When enabled, cache checkpoints are inserted into Converse API requests
+    /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
+    /// A checkpoint is placed after the system prompt and after the last message
+    /// in the chat history. Disabled by default.
+    pub prompt_caching: bool,
 }
 
 impl CompletionModel {
@@ -169,8 +174,39 @@ impl CompletionModel {
         Self {
             client,
             model: model.into(),
+            prompt_caching: false,
         }
     }
+
+    /// Enable Bedrock prompt caching for this model.
+    ///
+    /// When enabled, `CachePoint` blocks are inserted after the serialized
+    /// `system` content and after the final `messages` entry in each Converse
+    /// API request. This allows Bedrock to cache and reuse repeated prompt
+    /// prefixes, reducing both latency and input token costs.
+    ///
+    /// This currently covers the `system` and `messages` request fields only.
+    /// Some Bedrock models also support caching `tools`, but that is not wired
+    /// up here yet.
+    ///
+    /// Cacheability and token thresholds are model-specific. If the cached
+    /// prefix is too short or the model does not support caching for a given
+    /// field, Bedrock ignores the checkpoint. See the Bedrock prompt caching
+    /// support table for current limits and field support.
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
+    }
+}
+
+pub(crate) fn resolve_request_model(
+    default_model: &str,
+    completion_request: &CompletionRequest,
+) -> String {
+    completion_request
+        .model
+        .clone()
+        .unwrap_or_else(|| default_model.to_string())
 }
 
 impl completion::CompletionModel for CompletionModel {
@@ -187,10 +223,7 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
+        let request_model = resolve_request_model(&self.model, &completion_request);
 
         let span = if tracing::Span::current().is_disabled() {
             tracing::info_span!(
@@ -211,7 +244,10 @@ impl completion::CompletionModel for CompletionModel {
             tracing::Span::current()
         };
 
-        let request = AwsCompletionRequest(completion_request);
+        let request = AwsCompletionRequest {
+            inner: completion_request,
+            prompt_caching: self.prompt_caching,
+        };
 
         let mut converse_builder = self
             .client
@@ -255,5 +291,52 @@ impl completion::CompletionModel for CompletionModel {
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         CompletionModel::stream(self, request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_request_model_uses_override() {
+        let request = CompletionRequest {
+            model: Some("anthropic.claude-3-7-sonnet-20250219-v1:0".to_string()),
+            preamble: None,
+            chat_history: rig::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        assert_eq!(
+            resolve_request_model("anthropic.claude-3-haiku-20240307-v1:0", &request),
+            "anthropic.claude-3-7-sonnet-20250219-v1:0"
+        );
+    }
+
+    #[test]
+    fn test_resolve_request_model_uses_default_when_unset() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: rig::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        assert_eq!(
+            resolve_request_model("anthropic.claude-3-haiku-20240307-v1:0", &request),
+            "anthropic.claude-3-haiku-20240307-v1:0"
+        );
     }
 }
