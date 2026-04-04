@@ -166,15 +166,7 @@ name = "pdf_agent"
 required-features = ["derive", "pdf"]
 
 [[example]]
-name = "together_embeddings"
-required-features = ["derive"]
-
-[[example]]
 name = "openai_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "hyperbolic_audio_generation"
 required-features = ["audio"]
 
 [[example]]
@@ -183,10 +175,6 @@ required-features = ["audio"]
 
 [[example]]
 name = "mistral_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "voyageai_embeddings"
 required-features = ["derive"]
 
 [[example]]

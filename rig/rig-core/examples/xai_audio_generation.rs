@@ -1,3 +1,7 @@
+//! xAI-specific audio generation example showing provider-specific
+//! `additional_params`. The generic audio-generation example lives in
+//! `openai_audio_generation.rs`.
+
 use rig::audio_generation::AudioGenerationModel;
 use rig::client::audio_generation::AudioGenerationClient;
 use rig::prelude::*;

@@ -1,3 +1,6 @@
+//! Gemini-specific extractor example showing how to pass `additional_params`.
+//! The generic extractor flow lives in `extractor.rs`.
+
 use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
@@ -6,29 +9,19 @@ use rig::providers::gemini::completion::gemini_api_types::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 /// A record representing a person
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Person {
     /// The person's first name, if provided (null otherwise)
     pub first_name: Option<String>,
     /// The person's last name, if provided (null otherwise)
     pub last_name: Option<String>,
     /// The person's job, if provided (null otherwise)
-    pub job: Option<FooString>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub struct FooString {
-    string: String,
+    pub job: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_target(false)
-        .init();
-
     let gen_cfg = GenerationConfig::default();
     let cfg = AdditionalParameters::default().with_config(gen_cfg);
 
@@ -45,7 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;
 
-    println!("GEMINI: {}", serde_json::to_string_pretty(&person).unwrap());
+    println!("GEMINI: {}", serde_json::to_string_pretty(&person)?);
 
     Ok(())
 }

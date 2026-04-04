@@ -1,7 +1,14 @@
 //! Shared fixtures, tiny tools, and durable assertions for ignored smoke tests.
 #![allow(dead_code)]
 
-use rig::{completion::ToolDefinition, tool::Tool};
+use futures::StreamExt;
+use rig::{
+    agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
+    completion::ToolDefinition,
+    embeddings::Embedding,
+    tool::Tool,
+};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -20,6 +27,49 @@ pub(crate) const TOOLS_PROMPT: &str = "Calculate 2 - 5.";
 
 pub(crate) const LOADERS_GLOB: &str = "rig-core/examples/*.rs";
 pub(crate) const LOADERS_PROMPT: &str = "Which example file builds an agent from files loaded via FileLoader::with_glob(\"rig-core/examples/*.rs\")? Answer with just the file name.";
+
+pub(crate) const STREAMING_PREAMBLE: &str =
+    "You are a concise assistant. Answer directly in plain text.";
+pub(crate) const STREAMING_PROMPT: &str =
+    "In one short paragraph, explain what a solar eclipse is.";
+
+pub(crate) const STREAMING_TOOLS_PREAMBLE: &str =
+    "You are a calculator. Use the provided tools before answering arithmetic questions.";
+pub(crate) const STREAMING_TOOLS_PROMPT: &str = "Calculate 2 - 5.";
+
+pub(crate) const STRUCTURED_OUTPUT_PROMPT: &str =
+    "Return a concise event object for a local Rust meetup in Seattle.";
+
+pub(crate) const EXTRACTOR_TEXT: &str =
+    "Hello, my name is Ada Lovelace and I work as a mathematician.";
+
+pub(crate) const IMAGE_PROMPT: &str =
+    "A lighthouse on a rocky cliff at sunrise, painted in a clean illustrative style.";
+
+pub(crate) const AUDIO_TEXT: &str = "The quick brown fox jumps over the lazy dog.";
+
+pub(crate) const EMBEDDING_INPUTS: [&str; 3] = [
+    "Rust values memory safety and predictable performance.",
+    "Streaming responses arrive incrementally instead of all at once.",
+    "Embeddings turn text into numeric vectors for similarity search.",
+];
+
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct SmokeStructuredOutput {
+    pub(crate) title: String,
+    pub(crate) category: String,
+    pub(crate) summary: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
+pub(crate) struct SmokePerson {
+    #[schemars(required)]
+    pub(crate) first_name: Option<String>,
+    #[schemars(required)]
+    pub(crate) last_name: Option<String>,
+    #[schemars(required)]
+    pub(crate) job: Option<String>,
+}
 
 #[derive(Deserialize)]
 pub(crate) struct OperationArgs {
@@ -146,6 +196,55 @@ pub(crate) fn assert_mentions_expected_number(response: &str, expected: i32) {
         "Response {:?} did not mention the expected number {:?}.",
         response, expected
     );
+}
+
+pub(crate) fn assert_nonempty_bytes(bytes: &[u8]) {
+    assert!(!bytes.is_empty(), "Expected non-empty bytes.");
+}
+
+pub(crate) fn assert_embeddings_nonempty_and_consistent(
+    embeddings: &[Embedding],
+    expected_count: usize,
+) {
+    assert_eq!(
+        embeddings.len(),
+        expected_count,
+        "Expected {expected_count} embeddings but received {}.",
+        embeddings.len()
+    );
+
+    let mut expected_dims = None;
+
+    for embedding in embeddings {
+        assert!(
+            !embedding.vec.is_empty(),
+            "Embedding for {:?} was empty.",
+            embedding.document
+        );
+
+        let dims = embedding.vec.len();
+        match expected_dims {
+            Some(previous_dims) => assert_eq!(
+                dims, previous_dims,
+                "Expected consistent embedding dimensionality."
+            ),
+            None => expected_dims = Some(dims),
+        }
+    }
+}
+
+pub(crate) async fn collect_stream_final_response<R>(
+    stream: &mut StreamingResult<R>,
+) -> Result<String, StreamingError> {
+    let mut final_response = None;
+
+    while let Some(item) = stream.next().await {
+        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+            final_response = Some(response.response().to_owned());
+        }
+    }
+
+    Ok(final_response.expect("stream should yield a final response"))
 }
 
 pub(crate) fn assert_loader_answer_is_relevant(response: &str) {

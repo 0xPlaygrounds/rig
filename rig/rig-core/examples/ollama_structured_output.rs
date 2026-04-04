@@ -1,3 +1,7 @@
+//! Ollama-specific structured-output example for a local/self-hosted model.
+//! The generic structured-output example lives in
+//! `openai_structured_output.rs`.
+
 use rig::prelude::*;
 use rig::{completion::Prompt, providers::ollama};
 use schemars::JsonSchema;

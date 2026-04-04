@@ -1,3 +1,6 @@
+//! Ollama-specific streaming example for a local/self-hosted model. The
+//! generic streaming flow lives in `openai_streaming.rs`.
+
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 use rig::providers::ollama;

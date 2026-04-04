@@ -1,3 +1,7 @@
+//! Gemini-specific streaming example showing how to pass thinking config via
+//! `additional_params`. The generic streaming flow lives in
+//! `openai_streaming.rs`.
+
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::{

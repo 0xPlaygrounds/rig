@@ -1,3 +1,7 @@
+//! Hugging Face-specific streaming example comparing the default inference path
+//! with the Together subprovider path. The generic streaming flow lives in
+//! `openai_streaming.rs`.
+
 use rig::prelude::*;
 use std::env;
 

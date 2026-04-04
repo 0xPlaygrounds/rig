@@ -1,3 +1,7 @@
+//! xAI-specific image generation example showing provider-specific
+//! `additional_params`. The generic image-generation example lives in
+//! `openai_image_generation.rs`.
+
 use rig::image_generation::ImageGenerationModel;
 use rig::prelude::*;
 use rig::providers::xai;
@@ -27,7 +31,7 @@ async fn main() {
 
     let response = model
         .image_generation_request()
-        .prompt("A lone explorer in a steampunk diving suit discovering an underwater lost city overgrown with bioluminescent coral and ancient ruins. The diver has a large brass helmet with glowing portholes, holding a vintage lantern that illuminates schools of colorful fish and crumbling marble columns covered in barnacles. Soft volumetric light rays piercing the deep blue water from above, mysterious and wondrous atmosphere. Cinematic composition, highly detailed textures on the suit and architecture, in the style of James Cameron's The Abyss meets Hayao Miyazaki, photorealistic with fantasy elements, 8k, ultra-detailed, masterpiece")
+        .prompt("A lone explorer discovering an underwater lost city lit by bioluminescent coral.")
         .additional_params(json!({
             "resolution": "2k",
             "aspect_ratio": "4:3",

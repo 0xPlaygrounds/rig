@@ -1,3 +1,6 @@
+//! Ollama-specific streaming-with-tools example for a local/self-hosted model.
+//! The generic version lives in `openai_streaming_with_tools.rs`.
+
 use anyhow::Result;
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
