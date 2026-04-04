@@ -133,10 +133,6 @@ reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
 reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls", "reqwest/native-tls"]
 
-[[test]]
-name = "embed_macro"
-required-features = ["derive"]
-
 [[example]]
 name = "rag"
 required-features = ["derive"]
