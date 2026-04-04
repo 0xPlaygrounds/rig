@@ -2,6 +2,7 @@ mod agent;
 mod anthropic_plaintext_document;
 mod anthropic_think_tool;
 mod anthropic_think_tool_with_other_tools;
+mod default_max_turns;
 mod image;
 mod multi_turn_streaming;
 mod reasoning_roundtrip;

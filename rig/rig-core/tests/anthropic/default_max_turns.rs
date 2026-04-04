@@ -1,5 +1,6 @@
-//! Migrated from `examples/agent_with_default_max_turns.rs`.
+//! Preserves the live default-max-turns example as provider-local regression coverage.
 
+use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Prompt, ToolDefinition};
 use rig::providers::anthropic;
@@ -16,8 +17,10 @@ struct OperationArgs {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct MathError;
+enum MathError {
+    #[error("division by zero")]
+    DivisionByZero,
+}
 
 #[derive(Deserialize, Serialize)]
 struct Add;
@@ -67,15 +70,18 @@ impl Tool for Divide {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        if args.y == 0 {
+            return Err(MathError::DivisionByZero);
+        }
+
         Ok(args.x / args.y)
     }
 }
 
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY"]
-async fn default_max_turns_allows_multi_step_tool_use() {
-    let client = anthropic::Client::from_env();
-    let agent = client
+async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
+    let agent = anthropic::Client::from_env()
         .agent(anthropic::completion::CLAUDE_3_5_SONNET)
         .preamble(
             "You are an assistant that must use the available tools for arithmetic. \
@@ -88,8 +94,9 @@ async fn default_max_turns_allows_multi_step_tool_use() {
 
     let response = agent
         .prompt("Calculate (3 + 5) / 4 and describe the result.")
-        .await
-        .expect("prompt should succeed");
+        .await?;
 
     assert_mentions_expected_number(&response, 2);
+
+    Ok(())
 }

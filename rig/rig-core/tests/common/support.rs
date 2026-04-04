@@ -25,8 +25,8 @@ pub(crate) const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 pub(crate) const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 pub(crate) const TOOLS_PROMPT: &str = "Calculate 2 - 5.";
 
-pub(crate) const LOADERS_GLOB: &str = "rig-core/tests/core/*.rs";
-pub(crate) const LOADERS_PROMPT: &str = "Which test module builds an agent from files loaded via FileLoader::with_glob(\"rig-core/tests/core/*.rs\")? Answer with just the file name.";
+pub(crate) const LOADERS_GLOB: &str = "rig-core/examples/*.rs";
+pub(crate) const LOADERS_PROMPT: &str = "Which example builds an agent from files loaded via FileLoader::with_glob(\"rig-core/examples/*.rs\")? Answer with just the file name.";
 
 pub(crate) const STREAMING_PREAMBLE: &str =
     "You are a concise assistant. Answer directly in plain text.";

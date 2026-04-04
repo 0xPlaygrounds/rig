@@ -1,13 +1,10 @@
-//! Migrated from `examples/multi_extract.rs`.
-
+use anyhow::Result;
 use rig::client::ProviderClient;
 use rig::pipeline::{self, TryOp, agent_ops};
 use rig::providers::openai;
 use rig::try_parallel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use crate::support::assert_nonempty_response;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -25,9 +22,8 @@ struct Sentiment {
     confidence: f64,
 }
 
-#[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
-async fn batch_multi_extract_chain() {
+#[tokio::main]
+async fn main() -> Result<()> {
     let client = openai::Client::from_env();
     let names_extractor = client
         .extractor::<Names>(openai::GPT_4)
@@ -58,7 +54,7 @@ async fn batch_multi_extract_chain() {
             )
         });
 
-    let responses: Vec<String> = chain
+    let responses = chain
         .try_batch_call(
             4,
             vec![
@@ -67,11 +63,11 @@ async fn batch_multi_extract_chain() {
                 "I'm going to the store to buy some milk.",
             ],
         )
-        .await
-        .expect("batch multi-extract should succeed");
+        .await?;
 
-    assert_eq!(responses.len(), 3);
-    for response in responses {
-        assert_nonempty_response(&response);
+    for (idx, response) in responses.iter().enumerate() {
+        println!("batch item {}:\n{response}\n", idx + 1);
     }
+
+    Ok(())
 }

@@ -1,14 +1,14 @@
-//! Migrated from `examples/request_hook.rs`.
+//! Preserves the live request-hook example as provider-local regression coverage.
 
+use anyhow::{Result, anyhow};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::HookAction;
-use rig::agent::PromptHook;
+use rig::agent::{HookAction, PromptHook};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::UserContent;
-use rig::providers::{self, openai};
+use rig::providers::openai;
 
 use crate::support::assert_nonempty_response;
 
@@ -21,7 +21,10 @@ struct SessionIdHook<'a> {
     seen_response: Arc<Mutex<Option<String>>>,
 }
 
-impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
+impl<'a, M> PromptHook<M> for SessionIdHook<'a>
+where
+    M: CompletionModel,
+{
     async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) -> HookAction {
         let Message::User { content } = prompt else {
             return HookAction::terminate("expected a user message");
@@ -37,9 +40,13 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
             .join("\n");
 
         self.prompt_calls.fetch_add(1, Ordering::SeqCst);
-        let mut seen_prompt = self.seen_prompt.lock().expect("prompt mutex");
-        *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
-        HookAction::cont()
+        match self.seen_prompt.lock() {
+            Ok(mut seen_prompt) => {
+                *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
+                HookAction::cont()
+            }
+            Err(_) => HookAction::terminate("prompt hook state unavailable"),
+        }
     }
 
     async fn on_completion_response(
@@ -48,17 +55,20 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         response: &CompletionResponse<M::Response>,
     ) -> HookAction {
         self.response_calls.fetch_add(1, Ordering::SeqCst);
-        let mut seen_response = self.seen_response.lock().expect("response mutex");
-        *seen_response = Some(format!("{:?}", response.choice));
-        HookAction::cont()
+        match self.seen_response.lock() {
+            Ok(mut seen_response) => {
+                *seen_response = Some(format!("{:?}", response.choice));
+                HookAction::cont()
+            }
+            Err(_) => HookAction::terminate("response hook state unavailable"),
+        }
     }
 }
 
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
-async fn request_hook_records_prompt_and_response() {
-    let client = providers::openai::Client::from_env();
-    let agent = client
+async fn request_hook_records_prompt_and_response() -> Result<()> {
+    let agent = openai::Client::from_env()
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
@@ -74,24 +84,33 @@ async fn request_hook_records_prompt_and_response() {
     let response = agent
         .prompt("Entertain me!")
         .with_hook(hook.clone())
-        .await
-        .expect("prompt should succeed");
+        .await?;
 
     assert_nonempty_response(&response);
     assert_eq!(hook.prompt_calls.load(Ordering::SeqCst), 1);
     assert_eq!(hook.response_calls.load(Ordering::SeqCst), 1);
+
+    let seen_prompt = hook
+        .seen_prompt
+        .lock()
+        .map_err(|_| anyhow!("prompt hook state unavailable"))?
+        .clone();
+    let seen_response = hook
+        .seen_response
+        .lock()
+        .map_err(|_| anyhow!("response hook state unavailable"))?
+        .clone();
+
     assert!(
-        hook.seen_prompt
-            .lock()
-            .expect("prompt mutex")
+        seen_prompt
             .as_deref()
             .is_some_and(|prompt| prompt.contains("Entertain me!"))
     );
     assert!(
-        hook.seen_response
-            .lock()
-            .expect("response mutex")
+        seen_response
             .as_deref()
             .is_some_and(|captured| !captured.is_empty())
     );
+
+    Ok(())
 }

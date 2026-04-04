@@ -5,6 +5,7 @@ mod extractor;
 mod extractor_usage;
 #[cfg(feature = "image")]
 mod image_generation;
+mod multi_extract;
 mod openai_agent_completions_api;
 #[cfg(feature = "audio")]
 mod openai_audio_generation;
@@ -18,6 +19,7 @@ mod openai_websocket_mode;
 mod permission_control;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;
+mod request_hook;
 mod response_schema;
 mod responses_input_item;
 mod streaming;
