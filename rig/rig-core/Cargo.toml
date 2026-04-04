@@ -162,15 +162,8 @@ name = "gemini_embeddings"
 required-features = ["derive"]
 
 [[example]]
-name = "agent_with_moonshot"
-
-[[example]]
 name = "pdf_agent"
 required-features = ["derive", "pdf"]
-
-[[example]]
-name = "agent_with_together"
-required-features = ["derive"]
 
 [[example]]
 name = "together_embeddings"

@@ -4,7 +4,7 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::gemini;
 
-use crate::support::{PREAMBLE, PROMPT, assert_nontrivial_response};
+use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
@@ -12,13 +12,13 @@ async fn completion_smoke() {
     let client = gemini::Client::from_env();
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .preamble(PREAMBLE)
+        .preamble(BASIC_PREAMBLE)
         .build();
 
     let response = agent
-        .prompt(PROMPT)
+        .prompt(BASIC_PROMPT)
         .await
         .expect("completion should succeed");
 
-    assert_nontrivial_response(&response);
+    assert_nonempty_response(&response);
 }

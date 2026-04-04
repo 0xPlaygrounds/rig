@@ -1,17 +1,17 @@
-//! OpenAI agent completion smoke test.
+//! Hugging Face agent completion smoke test.
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
-use rig::providers::openai;
+use rig::providers::huggingface;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
+#[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn completion_smoke() {
-    let client = openai::Client::from_env();
+    let client = huggingface::Client::from_env();
     let agent = client
-        .agent(openai::GPT_4O)
+        .agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
         .preamble(BASIC_PREAMBLE)
         .build();
 

@@ -4,7 +4,7 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::anthropic;
 
-use crate::support::{PREAMBLE, PROMPT, assert_nontrivial_response};
+use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY"]
@@ -12,13 +12,13 @@ async fn completion_smoke() {
     let client = anthropic::Client::from_env();
     let agent = client
         .agent(anthropic::completion::CLAUDE_3_5_SONNET)
-        .preamble(PREAMBLE)
+        .preamble(BASIC_PREAMBLE)
         .build();
 
     let response = agent
-        .prompt(PROMPT)
+        .prompt(BASIC_PROMPT)
         .await
         .expect("completion should succeed");
 
-    assert_nontrivial_response(&response);
+    assert_nonempty_response(&response);
 }
