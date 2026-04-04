@@ -35,5 +35,13 @@ async fn structured_output_prompt() {
 
     assert_nonempty_response(&character.name);
     assert_nonempty_response(&character.bio);
+    assert!(character.age > 0, "character age should be positive");
     assert!(!character.traits.is_empty(), "traits should not be empty");
+    assert!(
+        character
+            .traits
+            .iter()
+            .all(|trait_name| !trait_name.trim().is_empty()),
+        "traits should not contain empty entries"
+    );
 }

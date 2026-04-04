@@ -4,7 +4,9 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
 use rig::providers::gemini;
 
-use crate::support::{STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_nonempty_response};
+use crate::support::{
+    STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_smoke_structured_output,
+};
 
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
@@ -22,7 +24,5 @@ async fn structured_output_smoke() {
     let structured: SmokeStructuredOutput =
         serde_json::from_str(&response).expect("structured output should deserialize");
 
-    assert_nonempty_response(&structured.title);
-    assert_nonempty_response(&structured.category);
-    assert_nonempty_response(&structured.summary);
+    assert_smoke_structured_output(&structured);
 }

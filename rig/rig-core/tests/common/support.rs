@@ -268,3 +268,9 @@ pub(crate) fn assert_loader_answer_is_relevant(response: &str) {
         ],
     );
 }
+
+pub(crate) fn assert_smoke_structured_output(output: &SmokeStructuredOutput) {
+    assert_nonempty_response(&output.title);
+    assert_nonempty_response(&output.category);
+    assert_nonempty_response(&output.summary);
+}
