@@ -4,10 +4,10 @@
 //! `cargo test -p rig-core --test voyageai`
 //!
 //! Run the ignored smoke test with:
-//! `cargo test -p rig-core --test voyageai embeddings::embeddings_smoke -- --ignored`
+//! `cargo test -p rig-core --test voyageai voyageai::embeddings::embeddings_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;
 
-#[path = "voyageai/embeddings.rs"]
-mod embeddings;
+#[path = "voyageai/mod.rs"]
+mod voyageai;

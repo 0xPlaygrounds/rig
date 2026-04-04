@@ -2,9 +2,9 @@
 //!
 //! Run the target with:
 //! `cargo test -p rig-core --test core`
+//!
+//! Run a single test with:
+//! `cargo test -p rig-core --test core core::prompt_response_messages::standard_prompt_returns_string`
 
-#[cfg(feature = "derive")]
-#[path = "core/embed_macro.rs"]
-mod embed_macro;
-#[path = "core/prompt_response_messages.rs"]
-mod prompt_response_messages;
+#[path = "core/mod.rs"]
+mod core;

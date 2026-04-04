@@ -4,12 +4,10 @@
 //! `cargo test -p rig-core --test moonshot`
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test moonshot agent::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test moonshot moonshot::agent::completion_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;
 
-#[path = "moonshot/agent.rs"]
-mod agent;
-#[path = "moonshot/context.rs"]
-mod context;
+#[path = "moonshot/mod.rs"]
+mod moonshot;

@@ -4,14 +4,10 @@
 //! `cargo test -p rig-core --test deepseek`
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test deepseek agent::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test deepseek deepseek::agent::completion_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;
 
-#[path = "deepseek/agent.rs"]
-mod agent;
-#[path = "deepseek/extractor.rs"]
-mod extractor;
-#[path = "deepseek/tools.rs"]
-mod tools;
+#[path = "deepseek/mod.rs"]
+mod deepseek;

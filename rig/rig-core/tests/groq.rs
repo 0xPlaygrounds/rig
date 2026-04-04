@@ -4,10 +4,10 @@
 //! `cargo test -p rig-core --test groq`
 //!
 //! Run the ignored smoke test with:
-//! `cargo test -p rig-core --test groq agent::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test groq groq::agent::completion_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;
 
-#[path = "groq/agent.rs"]
-mod agent;
+#[path = "groq/mod.rs"]
+mod groq;

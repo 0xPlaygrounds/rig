@@ -1,7 +1,7 @@
 //! Gemini reasoning tool roundtrip tests.
 //!
 //! Run only these cases with:
-//! `cargo test -p rig-core --test gemini reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
+//! `cargo test -p rig-core --test gemini gemini::reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
