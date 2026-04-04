@@ -22,3 +22,24 @@ fn file_loader_reads_manifest() {
         "manifest content should include the package section"
     );
 }
+
+#[test]
+fn loader_fixture_glob_resolves_from_manifest_dir() {
+    let results: Vec<_> = FileLoader::with_glob(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/data/loaders/*.rs"
+    ))
+    .expect("glob should parse")
+    .read_with_path()
+    .ignore_errors()
+    .into_iter()
+    .collect();
+
+    assert_eq!(results.len(), 3, "expected every loader fixture to resolve");
+    assert!(
+        results
+            .iter()
+            .any(|(path, _)| path.ends_with("agent_with_loaders.rs")),
+        "expected the agent_with_loaders fixture to be included"
+    );
+}
