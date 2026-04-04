@@ -3,6 +3,9 @@
 //! Run the full provider target with:
 //! `cargo test -p rig-core --test xai`
 //!
+//! Run all ignored provider-backed tests with:
+//! `cargo test -p rig-core --test xai -- --ignored`
+//!
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test xai xai::agent::completion_smoke -- --ignored`
 

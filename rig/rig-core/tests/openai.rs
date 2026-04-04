@@ -3,6 +3,9 @@
 //! Run the full provider target with:
 //! `cargo test -p rig-core --test openai`
 //!
+//! Run all ignored provider-backed tests with:
+//! `cargo test -p rig-core --test openai -- --ignored`
+//!
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test openai openai::agent::completion_smoke -- --ignored`
 

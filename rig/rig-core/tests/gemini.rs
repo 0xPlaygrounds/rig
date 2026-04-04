@@ -3,6 +3,9 @@
 //! Run the full provider target with:
 //! `cargo test -p rig-core --test gemini`
 //!
+//! Run all ignored provider-backed tests with:
+//! `cargo test -p rig-core --test gemini -- --ignored`
+//!
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test gemini gemini::agent::completion_smoke -- --ignored`
 
