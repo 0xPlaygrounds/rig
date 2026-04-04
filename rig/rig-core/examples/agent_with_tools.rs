@@ -1,3 +1,7 @@
+//! Demonstrates registering boxed tools on an agent.
+//! Requires `OPENAI_API_KEY`.
+//! Run it to see the model use arithmetic tools instead of answering from scratch.
+
 use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Prompt, ToolDefinition};
@@ -75,16 +79,19 @@ impl Tool for Subtract {
     }
 }
 
+fn boxed_tools() -> Vec<Box<dyn ToolDyn>> {
+    vec![Box::new(Add), Box::new(Subtract)]
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let tools: Vec<Box<dyn ToolDyn>> = vec![Box::new(Add), Box::new(Subtract)];
     let agent = openai::Client::from_env()
         .agent(openai::GPT_4O)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",
         )
-        .tools(tools)
+        .tools(boxed_tools())
         .max_tokens(1024)
         .build();
 

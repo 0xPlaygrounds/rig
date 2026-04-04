@@ -1,3 +1,7 @@
+//! Demonstrates extending the default agent loop budget for tool-heavy prompts.
+//! Requires `ANTHROPIC_API_KEY`.
+//! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
+
 use anyhow::Result;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Prompt, ToolDefinition};
@@ -74,6 +78,8 @@ impl Tool for Divide {
     }
 }
 
+const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let agent = anthropic::Client::from_env()
@@ -87,9 +93,7 @@ async fn main() -> Result<()> {
         .default_max_turns(10)
         .build();
 
-    let response = agent
-        .prompt("Calculate (3 + 5) / 4 and describe the result.")
-        .await?;
+    let response = agent.prompt(PROMPT).await?;
     println!("{response}");
 
     Ok(())

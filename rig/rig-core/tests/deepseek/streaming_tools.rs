@@ -1,31 +1,13 @@
-//! Migrated from `examples/deepseek_streaming.rs`.
+//! DeepSeek streaming tools smoke test.
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Message;
 use rig::providers::deepseek::{self, DEEPSEEK_CHAT};
-use rig::streaming::{StreamingChat, StreamingPrompt};
+use rig::streaming::StreamingChat;
 
 use crate::support::{
-    Adder, Subtract, assert_mentions_expected_number, assert_nonempty_response,
-    collect_stream_final_response,
+    Adder, Subtract, assert_mentions_expected_number, collect_stream_final_response,
 };
-
-#[tokio::test]
-#[ignore = "requires DEEPSEEK_API_KEY"]
-async fn streaming_prompt_smoke() {
-    let client = deepseek::Client::from_env();
-    let agent = client
-        .agent(DEEPSEEK_CHAT)
-        .preamble("You are a helpful assistant.")
-        .build();
-
-    let mut stream = agent.stream_prompt("Tell me a joke").await;
-    let response = collect_stream_final_response(&mut stream)
-        .await
-        .expect("streaming prompt should succeed");
-
-    assert_nonempty_response(&response);
-}
 
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY"]

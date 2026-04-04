@@ -1,4 +1,5 @@
 mod agent;
-mod deepseek_streaming;
 mod extractor;
+mod streaming;
+mod streaming_tools;
 mod tools;

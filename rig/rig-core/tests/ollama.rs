@@ -7,7 +7,7 @@
 //! `cargo test -p rig-core --test ollama -- --ignored`
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test ollama ollama::agent_with_ollama::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test ollama ollama::agent::completion_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;

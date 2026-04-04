@@ -7,7 +7,7 @@
 //! `cargo test -p rig-core --test perplexity -- --ignored`
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test perplexity perplexity::perplexity_agent::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test perplexity perplexity::agent::completion_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;

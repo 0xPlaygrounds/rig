@@ -1,3 +1,7 @@
+//! Demonstrates adding small context documents directly to an agent.
+//! Requires `COHERE_API_KEY`.
+//! Run it to see the model answer from the supplied in-memory facts.
+
 use anyhow::Result;
 use rig::agent::AgentBuilder;
 use rig::client::{CompletionClient, ProviderClient};

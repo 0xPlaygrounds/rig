@@ -1,6 +1,6 @@
-mod agent_with_ollama;
-mod image_ollama;
-mod ollama_streaming;
-mod ollama_streaming_pause_control;
-mod ollama_streaming_with_tools;
-mod ollama_structured_output;
+mod agent;
+mod multimodal;
+mod pause_control;
+mod streaming;
+mod streaming_tools;
+mod structured_output;

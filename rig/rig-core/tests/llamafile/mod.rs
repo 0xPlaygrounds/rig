@@ -1,1 +1,1 @@
-mod agent_with_llamafile;
+mod agent;

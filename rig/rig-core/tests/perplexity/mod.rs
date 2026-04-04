@@ -1,1 +1,1 @@
-mod perplexity_agent;
+mod agent;

@@ -2,3 +2,4 @@
 mod embed_macro;
 mod loaders;
 mod prompt_response_messages;
+mod provider_layout;

@@ -7,7 +7,7 @@
 //! `cargo test -p rig-core --test llamafile -- --ignored`
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test llamafile llamafile::agent_with_llamafile::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test llamafile llamafile::agent::completion_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;

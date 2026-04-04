@@ -1,3 +1,7 @@
+//! Demonstrates vector search with separate Cohere document and query embeddings.
+//! Requires `COHERE_API_KEY` and the `derive` feature.
+//! Run it to see a semantic query retrieve the closest matching document.
+
 use rig::{
     Embed,
     client::ProviderClient,
@@ -9,6 +13,8 @@ use rig::{
 };
 use serde::{Deserialize, Serialize};
 
+type SearchMatch = (f64, String, String);
+
 // Shape of data that needs to be RAG'ed.
 // The definition field will be used to generate embeddings.
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
@@ -19,43 +25,52 @@ struct WordDefinition {
     definitions: Vec<String>,
 }
 
+fn sample_documents() -> Vec<WordDefinition> {
+    vec![
+        WordDefinition {
+            id: "doc0".to_string(),
+            word: "flurbo".to_string(),
+            definitions: vec![
+                "A green alien that lives on cold planets.".to_string(),
+                "A fictional digital currency that originated in the animated series Rick and Morty.".to_string(),
+            ],
+        },
+        WordDefinition {
+            id: "doc1".to_string(),
+            word: "glarb-glarb".to_string(),
+            definitions: vec![
+                "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+                "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string(),
+            ],
+        },
+        WordDefinition {
+            id: "doc2".to_string(),
+            word: "linglingdong".to_string(),
+            definitions: vec![
+                "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
+                "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string(),
+            ],
+        },
+    ]
+}
+
+fn print_matches(matches: &[SearchMatch]) {
+    println!("Top document matches:");
+    for (score, id, word) in matches {
+        println!("  score={score:.4} id={id} word={word}");
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create Cohere client
     let cohere_client = Client::from_env();
     let document_model = cohere_client.embedding_model(cohere::EMBED_ENGLISH_V3, "search_document");
     let search_model = cohere_client.embedding_model(cohere::EMBED_ENGLISH_V3, "search_query");
     let embeddings = EmbeddingsBuilder::new(document_model.clone())
-        .documents(vec![
-            WordDefinition {
-                id: "doc0".to_string(),
-                word: "flurbo".to_string(),
-                definitions: vec![
-                    "A green alien that lives on cold planets.".to_string(),
-                    "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-                ]
-            },
-            WordDefinition {
-                id: "doc1".to_string(),
-                word: "glarb-glarb".to_string(),
-                definitions: vec![
-                    "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-                    "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-                ]
-            },
-            WordDefinition {
-                id: "doc2".to_string(),
-                word: "linglingdong".to_string(),
-                definitions: vec![
-                    "A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
-                    "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
-                ]
-            },
-        ])?
+        .documents(sample_documents())?
         .build()
         .await?;
 
-    // Create vector store with the embeddings
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
 
@@ -65,16 +80,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .samples(1)
         .build()?;
 
-    // Create vector store index
     let index = vector_store.index(search_model);
     let results = index
         .top_n::<WordDefinition>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
-        .collect::<Vec<_>>();
+        .collect::<Vec<SearchMatch>>();
 
-    println!("Results: {results:?}");
+    print_matches(&results);
 
     Ok(())
 }

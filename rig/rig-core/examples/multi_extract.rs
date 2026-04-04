@@ -1,3 +1,7 @@
+//! Demonstrates fan-out structured extraction with `try_parallel!`.
+//! Requires `OPENAI_API_KEY`.
+//! Run it to see one batch of text split into names, topics, and sentiment in parallel.
+
 use anyhow::Result;
 use rig::client::ProviderClient;
 use rig::pipeline::{self, TryOp, agent_ops};
@@ -20,6 +24,14 @@ struct Topics {
 struct Sentiment {
     sentiment: f64,
     confidence: f64,
+}
+
+fn sample_inputs() -> Vec<&'static str> {
+    vec![
+        "Screw you Putin!",
+        "I love my dog, but I hate my cat.",
+        "I'm going to the store to buy some milk.",
+    ]
 }
 
 #[tokio::main]
@@ -54,16 +66,7 @@ async fn main() -> Result<()> {
             )
         });
 
-    let responses = chain
-        .try_batch_call(
-            4,
-            vec![
-                "Screw you Putin!",
-                "I love my dog, but I hate my cat.",
-                "I'm going to the store to buy some milk.",
-            ],
-        )
-        .await?;
+    let responses = chain.try_batch_call(4, sample_inputs()).await?;
 
     for (idx, response) in responses.iter().enumerate() {
         println!("batch item {}:\n{response}\n", idx + 1);

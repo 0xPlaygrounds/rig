@@ -7,7 +7,7 @@
 //! `cargo test -p rig-core --test mira -- --ignored`
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test mira mira::agent::completion_smoke -- --ignored`
+//! `cargo test -p rig-core --test mira mira::models::list_models_smoke -- --ignored`
 
 #[path = "common/support.rs"]
 mod support;
