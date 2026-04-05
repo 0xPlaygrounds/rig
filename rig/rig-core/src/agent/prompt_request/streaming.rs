@@ -374,7 +374,13 @@ where
         let agent_name = self.agent_name.clone();
         let has_history = self.chat_history.is_some();
         let chat_history = self.chat_history;
-        let mut new_messages: Vec<Message> = vec![prompt.clone()];
+        // Unlike the non-streaming path (which keeps current_prompt as the last
+        // element of new_messages and trims it with `[..len()-1]`), the streaming
+        // path manages current_prompt as a separate variable via push/pop.
+        // Starting empty ensures current_prompt is never double-counted — the old
+        // `vec![prompt.clone()]` caused the assistant's tool_use message to be
+        // dropped from history on the second iteration, breaking multi-turn tool use.
+        let mut new_messages: Vec<Message> = vec![];
 
         let mut current_max_turns = 0;
         let mut last_prompt_error = String::new();
@@ -413,7 +419,7 @@ where
                 }
 
                 if let Some(ref hook) = self.hook {
-                    let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
+                    let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages);
                     if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
                         .await {
                         yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
@@ -440,7 +446,10 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
-                let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
+                // current_prompt lives outside new_messages (pushed after this
+                // snapshot, popped before the next iteration), so the full
+                // slice is the correct history — no trimming needed.
+                let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages);
                 let mut stream = tracing::Instrument::instrument(
                     build_completion_request(
                         &model,
