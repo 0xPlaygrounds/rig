@@ -63,6 +63,27 @@ pub mod stringified_json {
         }
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
     }
+
+    /// Deserialize JSON that may be encoded either as a string or as a raw JSON value.
+    /// OpenAI-compatible providers typically return tool arguments as a stringified JSON
+    /// object, while some implementations such as Hugging Face and `llama.cpp` return the
+    /// JSON object directly.
+    pub fn deserialize_maybe_stringified<'de, D>(
+        deserializer: D,
+    ) -> Result<serde_json::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::String(s) => {
+                if s.trim().is_empty() {
+                    return Ok(serde_json::Value::Object(serde_json::Map::new()));
+                }
+                serde_json::from_str(&s).map_err(serde::de::Error::custom)
+            }
+            other => Ok(other),
+        }
+    }
 }
 
 pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
@@ -168,6 +189,12 @@ mod tests {
         data: serde_json::Value,
     }
 
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct DummyMaybeStringified {
+        #[serde(deserialize_with = "stringified_json::deserialize_maybe_stringified")]
+        data: serde_json::Value,
+    }
+
     #[test]
     fn test_merge() {
         let a = serde_json::json!({"key1": "value1"});
@@ -210,6 +237,27 @@ mod tests {
     fn test_stringified_json_deserialize_empty_string() {
         let json_str = r#"{"data":""}"#;
         let dummy: Dummy = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_deserialize_maybe_stringified_value_from_string() {
+        let json_str = r#"{"data":"{\"key\":\"value\"}"}"#;
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_deserialize_maybe_stringified_value_from_object() {
+        let json_str = r#"{"data":{"key":"value"}}"#;
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_deserialize_maybe_stringified_value_from_empty_string() {
+        let json_str = r#"{"data":""}"#;
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
         assert_eq!(dummy.data, serde_json::json!({}));
     }
 }

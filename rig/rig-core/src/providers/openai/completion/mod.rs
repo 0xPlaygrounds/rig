@@ -16,8 +16,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
+use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
 use tracing::{Instrument, Level, enabled, info_span};
@@ -405,24 +404,9 @@ pub struct Function {
     pub name: String,
     #[serde(
         serialize_with = "json_utils::stringified_json::serialize",
-        deserialize_with = "deserialize_arguments"
+        deserialize_with = "json_utils::stringified_json::deserialize_maybe_stringified"
     )]
     pub arguments: serde_json::Value,
-}
-
-/// the arguments for tool calls in the openai API are an JSON object encoded as a string
-/// the arguments for tool calls in llama.cpp are already an JSON object (that is not stringified)
-/// therefore we handle both cases here
-fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-
-    match value {
-        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
-        other => Ok(other),
-    }
 }
 
 impl TryFrom<message::ToolResult> for Message {
