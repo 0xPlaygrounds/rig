@@ -39,10 +39,21 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
     }
 }
 
+/// Parse tool arguments from a streamed string payload.
+/// Some providers emit an empty string for parameterless tool calls; normalize that to `{}`.
+pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::Value> {
+    if arguments.trim().is_empty() {
+        return Ok(serde_json::Value::Object(serde_json::Map::new()));
+    }
+
+    serde_json::from_str(arguments)
+}
+
 /// This module is helpful in cases where raw json objects are serialized and deserialized as
 ///  strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
 ///  some providers such as OpenAI return function arguments (for some reason).
 pub mod stringified_json {
+    use super::parse_tool_arguments;
     use serde::{self, Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
@@ -75,12 +86,7 @@ pub mod stringified_json {
         D: Deserializer<'de>,
     {
         match serde_json::Value::deserialize(deserializer)? {
-            serde_json::Value::String(s) => {
-                if s.trim().is_empty() {
-                    return Ok(serde_json::Value::Object(serde_json::Map::new()));
-                }
-                serde_json::from_str(&s).map_err(serde::de::Error::custom)
-            }
+            serde_json::Value::String(s) => parse_tool_arguments(&s).map_err(serde::de::Error::custom),
             other => Ok(other),
         }
     }
@@ -259,5 +265,23 @@ mod tests {
         let json_str = r#"{"data":""}"#;
         let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
         assert_eq!(dummy.data, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_tool_arguments_empty_string() {
+        let parsed = parse_tool_arguments("").unwrap();
+        assert_eq!(parsed, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_tool_arguments_whitespace_string() {
+        let parsed = parse_tool_arguments("   ").unwrap();
+        assert_eq!(parsed, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_tool_arguments_valid_json() {
+        let parsed = parse_tool_arguments(r#"{"key":"value"}"#).unwrap();
+        assert_eq!(parsed, serde_json::json!({"key": "value"}));
     }
 }

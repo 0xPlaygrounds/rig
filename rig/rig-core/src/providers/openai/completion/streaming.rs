@@ -222,7 +222,9 @@ where
                                 && existing.name != *new_name
                             {
                                 let evicted = tool_calls.remove(&index).expect("checked above");
-                                yield Ok(streaming::RawStreamingChoice::ToolCall(evicted));
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                    finalize_streaming_tool_call(evicted),
+                                ));
                             }
 
                             let existing_tool_call = tool_calls.entry(index).or_insert_with(streaming::RawStreamingToolCall::empty);
@@ -288,7 +290,9 @@ where
                     // Finish reason
                     if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
                         for (_idx, tool_call) in tool_calls.into_iter() {
-                            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
+                            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                finalize_streaming_tool_call(tool_call),
+                            ));
                         }
                         tool_calls = HashMap::new();
                     }
@@ -310,7 +314,9 @@ where
 
         // Flush any accumulated tool calls (that weren't emitted as ToolCall earlier)
         for (_idx, tool_call) in tool_calls.into_iter() {
-            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
+            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                finalize_streaming_tool_call(tool_call),
+            ));
         }
 
         let final_usage = final_usage.unwrap_or_default();
@@ -335,6 +341,16 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+fn finalize_streaming_tool_call(
+    mut tool_call: streaming::RawStreamingToolCall,
+) -> streaming::RawStreamingToolCall {
+    if tool_call.arguments.is_null() {
+        tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+    }
+
+    tool_call
 }
 
 #[cfg(test)]
