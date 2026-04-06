@@ -1572,6 +1572,6 @@ mod tests {
             }
         }
         "#;
-        serde_json::from_str::<ApiResponse<CompletionResponse>>(&request).unwrap();
+        serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
     }
 }
