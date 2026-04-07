@@ -937,6 +937,10 @@ impl ToolResultContent {
                     additional_params: None,
                 }));
             }
+
+            if let Some(output_json_str) = json.as_str() {
+                return OneOrMany::one(ToolResultContent::Text(output_json_str.into()));
+            }
         }
 
         OneOrMany::one(ToolResultContent::Text(output_str.into()))
