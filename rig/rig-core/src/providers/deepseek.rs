@@ -796,7 +796,7 @@ where
                                     let name = function.name.clone().unwrap_or_default();
                                     let arguments_str = function.arguments.clone().unwrap_or_default();
 
-                                    let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments_str) else {
+                                    let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments_str) else {
                                         tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
                                         continue;
                                     };
@@ -842,7 +842,7 @@ where
         let mut tool_calls = Vec::new();
         // Flush accumulated tool calls
         for (index, (id, name, arguments)) in calls {
-            let Ok(arguments_json) = serde_json::from_str::<serde_json::Value>(&arguments) else {
+            let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments) else {
                 continue;
             };
 

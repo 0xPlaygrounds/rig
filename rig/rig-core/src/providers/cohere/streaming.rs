@@ -229,7 +229,7 @@ where
 
                             StreamingEvent::ToolCallEnd => {
                                 let Some(tc) = current_tool_call.clone() else { continue; };
-                                let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.3) else { continue; };
+                                let Ok(args) = json_utils::parse_tool_arguments(&tc.3) else { continue; };
 
                                 tool_calls.push(ToolCall {
                                     id: Some(tc.0.clone()),

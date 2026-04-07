@@ -402,7 +402,10 @@ impl TryFrom<crate::message::ToolChoice> for ToolChoice {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    #[serde(with = "json_utils::stringified_json")]
+    #[serde(
+        serialize_with = "json_utils::stringified_json::serialize",
+        deserialize_with = "json_utils::stringified_json::deserialize_maybe_stringified"
+    )]
     pub arguments: serde_json::Value,
 }
 
@@ -1520,5 +1523,83 @@ mod tests {
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn deserialize_llama_cpp_tool_call() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{ "type": "function", "function": { "name": "hello_world", "arguments": { "city": "Paris" } }, "id": "xxx" }]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "system_fingerprint": "fp_xxx",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 13, "prompt_tokens": 255, "total_tokens": 268 },
+            "id": "xxx"
+        }
+        "#;
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+        assert_eq!(response.choices.len(), 1);
+
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "xxx");
+        assert_eq!(tool_calls[0].function.name, "hello_world");
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            serde_json::json!({"city": "Paris"})
+        );
+    }
+
+    #[test]
+    fn deserialize_openai_stringified_tool_call() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{ "type": "function", "function": { "name": "hello_world", "arguments": "{\"city\":\"Paris\"}" }, "id": "xxx" }]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "system_fingerprint": "fp_xxx",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 13, "prompt_tokens": 255, "total_tokens": 268 },
+            "id": "xxx"
+        }
+        "#;
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+        assert_eq!(response.choices.len(), 1);
+
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "xxx");
+        assert_eq!(tool_calls[0].function.name, "hello_world");
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            serde_json::json!({"city": "Paris"})
+        );
     }
 }
