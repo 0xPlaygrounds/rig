@@ -86,10 +86,10 @@ impl ToolServer {
     pub fn dynamic_tools(
         mut self,
         sample: usize,
-        dynamic_tools: Arc<dyn VectorStoreIndexDyn + Send + Sync>,
+        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
-        self.dynamic_tools.push((sample, dynamic_tools));
+        self.dynamic_tools.push((sample, Arc::new(dynamic_tools)));
         self.toolset.add_tools(toolset);
         self
     }
@@ -420,7 +420,7 @@ mod tests {
         // Build server with static tool "add" and dynamic tools from the mock index
         let server = ToolServer::new().tool(Adder).dynamic_tools(
             1,
-            Arc::new(mock_index),
+            mock_index,
             ToolSet::from_tools(vec![Subtractor]),
         );
 
@@ -452,11 +452,9 @@ mod tests {
         };
 
         // Build server with only static tool, but dynamic index references missing tool
-        let server = ToolServer::new().tool(Adder).dynamic_tools(
-            1,
-            Arc::new(mock_index),
-            ToolSet::default(),
-        );
+        let server = ToolServer::new()
+            .tool(Adder)
+            .dynamic_tools(1, mock_index, ToolSet::default());
 
         let handle = server.run();
 
@@ -651,9 +649,8 @@ mod tests {
         toolset.add_tool(Subtractor);
 
         let server = ToolServer::new()
-            .dynamic_tools(1, Arc::new(index1), ToolSet::default())
-            // Pass the actual toolset with the second dynamic tools registration
-            .dynamic_tools(1, Arc::new(index2), toolset);
+            .dynamic_tools(1, index1, ToolSet::default())
+            .dynamic_tools(1, index2, toolset);
 
         let handle = server.run();
 

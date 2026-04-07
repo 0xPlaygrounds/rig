@@ -28,7 +28,7 @@
 //!     .expect("Failed to extract data from text");
 //! ```
 
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -390,7 +390,7 @@ where
     pub fn dynamic_context(
         mut self,
         sample: usize,
-        dynamic_context: Arc<dyn VectorStoreIndexDyn + Send + Sync>,
+        dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
     ) -> Self {
         self.agent_builder = self.agent_builder.dynamic_context(sample, dynamic_context);
         self

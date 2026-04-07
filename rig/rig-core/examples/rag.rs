@@ -5,7 +5,6 @@ use rig::{
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
-use std::sync::Arc;
 use std::vec;
 
 // Data to be RAGged.
@@ -71,7 +70,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .dynamic_context(1, Arc::new(index))
+        .dynamic_context(1, index)
         .build();
 
     // Prompt the agent and print the response

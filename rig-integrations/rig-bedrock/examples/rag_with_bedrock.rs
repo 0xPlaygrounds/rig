@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::vec;
 
 use rig::client::{CompletionClient, EmbeddingsClient, ProviderClient};
@@ -75,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .dynamic_context(1, Arc::new(index))
+        .dynamic_context(1, index)
         .build();
 
     // Prompt the agent and print the response
