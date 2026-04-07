@@ -414,7 +414,7 @@ where
     pub fn dynamic_tools(
         self,
         sample: usize,
-        dynamic_tools: Arc<dyn VectorStoreIndexDyn + Send + Sync>,
+        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
         AgentBuilder {
@@ -434,7 +434,7 @@ where
             tool_state: WithBuilderTools {
                 static_tools: vec![],
                 tools: toolset,
-                dynamic_tools: vec![(sample, dynamic_tools)],
+                dynamic_tools: vec![(sample, Arc::new(dynamic_tools))],
             },
         }
     }

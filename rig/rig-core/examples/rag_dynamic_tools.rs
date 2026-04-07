@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -156,7 +154,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)
-        .dynamic_tools(1, Arc::new(index), toolset)
+        .dynamic_tools(1, index, toolset)
         .build();
 
     // Prompt the agent and print the response
