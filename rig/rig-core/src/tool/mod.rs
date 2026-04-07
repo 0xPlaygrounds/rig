@@ -176,6 +176,13 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 }
 
+fn serialize_tool_output(output: impl Serialize) -> serde_json::Result<String> {
+    match serde_json::to_value(output)? {
+        serde_json::Value::String(text) => Ok(text),
+        value => Ok(value.to_string()),
+    }
+}
+
 impl<T: Tool> ToolDyn for T {
     fn name(&self) -> String {
         self.name()
@@ -191,9 +198,7 @@ impl<T: Tool> ToolDyn for T {
                 Ok(args) => <Self as Tool>::call(self, args)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
-                    .and_then(|output| {
-                        serde_json::to_string(&output).map_err(ToolError::JsonError)
-                    }),
+                    .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
                 Err(e) => Err(ToolError::JsonError(e)),
             }
         })
@@ -437,6 +442,7 @@ impl ToolSetBuilder {
 
 #[cfg(test)]
 mod tests {
+    use crate::message::{DocumentSourceKind, ToolResultContent};
     use serde_json::json;
 
     use super::*;
@@ -546,5 +552,146 @@ mod tests {
         toolset.delete_tool("add");
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("Test tool error")]
+    struct TestToolError;
+
+    #[derive(Deserialize, Serialize)]
+    struct StringOutputTool;
+
+    impl Tool for StringOutputTool {
+        const NAME: &'static str = "string_output";
+        type Error = TestToolError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "Returns a multiline string".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok("Hello\nWorld".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn string_tool_outputs_are_preserved_verbatim() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(StringOutputTool);
+
+        let output = toolset
+            .call("string_output", "{}".to_string())
+            .await
+            .expect("tool should succeed");
+
+        assert_eq!(output, "Hello\nWorld");
+    }
+
+    #[derive(Deserialize, Serialize)]
+    struct ImageOutputTool;
+
+    impl Tool for ImageOutputTool {
+        const NAME: &'static str = "image_output";
+        type Error = TestToolError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "Returns image JSON".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok(json!({
+                "type": "image",
+                "data": "base64data==",
+                "mimeType": "image/png"
+            })
+            .to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn structured_string_tool_outputs_remain_parseable() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(ImageOutputTool);
+
+        let output = toolset
+            .call("image_output", "{}".to_string())
+            .await
+            .expect("tool should succeed");
+        let content = ToolResultContent::from_tool_output(output);
+
+        assert_eq!(content.len(), 1);
+        match content.first() {
+            ToolResultContent::Image(image) => {
+                assert!(matches!(image.data, DocumentSourceKind::Base64(_)));
+                assert_eq!(image.media_type, Some(crate::message::ImageMediaType::PNG));
+            }
+            other => panic!("expected image tool result content, got {other:?}"),
+        }
+    }
+
+    #[derive(Deserialize, Serialize)]
+    struct ObjectOutputTool;
+
+    impl Tool for ObjectOutputTool {
+        const NAME: &'static str = "object_output";
+        type Error = TestToolError;
+        type Args = serde_json::Value;
+        type Output = serde_json::Value;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "Returns an object".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            }
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            Ok(json!({
+                "status": "ok",
+                "count": 42
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn object_tool_outputs_still_serialize_as_json() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(ObjectOutputTool);
+
+        let output = toolset
+            .call("object_output", "{}".to_string())
+            .await
+            .expect("tool should succeed");
+
+        assert!(output.starts_with('{'));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+            json!({
+                "status": "ok",
+                "count": 42
+            })
+        );
     }
 }
