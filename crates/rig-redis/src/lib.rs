@@ -1,3 +1,20 @@
+//! Redis vector store integration for Rig.
+//!
+//! Provides a [`RedisVectorStore`] that implements Rig's [`VectorStoreIndex`] and
+//! [`InsertDocuments`] traits using RediSearch's vector similarity search (`FT.SEARCH`).
+//!
+//! # Example
+//! ```ignore
+//! use rig_redis::RedisVectorStore;
+//!
+//! let store = RedisVectorStore::new(
+//!     embedding_model,
+//!     redis_client,
+//!     "my_index".into(),
+//!     "embedding".into(),
+//! );
+//! ```
+
 pub mod filter;
 
 pub use filter::Filter;
@@ -77,15 +94,27 @@ where
         }
     }
 
-    /// Extracts score from Redis value
-    fn extract_score(value: &redis::Value) -> f64 {
-        match value {
+    /// Extracts score from Redis value and converts cosine distance to similarity.
+    ///
+    /// Redis returns cosine distance (0 = identical, higher = more different),
+    /// but Rig convention is cosine similarity (higher = more similar).
+    fn extract_score(value: &redis::Value) -> Result<f64, VectorStoreError> {
+        let distance = match value {
             redis::Value::BulkString(bytes) => {
-                String::from_utf8_lossy(bytes).parse().unwrap_or(0.0)
+                String::from_utf8_lossy(bytes).parse::<f64>().map_err(|e| {
+                    VectorStoreError::DatastoreError(format!("Failed to parse score: {e}").into())
+                })?
             }
-            redis::Value::SimpleString(s) => s.parse().unwrap_or(0.0),
-            _ => 0.0,
-        }
+            redis::Value::SimpleString(s) => s.parse::<f64>().map_err(|e| {
+                VectorStoreError::DatastoreError(format!("Failed to parse score: {e}").into())
+            })?,
+            other => {
+                return Err(VectorStoreError::DatastoreError(
+                    format!("Unexpected Redis value type for score: {other:?}").into(),
+                ));
+            }
+        };
+        Ok(1.0 - distance)
     }
 
     /// Parses FT.SEARCH response into results with documents
@@ -165,7 +194,7 @@ where
                             };
 
                             if field_name == "__vector_score" {
-                                score = Self::extract_score(&field_chunk[1]);
+                                score = Self::extract_score(&field_chunk[1])?;
                                 if !include_document {
                                     break;
                                 }

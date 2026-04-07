@@ -27,25 +27,25 @@ fn test_filter_lt() {
 
 #[test]
 fn test_filter_gte() {
-    let filter = Filter::gte("price".to_string(), RedisValue::Number(50.0));
+    let filter = Filter::gte("price", RedisValue::Number(50.0));
     assert_eq!(filter.into_inner(), "@price:[50 +inf]");
 }
 
 #[test]
 fn test_filter_lte() {
-    let filter = Filter::lte("price".to_string(), RedisValue::Number(100.0));
+    let filter = Filter::lte("price", RedisValue::Number(100.0));
     assert_eq!(filter.into_inner(), "@price:[-inf 100]");
 }
 
 #[test]
 fn test_filter_range() {
-    let filter = Filter::range("price".to_string(), 50.0, 100.0);
+    let filter = Filter::range("price", 50.0, 100.0);
     assert_eq!(filter.into_inner(), "@price:[50 100]");
 }
 
 #[test]
 fn test_filter_range_exclusive() {
-    let filter = Filter::range_exclusive("price".to_string(), 50.0, 100.0);
+    let filter = Filter::range_exclusive("price", 50.0, 100.0);
     assert_eq!(filter.into_inner(), "@price:[(50 (100]");
 }
 
@@ -80,24 +80,21 @@ fn test_filter_not() {
 
 #[test]
 fn test_filter_tag_in() {
-    let filter = Filter::tag_in(
-        "tags".to_string(),
-        vec!["new".to_string(), "sale".to_string()],
-    );
-    assert_eq!(filter.into_inner(), "@tags:{new}|{sale}");
+    let filter = Filter::tag_in("tags", vec!["new".to_string(), "sale".to_string()]);
+    assert_eq!(filter.into_inner(), "@tags:{new | sale}");
 }
 
 #[test]
 fn test_filter_text_contains() {
-    let filter = Filter::text_contains("description".to_string(), "laptop".to_string());
+    let filter = Filter::text_contains("description", "laptop");
     assert_eq!(filter.into_inner(), "@description:laptop");
 }
 
 #[test]
 fn test_complex_filter() {
     let category_filter = Filter::eq("category", RedisValue::String("electronics".to_string()));
-    let price_min = Filter::gte("price".to_string(), RedisValue::Number(50.0));
-    let price_max = Filter::lte("price".to_string(), RedisValue::Number(200.0));
+    let price_min = Filter::gte("price", RedisValue::Number(50.0));
+    let price_max = Filter::lte("price", RedisValue::Number(200.0));
 
     let combined = category_filter.and(price_min).and(price_max);
 
@@ -143,4 +140,16 @@ fn test_core_filter_and_conversion() {
 fn test_redis_value_bool() {
     let filter = Filter::eq("in_stock", RedisValue::Bool(true));
     assert_eq!(filter.into_inner(), "@in_stock:1");
+}
+
+#[test]
+fn test_redis_value_from_str_ref() {
+    let value: RedisValue = "hello".into();
+    assert_eq!(value, RedisValue::String("hello".to_string()));
+}
+
+#[test]
+fn test_filter_tag_in_single_value() {
+    let filter = Filter::tag_in("tags", vec!["only".to_string()]);
+    assert_eq!(filter.into_inner(), "@tags:{only}");
 }
