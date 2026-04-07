@@ -1,27 +1,32 @@
 use std::sync::Arc;
 
-use futures::{StreamExt, TryStreamExt, channel::oneshot::Canceled, stream};
-use tokio::sync::{
-    RwLock,
-    mpsc::{Sender, error::SendError},
-};
-use tracing::Instrument;
+use futures::{StreamExt, TryStreamExt, stream};
+use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolDyn, ToolError, ToolSet, ToolSetError},
+    tool::{Tool, ToolDyn, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
-pub struct ToolServer {
-    /// A list of static tool names.
-    /// These tools will always exist on the tool server for as long as they are not deleted.
+/// Shared state behind a `ToolServerHandle`.
+struct ToolServerState {
+    /// Static tool names that persist until explicitly removed.
     static_tool_names: Vec<String>,
-    /// Dynamic tools. These tools will be dynamically fetched from a given vector store.
+    /// Dynamic tools fetched from vector stores on each prompt.
     dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    /// The toolset where tools are called (to be executed).
-    /// Wrapped in Arc<RwLock<...>> to allow concurrent tool execution.
-    toolset: Arc<RwLock<ToolSet>>,
+    /// The toolset where tools are registered and executed.
+    toolset: ToolSet,
+}
+
+/// Builder for constructing a [`ToolServerHandle`].
+///
+/// Accumulates tools and configuration, then produces a shared handle via
+/// [`run()`](ToolServer::run).
+pub struct ToolServer {
+    static_tool_names: Vec<String>,
+    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    toolset: ToolSet,
 }
 
 impl Default for ToolServer {
@@ -35,7 +40,7 @@ impl ToolServer {
         Self {
             static_tool_names: Vec::new(),
             dynamic_tools: Vec::new(),
-            toolset: Arc::new(RwLock::new(ToolSet::default())),
+            toolset: ToolSet::default(),
         }
     }
 
@@ -45,7 +50,7 @@ impl ToolServer {
     }
 
     pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
-        self.toolset = Arc::new(RwLock::new(tools));
+        self.toolset = tools;
         self
     }
 
@@ -60,29 +65,18 @@ impl ToolServer {
     /// Add a static tool to the agent
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
-        // This should be practically impossible to fail: cloning the Arc before calling
-        // .tool() is impossible since the toolset field is private, and the server cannot
-        // be running prior to run(), which consumes self.
-        Arc::get_mut(&mut self.toolset)
-            .expect("ToolServer::tool() called after run()")
-            .get_mut()
-            .add_tool(tool);
+        self.toolset.add_tool(tool);
         self.static_tool_names.push(toolname);
         self
     }
 
-    // Add an MCP tool (from `rmcp`) to the agent
+    /// Add an MCP tool (from `rmcp`) to the agent
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
         use crate::tool::rmcp::McpTool;
         let toolname = tool.name.clone();
-        // This should be practically impossible to fail: cloning the Arc before calling
-        // .rmcp_tool() is impossible since the toolset field is private, and the server cannot
-        // be running prior to run(), which consumes self.
-        Arc::get_mut(&mut self.toolset)
-            .expect("ToolServer::rmcp_tool() called after run()")
-            .get_mut()
+        self.toolset
             .add_tool(McpTool::from_mcp_server(tool, client));
         self.static_tool_names.push(toolname.to_string());
         self
@@ -97,420 +91,173 @@ impl ToolServer {
         toolset: ToolSet,
     ) -> Self {
         self.dynamic_tools.push((sample, dynamic_tools));
-        // This should be practically impossible to fail: cloning the Arc before calling
-        // .dynamic_tools() is impossible since the toolset field is private, and the server cannot
-        // be running prior to run(), which consumes self.
-        Arc::get_mut(&mut self.toolset)
-            .expect("ToolServer::dynamic_tools() called after run()")
-            .get_mut()
-            .add_tools(toolset);
+        self.toolset.add_tools(toolset);
         self
     }
 
-    pub fn run(mut self) -> ToolServerHandle {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
-
-        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-        tokio::spawn(async move {
-            while let Some(message) = rx.recv().await {
-                self.handle_message(message).await;
-            }
-        });
-
-        // SAFETY: `rig` currently doesn't compile to WASM without the `worker` feature.
-        // Therefore, we can safely assume that the user won't try to compile to wasm without the worker feature.
-        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-        wasm_bindgen_futures::spawn_local(async move {
-            while let Some(message) = rx.recv().await {
-                self.handle_message(message).await;
-            }
-        });
-
-        ToolServerHandle(tx)
-    }
-
-    pub async fn handle_message(&mut self, message: ToolServerRequest) {
-        let ToolServerRequest {
-            callback_channel,
-            data,
-        } = message;
-
-        match data {
-            ToolServerRequestMessageKind::AddTool(tool) => {
-                self.static_tool_names.push(tool.name());
-                self.toolset.write().await.add_tool_boxed(tool);
-                callback_channel
-                    .send(ToolServerResponse::ToolAdded)
-                    .unwrap();
-            }
-            ToolServerRequestMessageKind::AppendToolset(tools) => {
-                self.toolset.write().await.add_tools(tools);
-                callback_channel
-                    .send(ToolServerResponse::ToolAdded)
-                    .unwrap();
-            }
-            ToolServerRequestMessageKind::RemoveTool { tool_name } => {
-                self.static_tool_names.retain(|x| *x != tool_name);
-                self.toolset.write().await.delete_tool(&tool_name);
-                callback_channel
-                    .send(ToolServerResponse::ToolDeleted)
-                    .unwrap();
-            }
-            ToolServerRequestMessageKind::CallTool { name, args, span } => {
-                // Look up the tool under a brief read lock, then release
-                // before executing, so writers never block on long-running calls.
-                let tool = self.toolset.read().await.get(&name).cloned();
-
-                #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-                tokio::spawn(
-                    async move {
-                        let result = match tool {
-                            Some(tool) => {
-                                tracing::debug!(target: "rig",
-                                    "Calling tool {name} with args:\n{}",
-                                    serde_json::to_string_pretty(&args).unwrap_or_default()
-                                );
-                                match tool.call(args).await {
-                                    Ok(result) => ToolServerResponse::ToolExecuted { result },
-                                    Err(err) => ToolServerResponse::ToolError {
-                                        error: err.to_string(),
-                                    },
-                                }
-                            }
-                            None => ToolServerResponse::ToolError {
-                                error: format!("Tool not found: {name}"),
-                            },
-                        };
-                        let _ = callback_channel.send(result);
-                    }
-                    .instrument(span),
-                );
-
-                #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-                wasm_bindgen_futures::spawn_local(
-                    async move {
-                        let result = match tool {
-                            Some(tool) => {
-                                tracing::debug!(target: "rig",
-                                    "Calling tool {name} with args:\n{}",
-                                    serde_json::to_string_pretty(&args).unwrap_or_default()
-                                );
-                                match tool.call(args).await {
-                                    Ok(result) => ToolServerResponse::ToolExecuted { result },
-                                    Err(err) => ToolServerResponse::ToolError {
-                                        error: err.to_string(),
-                                    },
-                                }
-                            }
-                            None => ToolServerResponse::ToolError {
-                                error: format!("Tool not found: {name}"),
-                            },
-                        };
-                        let _ = callback_channel.send(result);
-                    }
-                    .instrument(span),
-                );
-            }
-            ToolServerRequestMessageKind::GetToolDefs { prompt } => {
-                // Spawn into a separate task so vector store I/O
-                // does not block the actor loop from routing other messages.
-                let static_tool_names = self.static_tool_names.clone();
-                let dynamic_tools = self.dynamic_tools.clone();
-                let toolset = Arc::clone(&self.toolset);
-
-                #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-                tokio::spawn(async move {
-                    let res = get_tool_definitions_detached(
-                        prompt,
-                        static_tool_names,
-                        dynamic_tools,
-                        toolset,
-                    )
-                    .await;
-                    match res {
-                        Ok(defs) => {
-                            let _ = callback_channel
-                                .send(ToolServerResponse::ToolDefinitions(defs));
-                        }
-                        Err(err) => {
-                            tracing::error!("Failed to get tool definitions: {err}");
-                            let _ = callback_channel
-                                .send(ToolServerResponse::ToolDefinitions(vec![]));
-                        }
-                    }
-                });
-
-                #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-                wasm_bindgen_futures::spawn_local(async move {
-                    let res = get_tool_definitions_detached(
-                        prompt,
-                        static_tool_names,
-                        dynamic_tools,
-                        toolset,
-                    )
-                    .await;
-                    match res {
-                        Ok(defs) => {
-                            let _ = callback_channel
-                                .send(ToolServerResponse::ToolDefinitions(defs));
-                        }
-                        Err(err) => {
-                            tracing::error!("Failed to get tool definitions: {err}");
-                            let _ = callback_channel
-                                .send(ToolServerResponse::ToolDefinitions(vec![]));
-                        }
-                    }
-                });
-            }
-        }
-    }
-
-    pub async fn get_tool_definitions(
-        &mut self,
-        text: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, CompletionError> {
-        get_tool_definitions_detached(
-            text,
-            self.static_tool_names.clone(),
-            self.dynamic_tools.clone(),
-            Arc::clone(&self.toolset),
-        )
-        .await
+    /// Consume the builder and return a shared [`ToolServerHandle`].
+    pub fn run(self) -> ToolServerHandle {
+        ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
+            static_tool_names: self.static_tool_names,
+            dynamic_tools: self.dynamic_tools,
+            toolset: self.toolset,
+        })))
     }
 }
 
-/// Retrieves tool definitions without borrowing the ToolServer, so it can run
-/// in a spawned task without blocking the actor loop.
-async fn get_tool_definitions_detached(
-    text: Option<String>,
-    static_tool_names: Vec<String>,
-    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    toolset: Arc<RwLock<ToolSet>>,
-) -> Result<Vec<ToolDefinition>, CompletionError> {
-    let mut tools = if let Some(text) = text {
-        let dynamic_tool_ids: Vec<String> = stream::iter(dynamic_tools.iter())
-            .then(|(num_sample, index)| async {
-                let req = VectorSearchRequest::builder()
-                    .query(text.clone())
-                    .samples(*num_sample as u64)
-                    .build()
-                    .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
-                Ok::<_, VectorStoreError>(
-                    index
-                        .as_ref()
-                        .top_n_ids(req.map_filter(Filter::interpret))
-                        .await?
-                        .into_iter()
-                        .map(|(_, id)| id)
-                        .collect::<Vec<String>>(),
-                )
-            })
-            .try_fold(vec![], |mut acc, docs| async {
-                acc.extend(docs);
-                Ok(acc)
-            })
-            .await
-            .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+/// A cheaply-cloneable handle to the shared tool server state.
+///
+/// All operations acquire locks directly on the underlying state.
+/// Multiple handles (e.g. across agents) can share the same state
+/// without channel-based message routing.
+#[derive(Clone)]
+pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
-        // Clone the tools from the toolset under a brief read lock
-        let dynamic_tool_handles: Vec<_> = {
-            let ts = toolset.read().await;
-            dynamic_tool_ids
+impl ToolServerHandle {
+    /// Register a new static tool.
+    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        state.static_tool_names.push(tool.name());
+        state.toolset.add_tool_boxed(Box::new(tool));
+        Ok(())
+    }
+
+    /// Merge an entire toolset into the server.
+    pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        state.toolset.add_tools(toolset);
+        Ok(())
+    }
+
+    /// Remove a tool by name from both the toolset and the static list.
+    pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        state.static_tool_names.retain(|x| *x != tool_name);
+        state.toolset.delete_tool(tool_name);
+        Ok(())
+    }
+
+    /// Look up and execute a tool by name.
+    ///
+    /// The tool handle is cloned under a brief read lock so that
+    /// long-running tool executions never block writers.
+    pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
+        let tool = {
+            let state = self.0.read().await;
+            state.toolset.get(tool_name).cloned()
+        };
+
+        match tool {
+            Some(tool) => {
+                tracing::debug!(target: "rig",
+                    "Calling tool {tool_name} with args:\n{}",
+                    serde_json::to_string_pretty(&args).unwrap_or_default()
+                );
+                tool.call(args.to_string())
+                    .await
+                    .map_err(|e| ToolSetError::ToolCallError(e).into())
+            }
+            None => Err(ToolServerError::ToolsetError(
+                ToolSetError::ToolNotFoundError(tool_name.to_string()),
+            )),
+        }
+    }
+
+    /// Retrieve tool definitions, optionally using a prompt to select
+    /// dynamic tools from configured vector stores.
+    pub async fn get_tool_defs(
+        &self,
+        prompt: Option<String>,
+    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
+        // Snapshot the metadata we need under a brief read lock
+        let (static_tool_names, dynamic_tools) = {
+            let state = self.0.read().await;
+            (state.static_tool_names.clone(), state.dynamic_tools.clone())
+        };
+
+        let mut tools = if let Some(ref text) = prompt {
+            let dynamic_tool_ids: Vec<String> = stream::iter(dynamic_tools.iter())
+                .map(|(num_sample, index)| {
+                    let text = text.clone();
+                    async move {
+                        let req = VectorSearchRequest::builder()
+                            .query(text)
+                            .samples(*num_sample as u64)
+                            .build()
+                            .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                        Ok::<_, VectorStoreError>(
+                            index
+                                .as_ref()
+                                .top_n_ids(req.map_filter(Filter::interpret))
+                                .await?
+                                .into_iter()
+                                .map(|(_, id)| id)
+                                .collect::<Vec<String>>(),
+                        )
+                    }
+                })
+                // Buffer unordered to fetch from multiple indexes concurrently, then flatten results
+                .buffer_unordered(dynamic_tools.len().max(1))
+                .try_fold(vec![], |mut acc, docs| async {
+                    acc.extend(docs);
+                    Ok(acc)
+                })
+                .await
+                .map_err(|e| ToolServerError::DefinitionError(
+                    CompletionError::RequestError(Box::new(e)),
+                ))?;
+
+            let dynamic_tool_handles: Vec<_> = {
+                let state = self.0.read().await;
+                dynamic_tool_ids
+                    .iter()
+                    .filter_map(|doc| {
+                        let handle = state.toolset.get(doc).cloned();
+                        if handle.is_none() {
+                            tracing::warn!("Tool implementation not found in toolset: {}", doc);
+                        }
+                        handle
+                    })
+                    .collect()
+            };
+
+            let mut tools = Vec::new();
+            for tool in dynamic_tool_handles {
+                tools.push(tool.definition(text.clone()).await);
+            }
+            tools
+        } else {
+            Vec::new()
+        };
+
+        let static_tool_handles: Vec<_> = {
+            let state = self.0.read().await;
+            static_tool_names
                 .iter()
-                .filter_map(|doc| {
-                    let handle = ts.get(doc).cloned();
+                .filter_map(|toolname| {
+                    let handle = state.toolset.get(toolname).cloned();
                     if handle.is_none() {
-                        tracing::warn!("Tool implementation not found in toolset: {}", doc);
+                        tracing::warn!("Tool implementation not found in toolset: {}", toolname);
                     }
                     handle
                 })
                 .collect()
         };
 
-        let mut tools = Vec::new();
-        for tool in dynamic_tool_handles {
-            tools.push(tool.definition(text.clone()).await);
+        for tool in static_tool_handles {
+            tools.push(tool.definition(String::new()).await);
         }
-        tools
-    } else {
-        Vec::new()
-    };
 
-    // Clone static tool handles under a brief read lock
-    let static_tool_handles: Vec<_> = {
-        let ts = toolset.read().await;
-        static_tool_names
-            .iter()
-            .filter_map(|toolname| {
-                let handle = ts.get(toolname).cloned();
-                if handle.is_none() {
-                    tracing::warn!("Tool implementation not found in toolset: {}", toolname);
-                }
-                handle
-            })
-            .collect()
-    };
-
-    for tool in static_tool_handles {
-        tools.push(tool.definition(String::new()).await);
+        Ok(tools)
     }
-
-    Ok(tools)
-}
-
-#[derive(Clone)]
-pub struct ToolServerHandle(Sender<ToolServerRequest>);
-
-impl ToolServerHandle {
-    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
-        let tool = Box::new(tool);
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::AddTool(tool),
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolAdded = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(())
-    }
-
-    pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::AppendToolset(toolset),
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolAdded = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(())
-    }
-
-    pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::RemoveTool {
-                    tool_name: tool_name.to_string(),
-                },
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolDeleted = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(())
-    }
-
-    pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::CallTool {
-                    name: tool_name.to_string(),
-                    args: args.to_string(),
-                    span: tracing::Span::current(),
-                },
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        match res {
-            ToolServerResponse::ToolExecuted { result, .. } => Ok(result),
-            ToolServerResponse::ToolError { error } => Err(ToolServerError::ToolsetError(
-                ToolSetError::ToolCallError(ToolError::ToolCallError(error.into())),
-            )),
-            invalid => Err(ToolServerError::InvalidMessage(invalid)),
-        }
-    }
-
-    pub async fn get_tool_defs(
-        &self,
-        prompt: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::GetToolDefs { prompt },
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolDefinitions(tooldefs) = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(tooldefs)
-    }
-}
-
-pub struct ToolServerRequest {
-    callback_channel: futures::channel::oneshot::Sender<ToolServerResponse>,
-    data: ToolServerRequestMessageKind,
-}
-
-pub enum ToolServerRequestMessageKind {
-    AddTool(Box<dyn ToolDyn>),
-    AppendToolset(ToolSet),
-    RemoveTool {
-        tool_name: String,
-    },
-    CallTool {
-        name: String,
-        args: String,
-        span: tracing::Span,
-    },
-    GetToolDefs {
-        prompt: Option<String>,
-    },
-}
-
-#[derive(PartialEq, Debug)]
-pub enum ToolServerResponse {
-    ToolAdded,
-    ToolDeleted,
-    ToolExecuted { result: String },
-    ToolError { error: String },
-    ToolDefinitions(Vec<ToolDefinition>),
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolServerError {
-    #[error("Sending message was cancelled")]
-    Canceled(#[from] Canceled),
     #[error("Toolset error: {0}")]
     ToolsetError(#[from] ToolSetError),
-    #[error("Error while sending message: {0}")]
-    SendError(#[from] SendError<ToolServerRequest>),
-    #[error("An invalid message type was returned")]
-    InvalidMessage(ToolServerResponse),
+    #[error("Failed to retrieve tool definitions: {0}")]
+    DefinitionError(CompletionError),
 }
 
 #[cfg(test)]

@@ -315,7 +315,8 @@ impl ToolSet {
 
     /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
     pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
-        self.tools.insert(tool.name(), ToolType::Simple(Arc::from(tool)));
+        self.tools
+            .insert(tool.name(), ToolType::Simple(Arc::from(tool)));
     }
 
     pub fn delete_tool(&mut self, tool_name: &str) {
