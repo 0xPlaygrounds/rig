@@ -469,74 +469,212 @@ mod tests {
         assert_eq!(res[0].name, "add");
     }
 
+    /// A tool that waits at a barrier to test concurrency of tool execution.
+    #[derive(Clone)]
+    struct BarrierTool {
+        barrier: Arc<tokio::sync::Barrier>,
+    }
+
     #[derive(Debug, thiserror::Error)]
-    #[error("Sleeper error")]
-    struct SleeperError;
+    #[error("Barrier error")]
+    struct BarrierError;
 
-    /// A tool that sleeps for a configurable duration, used to test concurrent execution.
-    #[derive(Deserialize, Serialize, Clone)]
-    struct SleeperTool {
-        sleep_duration_ms: u64,
-    }
-
-    impl SleeperTool {
-        fn new(sleep_duration_ms: u64) -> Self {
-            Self { sleep_duration_ms }
-        }
-    }
-
-    impl Tool for SleeperTool {
-        const NAME: &'static str = "sleeper";
-        type Error = SleeperError;
+    impl Tool for BarrierTool {
+        const NAME: &'static str = "barrier_tool";
+        type Error = BarrierError;
         type Args = serde_json::Value;
-        type Output = u64;
+        type Output = String;
 
         async fn definition(&self, _prompt: String) -> ToolDefinition {
             ToolDefinition {
-                name: "sleeper".to_string(),
-                description: "Sleeps for configured duration".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
+                name: "barrier_tool".to_string(),
+                description: "Waits at a barrier to test concurrency".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
             }
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            tokio::time::sleep(Duration::from_millis(self.sleep_duration_ms)).await;
-            Ok(self.sleep_duration_ms)
+            // Wait for all concurrent invocations to reach this point
+            self.barrier.wait().await;
+            Ok("done".to_string())
         }
     }
 
     #[tokio::test]
     pub async fn test_toolserver_concurrent_tool_execution() {
-        let sleep_ms: u64 = 100;
-        let num_calls: u64 = 3;
+        let num_calls = 3;
+        let barrier = Arc::new(tokio::sync::Barrier::new(num_calls));
 
-        let server = ToolServer::new().tool(SleeperTool::new(sleep_ms));
+        let server = ToolServer::new().tool(BarrierTool {
+            barrier: barrier.clone(),
+        });
         let handle = server.run();
-
-        let start = std::time::Instant::now();
 
         // Make concurrent calls
         let futures: Vec<_> = (0..num_calls)
-            .map(|_| handle.call_tool("sleeper", "{}"))
+            .map(|_| handle.call_tool("barrier_tool", "{}"))
             .collect();
-        let results = futures::future::join_all(futures).await;
 
-        let elapsed = start.elapsed();
+        // If execution is sequential, the first call will block at the barrier forever.
+        // We use a 1-second timeout to fail fast instead of hanging the test runner.
+        let result =
+            tokio::time::timeout(Duration::from_secs(1), futures::future::join_all(futures)).await;
+
+        assert!(
+            result.is_ok(),
+            "Tool execution deadlocked! Tools are executing sequentially instead of concurrently."
+        );
 
         // All calls should succeed
-        for result in &results {
-            assert!(result.is_ok(), "Tool call failed: {:?}", result);
+        for res in result.unwrap() {
+            assert!(res.is_ok(), "Tool call failed: {:?}", res);
+            assert_eq!(res.unwrap(), "\"done\"");
+        }
+    }
+
+    /// A tool that can be controlled to test concurrent writes to the ToolServer.
+    #[derive(Clone)]
+    struct ControlledTool {
+        started: Arc<tokio::sync::Notify>,
+        allow_finish: Arc<tokio::sync::Notify>,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("Controlled error")]
+    struct ControlledError;
+
+    impl Tool for ControlledTool {
+        const NAME: &'static str = "controlled";
+        type Error = ControlledError;
+        type Args = serde_json::Value;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: "controlled".to_string(),
+                description: "Test tool".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }
         }
 
-        // If concurrent: elapsed ≈ 100ms (plus overhead)
-        // If sequential: elapsed ≈ 300ms
-        // Threshold: less than 2x single sleep duration means concurrent execution
-        let max_concurrent_time = Duration::from_millis(sleep_ms * 2);
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            // 1. Signal that we are inside the call (lock should be dropped by now)
+            self.started.notify_one();
+            // 2. Wait indefinitely until the test allows us to finish
+            self.allow_finish.notified().await;
+            Ok(42)
+        }
+    }
+
+    #[tokio::test]
+    pub async fn test_toolserver_write_while_tool_running() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let allow_finish = Arc::new(tokio::sync::Notify::new());
+
+        // Build server with the controlled tool that waits at a barrier during execution
+        let tool = ControlledTool {
+            started: started.clone(),
+            allow_finish: allow_finish.clone(),
+        };
+
+        let server = ToolServer::new().tool(tool);
+        let handle = server.run();
+
+        // Start tool call in background
+        let handle_clone = handle.clone();
+        let call_task =
+            tokio::spawn(async move { handle_clone.call_tool("controlled", "{}").await });
+
+        // Wait until we are strictly inside `call()`
+        started.notified().await;
+
+        // Try to write to the state (add a tool) while the tool call is mid-execution.
+        // If the read lock is incorrectly held across tool execution, this will deadlock.
+        let add_result = tokio::time::timeout(Duration::from_secs(1), handle.add_tool(Adder)).await;
+
         assert!(
-            elapsed < max_concurrent_time,
-            "Expected concurrent execution in < {:?}, but took {:?}. Tools may be running sequentially.",
-            max_concurrent_time,
-            elapsed
+            add_result.is_ok(),
+            "Writing to ToolServer deadlocked! The read lock is being held across tool execution."
         );
+        assert!(add_result.unwrap().is_ok());
+
+        // Allow the background tool to finish and clean up
+        allow_finish.notify_one();
+        let call_result = call_task.await.unwrap();
+        assert_eq!(call_result.unwrap(), "42");
+    }
+
+    /// A mock vector store index that waits at a barrier to enforce parallel execution
+    struct BarrierMockIndex {
+        barrier: Arc<tokio::sync::Barrier>,
+        tool_id: String,
+    }
+
+    impl VectorStoreIndex for BarrierMockIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            Ok(vec![])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            // Wait for all indices to reach this point simultaneously
+            self.barrier.wait().await;
+            Ok(vec![(1.0, self.tool_id.clone())])
+        }
+    }
+
+    #[tokio::test]
+    pub async fn test_toolserver_parallel_dynamic_tool_fetching() {
+        // We expect exactly 2 parallel searches to hit the barrier at the same time
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+
+        let index1 = BarrierMockIndex {
+            barrier: barrier.clone(),
+            tool_id: "add".to_string(),
+        };
+
+        let index2 = BarrierMockIndex {
+            barrier: barrier.clone(),
+            tool_id: "subtract".to_string(),
+        };
+
+        // Put both tools in the toolset so they resolve correctly
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(Adder);
+        toolset.add_tool(Subtractor);
+
+        let server = ToolServer::new()
+            .dynamic_tools(1, Arc::new(index1), ToolSet::default())
+            // Pass the actual toolset with the second dynamic tools registration
+            .dynamic_tools(1, Arc::new(index2), toolset);
+
+        let handle = server.run();
+
+        // This will trigger a search across both indices.
+        // If fetched sequentially, the first index will wait at the barrier forever.
+        let get_defs = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            handle.get_tool_defs(Some("do math".to_string())),
+        )
+        .await;
+
+        assert!(
+            get_defs.is_ok(),
+            "Dynamic tools were fetched sequentially! The first query deadlocked waiting for the second query to start."
+        );
+
+        let defs = get_defs.unwrap().unwrap();
+        assert_eq!(defs.len(), 2);
+
+        let tool_names: Vec<&str> = defs.iter().map(|t| t.name.as_str()).collect();
+        assert!(tool_names.contains(&"add"));
+        assert!(tool_names.contains(&"subtract"));
     }
 }
