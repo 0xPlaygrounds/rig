@@ -100,7 +100,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.
             ")
-        .dynamic_context(3, index) // Samples should match the number of questions
+        .dynamic_context(3, Arc::new(index)) // Samples should match the number of questions
         .build();
 
     // Prompt the agent and print the response

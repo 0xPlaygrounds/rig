@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
@@ -271,7 +273,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         // Add a dynamic tool source with a sample rate of 1 (i.e.: only
         // 1 additional tool will be added to prompts)
-        .dynamic_tools(4, index, toolset)
+        .dynamic_tools(4, Arc::new(index), toolset)
         .build();
 
     // Create a CLI chatbot from the agent

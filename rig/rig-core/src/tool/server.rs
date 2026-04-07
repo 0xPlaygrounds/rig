@@ -18,7 +18,7 @@ pub struct ToolServer {
     /// These tools will always exist on the tool server for as long as they are not deleted.
     static_tool_names: Vec<String>,
     /// Dynamic tools. These tools will be dynamically fetched from a given vector store.
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The toolset where tools are called (to be executed).
     /// Wrapped in Arc<RwLock<...>> to allow concurrent tool execution.
     toolset: Arc<RwLock<ToolSet>>,
@@ -51,7 +51,7 @@ impl ToolServer {
 
     pub(crate) fn add_dynamic_tools(
         mut self,
-        dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+        dyn_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     ) -> Self {
         self.dynamic_tools = dyn_tools;
         self
@@ -93,10 +93,10 @@ impl ToolServer {
     pub fn dynamic_tools(
         mut self,
         sample: usize,
-        dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        dynamic_tools: Arc<dyn VectorStoreIndexDyn + Send + Sync>,
         toolset: ToolSet,
     ) -> Self {
-        self.dynamic_tools.push((sample, Box::new(dynamic_tools)));
+        self.dynamic_tools.push((sample, dynamic_tools));
         // This should be practically impossible to fail: cloning the Arc before calling
         // .dynamic_tools() is impossible since the toolset field is private, and the server cannot
         // be running prior to run(), which consumes self.
@@ -420,7 +420,7 @@ pub enum ToolServerError {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
 
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -582,7 +582,7 @@ mod tests {
         // Build server with static tool "add" and dynamic tools from the mock index
         let server = ToolServer::new().tool(Adder).dynamic_tools(
             1,
-            mock_index,
+            Arc::new(mock_index),
             ToolSet::from_tools(vec![Subtractor]),
         );
 
@@ -614,9 +614,11 @@ mod tests {
         };
 
         // Build server with only static tool, but dynamic index references missing tool
-        let server = ToolServer::new()
-            .tool(Adder)
-            .dynamic_tools(1, mock_index, ToolSet::default());
+        let server = ToolServer::new().tool(Adder).dynamic_tools(
+            1,
+            Arc::new(mock_index),
+            ToolSet::default(),
+        );
 
         let handle = server.run();
 

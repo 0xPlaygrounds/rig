@@ -399,7 +399,7 @@ async fn agent_with_dynamic_context_test() {
         .completion_model(openai::GPT_4O)
         .completions_api()
         .into_agent_builder()
-        .dynamic_context(top_k, vector_store_index)
+        .dynamic_context(top_k, Arc::new(vector_store_index))
         .build();
 
     let query = "My boss says I zindle too much, what does that mean?";

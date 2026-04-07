@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use rig::{
     completion::{Prompt, ToolDefinition},
@@ -170,7 +172,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         // Add a dynamic tool source with a sample rate of 2 (i.e.: only
         // 2 additional tool will be added to prompts)
-        .dynamic_tools(2, index, toolset)
+        .dynamic_tools(2, Arc::new(index), toolset)
         .build();
 
     // Prompt the agent and print the response
