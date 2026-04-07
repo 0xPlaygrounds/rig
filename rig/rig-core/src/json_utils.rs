@@ -86,7 +86,9 @@ pub mod stringified_json {
         D: Deserializer<'de>,
     {
         match serde_json::Value::deserialize(deserializer)? {
-            serde_json::Value::String(s) => parse_tool_arguments(&s).map_err(serde::de::Error::custom),
+            serde_json::Value::String(s) => {
+                parse_tool_arguments(&s).map_err(serde::de::Error::custom)
+            }
             other => Ok(other),
         }
     }
