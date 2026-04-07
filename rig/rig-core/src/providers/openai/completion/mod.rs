@@ -879,15 +879,28 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_text_response(&self) -> Option<String> {
-        let Message::User { ref content, .. } = self.choices.last()?.message.clone() else {
+        // OpenAI chat completions return the assistant's reply as
+        // `Message::Assistant`, not `Message::User`. Matching on `User`
+        // here caused `get_text_response()` to always return `None` for
+        // real provider responses, and even if the match were corrected
+        // to `Assistant`, returning only the first content item would
+        // truncate multi-part assistant replies.
+        let Message::Assistant { ref content, .. } = self.choices.last()?.message else {
             return None;
         };
 
-        let UserContent::Text { text } = content.first() else {
-            return None;
-        };
+        let mut text = String::new();
+        for item in content {
+            if let AssistantContent::Text { text: part } = item {
+                text.push_str(part);
+            }
+        }
 
-        Some(text)
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
