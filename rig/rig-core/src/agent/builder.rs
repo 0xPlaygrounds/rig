@@ -161,7 +161,8 @@ where
         sample: usize,
         dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
     ) -> Self {
-        self.dynamic_context.push((sample, Arc::new(dynamic_context)));
+        self.dynamic_context
+            .push((sample, Arc::new(dynamic_context)));
         self
     }
 
