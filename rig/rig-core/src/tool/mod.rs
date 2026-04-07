@@ -12,6 +12,7 @@
 pub mod server;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 use futures::Future;
 use serde::{Deserialize, Serialize};
@@ -229,9 +230,10 @@ where
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum ToolType {
-    Simple(Box<dyn ToolDyn>),
-    Embedding(Box<dyn ToolEmbeddingDyn>),
+    Simple(Arc<dyn ToolDyn>),
+    Embedding(Arc<dyn ToolEmbeddingDyn>),
 }
 
 impl ToolType {
@@ -313,12 +315,13 @@ impl ToolSet {
     /// Add a tool to the toolset
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.tools
-            .insert(tool.name(), ToolType::Simple(Box::new(tool)));
+            .insert(tool.name(), ToolType::Simple(Arc::new(tool)));
     }
 
     /// Adds a boxed tool to the toolset. Useful for situations when dynamic dispatch is required.
     pub fn add_tool_boxed(&mut self, tool: Box<dyn ToolDyn>) {
-        self.tools.insert(tool.name(), ToolType::Simple(tool));
+        self.tools
+            .insert(tool.name(), ToolType::Simple(Arc::from(tool)));
     }
 
     pub fn delete_tool(&mut self, tool_name: &str) {
@@ -420,12 +423,12 @@ pub struct ToolSetBuilder {
 
 impl ToolSetBuilder {
     pub fn static_tool(mut self, tool: impl ToolDyn + 'static) -> Self {
-        self.tools.push(ToolType::Simple(Box::new(tool)));
+        self.tools.push(ToolType::Simple(Arc::new(tool)));
         self
     }
 
     pub fn dynamic_tool(mut self, tool: impl ToolEmbeddingDyn + 'static) -> Self {
-        self.tools.push(ToolType::Embedding(Box::new(tool)));
+        self.tools.push(ToolType::Embedding(Arc::new(tool)));
         self
     }
 
