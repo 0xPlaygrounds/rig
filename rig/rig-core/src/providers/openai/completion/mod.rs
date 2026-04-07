@@ -16,8 +16,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, json_utils, message};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
+use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
 use tracing::{Instrument, Level, enabled, info_span};
@@ -405,24 +404,9 @@ pub struct Function {
     pub name: String,
     #[serde(
         serialize_with = "json_utils::stringified_json::serialize",
-        deserialize_with = "deserialize_arguments"
+        deserialize_with = "json_utils::stringified_json::deserialize_maybe_stringified"
     )]
     pub arguments: serde_json::Value,
-}
-
-/// the arguments for tool calls in the openai API are an JSON object encoded as a string
-/// the arguments for tool calls in llama.cpp are already an JSON object (that is not stringified)
-/// therefore we handle both cases here
-fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-
-    match value {
-        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
-        other => Ok(other),
-    }
 }
 
 impl TryFrom<message::ToolResult> for Message {
@@ -1550,28 +1534,72 @@ mod tests {
                 "message": {
                     "role": "assistant",
                     "content": "",
-                    "tool_calls": [{ "type": "function", "function": { "name": "hello_world", "arguments": {} }, "id": "xxx" }]
+                    "tool_calls": [{ "type": "function", "function": { "name": "hello_world", "arguments": { "city": "Paris" } }, "id": "xxx" }]
                 }
             }],
             "created": 0,
-            "model": "unsloth/Qwen3-Coder-Next-GGUF:Q8_0",
-            "system_fingerprint": "b8113-xxxx",
+            "model": "gpt-4o-mini",
+            "system_fingerprint": "fp_xxx",
             "object": "chat.completion",
             "usage": { "completion_tokens": 13, "prompt_tokens": 255, "total_tokens": 268 },
-            "id": "xxx",
-            "timings": {
-                "cache_n": 0,
-                "prompt_n": 255,
-                "prompt_ms": 670,
-                "prompt_per_token_ms": 2.63,
-                "prompt_per_second": 380,
-                "predicted_n": 13,
-                "predicted_ms": 367,
-                "predicted_per_token_ms": 28,
-                "predicted_per_second": 35
-            }
+            "id": "xxx"
         }
         "#;
-        serde_json::from_str::<ApiResponse<CompletionResponse>>(&request).unwrap();
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+        assert_eq!(response.choices.len(), 1);
+
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "xxx");
+        assert_eq!(tool_calls[0].function.name, "hello_world");
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            serde_json::json!({"city": "Paris"})
+        );
+    }
+
+    #[test]
+    fn deserialize_openai_stringified_tool_call() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{ "type": "function", "function": { "name": "hello_world", "arguments": "{\"city\":\"Paris\"}" }, "id": "xxx" }]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "system_fingerprint": "fp_xxx",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 13, "prompt_tokens": 255, "total_tokens": 268 },
+            "id": "xxx"
+        }
+        "#;
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+        assert_eq!(response.choices.len(), 1);
+
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "xxx");
+        assert_eq!(tool_calls[0].function.name, "hello_world");
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            serde_json::json!({"city": "Paris"})
+        );
     }
 }
