@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::vec;
 
 use rig::client::{CompletionClient, EmbeddingsClient, ProviderClient};

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rig::client::Nothing;
 use rig::prelude::*;
 use rig::{

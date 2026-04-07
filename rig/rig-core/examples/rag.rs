@@ -5,6 +5,7 @@ use rig::{
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
+use std::sync::Arc;
 use std::vec;
 
 // Data to be RAGged.

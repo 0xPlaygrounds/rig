@@ -6,6 +6,7 @@ use rig::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::vec;
 
 // Data to be RAGged.
