@@ -85,7 +85,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .into_agent_builder()
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.")
-        .dynamic_context(top_k, Arc::new(vector_store_index))
+        .dynamic_context(top_k, vector_store_index)
         .build();
 
     let query = "My boss says I zindle too much, what does that mean?";
