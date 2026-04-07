@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures::{StreamExt, TryStreamExt, stream};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -176,18 +175,18 @@ impl ToolServerHandle {
         };
 
         let mut tools = if let Some(ref text) = prompt {
-            let dynamic_tool_ids: Vec<String> = stream::iter(dynamic_tools.iter())
+            let futs: Vec<_> = dynamic_tools
+                .into_iter()
                 .map(|(num_sample, index)| {
                     let text = text.clone();
                     async move {
                         let req = VectorSearchRequest::builder()
                             .query(text)
-                            .samples(*num_sample as u64)
+                            .samples(num_sample as u64)
                             .build()
                             .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
                         Ok::<_, VectorStoreError>(
                             index
-                                .as_ref()
                                 .top_n_ids(req.map_filter(Filter::interpret))
                                 .await?
                                 .into_iter()
@@ -196,16 +195,13 @@ impl ToolServerHandle {
                         )
                     }
                 })
-                // Buffer unordered to fetch from multiple indexes concurrently, then flatten results
-                .buffer_unordered(dynamic_tools.len().max(1))
-                .try_fold(vec![], |mut acc, docs| async {
-                    acc.extend(docs);
-                    Ok(acc)
-                })
-                .await
-                .map_err(|e| ToolServerError::DefinitionError(
-                    CompletionError::RequestError(Box::new(e)),
-                ))?;
+                .collect();
+
+            let results = futures::future::try_join_all(futs).await.map_err(|e| {
+                ToolServerError::DefinitionError(CompletionError::RequestError(Box::new(e)))
+            })?;
+
+            let dynamic_tool_ids: Vec<String> = results.into_iter().flatten().collect();
 
             let dynamic_tool_handles: Vec<_> = {
                 let state = self.0.read().await;
