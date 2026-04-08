@@ -3,6 +3,7 @@
 //! handling transcription responses, and defining transcription models.
 #[allow(deprecated)]
 use crate::client::transcription::TranscriptionModelHandle;
+use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 use crate::{http_client, json_utils};
 use std::io;
@@ -153,13 +154,6 @@ pub struct TranscriptionRequest {
     /// Additional parameters to be sent to the transcription model provider
     pub additional_params: Option<serde_json::Value>,
 }
-
-/// Marker struct representing missing data in the transcription request builder.
-pub struct Missing;
-
-/// Marker struct representing provided data in the transcription request builder.
-/// The generic type `T` represents the type of the provided data (e.g., `Vec<u8>` for file data).
-pub struct Provided<T>(pub T);
 
 /// Builder struct for a transcription request
 ///

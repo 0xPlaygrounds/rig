@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::VectorStoreError;
+use crate::markers::{Missing, Provided};
 
 /// A vector search request for querying a [`super::VectorStoreIndex`].
 ///
@@ -226,10 +227,6 @@ impl Filter<serde_json::Value> {
         }
     }
 }
-
-pub struct Missing;
-
-pub struct Provided<T>(T);
 
 /// Builder for [`VectorSearchRequest`]. Requires `query` and `samples`.
 #[derive(Clone, Serialize, Deserialize, Debug)]
