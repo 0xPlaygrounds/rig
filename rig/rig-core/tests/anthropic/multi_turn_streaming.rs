@@ -71,7 +71,7 @@ impl Tool for Divide {
 async fn multi_turn_streaming_tools() {
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
+        .agent(anthropic::completion::CLAUDE_4_SONNET)
         .preamble("You must use tools for arithmetic.")
         .tool(Add)
         .tool(Divide)

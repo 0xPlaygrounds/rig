@@ -11,7 +11,7 @@ use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_respo
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn think_tool_menu_planning() {
     let agent = anthropic::Client::from_env()
-        .agent(anthropic::completion::CLAUDE_3_7_SONNET)
+        .agent(anthropic::completion::CLAUDE_4_SONNET)
         .name("Anthropic Thinker")
         .preamble(
             "You are a helpful assistant that can solve complex problems. \

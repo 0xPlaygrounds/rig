@@ -96,12 +96,11 @@ async fn think_tool_with_other_tools() {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
     let client = anthropic::Client::builder()
         .api_key(&api_key)
-        .anthropic_beta("token-efficient-tools-2025-02-19")
         .build()
         .expect("client should build");
 
     let agent = client
-        .agent(anthropic::completion::CLAUDE_3_7_SONNET)
+        .agent(anthropic::completion::CLAUDE_4_SONNET)
         .name("Customer Service Agent")
         .preamble(
             "You are a customer service agent. Use the think tool to analyze the situation, \
