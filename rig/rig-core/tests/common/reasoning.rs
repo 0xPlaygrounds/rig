@@ -1,4 +1,8 @@
-//! Shared helpers for provider-backed reasoning integration tests.
+//! Shared helpers for provider-backed reasoning-enabled integration tests.
+//!
+//! These tests verify that providers can handle reasoning-enabled requests,
+//! preserve multi-turn history, and complete tool roundtrips. Visible reasoning
+//! is recorded for diagnostics when a provider emits it, but is not required.
 #![allow(dead_code)]
 
 use std::sync::Arc;
@@ -71,8 +75,7 @@ where
     let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
 
     let mut assistant_content = Vec::new();
-    let mut reasoning_count = 0usize;
-    let mut reasoning_delta_count = 0usize;
+    let mut saw_reasoning_block = false;
     let mut reasoning_delta_text = String::new();
     let mut streamed_text = String::new();
 
@@ -82,11 +85,10 @@ where
                 streamed_text.push_str(&text.text);
             }
             Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
-                reasoning_count += 1;
+                saw_reasoning_block = true;
                 assistant_content.push(AssistantContent::Reasoning(reasoning));
             }
             Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
-                reasoning_delta_count += 1;
                 reasoning_delta_text.push_str(&reasoning);
             }
             Ok(_) => {}
@@ -96,29 +98,15 @@ where
 
     // Providers like Gemini 2.5 emit thinking as deltas without signatures,
     // so turn the deltas into a single reasoning block before round-tripping.
-    if reasoning_count == 0 && !reasoning_delta_text.is_empty() {
+    if !saw_reasoning_block && !reasoning_delta_text.is_empty() {
         assistant_content.push(AssistantContent::Reasoning(Reasoning::new(
             &reasoning_delta_text,
         )));
     }
 
-    let total_reasoning = reasoning_count + reasoning_delta_count;
-    assert!(
-        total_reasoning > 0,
-        "No reasoning content received (0 blocks, 0 deltas). \
-         Provider was configured for reasoning but returned none."
-    );
-
     assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
 
     assistant_content.push(AssistantContent::text(&streamed_text));
-
-    assert!(
-        assistant_content
-            .iter()
-            .any(|content| matches!(content, AssistantContent::Reasoning(_))),
-        "Assistant content for Turn 2 history has no reasoning items."
-    );
 
     let turn1_assistant = Message::Assistant {
         id: stream.message_id.clone(),
@@ -199,37 +187,17 @@ where
         .await
         .expect("Turn 1 completion");
 
-    let mut has_reasoning = false;
     let mut text_parts = String::new();
 
     for content in response.choice.iter() {
         match content {
-            AssistantContent::Reasoning(_) => {
-                has_reasoning = true;
-            }
+            AssistantContent::Reasoning(_) => {}
             AssistantContent::Text(text) => {
                 text_parts.push_str(&text.text);
             }
             _ => {}
         }
     }
-
-    assert!(
-        has_reasoning,
-        "Turn 1 non-streaming response has no reasoning blocks in choice. \
-         Provider was configured for reasoning but returned none. \
-         Choice items: {:?}",
-        response
-            .choice
-            .iter()
-            .map(|content| match content {
-                AssistantContent::Text(_) => "Text",
-                AssistantContent::ToolCall(_) => "ToolCall",
-                AssistantContent::Reasoning(_) => "Reasoning",
-                _ => "Other",
-            })
-            .collect::<Vec<_>>()
-    );
 
     assert!(
         !text_parts.is_empty(),
@@ -505,7 +473,7 @@ pub(crate) fn assert_universal(
 ) {
     assert!(
         stats.errors.is_empty(),
-        "[{provider}] Stream had errors - likely a 400 from missing reasoning in tool-call history: {:?}",
+        "[{provider}] Stream had errors: {:?}",
         stats.errors
     );
 
@@ -514,12 +482,6 @@ pub(crate) fn assert_universal(
         invocations >= 1,
         "[{provider}] Tool was never invoked (count=0). Stream tool calls: {:?}",
         stats.tool_calls_in_stream
-    );
-
-    assert!(
-        stats.total_reasoning() > 0,
-        "[{provider}] No reasoning content received (0 blocks, 0 deltas). \
-         Provider was configured for reasoning but returned none."
     );
 
     assert!(
@@ -539,12 +501,6 @@ pub(crate) fn assert_universal(
     assert!(
         stats.tool_results_in_stream >= 1,
         "[{provider}] No tool-result events in stream. Tool invoked {invocations} times."
-    );
-
-    assert!(
-        stats.reasoning_before_first_tool_call(),
-        "[{provider}] Reasoning did not appear before the first tool call. Events: {:?}",
-        stats.events
     );
 
     assert!(

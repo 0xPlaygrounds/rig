@@ -38,16 +38,19 @@ fn sample_inputs() -> Vec<&'static str> {
 async fn main() -> Result<()> {
     let client = openai::Client::from_env();
     let names_extractor = client
-        .extractor::<Names>(openai::GPT_4)
+        .extractor::<Names>(openai::GPT_4O_MINI)
         .preamble("Extract names from the given text.")
+        .retries(2)
         .build();
     let topics_extractor = client
-        .extractor::<Topics>(openai::GPT_4)
+        .extractor::<Topics>(openai::GPT_4O_MINI)
         .preamble("Extract topics from the given text.")
+        .retries(2)
         .build();
     let sentiment_extractor = client
-        .extractor::<Sentiment>(openai::GPT_4)
+        .extractor::<Sentiment>(openai::GPT_4O_MINI)
         .preamble("Extract sentiment and confidence from the given text.")
+        .retries(2)
         .build();
 
     let chain = pipeline::new()

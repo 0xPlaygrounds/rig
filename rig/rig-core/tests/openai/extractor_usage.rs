@@ -28,6 +28,22 @@ struct Address {
     zip_code: Option<String>,
 }
 
+fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) {
+    let left = left
+        .expect("profession should be present")
+        .trim()
+        .to_ascii_lowercase();
+    let right = right
+        .expect("profession should be present")
+        .trim()
+        .to_ascii_lowercase();
+
+    assert!(
+        left == right || left.contains(&right) || right.contains(&left),
+        "expected compatible professions, got {left:?} and {right:?}"
+    );
+}
+
 /// Test backward compatibility: the original `extract()` method should still work
 /// and return just the extracted data (not wrapped in a response type).
 #[tokio::test]
@@ -110,8 +126,8 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     Ok(())
 }
 
-/// Test that `extract_with_usage()` and `extract()` return the same data.
-/// This verifies that the internal refactoring didn't change the extraction logic.
+/// Test that `extract_with_usage()` and `extract()` agree on the stable extracted fields.
+/// These are separate model calls, so exact wording can vary across runs.
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
@@ -128,8 +144,15 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     // Extract with usage
     let response = extractor.extract_with_usage(text).await?;
 
-    // Both should return the same data
-    assert_eq!(person, response.data);
+    assert_eq!(person.name, Some("Bob Johnson".to_string()));
+    assert_eq!(response.data.name, Some("Bob Johnson".to_string()));
+    assert_eq!(person.age, Some(55));
+    assert_eq!(response.data.age, Some(55));
+    assert_compatible_professions(
+        person.profession.as_deref(),
+        response.data.profession.as_deref(),
+    );
+    assert!(response.usage.total_tokens > 0, "usage should be populated");
 
     Ok(())
 }

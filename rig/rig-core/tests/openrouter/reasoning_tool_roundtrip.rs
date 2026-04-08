@@ -4,7 +4,7 @@
 //! `cargo test -p rig-core --test openrouter openrouter::reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Chat, Message};
@@ -35,34 +35,7 @@ async fn streaming() {
         .await;
 
     let stats = reasoning::collect_stream_stats(stream, "openrouter").await;
-
-    assert!(
-        stats.errors.is_empty(),
-        "[openrouter] Stream had errors: {:?}",
-        stats.errors
-    );
-
-    let invocations = call_count.load(Ordering::SeqCst);
-    assert!(
-        invocations >= 1,
-        "[openrouter] Tool was never invoked (count=0)."
-    );
-    assert!(
-        !stats.tool_calls_in_stream.is_empty(),
-        "[openrouter] No tool-call events in stream."
-    );
-    assert!(
-        stats.tool_results_in_stream >= 1,
-        "[openrouter] No tool-result events in stream."
-    );
-    assert!(
-        !stats.final_text.trim().is_empty(),
-        "[openrouter] Final text is empty."
-    );
-    assert!(
-        stats.got_final_response,
-        "[openrouter] Stream did not emit FinalResponse."
-    );
+    reasoning::assert_universal(&stats, &call_count, "openrouter");
 }
 
 #[tokio::test]
