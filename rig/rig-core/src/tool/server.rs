@@ -218,8 +218,7 @@ impl ToolServer {
                     let req = VectorSearchRequest::builder()
                         .query(text.clone())
                         .samples(*num_sample as u64)
-                        .build()
-                        .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                        .build();
                     Ok::<_, VectorStoreError>(
                         index
                             .as_ref()

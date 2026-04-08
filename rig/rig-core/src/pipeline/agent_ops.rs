@@ -46,7 +46,7 @@ where
         let req = VectorSearchRequest::builder()
             .query(query)
             .samples(self.n as u64)
-            .build()?;
+            .build();
 
         let docs = self.index.top_n::<T>(req).await?.into_iter().collect();
 

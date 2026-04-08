@@ -107,7 +107,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .samples(samples)
         .query(query)
-        .build()?;
+        .build();
 
     // Query the index
     let results = index

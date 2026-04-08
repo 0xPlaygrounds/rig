@@ -161,8 +161,7 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     let results = index.top_n::<serde_json::Value>(req).await.unwrap();
 

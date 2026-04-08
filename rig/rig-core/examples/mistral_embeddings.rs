@@ -38,7 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query("Hello world")
         .samples(1)
-        .build()?;
+        .build();
 
     let results = index.top_n::<Greetings>(req).await?;
 

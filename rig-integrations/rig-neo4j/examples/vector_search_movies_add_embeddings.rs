@@ -116,7 +116,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .query(query)
         .samples(5)
         .filter(SearchFilter::gt("node.year", 1990.into()))
-        .build()?;
+        .build();
 
     // Query the index
     let results = index
@@ -137,7 +137,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()?;
+        .build();
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 
