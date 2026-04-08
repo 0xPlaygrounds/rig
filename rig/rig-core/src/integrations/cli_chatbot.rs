@@ -1,14 +1,13 @@
 use crate::{
     agent::{Agent, MultiTurnStreamItem, Text},
     completion::{Chat, CompletionError, CompletionModel, PromptError, Usage},
+    markers::{Missing, Provided},
     message::Message,
     streaming::{StreamedAssistantContent, StreamingPrompt},
     wasm_compat::WasmCompatSend,
 };
 use futures::StreamExt;
 use std::io::{self, Write};
-
-pub struct NoImplProvided;
 
 pub struct ChatImpl<T>(T)
 where
@@ -24,7 +23,7 @@ where
     usage: Usage,
 }
 
-pub struct ChatBotBuilder<T>(T);
+pub struct ChatBotBuilder<T = Missing>(T);
 
 pub struct ChatBot<T>(T);
 
@@ -111,13 +110,13 @@ where
     }
 }
 
-impl Default for ChatBotBuilder<NoImplProvided> {
+impl Default for ChatBotBuilder<Missing> {
     fn default() -> Self {
-        Self(NoImplProvided)
+        Self(Missing)
     }
 }
 
-impl ChatBotBuilder<NoImplProvided> {
+impl ChatBotBuilder<Missing> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -125,50 +124,49 @@ impl ChatBotBuilder<NoImplProvided> {
     pub fn agent<M: CompletionModel + 'static>(
         self,
         agent: Agent<M>,
-    ) -> ChatBotBuilder<AgentImpl<M>> {
-        ChatBotBuilder(AgentImpl {
+    ) -> ChatBotBuilder<Provided<AgentImpl<M>>> {
+        ChatBotBuilder(Provided(AgentImpl {
             agent,
             max_turns: 1,
             show_usage: false,
             usage: Usage::default(),
-        })
+        }))
     }
 
-    pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<ChatImpl<T>> {
-        ChatBotBuilder(ChatImpl(chatbot))
+    pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<Provided<ChatImpl<T>>> {
+        ChatBotBuilder(Provided(ChatImpl(chatbot)))
     }
 }
 
-impl<T> ChatBotBuilder<ChatImpl<T>>
+impl<T> ChatBotBuilder<Provided<ChatImpl<T>>>
 where
     T: Chat,
 {
     pub fn build(self) -> ChatBot<ChatImpl<T>> {
-        let ChatBotBuilder(chat_impl) = self;
-        ChatBot(chat_impl)
+        ChatBot(self.0.0)
     }
 }
 
-impl<M> ChatBotBuilder<AgentImpl<M>>
+impl<M> ChatBotBuilder<Provided<AgentImpl<M>>>
 where
     M: CompletionModel + 'static,
 {
     pub fn max_turns(self, max_turns: usize) -> Self {
-        ChatBotBuilder(AgentImpl {
+        ChatBotBuilder(Provided(AgentImpl {
             max_turns,
-            ..self.0
-        })
+            ..self.0.0
+        }))
     }
 
     pub fn show_usage(self) -> Self {
-        ChatBotBuilder(AgentImpl {
+        ChatBotBuilder(Provided(AgentImpl {
             show_usage: true,
-            ..self.0
-        })
+            ..self.0.0
+        }))
     }
 
     pub fn build(self) -> ChatBot<AgentImpl<M>> {
-        ChatBot(self.0)
+        ChatBot(self.0.0)
     }
 }
 
