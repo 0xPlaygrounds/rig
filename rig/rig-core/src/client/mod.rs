@@ -37,6 +37,7 @@ use crate::{
     http_client::{
         self, Builder, HttpClientExt, LazyBody, MultipartForm, Request, Response, make_auth_header,
     },
+    markers::Missing,
     prelude::TranscriptionClient,
     transcription::TranscriptionModel,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -348,9 +349,9 @@ where
     Ext: Provider,
     Ext::Builder: ProviderBuilder<Extension<reqwest::Client> = Ext> + Default,
 {
-    pub fn builder() -> ClientBuilder<Ext::Builder, NeedsApiKey, reqwest::Client> {
+    pub fn builder() -> ClientBuilder<Ext::Builder, Missing, reqwest::Client> {
         ClientBuilder {
-            api_key: NeedsApiKey,
+            api_key: Missing,
             headers: Default::default(),
             base_url: <Ext::Builder as ProviderBuilder>::BASE_URL.into(),
             http_client: None,
@@ -476,12 +477,9 @@ where
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NeedsApiKey;
-
 // ApiKey is generic because Anthropic uses custom auth header, local models like Ollama use none
 #[derive(Clone)]
-pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
+pub struct ClientBuilder<Ext, ApiKey = Missing, H = reqwest::Client> {
     base_url: String,
     api_key: ApiKey,
     headers: HeaderMap,
@@ -489,14 +487,14 @@ pub struct ClientBuilder<Ext, ApiKey = NeedsApiKey, H = reqwest::Client> {
     ext: Ext,
 }
 
-impl<ExtBuilder, H> Default for ClientBuilder<ExtBuilder, NeedsApiKey, H>
+impl<ExtBuilder, H> Default for ClientBuilder<ExtBuilder, Missing, H>
 where
     H: Default,
     ExtBuilder: ProviderBuilder + Default,
 {
     fn default() -> Self {
         Self {
-            api_key: NeedsApiKey,
+            api_key: Missing,
             headers: Default::default(),
             base_url: ExtBuilder::BASE_URL.into(),
             http_client: None,
@@ -505,7 +503,7 @@ where
     }
 }
 
-impl<Ext, H> ClientBuilder<Ext, NeedsApiKey, H> {
+impl<Ext, H> ClientBuilder<Ext, Missing, H> {
     /// Set the API key for this client. This *must* be done before the `build` method can be
     /// called
     pub fn api_key<ApiKey>(self, api_key: impl Into<ApiKey>) -> ClientBuilder<Ext, ApiKey, H> {
