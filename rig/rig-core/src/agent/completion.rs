@@ -21,7 +21,7 @@ pub type DynamicContextStore = Arc<
     TokioRwLock<
         Vec<(
             usize,
-            Box<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
+            Arc<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
         )>,
     >,
 >;
