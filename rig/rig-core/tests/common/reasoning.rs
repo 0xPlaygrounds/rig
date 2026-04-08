@@ -331,6 +331,7 @@ pub(crate) struct StreamStats {
     pub(crate) tool_results_in_stream: usize,
     pub(crate) text_chunks: usize,
     pub(crate) final_text: String,
+    pub(crate) final_response_text: Option<String>,
     pub(crate) got_final_response: bool,
     pub(crate) errors: Vec<String>,
     pub(crate) events: Vec<&'static str>,
@@ -348,6 +349,7 @@ impl StreamStats {
             tool_results_in_stream: 0,
             text_chunks: 0,
             final_text: String::new(),
+            final_response_text: None,
             got_final_response: false,
             errors: vec![],
             events: vec![],
@@ -453,7 +455,8 @@ where
                     stats.events.push("tool_result");
                 }
             },
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                stats.final_response_text = Some(response.response().to_owned());
                 stats.got_final_response = true;
             }
             Ok(_) => {}
@@ -532,6 +535,12 @@ pub(crate) fn assert_universal(
     assert!(
         stats.got_final_response,
         "[{provider}] Stream did not emit FinalResponse."
+    );
+
+    assert_eq!(
+        stats.final_response_text.as_deref(),
+        Some(stats.final_text.as_str()),
+        "[{provider}] FinalResponse.response() diverged from streamed text."
     );
 }
 
