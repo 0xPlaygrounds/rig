@@ -1,27 +1,31 @@
 use std::sync::Arc;
 
-use futures::{StreamExt, TryStreamExt, channel::oneshot::Canceled, stream};
-use tokio::sync::{
-    RwLock,
-    mpsc::{Sender, error::SendError},
-};
-use tracing::Instrument;
+use tokio::sync::RwLock;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
-    tool::{Tool, ToolDyn, ToolError, ToolSet, ToolSetError},
+    tool::{Tool, ToolDyn, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
-pub struct ToolServer {
-    /// A list of static tool names.
-    /// These tools will always exist on the tool server for as long as they are not deleted.
+/// Shared state behind a `ToolServerHandle`.
+struct ToolServerState {
+    /// Static tool names that persist until explicitly removed.
     static_tool_names: Vec<String>,
-    /// Dynamic tools. These tools will be dynamically fetched from a given vector store.
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    /// The toolset where tools are called (to be executed).
-    /// Wrapped in Arc<RwLock<...>> to allow concurrent tool execution.
-    toolset: Arc<RwLock<ToolSet>>,
+    /// Dynamic tools fetched from vector stores on each prompt.
+    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    /// The toolset where tools are registered and executed.
+    toolset: ToolSet,
+}
+
+/// Builder for constructing a [`ToolServerHandle`].
+///
+/// Accumulates tools and configuration, then produces a shared handle via
+/// [`run()`](ToolServer::run).
+pub struct ToolServer {
+    static_tool_names: Vec<String>,
+    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    toolset: ToolSet,
 }
 
 impl Default for ToolServer {
@@ -35,7 +39,7 @@ impl ToolServer {
         Self {
             static_tool_names: Vec::new(),
             dynamic_tools: Vec::new(),
-            toolset: Arc::new(RwLock::new(ToolSet::default())),
+            toolset: ToolSet::default(),
         }
     }
 
@@ -45,13 +49,13 @@ impl ToolServer {
     }
 
     pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
-        self.toolset = Arc::new(RwLock::new(tools));
+        self.toolset = tools;
         self
     }
 
     pub(crate) fn add_dynamic_tools(
         mut self,
-        dyn_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+        dyn_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     ) -> Self {
         self.dynamic_tools = dyn_tools;
         self
@@ -60,29 +64,18 @@ impl ToolServer {
     /// Add a static tool to the agent
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
-        // This should be practically impossible to fail: cloning the Arc before calling
-        // .tool() is impossible since the toolset field is private, and the server cannot
-        // be running prior to run(), which consumes self.
-        Arc::get_mut(&mut self.toolset)
-            .expect("ToolServer::tool() called after run()")
-            .get_mut()
-            .add_tool(tool);
+        self.toolset.add_tool(tool);
         self.static_tool_names.push(toolname);
         self
     }
 
-    // Add an MCP tool (from `rmcp`) to the agent
+    /// Add an MCP tool (from `rmcp`) to the agent
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
         use crate::tool::rmcp::McpTool;
         let toolname = tool.name.clone();
-        // This should be practically impossible to fail: cloning the Arc before calling
-        // .rmcp_tool() is impossible since the toolset field is private, and the server cannot
-        // be running prior to run(), which consumes self.
-        Arc::get_mut(&mut self.toolset)
-            .expect("ToolServer::rmcp_tool() called after run()")
-            .get_mut()
+        self.toolset
             .add_tool(McpTool::from_mcp_server(tool, client));
         self.static_tool_names.push(toolname.to_string());
         self
@@ -96,331 +89,176 @@ impl ToolServer {
         dynamic_tools: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
     ) -> Self {
-        self.dynamic_tools.push((sample, Box::new(dynamic_tools)));
-        // This should be practically impossible to fail: cloning the Arc before calling
-        // .dynamic_tools() is impossible since the toolset field is private, and the server cannot
-        // be running prior to run(), which consumes self.
-        Arc::get_mut(&mut self.toolset)
-            .expect("ToolServer::dynamic_tools() called after run()")
-            .get_mut()
-            .add_tools(toolset);
+        self.dynamic_tools.push((sample, Arc::new(dynamic_tools)));
+        self.toolset.add_tools(toolset);
         self
     }
 
-    pub fn run(mut self) -> ToolServerHandle {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
+    /// Consume the builder and return a shared [`ToolServerHandle`].
+    pub fn run(self) -> ToolServerHandle {
+        ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
+            static_tool_names: self.static_tool_names,
+            dynamic_tools: self.dynamic_tools,
+            toolset: self.toolset,
+        })))
+    }
+}
 
-        #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-        tokio::spawn(async move {
-            while let Some(message) = rx.recv().await {
-                self.handle_message(message).await;
-            }
-        });
+/// A cheaply-cloneable handle to the shared tool server state.
+///
+/// All operations acquire locks directly on the underlying state.
+/// Multiple handles (e.g. across agents) can share the same state
+/// without channel-based message routing.
+#[derive(Clone)]
+pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
-        // SAFETY: `rig` currently doesn't compile to WASM without the `worker` feature.
-        // Therefore, we can safely assume that the user won't try to compile to wasm without the worker feature.
-        #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-        wasm_bindgen_futures::spawn_local(async move {
-            while let Some(message) = rx.recv().await {
-                self.handle_message(message).await;
-            }
-        });
-
-        ToolServerHandle(tx)
+impl ToolServerHandle {
+    /// Register a new static tool.
+    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        state.static_tool_names.push(tool.name());
+        state.toolset.add_tool_boxed(Box::new(tool));
+        Ok(())
     }
 
-    pub async fn handle_message(&mut self, message: ToolServerRequest) {
-        let ToolServerRequest {
-            callback_channel,
-            data,
-        } = message;
+    /// Merge an entire toolset into the server.
+    pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        state.toolset.add_tools(toolset);
+        Ok(())
+    }
 
-        match data {
-            ToolServerRequestMessageKind::AddTool(tool) => {
-                self.static_tool_names.push(tool.name());
-                self.toolset.write().await.add_tool_boxed(tool);
-                callback_channel
-                    .send(ToolServerResponse::ToolAdded)
-                    .unwrap();
-            }
-            ToolServerRequestMessageKind::AppendToolset(tools) => {
-                self.toolset.write().await.add_tools(tools);
-                callback_channel
-                    .send(ToolServerResponse::ToolAdded)
-                    .unwrap();
-            }
-            ToolServerRequestMessageKind::RemoveTool { tool_name } => {
-                self.static_tool_names.retain(|x| *x != tool_name);
-                self.toolset.write().await.delete_tool(&tool_name);
-                callback_channel
-                    .send(ToolServerResponse::ToolDeleted)
-                    .unwrap();
-            }
-            ToolServerRequestMessageKind::CallTool { name, args, span } => {
-                let toolset = Arc::clone(&self.toolset);
+    /// Remove a tool by name from both the toolset and the static list.
+    pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
+        let mut state = self.0.write().await;
+        state.static_tool_names.retain(|x| *x != tool_name);
+        state.toolset.delete_tool(tool_name);
+        Ok(())
+    }
 
-                #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
-                tokio::spawn(
-                    async move {
-                        match toolset.read().await.call(&name, args.clone()).await {
-                            Ok(result) => {
-                                let _ = callback_channel
-                                    .send(ToolServerResponse::ToolExecuted { result });
-                            }
-                            Err(err) => {
-                                let _ = callback_channel.send(ToolServerResponse::ToolError {
-                                    error: err.to_string(),
-                                });
-                            }
-                        }
-                    }
-                    .instrument(span),
+    /// Look up and execute a tool by name.
+    ///
+    /// The tool handle is cloned under a brief read lock so that
+    /// long-running tool executions never block writers.
+    pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
+        let tool = {
+            let state = self.0.read().await;
+            state.toolset.get(tool_name).cloned()
+        };
+
+        match tool {
+            Some(tool) => {
+                tracing::debug!(target: "rig",
+                    "Calling tool {tool_name} with args:\n{}",
+                    serde_json::to_string_pretty(&args).unwrap_or_default()
                 );
-
-                #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-                wasm_bindgen_futures::spawn_local(
-                    async move {
-                        match toolset.read().await.call(&name, args.clone()).await {
-                            Ok(result) => {
-                                let _ = callback_channel
-                                    .send(ToolServerResponse::ToolExecuted { result });
-                            }
-                            Err(err) => {
-                                let _ = callback_channel.send(ToolServerResponse::ToolError {
-                                    error: err.to_string(),
-                                });
-                            }
-                        }
-                    }
-                    .instrument(span),
-                );
+                tool.call(args.to_string())
+                    .await
+                    .map_err(|e| ToolSetError::ToolCallError(e).into())
             }
-            ToolServerRequestMessageKind::GetToolDefs { prompt } => {
-                let res = self.get_tool_definitions(prompt).await.unwrap();
-                callback_channel
-                    .send(ToolServerResponse::ToolDefinitions(res))
-                    .unwrap();
-            }
+            None => Err(ToolServerError::ToolsetError(
+                ToolSetError::ToolNotFoundError(tool_name.to_string()),
+            )),
         }
     }
 
-    pub async fn get_tool_definitions(
-        &mut self,
-        text: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, CompletionError> {
-        let static_tool_names = self.static_tool_names.clone();
-        let toolset = self.toolset.read().await;
+    /// Retrieve tool definitions, optionally using a prompt to select
+    /// dynamic tools from configured vector stores.
+    pub async fn get_tool_defs(
+        &self,
+        prompt: Option<String>,
+    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
+        // Snapshot the metadata we need under a brief read lock
+        let (static_tool_names, dynamic_tools) = {
+            let state = self.0.read().await;
+            (state.static_tool_names.clone(), state.dynamic_tools.clone())
+        };
 
-        let mut tools = if let Some(text) = text {
-            // First, collect all dynamic tool IDs from vector stores
-            let dynamic_tool_ids: Vec<String> = stream::iter(self.dynamic_tools.iter())
-                .then(|(num_sample, index)| async {
-                    let req = VectorSearchRequest::builder()
-                        .query(text.clone())
-                        .samples(*num_sample as u64)
-                        .build()
-                        .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
-                    Ok::<_, VectorStoreError>(
-                        index
-                            .as_ref()
-                            .top_n_ids(req.map_filter(Filter::interpret))
-                            .await?
-                            .into_iter()
-                            .map(|(_, id)| id)
-                            .collect::<Vec<String>>(),
-                    )
+        let mut tools = if let Some(ref text) = prompt {
+            let futs: Vec<_> = dynamic_tools
+                .into_iter()
+                .map(|(num_sample, index)| {
+                    let text = text.clone();
+                    async move {
+                        let req = VectorSearchRequest::builder()
+                            .query(text)
+                            .samples(num_sample as u64)
+                            .build()
+                            .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                        Ok::<_, VectorStoreError>(
+                            index
+                                .top_n_ids(req.map_filter(Filter::interpret))
+                                .await?
+                                .into_iter()
+                                .map(|(_, id)| id)
+                                .collect::<Vec<String>>(),
+                        )
+                    }
                 })
-                .try_fold(vec![], |mut acc, docs| async {
-                    acc.extend(docs);
-                    Ok(acc)
-                })
-                .await
-                .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                .collect();
 
-            // Then, get tool definitions for each ID
+            let results = futures::future::try_join_all(futs).await.map_err(|e| {
+                ToolServerError::DefinitionError(CompletionError::RequestError(Box::new(e)))
+            })?;
+
+            let dynamic_tool_ids: Vec<String> = results.into_iter().flatten().collect();
+
+            let dynamic_tool_handles: Vec<_> = {
+                let state = self.0.read().await;
+                dynamic_tool_ids
+                    .iter()
+                    .filter_map(|doc| {
+                        let handle = state.toolset.get(doc).cloned();
+                        if handle.is_none() {
+                            tracing::warn!("Tool implementation not found in toolset: {}", doc);
+                        }
+                        handle
+                    })
+                    .collect()
+            };
+
             let mut tools = Vec::new();
-            for doc in dynamic_tool_ids {
-                if let Some(tool) = toolset.get(&doc) {
-                    tools.push(tool.definition(text.clone()).await)
-                } else {
-                    tracing::warn!("Tool implementation not found in toolset: {}", doc);
-                }
+            for tool in dynamic_tool_handles {
+                tools.push(tool.definition(text.clone()).await);
             }
             tools
         } else {
             Vec::new()
         };
 
-        for toolname in static_tool_names {
-            if let Some(tool) = toolset.get(&toolname) {
-                tools.push(tool.definition(String::new()).await)
-            } else {
-                tracing::warn!("Tool implementation not found in toolset: {}", toolname);
-            }
+        let static_tool_handles: Vec<_> = {
+            let state = self.0.read().await;
+            static_tool_names
+                .iter()
+                .filter_map(|toolname| {
+                    let handle = state.toolset.get(toolname).cloned();
+                    if handle.is_none() {
+                        tracing::warn!("Tool implementation not found in toolset: {}", toolname);
+                    }
+                    handle
+                })
+                .collect()
+        };
+
+        for tool in static_tool_handles {
+            tools.push(tool.definition(String::new()).await);
         }
 
         Ok(tools)
     }
 }
 
-#[derive(Clone)]
-pub struct ToolServerHandle(Sender<ToolServerRequest>);
-
-impl ToolServerHandle {
-    pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
-        let tool = Box::new(tool);
-
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::AddTool(tool),
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolAdded = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(())
-    }
-
-    pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::AppendToolset(toolset),
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolAdded = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(())
-    }
-
-    pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::RemoveTool {
-                    tool_name: tool_name.to_string(),
-                },
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolDeleted = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(())
-    }
-
-    pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::CallTool {
-                    name: tool_name.to_string(),
-                    args: args.to_string(),
-                    span: tracing::Span::current(),
-                },
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        match res {
-            ToolServerResponse::ToolExecuted { result, .. } => Ok(result),
-            ToolServerResponse::ToolError { error } => Err(ToolServerError::ToolsetError(
-                ToolSetError::ToolCallError(ToolError::ToolCallError(error.into())),
-            )),
-            invalid => Err(ToolServerError::InvalidMessage(invalid)),
-        }
-    }
-
-    pub async fn get_tool_defs(
-        &self,
-        prompt: Option<String>,
-    ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        let (tx, rx) = futures::channel::oneshot::channel();
-
-        self.0
-            .send(ToolServerRequest {
-                callback_channel: tx,
-                data: ToolServerRequestMessageKind::GetToolDefs { prompt },
-            })
-            .await?;
-
-        let res = rx.await?;
-
-        let ToolServerResponse::ToolDefinitions(tooldefs) = res else {
-            return Err(ToolServerError::InvalidMessage(res));
-        };
-
-        Ok(tooldefs)
-    }
-}
-
-pub struct ToolServerRequest {
-    callback_channel: futures::channel::oneshot::Sender<ToolServerResponse>,
-    data: ToolServerRequestMessageKind,
-}
-
-pub enum ToolServerRequestMessageKind {
-    AddTool(Box<dyn ToolDyn>),
-    AppendToolset(ToolSet),
-    RemoveTool {
-        tool_name: String,
-    },
-    CallTool {
-        name: String,
-        args: String,
-        span: tracing::Span,
-    },
-    GetToolDefs {
-        prompt: Option<String>,
-    },
-}
-
-#[derive(PartialEq, Debug)]
-pub enum ToolServerResponse {
-    ToolAdded,
-    ToolDeleted,
-    ToolExecuted { result: String },
-    ToolError { error: String },
-    ToolDefinitions(Vec<ToolDefinition>),
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ToolServerError {
-    #[error("Sending message was cancelled")]
-    Canceled(#[from] Canceled),
     #[error("Toolset error: {0}")]
     ToolsetError(#[from] ToolSetError),
-    #[error("Error while sending message: {0}")]
-    SendError(#[from] SendError<ToolServerRequest>),
-    #[error("An invalid message type was returned")]
-    InvalidMessage(ToolServerResponse),
+    #[error("Failed to retrieve tool definitions: {0}")]
+    DefinitionError(CompletionError),
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
 
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -629,74 +467,211 @@ mod tests {
         assert_eq!(res[0].name, "add");
     }
 
+    /// A tool that waits at a barrier to test concurrency of tool execution.
+    #[derive(Clone)]
+    struct BarrierTool {
+        barrier: Arc<tokio::sync::Barrier>,
+    }
+
     #[derive(Debug, thiserror::Error)]
-    #[error("Sleeper error")]
-    struct SleeperError;
+    #[error("Barrier error")]
+    struct BarrierError;
 
-    /// A tool that sleeps for a configurable duration, used to test concurrent execution.
-    #[derive(Deserialize, Serialize, Clone)]
-    struct SleeperTool {
-        sleep_duration_ms: u64,
-    }
-
-    impl SleeperTool {
-        fn new(sleep_duration_ms: u64) -> Self {
-            Self { sleep_duration_ms }
-        }
-    }
-
-    impl Tool for SleeperTool {
-        const NAME: &'static str = "sleeper";
-        type Error = SleeperError;
+    impl Tool for BarrierTool {
+        const NAME: &'static str = "barrier_tool";
+        type Error = BarrierError;
         type Args = serde_json::Value;
-        type Output = u64;
+        type Output = String;
 
         async fn definition(&self, _prompt: String) -> ToolDefinition {
             ToolDefinition {
-                name: "sleeper".to_string(),
-                description: "Sleeps for configured duration".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
+                name: "barrier_tool".to_string(),
+                description: "Waits at a barrier to test concurrency".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
             }
         }
 
         async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            tokio::time::sleep(Duration::from_millis(self.sleep_duration_ms)).await;
-            Ok(self.sleep_duration_ms)
+            // Wait for all concurrent invocations to reach this point
+            self.barrier.wait().await;
+            Ok("done".to_string())
         }
     }
 
     #[tokio::test]
     pub async fn test_toolserver_concurrent_tool_execution() {
-        let sleep_ms: u64 = 100;
-        let num_calls: u64 = 3;
+        let num_calls = 3;
+        let barrier = Arc::new(tokio::sync::Barrier::new(num_calls));
 
-        let server = ToolServer::new().tool(SleeperTool::new(sleep_ms));
+        let server = ToolServer::new().tool(BarrierTool {
+            barrier: barrier.clone(),
+        });
         let handle = server.run();
-
-        let start = std::time::Instant::now();
 
         // Make concurrent calls
         let futures: Vec<_> = (0..num_calls)
-            .map(|_| handle.call_tool("sleeper", "{}"))
+            .map(|_| handle.call_tool("barrier_tool", "{}"))
             .collect();
-        let results = futures::future::join_all(futures).await;
 
-        let elapsed = start.elapsed();
+        // If execution is sequential, the first call will block at the barrier forever.
+        // We use a 1-second timeout to fail fast instead of hanging the test runner.
+        let result =
+            tokio::time::timeout(Duration::from_secs(1), futures::future::join_all(futures)).await;
+
+        assert!(
+            result.is_ok(),
+            "Tool execution deadlocked! Tools are executing sequentially instead of concurrently."
+        );
 
         // All calls should succeed
-        for result in &results {
-            assert!(result.is_ok(), "Tool call failed: {:?}", result);
+        for res in result.unwrap() {
+            assert!(res.is_ok(), "Tool call failed: {:?}", res);
+            assert_eq!(res.unwrap(), "done");
+        }
+    }
+
+    /// A tool that can be controlled to test concurrent writes to the ToolServer.
+    #[derive(Clone)]
+    struct ControlledTool {
+        started: Arc<tokio::sync::Notify>,
+        allow_finish: Arc<tokio::sync::Notify>,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("Controlled error")]
+    struct ControlledError;
+
+    impl Tool for ControlledTool {
+        const NAME: &'static str = "controlled";
+        type Error = ControlledError;
+        type Args = serde_json::Value;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            ToolDefinition {
+                name: "controlled".to_string(),
+                description: "Test tool".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }
         }
 
-        // If concurrent: elapsed ≈ 100ms (plus overhead)
-        // If sequential: elapsed ≈ 300ms
-        // Threshold: less than 2x single sleep duration means concurrent execution
-        let max_concurrent_time = Duration::from_millis(sleep_ms * 2);
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            // 1. Signal that we are inside the call (lock should be dropped by now)
+            self.started.notify_one();
+            // 2. Wait indefinitely until the test allows us to finish
+            self.allow_finish.notified().await;
+            Ok(42)
+        }
+    }
+
+    #[tokio::test]
+    pub async fn test_toolserver_write_while_tool_running() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let allow_finish = Arc::new(tokio::sync::Notify::new());
+
+        // Build server with the controlled tool that waits at a barrier during execution
+        let tool = ControlledTool {
+            started: started.clone(),
+            allow_finish: allow_finish.clone(),
+        };
+
+        let server = ToolServer::new().tool(tool);
+        let handle = server.run();
+
+        // Start tool call in background
+        let handle_clone = handle.clone();
+        let call_task =
+            tokio::spawn(async move { handle_clone.call_tool("controlled", "{}").await });
+
+        // Wait until we are strictly inside `call()`
+        started.notified().await;
+
+        // Try to write to the state (add a tool) while the tool call is mid-execution.
+        // If the read lock is incorrectly held across tool execution, this will deadlock.
+        let add_result = tokio::time::timeout(Duration::from_secs(1), handle.add_tool(Adder)).await;
+
         assert!(
-            elapsed < max_concurrent_time,
-            "Expected concurrent execution in < {:?}, but took {:?}. Tools may be running sequentially.",
-            max_concurrent_time,
-            elapsed
+            add_result.is_ok(),
+            "Writing to ToolServer deadlocked! The read lock is being held across tool execution."
         );
+        assert!(add_result.unwrap().is_ok());
+
+        // Allow the background tool to finish and clean up
+        allow_finish.notify_one();
+        let call_result = call_task.await.unwrap();
+        assert_eq!(call_result.unwrap(), "42");
+    }
+
+    /// A mock vector store index that waits at a barrier to enforce parallel execution
+    struct BarrierMockIndex {
+        barrier: Arc<tokio::sync::Barrier>,
+        tool_id: String,
+    }
+
+    impl VectorStoreIndex for BarrierMockIndex {
+        type Filter = Filter<serde_json::Value>;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            Ok(vec![])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            // Wait for all indices to reach this point simultaneously
+            self.barrier.wait().await;
+            Ok(vec![(1.0, self.tool_id.clone())])
+        }
+    }
+
+    #[tokio::test]
+    pub async fn test_toolserver_parallel_dynamic_tool_fetching() {
+        // We expect exactly 2 parallel searches to hit the barrier at the same time
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+
+        let index1 = BarrierMockIndex {
+            barrier: barrier.clone(),
+            tool_id: "add".to_string(),
+        };
+
+        let index2 = BarrierMockIndex {
+            barrier: barrier.clone(),
+            tool_id: "subtract".to_string(),
+        };
+
+        // Put both tools in the toolset so they resolve correctly
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(Adder);
+        toolset.add_tool(Subtractor);
+
+        let server = ToolServer::new()
+            .dynamic_tools(1, index1, ToolSet::default())
+            .dynamic_tools(1, index2, toolset);
+
+        let handle = server.run();
+
+        // This will trigger a search across both indices.
+        // If fetched sequentially, the first index will wait at the barrier forever.
+        let get_defs = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            handle.get_tool_defs(Some("do math".to_string())),
+        )
+        .await;
+
+        assert!(
+            get_defs.is_ok(),
+            "Dynamic tools were fetched sequentially! The first query deadlocked waiting for the second query to start."
+        );
+
+        let defs = get_defs.unwrap().unwrap();
+        assert_eq!(defs.len(), 2);
+
+        let tool_names: Vec<&str> = defs.iter().map(|t| t.name.as_str()).collect();
+        assert!(tool_names.contains(&"add"));
+        assert!(tool_names.contains(&"subtract"));
     }
 }

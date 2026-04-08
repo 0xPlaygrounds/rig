@@ -10,6 +10,8 @@ use crate::{
 
 use rig::completion::{self, CompletionError, CompletionRequest};
 use rig::streaming::StreamingCompletionResponse;
+use rig::telemetry::SpanCombinator;
+use tracing::Instrument;
 
 /// `ai21.jamba-1-5-large-v1:0`
 pub const AI21_JAMBA_1_5_LARGE: &str = "ai21.jamba-1-5-large-v1:0";
@@ -197,6 +199,16 @@ impl CompletionModel {
     }
 }
 
+pub(crate) fn resolve_request_model(
+    default_model: &str,
+    completion_request: &CompletionRequest,
+) -> String {
+    completion_request
+        .model
+        .clone()
+        .unwrap_or_else(|| default_model.to_string())
+}
+
 impl completion::CompletionModel for CompletionModel {
     type Response = AwsConverseOutput;
     type StreamingResponse = crate::streaming::BedrockStreamingResponse;
@@ -211,6 +223,27 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
+        let request_model = resolve_request_model(&self.model, &completion_request);
+
+        let span = if tracing::Span::current().is_disabled() {
+            tracing::info_span!(
+                target: "rig::completions",
+                "chat",
+                gen_ai.operation.name = "chat",
+                gen_ai.provider.name = "aws_bedrock",
+                gen_ai.request.model = &request_model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = tracing::field::Empty,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+
         let request = AwsCompletionRequest {
             inner: completion_request,
             prompt_caching: self.prompt_caching,
@@ -221,7 +254,7 @@ impl completion::CompletionModel for CompletionModel {
             .get_inner()
             .await
             .converse()
-            .model_id(self.model.as_str());
+            .model_id(request_model.clone());
 
         let tool_config = request.tools_config()?;
         let messages = request.messages()?;
@@ -232,16 +265,25 @@ impl completion::CompletionModel for CompletionModel {
             .set_system(request.system_prompt())
             .set_messages(Some(messages));
 
-        let response = converse_builder
-            .send()
-            .await
-            .map_err(|sdk_error| Into::<CompletionError>::into(AwsSdkConverseError(sdk_error)))?;
+        async move {
+            let response = converse_builder.send().await.map_err(|sdk_error| {
+                Into::<CompletionError>::into(AwsSdkConverseError(sdk_error))
+            })?;
 
-        let response: InternalConverseOutput = response
-            .try_into()
-            .map_err(|x| CompletionError::ProviderError(format!("Type conversion error: {x}")))?;
+            let response: InternalConverseOutput = response.try_into().map_err(|x| {
+                CompletionError::ProviderError(format!("Type conversion error: {x}"))
+            })?;
 
-        AwsConverseOutput(response).try_into()
+            let aws_output = AwsConverseOutput(response);
+
+            let span = tracing::Span::current();
+            span.record_response_metadata(&aws_output);
+            span.record_token_usage(&aws_output);
+
+            aws_output.try_into()
+        }
+        .instrument(span)
+        .await
     }
 
     async fn stream(

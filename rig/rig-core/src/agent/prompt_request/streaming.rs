@@ -393,9 +393,12 @@ where
         // See: https://docs.rs/tracing/latest/tracing/span/struct.Span.html#in-asynchronous-code
         // See also: https://github.com/rust-lang/rust-clippy/issues/8722
         let stream = async_stream::stream! {
-            let mut current_prompt = prompt.clone();
-
             'outer: loop {
+                let current_prompt = new_messages
+                    .last()
+                    .cloned()
+                    .expect("streaming loop should always have a pending prompt");
+
                 if current_max_turns > self.max_turns + 1 {
                     last_prompt_error = current_prompt.rag_text().unwrap_or_default();
                     max_turns_reached = true;
@@ -412,13 +415,20 @@ where
                     );
                 }
 
-                if let Some(ref hook) = self.hook {
-                    let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
-                    if let HookAction::Terminate { reason } = hook.on_completion_call(&current_prompt, &history_snapshot)
-                        .await {
-                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                        break 'outer;
-                    }
+                let history_snapshot: Vec<Message> = build_history_for_request(
+                    chat_history.as_deref(),
+                    &new_messages[..new_messages.len().saturating_sub(1)],
+                );
+
+                if let Some(ref hook) = self.hook
+                    && let HookAction::Terminate { reason } =
+                        hook.on_completion_call(&current_prompt, &history_snapshot).await
+                {
+                    yield Err(
+                        cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason)
+                            .await,
+                    );
+                    break 'outer;
                 }
 
                 let chat_stream_span = info_span!(
@@ -440,7 +450,6 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
-                let history_snapshot: Vec<Message> = build_history_for_request(chat_history.as_deref(), &new_messages[..new_messages.len().saturating_sub(1)]);
                 let mut stream = tracing::Instrument::instrument(
                     build_completion_request(
                         &model,
@@ -461,8 +470,6 @@ where
                 )
 
                 .await?;
-
-                new_messages.push(current_prompt.clone());
 
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
@@ -612,7 +619,7 @@ where
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
                             if is_text_response {
                                 if let Some(ref hook) = self.hook &&
-                                     let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&prompt, &final_resp).await {
+                                     let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&current_prompt, &final_resp).await {
                                         yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                         break 'outer;
                                     }
@@ -670,15 +677,8 @@ where
                     new_messages.push(tool_result_to_user_message(id, call_id, tool_result));
                 }
 
-                // Set the current prompt to the last message in new_messages
-                current_prompt = match new_messages.pop() {
-                    Some(prompt) => prompt,
-                    None => unreachable!("New messages should never be empty at this point"),
-                };
-
                 if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
-                    new_messages.push(current_prompt.clone());
                     if !last_text_response.is_empty() {
                         new_messages.push(Message::assistant(&last_text_response));
                     }
@@ -774,7 +774,7 @@ mod tests {
     use crate::completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
     };
-    use crate::message::ReasoningContent;
+    use crate::message::{AssistantContent, Message, ReasoningContent, UserContent};
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
     use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
@@ -913,6 +913,60 @@ mod tests {
         }
     }
 
+    fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
+        let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
+        if history.len() != 3 {
+            return Err(format!(
+                "follow-up request should contain [original user prompt, assistant tool call, user tool result]: {history:?}"
+            ));
+        }
+
+        if !matches!(
+            history.first(),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::Text(text) if text.text == "do tool work"
+                )
+        ) {
+            return Err(format!(
+                "follow-up request should begin with the original user prompt: {history:?}"
+            ));
+        }
+
+        if !matches!(
+            history.get(1),
+            Some(Message::Assistant { content, .. })
+                if matches!(
+                    content.first(),
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.id == "tool_call_1"
+                            && tool_call.call_id.as_deref() == Some("call_1")
+                )
+        ) {
+            return Err(format!(
+                "follow-up request is missing the assistant tool call in position 2: {history:?}"
+            ));
+        }
+
+        if !matches!(
+            history.get(2),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::ToolResult(tool_result)
+                        if tool_result.id == "tool_call_1"
+                            && tool_result.call_id.as_deref() == Some("call_1")
+                )
+        ) {
+            return Err(format!(
+                "follow-up request should end with the user tool result: {history:?}"
+            ));
+        }
+
+        Ok(())
+    }
+
     #[derive(Clone, Default)]
     struct MultiTurnMockModel {
         turn_counter: Arc<AtomicUsize>,
@@ -939,9 +993,14 @@ mod tests {
 
         async fn stream(
             &self,
-            _request: CompletionRequest,
+            request: CompletionRequest,
         ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
             let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+            let validation_error = if turn == 0 {
+                None
+            } else {
+                validate_follow_up_tool_history(&request).err()
+            };
             let stream = async_stream::stream! {
                 if turn == 0 {
                     yield Ok(RawStreamingChoice::ToolCall(
@@ -953,6 +1012,8 @@ mod tests {
                         .with_call_id("call_1".to_string()),
                     ));
                     yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(4)));
+                } else if let Some(error) = validation_error {
+                    yield Err(CompletionError::ProviderError(error));
                 } else {
                     yield Ok(RawStreamingChoice::Message("done".to_string()));
                     yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
