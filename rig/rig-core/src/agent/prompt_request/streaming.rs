@@ -9,13 +9,13 @@ use crate::{
     tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::{pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::ToolCallHookAction;
+use super::{ToolCallHookAction, normalize_tool_concurrency};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -299,18 +299,22 @@ where
     /// Add concurrency to the streaming prompt request.
     ///
     /// When set to a value greater than 1, all tool calls from a single model
-    /// response are collected and executed concurrently (up to `concurrency`
-    /// at a time), rather than one-by-one as they arrive in the stream.
+    /// response are collected and executed concurrently rather than one-by-one
+    /// as they arrive in the stream. Values lower than 1 are clamped to 1.
     ///
     /// Pre-execution hooks ([`PromptHook::on_tool_call`]) still run
     /// sequentially before any tool is dispatched, so a
     /// [`ToolCallHookAction::Terminate`] prevents all subsequent execution.
     /// Post-execution hooks ([`PromptHook::on_tool_result`]) run sequentially
-    /// after all tools complete.
+    /// as completed tool results are consumed from the bounded executor.
+    ///
+    /// Tool results may arrive in completion order rather than model tool-call
+    /// order, and the per-turn [`StreamedAssistantContent::Final`] item is
+    /// emitted only after all tool results for that turn have been yielded.
     ///
     /// Defaults to 1 (sequential execution, matching the previous behaviour).
     pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.concurrency = concurrency;
+        self.concurrency = normalize_tool_concurrency(concurrency);
         self
     }
 
@@ -499,6 +503,10 @@ where
                 // When concurrency > 1, tool calls are buffered here during
                 // streaming and executed in parallel after the stream ends.
                 let mut deferred_tool_calls: Vec<(crate::message::ToolCall, String)> = vec![];
+                // Keep the provider's per-turn final item until deferred tool
+                // results have been emitted so stream consumers never observe a
+                // "finished" turn before the tool outputs for that turn.
+                let mut deferred_final_response = None;
 
                 while let Some(content) = stream.next().await {
                     match content {
@@ -650,7 +658,11 @@ where
                                     }
 
                                 tracing::Span::current().record("gen_ai.completion", &last_text_response);
-                                yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
+                                if deferred_tool_calls.is_empty() {
+                                    yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
+                                } else {
+                                    deferred_final_response = Some(final_resp);
+                                }
                                 is_text_response = false;
                             }
                         }
@@ -694,14 +706,18 @@ where
                                     yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { tool_result: tr, internal_call_id: internal_id }));
                                     continue;
                                 }
-                                ToolCallHookAction::Continue => {}
+                                ToolCallHookAction::Continue => {
+                                    tool_calls.push(AssistantContent::ToolCall(tc.clone()));
+                                }
                             }
+                        } else {
+                            tool_calls.push(AssistantContent::ToolCall(tc.clone()));
                         }
                         approved.push((tc, internal_id, tool_args));
                     }
 
-                    // Phase 2 – execute approved tools concurrently.
-                    let execution_futures: Vec<_> = approved.iter().map(|(tc, _internal_id, tool_args)| {
+                    // Phase 2 – execute approved tools with bounded concurrency.
+                    let mut results = stream::iter(approved.into_iter().map(|(tc, internal_id, tool_args)| {
                         let tool_span = info_span!(
                             parent: tracing::Span::current(),
                             "execute_tool",
@@ -724,14 +740,14 @@ where
                                 }
                             };
                             tracing::Span::current().record("gen_ai.tool.call.result", &result);
-                            result
-                        }.instrument(tool_span)
-                    }).collect();
-
-                    let results = futures::future::join_all(execution_futures).await;
+                            (tc, internal_id, tool_args, result)
+                        }
+                        .instrument(tool_span)
+                    }))
+                    .buffer_unordered(concurrency);
 
                     // Phase 3 – post-execution hooks (sequential) & yield results.
-                    for ((tc, internal_id, tool_args), result) in approved.into_iter().zip(results) {
+                    while let Some((tc, internal_id, tool_args, result)) = results.next().await {
                         if let Some(ref hook) = self.hook &&
                             let HookAction::Terminate { reason } =
                             hook.on_tool_result(
@@ -746,12 +762,15 @@ where
                             break 'outer;
                         }
 
-                        tool_calls.push(AssistantContent::ToolCall(tc.clone()));
                         tool_results.push((tc.id.clone(), tc.call_id.clone(), result.clone()));
 
                         let tr = ToolResult { id: tc.id, call_id: tc.call_id, content: ToolResultContent::from_tool_output(result) };
                         yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { tool_result: tr, internal_call_id: internal_id }));
                     }
+                }
+
+                if let Some(final_resp) = deferred_final_response.take() {
+                    yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
                 }
 
                 // Providers like Gemini emit thinking as incremental deltas
@@ -897,17 +916,21 @@ mod tests {
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
     use crate::completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Prompt,
     };
-    use crate::message::ReasoningContent;
+    use crate::message::{AssistantContent, ReasoningContent, ToolFunction, ToolResultContent};
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
     use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
+    use crate::tool::Tool;
     use futures::StreamExt;
     use serde::{Deserialize, Serialize};
-    use std::sync::Arc;
+    use serde_json::json;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use tokio::sync::{Barrier, Notify, Semaphore};
 
     #[test]
     fn merge_reasoning_blocks_preserves_order_and_signatures() {
@@ -1133,6 +1156,1007 @@ mod tests {
         assert!(saw_final_response);
         assert_eq!(final_text, "done");
         assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[derive(Clone)]
+    struct ScriptedStreamingModel {
+        turns: Arc<Vec<Vec<RawStreamingChoice<MockStreamingResponse>>>>,
+        turn_counter: Arc<AtomicUsize>,
+    }
+
+    impl ScriptedStreamingModel {
+        fn new(turns: Vec<Vec<RawStreamingChoice<MockStreamingResponse>>>) -> Self {
+            Self {
+                turns: Arc::new(turns),
+                turn_counter: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    #[allow(refining_impl_trait)]
+    impl CompletionModel for ScriptedStreamingModel {
+        type Response = ();
+        type StreamingResponse = MockStreamingResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self::new(Vec::new())
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "completion is unused in this scripted streaming test".to_string(),
+            ))
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+            let choices = self.turns.get(turn).cloned().ok_or_else(|| {
+                CompletionError::ProviderError(format!("unexpected scripted streaming turn {turn}"))
+            })?;
+
+            let stream = async_stream::stream! {
+                for choice in choices {
+                    yield Ok(choice);
+                }
+            };
+
+            let pinned_stream: crate::streaming::StreamingResult<Self::StreamingResponse> =
+                Box::pin(stream);
+            Ok(StreamingCompletionResponse::stream(pinned_stream))
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct NonStreamingZeroMockModel {
+        turn_counter: Arc<AtomicUsize>,
+    }
+
+    #[allow(refining_impl_trait)]
+    impl CompletionModel for NonStreamingZeroMockModel {
+        type Response = ();
+        type StreamingResponse = MockStreamingResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self::default()
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+            let choice = if turn == 0 {
+                OneOrMany::many(vec![
+                    AssistantContent::ToolCall(
+                        crate::message::ToolCall::new(
+                            "tool_call_a".to_string(),
+                            ToolFunction::new("probe_tool".to_string(), json!({ "slot": "a" })),
+                        )
+                        .with_call_id("call_a".to_string()),
+                    ),
+                    AssistantContent::ToolCall(
+                        crate::message::ToolCall::new(
+                            "tool_call_b".to_string(),
+                            ToolFunction::new("probe_tool".to_string(), json!({ "slot": "b" })),
+                        )
+                        .with_call_id("call_b".to_string()),
+                    ),
+                ])
+                .expect("tool call response should contain at least one item")
+            } else {
+                OneOrMany::one(AssistantContent::text("done"))
+            };
+
+            Ok(CompletionResponse {
+                choice,
+                usage: crate::completion::Usage::new(),
+                raw_response: (),
+                message_id: None,
+            })
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "stream is unused in this non-streaming test".to_string(),
+            ))
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    struct ProbeArgs {
+        slot: String,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("probe tool error")]
+    struct ProbeToolError;
+
+    fn update_max_in_flight(max: &AtomicUsize, current: usize) {
+        let mut observed = max.load(Ordering::SeqCst);
+        while current > observed {
+            match max.compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => break,
+                Err(actual) => observed = actual,
+            }
+        }
+    }
+
+    struct InFlightGuard {
+        current: Arc<AtomicUsize>,
+    }
+
+    impl InFlightGuard {
+        fn new(current: Arc<AtomicUsize>, max: Arc<AtomicUsize>) -> Self {
+            let in_flight = current.fetch_add(1, Ordering::SeqCst) + 1;
+            update_max_in_flight(&max, in_flight);
+            Self { current }
+        }
+    }
+
+    impl Drop for InFlightGuard {
+        fn drop(&mut self) {
+            self.current.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    struct ProbeToolState {
+        current: Arc<AtomicUsize>,
+        max: Arc<AtomicUsize>,
+        started: AtomicUsize,
+        started_notify: Notify,
+        initial_batch_size: usize,
+        initial_batch_barrier: Barrier,
+        release: Semaphore,
+        executed_slots: Mutex<Vec<String>>,
+    }
+
+    impl ProbeToolState {
+        fn new(initial_batch_size: usize) -> Arc<Self> {
+            Arc::new(Self {
+                current: Arc::new(AtomicUsize::new(0)),
+                max: Arc::new(AtomicUsize::new(0)),
+                started: AtomicUsize::new(0),
+                started_notify: Notify::new(),
+                initial_batch_size,
+                initial_batch_barrier: Barrier::new(initial_batch_size.max(1) + 1),
+                release: Semaphore::new(0),
+                executed_slots: Mutex::new(Vec::new()),
+            })
+        }
+
+        async fn wait_for_initial_batch(&self) {
+            if self.initial_batch_size == 0 {
+                return;
+            }
+            self.initial_batch_barrier.wait().await;
+        }
+
+        fn release_all(&self, permits: usize) {
+            self.release.add_permits(permits);
+        }
+
+        fn max_in_flight(&self) -> usize {
+            self.max.load(Ordering::SeqCst)
+        }
+
+        fn started_count(&self) -> usize {
+            self.started.load(Ordering::SeqCst)
+        }
+
+        fn executed_slots(&self) -> Vec<String> {
+            self.executed_slots
+                .lock()
+                .expect("probe tool executed slots mutex should not be poisoned")
+                .clone()
+        }
+    }
+
+    #[derive(Clone)]
+    struct ProbeTool {
+        state: Arc<ProbeToolState>,
+    }
+
+    impl Tool for ProbeTool {
+        const NAME: &'static str = "probe_tool";
+
+        type Error = ProbeToolError;
+        type Args = ProbeArgs;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+            crate::completion::ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "Test probe tool".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "slot": { "type": "string" }
+                    },
+                    "required": ["slot"]
+                }),
+            }
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            let start_order = self.state.started.fetch_add(1, Ordering::SeqCst) + 1;
+            self.state.started_notify.notify_waiters();
+
+            let _guard = InFlightGuard::new(self.state.current.clone(), self.state.max.clone());
+            if start_order <= self.state.initial_batch_size {
+                self.state.initial_batch_barrier.wait().await;
+            }
+
+            let permit = self
+                .state
+                .release
+                .acquire()
+                .await
+                .expect("probe tool semaphore should stay open during the test");
+            permit.forget();
+
+            self.state
+                .executed_slots
+                .lock()
+                .expect("probe tool executed slots mutex should not be poisoned")
+                .push(args.slot.clone());
+
+            Ok(args.slot)
+        }
+    }
+
+    struct SlotToolState {
+        current: Arc<AtomicUsize>,
+        max: Arc<AtomicUsize>,
+        started: AtomicUsize,
+        started_notify: Notify,
+        release_by_slot: Mutex<HashMap<String, Arc<Semaphore>>>,
+        executed_slots: Mutex<Vec<String>>,
+    }
+
+    impl SlotToolState {
+        fn new(slots: &[&str]) -> Arc<Self> {
+            Arc::new(Self {
+                current: Arc::new(AtomicUsize::new(0)),
+                max: Arc::new(AtomicUsize::new(0)),
+                started: AtomicUsize::new(0),
+                started_notify: Notify::new(),
+                release_by_slot: Mutex::new(
+                    slots
+                        .iter()
+                        .map(|slot| ((*slot).to_string(), Arc::new(Semaphore::new(0))))
+                        .collect(),
+                ),
+                executed_slots: Mutex::new(Vec::new()),
+            })
+        }
+
+        async fn wait_for_started(&self, target: usize) {
+            while self.started.load(Ordering::SeqCst) < target {
+                self.started_notify.notified().await;
+            }
+        }
+
+        fn release_slot(&self, slot: &str) {
+            let semaphore = self
+                .release_by_slot
+                .lock()
+                .expect("slot tool release map mutex should not be poisoned")
+                .get(slot)
+                .cloned()
+                .expect("slot should exist in the release map");
+            semaphore.add_permits(1);
+        }
+    }
+
+    #[derive(Clone)]
+    struct SlotTool {
+        state: Arc<SlotToolState>,
+    }
+
+    impl Tool for SlotTool {
+        const NAME: &'static str = "slot_tool";
+
+        type Error = ProbeToolError;
+        type Args = ProbeArgs;
+        type Output = String;
+
+        async fn definition(&self, _prompt: String) -> crate::completion::ToolDefinition {
+            crate::completion::ToolDefinition {
+                name: Self::NAME.to_string(),
+                description: "Slot-controlled test tool".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "slot": { "type": "string" }
+                    },
+                    "required": ["slot"]
+                }),
+            }
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.state.started.fetch_add(1, Ordering::SeqCst);
+            self.state.started_notify.notify_waiters();
+
+            let _guard = InFlightGuard::new(self.state.current.clone(), self.state.max.clone());
+            let semaphore = self
+                .state
+                .release_by_slot
+                .lock()
+                .expect("slot tool release map mutex should not be poisoned")
+                .get(&args.slot)
+                .cloned()
+                .expect("slot should exist in the release map");
+            let permit = semaphore
+                .acquire()
+                .await
+                .expect("slot tool semaphore should stay open during the test");
+            permit.forget();
+
+            self.state
+                .executed_slots
+                .lock()
+                .expect("slot tool executed slots mutex should not be poisoned")
+                .push(args.slot.clone());
+
+            Ok(args.slot)
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct TestHook {
+        skip_slots: Arc<Vec<String>>,
+        terminate_before_slot: Option<String>,
+        terminate_after_slot: Option<String>,
+    }
+
+    impl TestHook {
+        fn skip(slots: &[&str]) -> Self {
+            Self {
+                skip_slots: Arc::new(slots.iter().map(|slot| (*slot).to_string()).collect()),
+                ..Self::default()
+            }
+        }
+
+        fn terminate_before(slot: &str) -> Self {
+            Self {
+                terminate_before_slot: Some(slot.to_string()),
+                ..Self::default()
+            }
+        }
+
+        fn terminate_after(slot: &str) -> Self {
+            Self {
+                terminate_after_slot: Some(slot.to_string()),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl<M> PromptHook<M> for TestHook
+    where
+        M: CompletionModel,
+    {
+        fn on_tool_call(
+            &self,
+            _tool_name: &str,
+            _tool_call_id: Option<String>,
+            _internal_call_id: &str,
+            args: &str,
+        ) -> impl Future<Output = ToolCallHookAction> + WasmCompatSend {
+            let args = args.to_owned();
+            let skip_slots = self.skip_slots.clone();
+            let terminate_before_slot = self.terminate_before_slot.clone();
+            async move {
+                let parsed: ProbeArgs =
+                    serde_json::from_str(&args).expect("tool args should deserialize in tests");
+
+                if terminate_before_slot.as_deref() == Some(parsed.slot.as_str()) {
+                    ToolCallHookAction::terminate(format!("terminate-before-{}", parsed.slot))
+                } else if skip_slots.iter().any(|slot| slot == &parsed.slot) {
+                    ToolCallHookAction::skip(format!("skipped-{}", parsed.slot))
+                } else {
+                    ToolCallHookAction::cont()
+                }
+            }
+        }
+
+        fn on_tool_result(
+            &self,
+            _tool_name: &str,
+            _tool_call_id: Option<String>,
+            _internal_call_id: &str,
+            args: &str,
+            _result: &str,
+        ) -> impl Future<Output = HookAction> + WasmCompatSend {
+            let args = args.to_owned();
+            let terminate_after_slot = self.terminate_after_slot.clone();
+            async move {
+                let parsed: ProbeArgs =
+                    serde_json::from_str(&args).expect("tool args should deserialize in tests");
+
+                if terminate_after_slot.as_deref() == Some(parsed.slot.as_str()) {
+                    HookAction::terminate(format!("terminate-after-{}", parsed.slot))
+                } else {
+                    HookAction::cont()
+                }
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum TurnEvent {
+        ToolCall(String),
+        ToolResult(String),
+        Final,
+    }
+
+    fn raw_tool_call_for(tool_name: &str, id: &str, slot: &str) -> RawStreamingToolCall {
+        RawStreamingToolCall::new(
+            id.to_string(),
+            tool_name.to_string(),
+            json!({ "slot": slot }),
+        )
+        .with_call_id(format!("call_{id}"))
+    }
+
+    fn tool_turn(
+        text_chunks: &[&str],
+        tool_calls: Vec<RawStreamingToolCall>,
+        total_tokens: u64,
+    ) -> Vec<RawStreamingChoice<MockStreamingResponse>> {
+        let mut turn: Vec<_> = text_chunks
+            .iter()
+            .map(|text| RawStreamingChoice::Message((*text).to_string()))
+            .collect();
+        turn.extend(tool_calls.into_iter().map(RawStreamingChoice::ToolCall));
+        turn.push(RawStreamingChoice::FinalResponse(
+            MockStreamingResponse::new(total_tokens),
+        ));
+        turn
+    }
+
+    fn text_turn(text: &str, total_tokens: u64) -> Vec<RawStreamingChoice<MockStreamingResponse>> {
+        vec![
+            RawStreamingChoice::Message(text.to_string()),
+            RawStreamingChoice::FinalResponse(MockStreamingResponse::new(total_tokens)),
+        ]
+    }
+
+    fn first_turn_events(
+        items: &[Result<MultiTurnStreamItem<MockStreamingResponse>, StreamingError>],
+    ) -> Vec<TurnEvent> {
+        let mut events = Vec::new();
+
+        for item in items {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { tool_call, .. },
+                )) => events.push(TurnEvent::ToolCall(tool_call.id.clone())),
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    tool_result,
+                    ..
+                })) => events.push(TurnEvent::ToolResult(tool_result.id.clone())),
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => {
+                    events.push(TurnEvent::Final);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        events
+    }
+
+    fn tool_result_text(tool_result: &crate::message::ToolResult) -> Option<String> {
+        match tool_result.content.first_ref() {
+            ToolResultContent::Text(text) => Some(text.text.clone()),
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_concurrency_is_bounded_when_configured() {
+        let state = ProbeToolState::new(2);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![
+                    raw_tool_call_for("probe_tool", "tool_1", "a"),
+                    raw_tool_call_for("probe_tool", "tool_2", "b"),
+                    raw_tool_call_for("probe_tool", "tool_3", "c"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .tool(ProbeTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("run tools")
+            .multi_turn(3)
+            .with_tool_concurrency(2)
+            .await;
+
+        let handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), state.wait_for_initial_batch())
+            .await
+            .expect("expected the initial bounded tool batch to start");
+        assert_eq!(state.max_in_flight(), 2);
+
+        state.release_all(8);
+
+        let items = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+        assert!(items.iter().all(Result::is_ok));
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_concurrency_one_stays_sequential() {
+        let state = ProbeToolState::new(1);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![
+                    raw_tool_call_for("probe_tool", "tool_1", "a"),
+                    raw_tool_call_for("probe_tool", "tool_2", "b"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .tool(ProbeTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("run tools sequentially")
+            .multi_turn(3)
+            .with_tool_concurrency(1)
+            .await;
+
+        let handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), state.wait_for_initial_batch())
+            .await
+            .expect("expected the sequential tool batch to start");
+        assert_eq!(state.max_in_flight(), 1);
+
+        state.release_all(4);
+
+        let items = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+        assert!(items.iter().all(Result::is_ok));
+    }
+
+    #[tokio::test]
+    async fn zero_tool_concurrency_clamps_to_one_for_streaming_and_non_streaming() {
+        let streaming_state = ProbeToolState::new(1);
+        let streaming_model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![
+                    raw_tool_call_for("probe_tool", "tool_1", "a"),
+                    raw_tool_call_for("probe_tool", "tool_2", "b"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let streaming_agent = AgentBuilder::new(streaming_model)
+            .tool(ProbeTool {
+                state: streaming_state.clone(),
+            })
+            .build();
+
+        let mut stream = streaming_agent
+            .stream_prompt("streaming zero concurrency")
+            .multi_turn(3)
+            .with_tool_concurrency(0)
+            .await;
+
+        let stream_handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            streaming_state.wait_for_initial_batch(),
+        )
+        .await
+        .expect("expected zero streaming concurrency to clamp to one");
+        assert_eq!(streaming_state.max_in_flight(), 1);
+        streaming_state.release_all(4);
+
+        let stream_items = tokio::time::timeout(Duration::from_secs(1), stream_handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+        assert!(stream_items.iter().all(Result::is_ok));
+
+        let prompt_state = ProbeToolState::new(1);
+        let prompt_agent = AgentBuilder::new(NonStreamingZeroMockModel::default())
+            .tool(ProbeTool {
+                state: prompt_state.clone(),
+            })
+            .build();
+
+        let prompt_handle = tokio::spawn(async move {
+            prompt_agent
+                .prompt("non-streaming zero concurrency")
+                .max_turns(3)
+                .with_tool_concurrency(0)
+                .await
+        });
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            prompt_state.wait_for_initial_batch(),
+        )
+        .await
+        .expect("expected zero non-streaming concurrency to clamp to one");
+        assert_eq!(prompt_state.max_in_flight(), 1);
+        prompt_state.release_all(4);
+
+        let prompt_result = tokio::time::timeout(Duration::from_secs(1), prompt_handle)
+            .await
+            .expect("prompt future should finish")
+            .expect("prompt task should join")
+            .expect("prompt should succeed");
+        assert_eq!(prompt_result, "done");
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_yields_tool_results_before_turn_final_in_concurrent_mode() {
+        let state = ProbeToolState::new(2);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &["draft"],
+                vec![
+                    raw_tool_call_for("probe_tool", "tool_1", "a"),
+                    raw_tool_call_for("probe_tool", "tool_2", "b"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .tool(ProbeTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("order please")
+            .multi_turn(3)
+            .with_tool_concurrency(2)
+            .await;
+
+        let handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), state.wait_for_initial_batch())
+            .await
+            .expect("expected the initial tool batch to start");
+        state.release_all(4);
+
+        let items = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+        assert!(items.iter().all(Result::is_ok));
+        let events = first_turn_events(&items);
+        assert_eq!(events.len(), 5);
+        assert_eq!(events[0], TurnEvent::ToolCall("tool_1".to_string()));
+        assert_eq!(events[1], TurnEvent::ToolCall("tool_2".to_string()));
+        assert!(matches!(events[2], TurnEvent::ToolResult(_)));
+        assert!(matches!(events[3], TurnEvent::ToolResult(_)));
+        assert_eq!(events[4], TurnEvent::Final);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_yields_concurrent_tool_results_in_completion_order() {
+        let state = SlotToolState::new(&["slow", "fast", "medium"]);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![
+                    raw_tool_call_for("slot_tool", "slow_id", "slow"),
+                    raw_tool_call_for("slot_tool", "fast_id", "fast"),
+                    raw_tool_call_for("slot_tool", "medium_id", "medium"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .tool(SlotTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("ordered release")
+            .multi_turn(3)
+            .with_tool_concurrency(3)
+            .await;
+
+        let handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), state.wait_for_started(3))
+            .await
+            .expect("expected all slot-controlled tools to start");
+        state.release_slot("fast");
+        tokio::task::yield_now().await;
+        state.release_slot("medium");
+        tokio::task::yield_now().await;
+        state.release_slot("slow");
+
+        let items = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+        assert!(items.iter().all(Result::is_ok));
+
+        let result_ids: Vec<_> = first_turn_events(&items)
+            .into_iter()
+            .filter_map(|event| match event {
+                TurnEvent::ToolResult(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            result_ids,
+            vec![
+                "fast_id".to_string(),
+                "medium_id".to_string(),
+                "slow_id".to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_skip_hook_emits_synthetic_result_without_execution() {
+        let state = ProbeToolState::new(1);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![
+                    raw_tool_call_for("probe_tool", "skip_id", "skip"),
+                    raw_tool_call_for("probe_tool", "run_id", "run"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .hook(TestHook::skip(&["skip"]))
+            .tool(ProbeTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("skip one tool")
+            .multi_turn(3)
+            .with_tool_concurrency(2)
+            .await;
+
+        let handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), state.wait_for_initial_batch())
+            .await
+            .expect("expected the continued tool call to start");
+        state.release_all(2);
+
+        let items = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+        assert!(items.iter().all(Result::is_ok));
+        assert_eq!(state.started_count(), 1);
+        assert_eq!(state.executed_slots(), vec!["run".to_string()]);
+
+        let mut tool_results = Vec::new();
+        for item in &items {
+            if let Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                tool_result,
+                ..
+            })) = item
+            {
+                tool_results.push((tool_result.id.clone(), tool_result_text(tool_result)));
+            }
+        }
+
+        assert_eq!(
+            tool_results,
+            vec![
+                ("skip_id".to_string(), Some("skipped-skip".to_string())),
+                ("run_id".to_string(), Some("\"run\"".to_string())),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_pre_hook_terminate_prevents_dispatch_and_turn_final() {
+        let state = ProbeToolState::new(1);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![raw_tool_call_for("probe_tool", "stop_id", "stop")],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .hook(TestHook::terminate_before("stop"))
+            .tool(ProbeTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("terminate before execution")
+            .multi_turn(3)
+            .with_tool_concurrency(2)
+            .await;
+
+        let mut saw_turn_final = false;
+        let mut saw_error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                ))) => {
+                    saw_turn_final = true;
+                }
+                Err(err) => {
+                    saw_error = Some(err.to_string());
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(state.started_count(), 0);
+        assert!(!saw_turn_final);
+        assert_eq!(
+            saw_error,
+            Some("PromptError: PromptCancelled: terminate-before-stop".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_post_hook_terminate_stops_before_turn_final() {
+        let state = SlotToolState::new(&["fast", "slow"]);
+        let model = ScriptedStreamingModel::new(vec![
+            tool_turn(
+                &[],
+                vec![
+                    raw_tool_call_for("slot_tool", "fast_id", "fast"),
+                    raw_tool_call_for("slot_tool", "slow_id", "slow"),
+                ],
+                3,
+            ),
+            text_turn("done", 2),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .hook(TestHook::terminate_after("fast"))
+            .tool(SlotTool {
+                state: state.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("terminate after first result")
+            .multi_turn(3)
+            .with_tool_concurrency(2)
+            .await;
+
+        let handle = tokio::spawn(async move {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), state.wait_for_started(2))
+            .await
+            .expect("expected both slot-controlled tools to start");
+        state.release_slot("fast");
+
+        let items = tokio::time::timeout(Duration::from_secs(1), handle)
+            .await
+            .expect("stream collector should finish")
+            .expect("stream collector task should join");
+
+        assert!(
+            items.iter().all(|item| {
+                !matches!(
+                    item,
+                    Ok(MultiTurnStreamItem::StreamAssistantItem(
+                        StreamedAssistantContent::Final(_)
+                    ))
+                )
+            }),
+            "turn final should not be emitted after post-hook termination"
+        );
+
+        let errors: Vec<_> = items
+            .into_iter()
+            .filter_map(Result::err)
+            .map(|err| err.to_string())
+            .collect();
+        assert_eq!(
+            errors,
+            vec!["PromptError: PromptCancelled: terminate-after-fast".to_string()]
+        );
     }
 
     /// Background task that logs periodically to detect span leakage.

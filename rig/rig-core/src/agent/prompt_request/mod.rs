@@ -33,6 +33,10 @@ pub struct Extended;
 impl PromptType for Standard {}
 impl PromptType for Extended {}
 
+pub(super) fn normalize_tool_concurrency(concurrency: usize) -> usize {
+    concurrency.max(1)
+}
+
 /// A builder for creating prompt requests with customizable options.
 /// Uses generics to track which options have been set during the build process.
 ///
@@ -157,9 +161,11 @@ where
     }
 
     /// Add concurrency to the prompt request.
-    /// This will cause the agent to execute tools concurrently.
+    ///
+    /// Values lower than 1 are clamped to 1. When concurrency is greater than
+    /// 1, tools are executed with bounded parallelism instead of sequentially.
     pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.concurrency = concurrency;
+        self.concurrency = normalize_tool_concurrency(concurrency);
         self
     }
 
@@ -729,9 +735,12 @@ where
 
     /// Add concurrency to the prompt request.
     ///
-    /// This will cause the agent to execute tools concurrently.
+    /// Values lower than 1 are clamped to 1 before forwarding to the inner
+    /// prompt request.
     pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.inner = self.inner.with_tool_concurrency(concurrency);
+        self.inner = self
+            .inner
+            .with_tool_concurrency(normalize_tool_concurrency(concurrency));
         self
     }
 
