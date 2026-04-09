@@ -1,3 +1,5 @@
+#[cfg(any(feature = "image", feature = "audio"))]
+use crate::client::Nothing;
 use crate::{
     client::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
@@ -6,8 +8,6 @@ use crate::{
     http_client,
     providers::mistral::MistralModelLister,
 };
-#[cfg(any(feature = "image", feature = "audio"))]
-use crate::client::Nothing;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 

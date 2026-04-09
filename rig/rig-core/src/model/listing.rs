@@ -44,7 +44,7 @@ use std::fmt;
 ///     context_length: Some(8192),
 /// };
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Model {
     /// The unique identifier for the model (required)
     pub id: String,

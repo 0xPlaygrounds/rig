@@ -21,13 +21,11 @@ struct ListModelEntry {
 
 impl From<ListModelEntry> for Model {
     fn from(value: ListModelEntry) -> Self {
-        Model {
-            id: value.id,
-            name: value.name,
-            created_at: Some(value.created),
-            owned_by: Some(value.owned_by),
-            ..Default::default()
-        }
+        let mut model = Model::from_id(value.id);
+        model.name = value.name;
+        model.created_at = Some(value.created);
+        model.owned_by = Some(value.owned_by);
+        model
     }
 }
 
