@@ -12,7 +12,7 @@ use crate::support::assert_nonempty_response;
 async fn completion_smoke() {
     let client = ollama::Client::new(Nothing).expect("client should build");
     let agent = client
-        .agent("qwen2.5:14b")
+        .agent("qwen3:4b")
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 
