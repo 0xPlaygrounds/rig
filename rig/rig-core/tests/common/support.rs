@@ -6,6 +6,7 @@ use rig::{
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
     completion::ToolDefinition,
     embeddings::Embedding,
+    streaming::{StreamedAssistantContent, StreamedUserContent},
     tool::Tool,
 };
 use schemars::JsonSchema;
@@ -37,6 +38,9 @@ pub(crate) const STREAMING_PROMPT: &str =
 pub(crate) const STREAMING_TOOLS_PREAMBLE: &str =
     "You are a calculator. Use the provided tools before answering arithmetic questions.";
 pub(crate) const STREAMING_TOOLS_PROMPT: &str = "Calculate 2 - 5.";
+pub(crate) const MULTI_TURN_STREAMING_PROMPT: &str =
+    "Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.";
+pub(crate) const MULTI_TURN_STREAMING_EXPECTED_RESULT: i32 = 16;
 
 pub(crate) const STRUCTURED_OUTPUT_PROMPT: &str =
     "Return a concise event object for a local Rust meetup in Seattle.";
@@ -256,6 +260,63 @@ pub(crate) async fn collect_stream_final_response<R>(
     }
 
     Ok(final_response.expect("stream should yield a final response"))
+}
+
+pub(crate) struct StreamObservation {
+    pub(crate) all_streamed_text: String,
+    pub(crate) final_turn_text: String,
+    pub(crate) final_response_text: Option<String>,
+    pub(crate) tool_calls: Vec<String>,
+    pub(crate) tool_results: usize,
+    pub(crate) errors: Vec<String>,
+    pub(crate) got_final_response: bool,
+}
+
+impl StreamObservation {
+    fn new() -> Self {
+        Self {
+            all_streamed_text: String::new(),
+            final_turn_text: String::new(),
+            final_response_text: None,
+            tool_calls: Vec::new(),
+            tool_results: 0,
+            errors: Vec::new(),
+            got_final_response: false,
+        }
+    }
+}
+
+pub(crate) async fn collect_stream_observation<R>(
+    stream: &mut StreamingResult<R>,
+) -> StreamObservation {
+    let mut observation = StreamObservation::new();
+
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+                StreamedAssistantContent::Text(text) => {
+                    observation.all_streamed_text.push_str(&text.text);
+                    observation.final_turn_text.push_str(&text.text);
+                }
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    observation.tool_calls.push(tool_call.function.name);
+                }
+                _ => {}
+            },
+            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+                observation.tool_results += 1;
+                observation.final_turn_text.clear();
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                observation.final_response_text = Some(response.response().to_owned());
+                observation.got_final_response = true;
+            }
+            Ok(_) => {}
+            Err(error) => observation.errors.push(error.to_string()),
+        }
+    }
+
+    observation
 }
 
 pub(crate) fn assert_loader_answer_is_relevant(response: &str) {

@@ -1,6 +1,8 @@
 //! Migrated from `examples/multi_turn_streaming_gemini.rs`.
 
 use std::pin::Pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::{Stream, StreamExt};
 use rig::OneOrMany;
@@ -12,10 +14,13 @@ use rig::providers::gemini;
 use rig::streaming::{StreamedAssistantContent, StreamingCompletion};
 use rig::tool::{Tool, ToolError, ToolSetError};
 use schemars::{JsonSchema, schema_for};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 
-use crate::support::assert_mentions_expected_number;
+use crate::support::{
+    MULTI_TURN_STREAMING_EXPECTED_RESULT, MULTI_TURN_STREAMING_PROMPT,
+    assert_mentions_expected_number, assert_nonempty_response,
+};
 
 #[derive(Debug, Error)]
 enum StreamingError {
@@ -32,27 +37,49 @@ type StreamingResult = Pin<Box<dyn Stream<Item = Result<Text, StreamingError>> +
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn manual_multi_turn_streaming_loop() {
+    let add_calls = Arc::new(AtomicUsize::new(0));
+    let subtract_calls = Arc::new(AtomicUsize::new(0));
+    let multiply_calls = Arc::new(AtomicUsize::new(0));
+    let divide_calls = Arc::new(AtomicUsize::new(0));
+
     let client = gemini::Client::from_env();
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble("You must use tools to answer arithmetic prompts.")
-        .tool(Add)
-        .tool(Subtract)
-        .tool(Multiply)
-        .tool(Divide)
+        .tool(Add::new(add_calls.clone()))
+        .tool(Subtract::new(subtract_calls.clone()))
+        .tool(Multiply::new(multiply_calls.clone()))
+        .tool(Divide::new(divide_calls.clone()))
         .build();
 
-    let mut stream = multi_turn_prompt(
-        agent,
-        "Calculate (2 + 2) / 2 = ?. Describe the result.",
-        Vec::new(),
-    )
-    .await;
+    let mut stream = multi_turn_prompt(agent, MULTI_TURN_STREAMING_PROMPT, Vec::new()).await;
     let response = collect_text(&mut stream)
         .await
         .expect("manual multi-turn streaming should succeed");
 
-    assert_mentions_expected_number(&response, 2);
+    assert_nonempty_response(&response);
+    assert!(
+        response.trim().len() >= 30,
+        "expected a substantial streamed response, got {:?}",
+        response
+    );
+    assert_mentions_expected_number(&response, MULTI_TURN_STREAMING_EXPECTED_RESULT);
+    assert!(
+        add_calls.load(Ordering::SeqCst) >= 1,
+        "add should be called"
+    );
+    assert!(
+        subtract_calls.load(Ordering::SeqCst) >= 1,
+        "subtract should be called"
+    );
+    assert!(
+        multiply_calls.load(Ordering::SeqCst) >= 1,
+        "multiply should be called"
+    );
+    assert!(
+        divide_calls.load(Ordering::SeqCst) >= 1,
+        "divide should be called"
+    );
 }
 
 async fn multi_turn_prompt<M>(
@@ -175,8 +202,15 @@ struct OperationArgs {
 #[error("Math error")]
 struct MathError;
 
-#[derive(Deserialize, Serialize)]
-struct Add;
+struct Add {
+    call_count: Arc<AtomicUsize>,
+}
+
+impl Add {
+    fn new(call_count: Arc<AtomicUsize>) -> Self {
+        Self { call_count }
+    }
+}
 
 impl Tool for Add {
     const NAME: &'static str = "add";
@@ -194,12 +228,20 @@ impl Tool for Add {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
 }
 
-#[derive(Deserialize, Serialize)]
-struct Subtract;
+struct Subtract {
+    call_count: Arc<AtomicUsize>,
+}
+
+impl Subtract {
+    fn new(call_count: Arc<AtomicUsize>) -> Self {
+        Self { call_count }
+    }
+}
 
 impl Tool for Subtract {
     const NAME: &'static str = "subtract";
@@ -217,12 +259,20 @@ impl Tool for Subtract {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
 }
 
-#[derive(Deserialize, Serialize)]
-struct Multiply;
+struct Multiply {
+    call_count: Arc<AtomicUsize>,
+}
+
+impl Multiply {
+    fn new(call_count: Arc<AtomicUsize>) -> Self {
+        Self { call_count }
+    }
+}
 
 impl Tool for Multiply {
     const NAME: &'static str = "multiply";
@@ -240,12 +290,20 @@ impl Tool for Multiply {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
 }
 
-#[derive(Deserialize, Serialize)]
-struct Divide;
+struct Divide {
+    call_count: Arc<AtomicUsize>,
+}
+
+impl Divide {
+    fn new(call_count: Arc<AtomicUsize>) -> Self {
+        Self { call_count }
+    }
+}
 
 impl Tool for Divide {
     const NAME: &'static str = "divide";
@@ -263,6 +321,7 @@ impl Tool for Divide {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }
 }
