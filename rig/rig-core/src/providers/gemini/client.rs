@@ -1,10 +1,14 @@
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
+    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
+    Transport,
 };
 use crate::http_client;
+use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
 use std::fmt::Debug;
+
+#[cfg(any(feature = "image", feature = "audio"))]
+use crate::client::Nothing;
 
 // ================================================================
 // Google Gemini Client
@@ -70,23 +74,15 @@ impl Provider for GeminiExt {
     const VERIFY_PATH: &'static str = "/v1beta/models";
 
     fn build_uri(&self, base_url: &str, path: &str, transport: Transport) -> String {
+        let trimmed = path.trim_start_matches('/');
+        let separator = if trimmed.contains('?') { "&" } else { "?" };
+
         match transport {
-            Transport::Sse => {
-                format!(
-                    "{}/{}?alt=sse&key={}",
-                    base_url,
-                    path.trim_start_matches('/'),
-                    self.api_key
-                )
-            }
-            _ => {
-                format!(
-                    "{}/{}?key={}",
-                    base_url,
-                    path.trim_start_matches('/'),
-                    self.api_key
-                )
-            }
+            Transport::Sse => format!(
+                "{base_url}/{trimmed}{separator}alt=sse&key={}",
+                self.api_key
+            ),
+            _ => format!("{base_url}/{trimmed}{separator}key={}", self.api_key),
         }
     }
 }
@@ -119,7 +115,7 @@ impl<H> Capabilities<H> for GeminiExt {
     type Completion = Capable<super::completion::CompletionModel>;
     type Embeddings = Capable<super::embedding::EmbeddingModel>;
     type Transcription = Capable<super::transcription::TranscriptionModel>;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<GeminiModelLister<H>>;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
@@ -131,7 +127,7 @@ impl<H> Capabilities<H> for GeminiInteractionsExt {
     type Completion = Capable<super::interactions_api::InteractionsCompletionModel<H>>;
     type Embeddings = Capable<super::embedding::EmbeddingModel>;
     type Transcription = Capable<super::transcription::TranscriptionModel>;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<GeminiInteractionsModelLister<H>>;
 
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
@@ -248,6 +244,7 @@ pub enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_client_initialization() {
         let _client: Client = Client::new("dummy-key").expect("Client::new() failed");
