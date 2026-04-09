@@ -26,10 +26,6 @@ use tracing::{Instrument, Level, enabled, info_span};
 pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
 /// `claude-sonnet-4-0` completion model
 pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-/// `claude-3-7-sonnet-latest` completion model
-pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
-/// `claude-3-5-sonnet-latest` completion model
-pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
 /// `claude-3-5-haiku-latest` completion model
 pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
 

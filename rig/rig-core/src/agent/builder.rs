@@ -46,7 +46,7 @@ pub struct WithToolServerHandle {
 pub struct WithBuilderTools {
     static_tools: Vec<String>,
     tools: ToolSet,
-    dynamic_tools: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
 }
 
 /// A builder for creating an agent
@@ -94,7 +94,7 @@ where
     /// Maximum number of tokens for the completion
     max_tokens: Option<u64>,
     /// List of vector store, with the sample number
-    dynamic_context: Vec<(usize, Box<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    dynamic_context: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// Temperature of the model
     temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
@@ -162,7 +162,7 @@ where
         dynamic_context: impl VectorStoreIndexDyn + Send + Sync + 'static,
     ) -> Self {
         self.dynamic_context
-            .push((sample, Box::new(dynamic_context)));
+            .push((sample, Arc::new(dynamic_context)));
         self
     }
 
@@ -435,7 +435,7 @@ where
             tool_state: WithBuilderTools {
                 static_tools: vec![],
                 tools: toolset,
-                dynamic_tools: vec![(sample, Box::new(dynamic_tools))],
+                dynamic_tools: vec![(sample, Arc::new(dynamic_tools))],
             },
         }
     }
@@ -567,7 +567,7 @@ where
     ) -> Self {
         self.tool_state
             .dynamic_tools
-            .push((sample, Box::new(dynamic_tools)));
+            .push((sample, Arc::new(dynamic_tools)));
         self.tool_state.tools.add_tools(toolset);
         self
     }

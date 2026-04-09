@@ -295,7 +295,9 @@ where
                     // Finish reason
                     if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
                         for (_idx, tool_call) in tool_calls.into_iter() {
-                            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
+                            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                finalize_completed_streaming_tool_call(tool_call),
+                            ));
                         }
                         tool_calls = HashMap::new();
                     }
@@ -328,6 +330,16 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+fn finalize_completed_streaming_tool_call(
+    mut tool_call: streaming::RawStreamingToolCall,
+) -> streaming::RawStreamingToolCall {
+    if tool_call.arguments.is_null() {
+        tool_call.arguments = Value::Object(serde_json::Map::new());
+    }
+
+    tool_call
 }
 
 #[cfg(test)]

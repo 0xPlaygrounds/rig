@@ -1,57 +1,58 @@
-use rig::prelude::*;
-use rig::{
-    pipeline::{self, TryOp, agent_ops},
-    providers::openai,
-    try_parallel,
-};
+//! Demonstrates fan-out structured extraction with `try_parallel!`.
+//! Requires `OPENAI_API_KEY`.
+//! Run it to see one batch of text split into names, topics, and sentiment in parallel.
+
+use anyhow::Result;
+use rig::client::ProviderClient;
+use rig::pipeline::{self, TryOp, agent_ops};
+use rig::providers::openai;
+use rig::try_parallel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A record containing extracted names
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub struct Names {
-    /// The names extracted from the text
-    pub names: Vec<String>,
+struct Names {
+    names: Vec<String>,
 }
 
-/// A record containing extracted topics
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub struct Topics {
-    /// The topics extracted from the text
-    pub topics: Vec<String>,
+struct Topics {
+    topics: Vec<String>,
 }
 
-/// A record containing extracted sentiment
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub struct Sentiment {
-    /// The sentiment of the text (-1 being negative, 1 being positive)
-    pub sentiment: f64,
-    /// The confidence of the sentiment
-    pub confidence: f64,
+struct Sentiment {
+    sentiment: f64,
+    confidence: f64,
+}
+
+fn sample_inputs() -> Vec<&'static str> {
+    vec![
+        "Screw you Putin!",
+        "I love my dog, but I hate my cat.",
+        "I'm going to the store to buy some milk.",
+    ]
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let openai = openai::Client::from_env();
-
-    let names_extractor = openai
-        .extractor::<Names>(openai::GPT_4)
-        .preamble("Extract names (e.g.: of people, places) from the given text.")
+async fn main() -> Result<()> {
+    let client = openai::Client::from_env();
+    let names_extractor = client
+        .extractor::<Names>(openai::GPT_4O_MINI)
+        .preamble("Extract names from the given text.")
+        .retries(2)
         .build();
-    let topics_extractor = openai
-        .extractor::<Topics>(openai::GPT_4)
+    let topics_extractor = client
+        .extractor::<Topics>(openai::GPT_4O_MINI)
         .preamble("Extract topics from the given text.")
+        .retries(2)
         .build();
-    let sentiment_extractor = openai
-        .extractor::<Sentiment>(openai::GPT_4)
-        .preamble(
-            "Extract sentiment (and how confident you are of the sentiment) from the given text.",
-        )
+    let sentiment_extractor = client
+        .extractor::<Sentiment>(openai::GPT_4O_MINI)
+        .preamble("Extract sentiment and confidence from the given text.")
+        .retries(2)
         .build();
 
-    // Create a chain that extracts names, topics, and sentiment from a given text
-    // using three different GPT-4 based extractors.
-    // The chain will output a formatted string containing the extracted information.
     let chain = pipeline::new()
         .chain(try_parallel!(
             agent_ops::extract(names_extractor),
@@ -60,27 +61,18 @@ async fn main() -> anyhow::Result<()> {
         ))
         .map_ok(|(names, topics, sentiment)| {
             format!(
-                "Extracted names: {names}\nExtracted topics: {topics}\nExtracted sentiment: {sentiment}",
-                names = names.names.join(", "),
-                topics = topics.topics.join(", "),
-                sentiment = sentiment.sentiment,
+                "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
+                names.names.join(", "),
+                topics.topics.join(", "),
+                sentiment.sentiment,
+                sentiment.confidence,
             )
         });
 
-    // Batch call the chain with up to 4 inputs concurrently
-    let response = chain
-        .try_batch_call(
-            4,
-            vec![
-                "Screw you Putin!",
-                "I love my dog, but I hate my cat.",
-                "I'm going to the store to buy some milk.",
-            ],
-        )
-        .await?;
+    let responses = chain.try_batch_call(4, sample_inputs()).await?;
 
-    for response in response {
-        println!("Text analysis:\n{response}");
+    for (idx, response) in responses.iter().enumerate() {
+        println!("batch item {}:\n{response}\n", idx + 1);
     }
 
     Ok(())

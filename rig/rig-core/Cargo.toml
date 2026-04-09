@@ -40,7 +40,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { version = "0.16", optional = true, features = ["client"] }
+rmcp = { version = "1", optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = "1.3.1"
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
@@ -84,7 +84,7 @@ reqwest-middleware = { version = "0.5", features = [
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.16", features = [
+rmcp = { version = "1", features = [
   "client",
   "macros",
   "reqwest",                                  # required for some strange reason
@@ -133,10 +133,6 @@ reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
 reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls", "reqwest/native-tls"]
 
-[[test]]
-name = "embed_macro"
-required-features = ["derive"]
-
 [[example]]
 name = "rag"
 required-features = ["derive"]
@@ -158,50 +154,12 @@ name = "vector_search_cohere"
 required-features = ["derive"]
 
 [[example]]
-name = "gemini_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "agent_with_moonshot"
-
-[[example]]
 name = "pdf_agent"
 required-features = ["derive", "pdf"]
 
 [[example]]
-name = "agent_with_together"
-required-features = ["derive"]
-
-[[example]]
-name = "together_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "openai_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "hyperbolic_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "xai_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "mistral_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "voyageai_embeddings"
-required-features = ["derive"]
-
-[[example]]
 name = "rmcp"
 required-features = ["rmcp"]
-
-[[example]]
-name = "request_hook"
 
 [[example]]
 name = "discord_bot"
@@ -211,9 +169,13 @@ required-features = ["discord-bot"]
 name = "custom_vector_store"
 
 [[example]]
+name = "complex_agentic_loop_claude"
+required-features = ["derive"]
+
+[[example]]
 name = "gemini_extractor_with_rag"
 required-features = ["derive"]
 
 [[example]]
-name = "xai_image_generation"
-required-features = ["image"]
+name = "vector_search_ollama"
+required-features = ["derive"]

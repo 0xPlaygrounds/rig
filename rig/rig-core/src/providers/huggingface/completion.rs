@@ -51,21 +51,9 @@ pub struct Function {
     name: String,
     #[serde(
         serialize_with = "json_utils::stringified_json::serialize",
-        deserialize_with = "deserialize_arguments"
+        deserialize_with = "json_utils::stringified_json::deserialize_maybe_stringified"
     )]
     pub arguments: serde_json::Value,
-}
-
-fn deserialize_arguments<'de, D>(deserializer: D) -> Result<Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = Value::deserialize(deserializer)?;
-
-    match value {
-        Value::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
-        other => Ok(other),
-    }
 }
 
 impl From<Function> for message::ToolFunction {

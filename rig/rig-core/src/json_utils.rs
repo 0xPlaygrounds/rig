@@ -39,10 +39,21 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
     }
 }
 
+/// Parse tool arguments from a streamed string payload.
+/// Some providers emit an empty string for parameterless tool calls; normalize that to `{}`.
+pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::Value> {
+    if arguments.trim().is_empty() {
+        return Ok(serde_json::Value::Object(serde_json::Map::new()));
+    }
+
+    serde_json::from_str(arguments)
+}
+
 /// This module is helpful in cases where raw json objects are serialized and deserialized as
 ///  strings such as `"{\"key\": \"value\"}"`. This might seem odd but it's actually how some
 ///  some providers such as OpenAI return function arguments (for some reason).
 pub mod stringified_json {
+    use super::parse_tool_arguments;
     use serde::{self, Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
@@ -62,6 +73,24 @@ pub mod stringified_json {
             return Ok(serde_json::Value::Object(serde_json::Map::new()));
         }
         serde_json::from_str(&s).map_err(serde::de::Error::custom)
+    }
+
+    /// Deserialize JSON that may be encoded either as a string or as a raw JSON value.
+    /// OpenAI-compatible providers typically return tool arguments as a stringified JSON
+    /// object, while some implementations such as Hugging Face and `llama.cpp` return the
+    /// JSON object directly.
+    pub fn deserialize_maybe_stringified<'de, D>(
+        deserializer: D,
+    ) -> Result<serde_json::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::String(s) => {
+                parse_tool_arguments(&s).map_err(serde::de::Error::custom)
+            }
+            other => Ok(other),
+        }
     }
 }
 
@@ -168,6 +197,12 @@ mod tests {
         data: serde_json::Value,
     }
 
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
+    struct DummyMaybeStringified {
+        #[serde(deserialize_with = "stringified_json::deserialize_maybe_stringified")]
+        data: serde_json::Value,
+    }
+
     #[test]
     fn test_merge() {
         let a = serde_json::json!({"key1": "value1"});
@@ -211,5 +246,44 @@ mod tests {
         let json_str = r#"{"data":""}"#;
         let dummy: Dummy = serde_json::from_str(json_str).unwrap();
         assert_eq!(dummy.data, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_deserialize_maybe_stringified_value_from_string() {
+        let json_str = r#"{"data":"{\"key\":\"value\"}"}"#;
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_deserialize_maybe_stringified_value_from_object() {
+        let json_str = r#"{"data":{"key":"value"}}"#;
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_deserialize_maybe_stringified_value_from_empty_string() {
+        let json_str = r#"{"data":""}"#;
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_tool_arguments_empty_string() {
+        let parsed = parse_tool_arguments("").unwrap();
+        assert_eq!(parsed, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_tool_arguments_whitespace_string() {
+        let parsed = parse_tool_arguments("   ").unwrap();
+        assert_eq!(parsed, serde_json::json!({}));
+    }
+
+    #[test]
+    fn test_parse_tool_arguments_valid_json() {
+        let parsed = parse_tool_arguments(r#"{"key":"value"}"#).unwrap();
+        assert_eq!(parsed, serde_json::json!({"key": "value"}));
     }
 }
