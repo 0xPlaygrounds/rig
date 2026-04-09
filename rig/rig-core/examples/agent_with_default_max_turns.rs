@@ -1,56 +1,14 @@
-use rig::prelude::*;
-use rig::{
-    completion::{Prompt, ToolDefinition},
-    providers::anthropic,
-    tool::Tool,
-};
+//! Demonstrates extending the default agent loop budget for tool-heavy prompts.
+//! Requires `ANTHROPIC_API_KEY`.
+//! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
+
+use anyhow::Result;
+use rig::client::{CompletionClient, ProviderClient};
+use rig::completion::{Prompt, ToolDefinition};
+use rig::providers::anthropic;
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_target(false)
-        .init();
-
-    // Create OpenAI client
-    let openai_client = anthropic::Client::from_env();
-
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let agent = openai_client
-        .agent(anthropic::completion::CLAUDE_3_5_SONNET)
-        .preamble(
-            "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
-            Follow these instructions closely.
-            1. Consider the user's request carefully and identify the core elements of the request.
-            2. Select which tool among those made available to you is appropriate given the context.
-            3. This is very important: never perform the operation yourself.
-            "
-        )
-        .tool(Add)
-        .tool(Subtract)
-        .tool(Multiply)
-        .tool(Divide)
-        .default_max_turns(20)
-        .build();
-
-    // Prompt the agent and print the response
-    let result = agent
-        .prompt("Calculate 5 - 2 = ?. Describe the result to me.")
-        .await?;
-
-    println!("\n\nOpenAI Calculator Agent: {result}");
-
-    // Prompt the agent again and print the response
-    let result = agent
-        .prompt("Calculate (3 + 5) / 9  = ?. Describe the result to me.")
-        .await?;
-
-    println!("\n\nOpenAI Calculator Agent: {result}");
-
-    Ok(())
-}
 
 #[derive(Deserialize)]
 struct OperationArgs {
@@ -59,8 +17,10 @@ struct OperationArgs {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct MathError;
+enum MathError {
+    #[error("division by zero")]
+    DivisionByZero,
+}
 
 #[derive(Deserialize, Serialize)]
 struct Add;
@@ -72,101 +32,19 @@ impl Tool for Add {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "add",
-            "description": "Add x and y together",
-            "parameters": {
+        ToolDefinition {
+            name: "add".to_string(),
+            description: "Add x and y together".to_string(),
+            parameters: json!({
                 "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first number to add"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second number to add"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
+                "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                "required": ["x", "y"]
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let result = args.x + args.y;
-        Ok(result)
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-struct Subtract;
-
-impl Tool for Subtract {
-    const NAME: &'static str = "subtract";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "subtract",
-            "description": "Subtract y from x (i.e.: x - y)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The number to subtract from"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The number to subtract"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let result = args.x - args.y;
-        Ok(result)
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-struct Multiply;
-
-impl Tool for Multiply {
-    const NAME: &'static str = "multiply";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i32;
-
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "multiply",
-            "description": "Compute the product of x and y (i.e.: x * y)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first factor in the product"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second factor in the product"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
-    }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let result = args.x * args.y;
-        Ok(result)
+        Ok(args.x + args.y)
     }
 }
 
@@ -180,28 +58,43 @@ impl Tool for Divide {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "divide",
-            "description": "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.",
-            "parameters": {
+        ToolDefinition {
+            name: "divide".to_string(),
+            description: "Compute the quotient of x and y.".to_string(),
+            parameters: json!({
                 "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The Dividend of the division. The number being divided"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The Divisor of the division. The number by which the dividend is being divided"
-                    }
-                }
-            }
-        }))
-        .expect("Tool Definition")
+                "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                "required": ["x", "y"]
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let result = args.x / args.y;
-        Ok(result)
+        if args.y == 0 {
+            return Err(MathError::DivisionByZero);
+        }
+
+        Ok(args.x / args.y)
     }
+}
+
+const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let agent = anthropic::Client::from_env()
+        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .preamble(
+            "You are an assistant that must use the available tools for arithmetic. \
+             Never compute the result yourself.",
+        )
+        .tool(Add)
+        .tool(Divide)
+        .default_max_turns(10)
+        .build();
+
+    let response = agent.prompt(PROMPT).await?;
+    println!("{response}");
+
+    Ok(())
 }
