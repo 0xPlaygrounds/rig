@@ -1,26 +1,28 @@
+//! Demonstrates supplying a custom reqwest client with retry middleware.
+//! Requires `ANTHROPIC_API_KEY` and the `reqwest-middleware` feature.
+//! Run it to verify the provider client can use your preconfigured HTTP stack.
+
+use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use rig::{client::CompletionClient, completion::Prompt, providers::anthropic};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Build a reqwest client with middleware (retry logic)
+fn build_http_client() -> reqwest_middleware::ClientWithMiddleware {
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
-    let http_client = ClientBuilder::new(Default::default())
+    ClientBuilder::new(Default::default())
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-        .build();
+        .build()
+}
 
-    // API key must be set menually as we cannot use a default client
-    let api_key = std::env::var("ANTHROPIC_API_KEY").expect("'ANTHROPIC_API_KEY' not set");
-
-    // Create an Anthropic client using the middleware-enabled HTTP client
+#[tokio::main]
+async fn main() -> Result<()> {
+    let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set")?;
+    let http_client = build_http_client();
     let client = anthropic::Client::builder()
         .http_client(http_client)
         .api_key(api_key)
-        .build()
-        .unwrap();
+        .build()?;
 
-    // Create an agent and send a prompt
     let agent = client
         .agent("claude-sonnet-4-20250514")
         .preamble("You are a helpful assistant.")

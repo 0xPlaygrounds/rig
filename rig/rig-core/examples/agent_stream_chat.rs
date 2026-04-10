@@ -1,32 +1,48 @@
-use rig::agent::stream_to_stdout;
+//! Demonstrates `stream_chat` with prior conversation history.
+//! Requires `OPENAI_API_KEY`.
+//! Run it to see a streamed continuation of an existing exchange.
+
+use anyhow::{Result, anyhow};
+use futures::StreamExt;
+use rig::agent::{MultiTurnStreamItem, StreamingResult};
+use rig::client::{CompletionClient, ProviderClient};
 use rig::message::Message;
-use rig::prelude::*;
+use rig::providers::openai;
 use rig::streaming::StreamingChat;
 
-use rig::providers::{self, openai};
+const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
+const PROMPT: &str = "Entertain me!";
 
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let client = providers::openai::Client::from_env();
+async fn collect_stream_final_response<R>(stream: &mut StreamingResult<R>) -> Result<String> {
+    let mut final_response = None;
 
-    // Create agent with a single context prompt
-    let comedian_agent = client
-        .agent(openai::GPT_4)
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
-        .build();
+    while let Some(item) = stream.next().await {
+        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+            final_response = Some(response.response().to_owned());
+        }
+    }
 
-    let messages = vec![
+    final_response.ok_or_else(|| anyhow!("stream finished without a final response"))
+}
+
+fn sample_history() -> Vec<Message> {
+    vec![
         Message::user("Tell me a joke!"),
         Message::assistant("Why did the chicken cross the road?\n\nTo get to the other side!"),
-    ];
+    ]
+}
 
-    // Prompt the agent and print the response
-    let mut stream = comedian_agent.stream_chat("Entertain me!", &messages).await;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let agent = openai::Client::from_env()
+        .agent(openai::GPT_4)
+        .preamble(PREAMBLE)
+        .build();
 
-    let res = stream_to_stdout(&mut stream).await.unwrap();
-
-    println!("Response: {res:?}");
+    let history = sample_history();
+    let mut stream = agent.stream_chat(PROMPT, &history).await;
+    let response = collect_stream_final_response(&mut stream).await?;
+    println!("{response}");
 
     Ok(())
 }

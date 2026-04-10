@@ -1,0 +1,22 @@
+//! OpenRouter integration tests.
+//!
+//! Run the full provider target with:
+//! `cargo test -p rig-core --test openrouter`
+//!
+//! Run all ignored provider-backed tests serially with:
+//! `cargo test -p rig-core --test openrouter -- --ignored --test-threads=1`
+//!
+//! Use `--test-threads=1` because these ignored tests talk to real model
+//! backends, and running them concurrently creates avoidable rate-limit,
+//! quota, and load-related flakiness.
+//!
+//! Run a single ignored smoke test with:
+//! `cargo test -p rig-core --test openrouter openrouter::agent::completion_smoke -- --ignored`
+
+#[path = "common/reasoning.rs"]
+mod reasoning;
+#[path = "common/support.rs"]
+mod support;
+
+#[path = "openrouter/mod.rs"]
+mod openrouter;

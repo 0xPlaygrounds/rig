@@ -46,6 +46,8 @@ pub enum MultiTurnStreamItem<R> {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalResponse {
+    /// Concatenated assistant text for the final turn.
+    /// This is empty only when the turn completed without emitting any text.
     response: String,
     aggregated_usage: crate::completion::Usage,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -61,6 +63,7 @@ impl FinalResponse {
         }
     }
 
+    /// Returns the concatenated assistant text for the final turn.
     pub fn response(&self) -> &str {
         &self.response
     }
@@ -165,6 +168,16 @@ fn tool_result_to_user_message(
     Message::User {
         content: OneOrMany::one(user_content),
     }
+}
+
+fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -379,8 +392,8 @@ where
         let mut current_max_turns = 0;
         let mut last_prompt_error = String::new();
 
-        let mut last_text_response = String::new();
-        let mut is_text_response = false;
+        let mut text_delta_response = String::new();
+        let mut saw_text_this_turn = false;
         let mut max_turns_reached = false;
         let output_schema = self.output_schema;
 
@@ -483,13 +496,13 @@ where
                 while let Some(content) = stream.next().await {
                     match content {
                         Ok(StreamedAssistantContent::Text(text)) => {
-                            if !is_text_response {
-                                last_text_response = String::new();
-                                is_text_response = true;
+                            if !saw_text_this_turn {
+                                text_delta_response.clear();
+                                saw_text_this_turn = true;
                             }
-                            last_text_response.push_str(&text.text);
+                            text_delta_response.push_str(&text.text);
                             if let Some(ref hook) = self.hook &&
-                                let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &last_text_response).await {
+                                let HookAction::Terminate { reason } = hook.on_text_delta(&text.text, &text_delta_response).await {
                                     yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                             }
@@ -617,16 +630,15 @@ where
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
-                            if is_text_response {
+                            if saw_text_this_turn {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&current_prompt, &final_resp).await {
                                         yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                         break 'outer;
                                     }
 
-                                tracing::Span::current().record("gen_ai.completion", &last_text_response);
                                 yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Final(final_resp)));
-                                is_text_response = false;
+                                saw_text_this_turn = false;
                             }
                         }
                         Err(e) => {
@@ -647,15 +659,17 @@ where
                     accumulated_reasoning.push(assembled);
                 }
 
+                let turn_text_response = assistant_text_from_choice(&stream.choice);
+                tracing::Span::current().record("gen_ai.completion", &turn_text_response);
+
                 // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     let mut content_items: Vec<rig::message::AssistantContent> = vec![];
 
                     // Text before tool calls so the model sees its own prior output
-                    if !last_text_response.is_empty() {
-                        content_items.push(rig::message::AssistantContent::text(&last_text_response));
-                        last_text_response.clear();
+                    if !turn_text_response.is_empty() {
+                        content_items.push(rig::message::AssistantContent::text(&turn_text_response));
                     }
 
                     // Reasoning must come before tool calls (OpenAI requirement)
@@ -679,8 +693,14 @@ where
 
                 if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
-                    if !last_text_response.is_empty() {
-                        new_messages.push(Message::assistant(&last_text_response));
+                    if !turn_text_response.is_empty() {
+                        new_messages.push(Message::assistant(&turn_text_response));
+                    } else {
+                        tracing::warn!(
+                            agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                            message_id = ?stream.message_id,
+                            "Streaming turn completed without assistant text; final response will be empty"
+                        );
                     }
 
                     let current_span = tracing::Span::current();
@@ -695,7 +715,7 @@ where
                         None
                     };
                     yield Ok(MultiTurnStreamItem::final_response_with_history(
-                        &last_text_response,
+                        &turn_text_response,
                         aggregated_usage,
                         final_messages,
                     ));
@@ -1031,12 +1051,19 @@ mod tests {
         let model = MultiTurnMockModel::default();
         let turn_counter = model.turn_counter.clone();
         let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
 
-        let mut stream = agent.stream_prompt("do tool work").multi_turn(3).await;
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
         let mut saw_tool_call = false;
         let mut saw_tool_result = false;
         let mut saw_final_response = false;
         let mut final_text = String::new();
+        let mut final_response_text = None;
+        let mut final_history = None;
 
         while let Some(item) = stream.next().await {
             match item {
@@ -1055,8 +1082,10 @@ mod tests {
                 ))) => {
                     final_text.push_str(&text.text);
                 }
-                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                     saw_final_response = true;
+                    final_response_text = Some(res.response().to_owned());
+                    final_history = res.history().map(|history| history.to_vec());
                     break;
                 }
                 Ok(_) => {}
@@ -1068,7 +1097,131 @@ mod tests {
         assert!(saw_tool_result);
         assert!(saw_final_response);
         assert_eq!(final_text, "done");
+        assert_eq!(final_response_text.as_deref(), Some("done"));
+        let history = final_history.expect("expected final response history");
+        assert!(history.iter().any(|message| matches!(
+            message,
+            Message::Assistant { content, .. }
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == "done"
+                ))
+        )));
         assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[derive(Clone, Copy)]
+    enum FinalResponseScenario {
+        TextThenFinal,
+        FinalOnly,
+    }
+
+    #[derive(Clone)]
+    struct FinalResponseMockModel {
+        scenario: FinalResponseScenario,
+    }
+
+    #[allow(refining_impl_trait)]
+    impl CompletionModel for FinalResponseMockModel {
+        type Response = ();
+        type StreamingResponse = MockStreamingResponse;
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self {
+                scenario: FinalResponseScenario::TextThenFinal,
+            }
+        }
+
+        async fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "completion is unused in this streaming test".to_string(),
+            ))
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            let scenario = self.scenario;
+            let stream = async_stream::stream! {
+                match scenario {
+                    FinalResponseScenario::TextThenFinal => {
+                        yield Ok(RawStreamingChoice::Message("hello".to_string()));
+                        yield Ok(RawStreamingChoice::Message(" world".to_string()));
+                        yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(3)));
+                    }
+                    FinalResponseScenario::FinalOnly => {
+                        yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(1)));
+                    }
+                }
+            };
+
+            let pinned_stream: crate::streaming::StreamingResult<Self::StreamingResponse> =
+                Box::pin(stream);
+            Ok(StreamingCompletionResponse::stream(pinned_stream))
+        }
+    }
+
+    #[tokio::test]
+    async fn final_response_matches_streamed_text_when_provider_final_is_textless() {
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .build();
+
+        let mut stream = agent.stream_prompt("say hello").await;
+        let mut streamed_text = String::new();
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => streamed_text.push_str(&text.text),
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.response().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(streamed_text, "hello world");
+        assert_eq!(final_response_text.as_deref(), Some("hello world"));
+    }
+
+    #[tokio::test]
+    async fn final_response_can_remain_empty_for_truly_textless_turns() {
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::FinalOnly,
+        })
+        .build();
+
+        let mut stream = agent.stream_prompt("say nothing").await;
+        let mut streamed_text = String::new();
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    text,
+                ))) => streamed_text.push_str(&text.text),
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.response().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert!(streamed_text.is_empty());
+        assert_eq!(final_response_text.as_deref(), Some(""));
     }
 
     /// Background task that logs periodically to detect span leakage.
