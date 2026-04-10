@@ -11,6 +11,7 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod model_listing;
 pub mod responses_api;
 
 #[cfg(feature = "audio")]
@@ -28,6 +29,7 @@ pub mod transcription;
 pub use client::*;
 pub use completion::*;
 pub use embedding::*;
+pub use model_listing::*;
 
 /// Recursively ensures all object schemas in a JSON schema respect OpenAI structured output restrictions.
 /// Nested arrays, schema $defs, object properties and enums should be handled through this method

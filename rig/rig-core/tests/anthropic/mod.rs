@@ -1,6 +1,7 @@
 mod agent;
 mod default_max_turns;
 mod image;
+mod models;
 mod multi_turn_streaming;
 mod plaintext_document;
 mod reasoning_roundtrip;
