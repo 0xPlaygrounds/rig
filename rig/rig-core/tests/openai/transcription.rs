@@ -15,6 +15,7 @@ async fn transcription_smoke() {
     let response = model
         .transcription_request()
         .load_file(AUDIO_FIXTURE_PATH)
+        .expect("should be able to load audio fixture")
         .send()
         .await
         .expect("transcription should succeed");
