@@ -408,6 +408,16 @@ impl ModelListingError {
         Self::parse_error(message)
     }
 
+    pub(crate) fn parse_error_with_details(
+        provider: &str,
+        path: &str,
+        details: impl fmt::Display,
+        body: &[u8],
+    ) -> Self {
+        let message = format_response_context(provider, path, details, body);
+        Self::parse_error(message)
+    }
+
     /// Creates a new AuthError with the given message.
     pub fn auth_error(message: impl Into<String>) -> Self {
         Self::AuthError {

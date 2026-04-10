@@ -14,6 +14,8 @@ async fn list_models_smoke() {
         }
     };
 
+    println!("Gemini returned {} models", models.len());
+
     assert!(
         !models.is_empty(),
         "expected Gemini to return at least one model\nModel list: {models:#?}"
