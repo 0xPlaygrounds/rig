@@ -44,17 +44,25 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let req = self.client.get("/models")?.body(http_client::NoBody)?;
-        let response = self.client.send(req).await?;
+        let path = "/models";
+        let req = self.client.get(path)?.body(http_client::NoBody)?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
 
         if !response.status().is_success() {
             let status_code = response.status().as_u16();
-            let text = http_client::text(response).await?;
-            return Err(ModelListingError::api_error(status_code, text));
+            let body = response.into_body().await?;
+            return Err(ModelListingError::api_error_with_context(
+                "OpenAI",
+                path,
+                status_code,
+                &body,
+            ));
         }
 
         let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body)?;
+        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
+            ModelListingError::parse_error_with_context("OpenAI", path, &error, &body)
+        })?;
         let models = api_resp.data.into_iter().map(Model::from).collect();
 
         Ok(ModelList::new(models))

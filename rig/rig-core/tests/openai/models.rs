@@ -7,13 +7,15 @@ use rig::providers::openai;
 #[ignore = "requires OPENAI_API_KEY"]
 async fn list_models_smoke() {
     let client = openai::Client::from_env();
-    let models = client
-        .list_models()
-        .await
-        .expect("listing OpenAI models should succeed");
+    let models = match client.list_models().await {
+        Ok(models) => models,
+        Err(error) => {
+            panic!("listing OpenAI models should succeed\nDisplay: {error}\nDebug: {error:#?}")
+        }
+    };
 
     assert!(
         !models.is_empty(),
-        "expected OpenAI to return at least one model"
+        "expected OpenAI to return at least one model\nModel list: {models:#?}"
     );
 }
