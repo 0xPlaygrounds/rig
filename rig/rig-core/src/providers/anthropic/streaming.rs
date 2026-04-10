@@ -6,8 +6,8 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    CacheControl, CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition,
-    Usage, apply_cache_control, split_system_messages_from_history,
+    AnthropicCompatibleProvider, CacheControl, CompletionModel, Content, Message, SystemContent,
+    ToolChoice, ToolDefinition, Usage, apply_cache_control, split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -18,6 +18,7 @@ use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
 use crate::telemetry::SpanCombinator;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -134,9 +135,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl<T> CompletionModel<T>
+impl<Ext, T> CompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -152,7 +154,7 @@ where
                 target: "rig::completions",
                 "chat_streaming",
                 gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "anthropic",
+                gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,

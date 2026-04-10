@@ -84,9 +84,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl<T> CompletionModel<T>
+impl<Ext, H> CompletionModel<Ext, H>
 where
-    T: HttpClientExt + Clone + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
 {
     pub(crate) async fn stream(
         &self,

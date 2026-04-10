@@ -78,6 +78,7 @@ pin_project! {
         req: Request<RequestBody>,
         retry_policy: Retry,
         last_event_id: Option<String>,
+        allow_missing_content_type: bool,
         #[pin]
         state: SourceState,
     }
@@ -98,6 +99,7 @@ where
             req,
             retry_policy: DEFAULT_RETRY,
             last_event_id: None,
+            allow_missing_content_type: false,
             state,
         }
     }
@@ -118,8 +120,14 @@ where
             req,
             retry_policy,
             last_event_id: None,
+            allow_missing_content_type: false,
             state,
         }
+    }
+
+    pub fn allow_missing_content_type(mut self) -> Self {
+        self.allow_missing_content_type = true;
+        self
     }
 
     /// Create a response future for connecting/reconnecting
@@ -189,7 +197,7 @@ where
                     match response_future.poll(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(Ok(response)) => {
-                            match check_response(response) {
+                            match check_response(response, *this.allow_missing_content_type) {
                                 Ok(response) => {
                                     // Transition: Connecting -> Open
                                     let mut event_stream = response.into_body().eventsource();
@@ -233,7 +241,7 @@ where
                     match response_future.poll(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(Ok(response)) => {
-                            match check_response(response) {
+                            match check_response(response, *this.allow_missing_content_type) {
                                 Ok(response) => {
                                     // Transition: Reconnecting -> Open (retry cycle complete)
                                     let mut event_stream = response.into_body().eventsource();
@@ -349,7 +357,10 @@ where
     }
 }
 
-fn check_response<T>(response: Response<T>) -> Result<Response<T>, super::Error> {
+fn check_response<T>(
+    response: Response<T>,
+    allow_missing_content_type: bool,
+) -> Result<Response<T>, super::Error> {
     let StatusCode::OK = response.status() else {
         return Err(super::Error::InvalidStatusCode(response.status()));
     };
@@ -357,6 +368,8 @@ fn check_response<T>(response: Response<T>) -> Result<Response<T>, super::Error>
     let content_type =
         if let Some(content_type) = response.headers().get(&reqwest::header::CONTENT_TYPE) {
             content_type
+        } else if allow_missing_content_type {
+            return Ok(response);
         } else {
             return Err(super::Error::InvalidContentType(HeaderValue::from_static(
                 "",

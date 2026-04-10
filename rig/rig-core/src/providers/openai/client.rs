@@ -58,8 +58,9 @@ impl Provider for OpenAICompletionsExt {
 }
 
 impl<H> Capabilities<H> for OpenAIResponsesExt {
-    type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
+    type Completion =
+        Capable<super::responses_api::ResponsesCompletionModel<OpenAIResponsesExt, H>>;
+    type Embeddings = Capable<super::EmbeddingModel<OpenAIResponsesExt, H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Capable<super::OpenAIModelLister<H>>;
     #[cfg(feature = "image")]
@@ -69,8 +70,8 @@ impl<H> Capabilities<H> for OpenAIResponsesExt {
 }
 
 impl<H> Capabilities<H> for OpenAICompletionsExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
+    type Completion = Capable<super::completion::CompletionModel<OpenAICompletionsExt, H>>;
+    type Embeddings = Capable<super::EmbeddingModel<OpenAICompletionsExt, H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Capable<super::OpenAIModelLister<H>>;
     #[cfg(feature = "image")]
@@ -136,7 +137,7 @@ where
     pub fn extractor<U>(
         &self,
         model: impl Into<String>,
-    ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<H>, U>
+    ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<OpenAIResponsesExt, H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {
@@ -191,7 +192,7 @@ where
     pub fn extractor<U>(
         &self,
         model: impl Into<String>,
-    ) -> ExtractorBuilder<super::completion::CompletionModel<H>, U>
+    ) -> ExtractorBuilder<super::completion::CompletionModel<OpenAICompletionsExt, H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {
