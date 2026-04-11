@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         .build()?;
 
     let agent = client
-        .agent("claude-sonnet-4-20250514")
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are a helpful assistant.")
         .build();
 

@@ -30,7 +30,7 @@ Key Features:
 async fn plaintext_document_prompt() {
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are a helpful assistant that analyzes documents.")
         .temperature(0.5)
         .build();
@@ -54,7 +54,7 @@ async fn plaintext_document_prompt() {
 async fn plaintext_document_with_instruction() {
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are a helpful assistant that analyzes documents.")
         .temperature(0.5)
         .build();

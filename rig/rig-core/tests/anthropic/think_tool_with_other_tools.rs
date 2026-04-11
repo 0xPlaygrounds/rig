@@ -279,7 +279,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
         .expect("client should build");
 
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .name("Customer Service Agent")
         .preamble(
             "You are a customer service agent for an online store.

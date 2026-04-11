@@ -13,7 +13,7 @@ use crate::support::{
 async fn tools_smoke() {
     let client = mira::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rig::agent::Agent;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Prompt, PromptError};
-use rig::providers::anthropic::completion::CLAUDE_4_SONNET;
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::openai::GPT_4O;
 use rig::providers::{anthropic, openai};
 
@@ -32,7 +32,7 @@ struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig) -> Agents>);
 
 fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig) -> Agents {
     let agent = anthropic::Client::from_env()
-        .agent(CLAUDE_4_SONNET)
+        .agent(CLAUDE_SONNET_4_6)
         .name(name)
         .preamble(preamble)
         .build();

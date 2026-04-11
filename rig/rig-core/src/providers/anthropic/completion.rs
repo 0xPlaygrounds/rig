@@ -22,12 +22,12 @@ use tracing::{Instrument, Level, enabled, info_span};
 // Anthropic Completion API
 // ================================================================
 
-/// `claude-opus-4-0` completion model
-pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
-/// `claude-sonnet-4-0` completion model
-pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
+/// `claude-opus-4-6` completion model
+pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
+/// `claude-sonnet-4-6` completion model
+pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
+/// `claude-haiku-4-5` completion model
+pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
@@ -847,7 +847,7 @@ where
 {
     pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         let model = model.into();
-        let default_max_tokens = calculate_max_tokens(&model);
+        let default_max_tokens = default_max_tokens_for_model(&model);
 
         Self {
             client,
@@ -863,7 +863,7 @@ where
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: Some(calculate_max_tokens_custom(model)),
+            default_max_tokens: Some(default_max_tokens_with_fallback(model)),
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
@@ -897,7 +897,7 @@ where
     /// extended TTL.
     ///
     /// ```ignore
-    /// let model = client.completion_model(anthropic::CLAUDE_4_SONNET)
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching();
     /// ```
     ///
@@ -910,9 +910,8 @@ where
     /// |-------|---------------|
     /// | `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
     /// | `claude-sonnet-4-6` | 2 048 |
-    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4`, `claude-sonnet-3-7` | 1 024 |
+    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
     /// | `claude-haiku-4-5` | 4 096 |
-    /// | `claude-haiku-3-5`, `claude-haiku-3` | 2 048 |
     ///
     /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
     pub fn with_automatic_caching(mut self) -> Self {
@@ -931,7 +930,7 @@ where
     ///     .api_key(std::env::var("ANTHROPIC_API_KEY").unwrap())
     ///     .anthropic_beta("extended-cache-ttl-2025-04-11")
     ///     .build()?;
-    /// let model = client.completion_model(anthropic::CLAUDE_4_SONNET)
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching_1h();
     /// ```
     ///
@@ -946,38 +945,21 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
-fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4") {
-        Some(32000)
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        Some(64000)
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        Some(8192)
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
+fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+    if model.starts_with("claude-opus-4-6") {
+        Some(128_000)
+    } else if model.starts_with("claude-opus-4")
+        || model.starts_with("claude-sonnet-4")
+        || model.starts_with("claude-haiku-4-5")
     {
-        Some(4096)
+        Some(64_000)
     } else {
         None
     }
 }
 
-fn calculate_max_tokens_custom(model: &str) -> u64 {
-    if model.starts_with("claude-opus-4") {
-        32000
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        64000
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        8192
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        4096
-    } else {
-        2048
-    }
+fn default_max_tokens_with_fallback(model: &str) -> u64 {
+    default_max_tokens_for_model(model).unwrap_or(2_048)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1282,16 +1264,17 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             apply_cache_control(&mut system, &mut messages);
         }
 
-        // Map output_schema to Anthropic's output_config field
-        let output_config = req.output_schema.map(|schema| {
+        let output_config = if let Some(schema) = req.output_schema {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            OutputConfig {
+            Some(OutputConfig {
                 format: OutputFormat::JsonSchema {
                     schema: schema_value,
                 },
-            }
-        });
+            })
+        } else {
+            None
+        };
 
         Ok(Self {
             model: model.to_string(),

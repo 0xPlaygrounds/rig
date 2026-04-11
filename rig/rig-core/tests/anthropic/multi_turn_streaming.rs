@@ -160,7 +160,7 @@ async fn multi_turn_streaming_tools() {
 
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You must use tools for arithmetic.")
         .tool(Add::new(add_calls.clone()))
         .tool(Subtract::new(subtract_calls.clone()))

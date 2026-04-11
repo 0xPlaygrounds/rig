@@ -8,3 +8,5 @@
 
 #[path = "core/mod.rs"]
 mod core;
+#[path = "common/reasoning.rs"]
+mod reasoning;

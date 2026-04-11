@@ -330,7 +330,7 @@ pub(crate) struct StreamStats {
     pub(crate) tool_calls_in_stream: Vec<String>,
     pub(crate) tool_results_in_stream: usize,
     pub(crate) text_chunks: usize,
-    pub(crate) final_text: String,
+    pub(crate) final_turn_text: String,
     pub(crate) final_response_text: Option<String>,
     pub(crate) got_final_response: bool,
     pub(crate) errors: Vec<String>,
@@ -348,7 +348,7 @@ impl StreamStats {
             tool_calls_in_stream: vec![],
             tool_results_in_stream: 0,
             text_chunks: 0,
-            final_text: String::new(),
+            final_turn_text: String::new(),
             final_response_text: None,
             got_final_response: false,
             errors: vec![],
@@ -435,7 +435,7 @@ where
                 }
                 StreamedAssistantContent::Text(ref text) => {
                     stats.text_chunks += 1;
-                    stats.final_text.push_str(&text.text);
+                    stats.final_turn_text.push_str(&text.text);
                     if stats.events.last() != Some(&"text") {
                         stats.events.push("text");
                     }
@@ -452,6 +452,7 @@ where
             Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
                 StreamedUserContent::ToolResult { .. } => {
                     stats.tool_results_in_stream += 1;
+                    stats.final_turn_text.clear();
                     stats.events.push("tool_result");
                 }
             },
@@ -507,11 +508,11 @@ pub(crate) fn assert_universal(
     );
 
     assert!(
-        !stats.final_text.trim().is_empty(),
+        !stats.final_turn_text.trim().is_empty(),
         "[{provider}] Final text is empty."
     );
 
-    let trimmed = stats.final_text.trim();
+    let trimmed = stats.final_turn_text.trim();
     assert!(
         trimmed.len() >= 30,
         "[{provider}] Final text suspiciously short ({} chars): {:?}",
@@ -519,7 +520,7 @@ pub(crate) fn assert_universal(
         &trimmed[..trimmed.len().min(100)]
     );
 
-    let text_lower = stats.final_text.to_ascii_lowercase();
+    let text_lower = stats.final_turn_text.to_ascii_lowercase();
     let references_tool_output = text_lower.contains("72")
         || text_lower.contains("22")
         || text_lower.contains("sunny")
@@ -539,7 +540,7 @@ pub(crate) fn assert_universal(
 
     assert_eq!(
         stats.final_response_text.as_deref(),
-        Some(stats.final_text.as_str()),
+        Some(stats.final_turn_text.as_str()),
         "[{provider}] FinalResponse.response() diverged from streamed text."
     );
 }
