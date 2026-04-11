@@ -4,9 +4,9 @@
 //! ```
 //! use rig::providers::anthropic;
 //!
-//! let client = anthropic::Anthropic::new("YOUR_API_KEY");
+//! let client = anthropic::Client::new("YOUR_API_KEY");
 //!
-//! let sonnet = client.completion_model(anthropic::CLAUDE_4_SONNET);
+//! let sonnet = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
 //! ```
 
 pub mod client;

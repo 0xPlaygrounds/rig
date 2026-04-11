@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicUsize;
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Chat, Message};
-use rig::providers::anthropic;
+use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
 use rig::streaming::StreamingChat;
 
 use crate::reasoning::{self, WeatherTool};
@@ -19,12 +19,12 @@ async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent("claude-sonnet-4-5-20250929")
+        .agent(CLAUDE_SONNET_4_6)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(16384)
         .tool(WeatherTool::new(call_count.clone()))
         .additional_params(serde_json::json!({
-            "thinking": { "type": "enabled", "budget_tokens": 4096 }
+            "thinking": { "type": "adaptive" }
         }))
         .build();
 
@@ -56,12 +56,12 @@ async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent("claude-sonnet-4-5-20250929")
+        .agent(CLAUDE_SONNET_4_6)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(16384)
         .tool(WeatherTool::new(call_count.clone()))
         .additional_params(serde_json::json!({
-            "thinking": { "type": "enabled", "budget_tokens": 4096 }
+            "thinking": { "type": "adaptive" }
         }))
         .build();
 

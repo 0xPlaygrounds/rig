@@ -18,7 +18,7 @@ use crate::support::{
 async fn image_prompt_from_fixture() {
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

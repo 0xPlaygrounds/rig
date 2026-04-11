@@ -1278,7 +1278,7 @@ mod tests {
         // (rig reuses current span if one exists, so we need to ensure there's no current span)
         let client = anthropic::Client::from_env();
         let agent = client
-            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
             .preamble("You are a helpful assistant.")
             .temperature(0.1)
             .max_tokens(100)
@@ -1333,7 +1333,7 @@ mod tests {
 
         let client = anthropic::Client::from_env();
         let agent = client
-            .agent(anthropic::completion::CLAUDE_3_5_HAIKU)
+            .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
             .preamble("You are a helpful assistant. Keep responses brief.")
             .temperature(0.1)
             .max_tokens(50)
