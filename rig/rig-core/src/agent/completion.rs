@@ -13,17 +13,14 @@ use crate::{
 };
 use futures::{StreamExt, TryStreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock as TokioRwLock;
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub type DynamicContextStore = Arc<
-    TokioRwLock<
-        Vec<(
-            usize,
-            Arc<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
-        )>,
-    >,
+    Vec<(
+        usize,
+        Arc<dyn crate::vector_store::VectorStoreIndexDyn + Send + Sync>,
+    )>,
 >;
 
 /// Helper function to build a completion request from agent components.
@@ -79,7 +76,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     // If the agent has RAG text, we need to fetch the dynamic context and tools
     let result = match &rag_text {
         Some(text) => {
-            let fetched_context = stream::iter(dynamic_context.read().await.iter())
+            let fetched_context = stream::iter(dynamic_context.iter())
                 .then(|(num_sample, index)| async {
                     let req = VectorSearchRequest::builder()
                         .query(text)

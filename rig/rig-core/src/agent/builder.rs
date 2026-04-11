@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use schemars::{JsonSchema, Schema, schema_for};
-use tokio::sync::RwLock;
 
 use crate::{
     agent::prompt_request::hooks::PromptHook,
@@ -482,7 +481,7 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
+            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
@@ -508,7 +507,7 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
+            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle: self.tool_state.handle,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
@@ -593,7 +592,7 @@ where
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             tool_choice: self.tool_choice,
-            dynamic_context: Arc::new(RwLock::new(self.dynamic_context)),
+            dynamic_context: Arc::new(self.dynamic_context),
             tool_server_handle,
             default_max_turns: self.default_max_turns,
             hook: self.hook,
