@@ -11,7 +11,6 @@ use crate::{
     vector_store::{VectorStoreError, request::VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
-use futures::{StreamExt, TryStreamExt, stream};
 use std::{collections::HashMap, sync::Arc};
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
@@ -76,38 +75,48 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     // If the agent has RAG text, we need to fetch the dynamic context and tools
     let result = match &rag_text {
         Some(text) => {
-            let fetched_context = stream::iter(dynamic_context.iter())
-                .then(|(num_sample, index)| async {
+            // Map over the vector to create our async tasks
+            let search_futures = dynamic_context.iter().map(|(num_sample, index)| {
+                // Clone values to move into the async block
+                let text = text.clone();
+                let num_sample = *num_sample;
+                let index = index.clone();
+
+                async move {
                     let req = VectorSearchRequest::builder()
                         .query(text)
-                        .samples(*num_sample as u64)
+                        .samples(num_sample as u64)
                         .build()
                         .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
-                    Ok::<_, VectorStoreError>(
-                        index
-                            .top_n(req)
-                            .await?
-                            .into_iter()
-                            .map(|(_, id, doc)| {
-                                // Pretty print the document if possible for better readability
-                                let text = serde_json::to_string_pretty(&doc)
-                                    .unwrap_or_else(|_| doc.to_string());
+                    
+                    let docs = index
+                        .top_n(req)
+                        .await?
+                        .into_iter()
+                        .map(|(_, id, doc)| {
+                            // Pretty print the document if possible for better readability
+                            let text = serde_json::to_string_pretty(&doc)
+                                .unwrap_or_else(|_| doc.to_string());
 
-                                Document {
-                                    id,
-                                    text,
-                                    additional_props: HashMap::new(),
-                                }
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .try_fold(vec![], |mut acc, docs| async {
-                    acc.extend(docs);
-                    Ok(acc)
-                })
+                            Document {
+                                id,
+                                text,
+                                additional_props: HashMap::new(),
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                        
+                    Ok::<_, VectorStoreError>(docs)
+                }
+            });
+
+            // Await all vector searches concurrently
+            let fetched_context: Vec<Document> = futures::future::try_join_all(search_futures)
                 .await
-                .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+                .into_iter()
+                .flatten() // Flatten the Vec<Vec<Document>> into Vec<Document>
+                .collect();
 
             let tooldefs = tool_server_handle
                 .get_tool_defs(Some(text.to_string()))
