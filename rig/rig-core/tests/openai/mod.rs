@@ -18,5 +18,6 @@ mod streaming;
 mod streaming_tools;
 mod structured_output;
 mod transcription;
+mod typed_prompt_tools;
 #[cfg(feature = "websocket")]
 mod websocket;
