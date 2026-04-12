@@ -11,7 +11,12 @@
 //! flakiness.
 //!
 //! Run a single ignored smoke test with:
-//! `cargo test -p rig-core --test llamacpp llamacpp::typed_prompt_tools::prompt_typed_with_tool_call_smoke -- --ignored --nocapture`
+//! `cargo test -p rig-core --test llamacpp llamacpp::agent::completion_smoke -- --ignored`
+//!
+//! Optional environment variables:
+//! - `LLAMACPP_API_BASE_URL` (default: `http://localhost:8080/v1`)
+//! - `LLAMACPP_API_KEY` (default: `none`)
+//! - `LLAMACPP_MODEL` (default: `model`)
 
 #[path = "common/support.rs"]
 mod support;
