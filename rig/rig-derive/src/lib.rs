@@ -47,6 +47,7 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 }
 
 struct MacroArgs {
+    name: Option<String>,
     description: Option<String>,
     param_descriptions: HashMap<String, String>,
     required: Vec<String>,
@@ -54,6 +55,7 @@ struct MacroArgs {
 
 impl Parse for MacroArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut name = None;
         let mut description = None;
         let mut param_descriptions = HashMap::new();
         let mut required = Vec::new();
@@ -61,6 +63,7 @@ impl Parse for MacroArgs {
         // If the input is empty, return default values
         if input.is_empty() {
             return Ok(MacroArgs {
+                name,
                 description,
                 param_descriptions,
                 required,
@@ -77,9 +80,12 @@ impl Parse for MacroArgs {
                         lit: Lit::Str(lit_str),
                         ..
                     }) = nv.value
-                        && ident.as_str() == "description"
                     {
-                        description = Some(lit_str.value());
+                        match ident.as_str() {
+                            "name" => name = Some(lit_str.value()),
+                            "description" => description = Some(lit_str.value()),
+                            _ => {}
+                        }
                     }
                 }
                 Meta::List(list) if list.path.is_ident("params") => {
@@ -111,6 +117,7 @@ impl Parse for MacroArgs {
         }
 
         Ok(MacroArgs {
+            name,
             description,
             param_descriptions,
             required,
@@ -191,6 +198,16 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
 /// }
 /// ```
 ///
+/// With a custom tool name:
+/// ```rust
+/// use rig_derive::rig_tool;
+///
+/// #[rig_tool(name = "search-docs", description = "Search the documentation")]
+/// fn search_docs_impl(query: String) -> Result<String, rig::tool::ToolError> {
+///     Ok(format!("Searching docs for {query}"))
+/// }
+/// ```
+///
 /// With parameter descriptions:
 /// ```rust
 /// use rig_derive::rig_tool;
@@ -219,6 +236,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     // Extract function details
     let fn_name = &input_fn.sig.ident;
     let fn_name_str = fn_name.to_string();
+    let tool_name = args.name.clone().unwrap_or_else(|| fn_name_str.clone());
     let vis = &input_fn.vis;
     let is_async = input_fn.sig.asyncness.is_some();
 
@@ -322,14 +340,14 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #vis struct #struct_name;
 
         impl rig::tool::Tool for #struct_name {
-            const NAME: &'static str = #fn_name_str;
+            const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;
             type Output = #output_type;
             type Error = #error_type;
 
             fn name(&self) -> String {
-                #fn_name_str.to_string()
+                #tool_name.to_string()
             }
 
             async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
@@ -347,7 +365,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 });
 
                 rig::completion::ToolDefinition {
-                    name: #fn_name_str.to_string(),
+                    name: #tool_name.to_string(),
                     description: #tool_description.to_string(),
                     parameters,
                 }
