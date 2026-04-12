@@ -12,6 +12,9 @@ use crate::support::{
 
 use super::support;
 
+const WEATHER_PREAMBLE: &str =
+    "You are a helpful weather assistant. Respond with realistic weather data.";
+
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Conditions {
     temperature_f: f64,
@@ -61,19 +64,24 @@ async fn structured_output_smoke() {
 
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
-async fn prompt_typed_and_output_schema() {
+async fn prompt_typed_structured_output() {
     let client = support::completions_client();
     let model = support::model_name();
-    let agent = client
-        .agent(model.clone())
-        .preamble("You are a helpful weather assistant. Respond with realistic weather data.")
-        .build();
+    let agent = client.agent(model).preamble(WEATHER_PREAMBLE).build();
 
     let forecast: WeatherForecast = agent
         .prompt_typed("What's the weather forecast for New York City today?")
         .await
         .expect("prompt_typed should succeed");
     assert_weather_forecast(&forecast, &["new york", "nyc"]);
+}
+
+#[tokio::test]
+#[ignore = "requires a local llama.cpp OpenAI-compatible server"]
+async fn prompt_typed_extended_details_structured_output() {
+    let client = support::completions_client();
+    let model = support::model_name();
+    let agent = client.agent(model).preamble(WEATHER_PREAMBLE).build();
 
     let extended = agent
         .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
@@ -82,10 +90,16 @@ async fn prompt_typed_and_output_schema() {
         .expect("extended prompt_typed should succeed");
     assert_weather_forecast(&extended.output, &["los angeles", "la"]);
     assert!(extended.usage.total_tokens > 0, "usage should be populated");
+}
 
+#[tokio::test]
+#[ignore = "requires a local llama.cpp OpenAI-compatible server"]
+async fn output_schema_structured_output() {
+    let client = support::completions_client();
+    let model = support::model_name();
     let agent_with_schema = client
         .agent(model)
-        .preamble("You are a helpful weather assistant. Respond with realistic weather data.")
+        .preamble(WEATHER_PREAMBLE)
         .output_schema::<WeatherForecast>()
         .build();
     let response = agent_with_schema

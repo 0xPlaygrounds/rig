@@ -159,10 +159,7 @@ impl Tool for WeatherTool {
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);
-        let result = format!(
-            "The weather in {} is all fire and brimstone",
-            args.city
-        );
+        let result = format!("The weather in {} is all fire and brimstone", args.city);
 
         println!("\n=== weather tool implementation ===");
         println!(
@@ -179,7 +176,7 @@ impl Tool for WeatherTool {
 
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
-async fn prompt_typed_with_tool_call_smoke() -> Result<()> {
+async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
     let model = support::model_name();
     let hook = StepLogger::default();
 
