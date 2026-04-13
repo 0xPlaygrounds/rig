@@ -551,7 +551,16 @@ fn assistant_content_from_output(
                 .collect::<Vec<_>>();
 
             if reasoning_content.is_empty() {
-                return Ok(None);
+                if let Some(signature) = signature.clone() {
+                    // Gemini requires the thought signature to be replayed even when it omits
+                    // any readable summary text from the thought item.
+                    reasoning_content.push(message::ReasoningContent::Text {
+                        text: String::new(),
+                        signature: Some(signature),
+                    });
+                } else {
+                    return Ok(None);
+                }
             }
 
             if let Some(signature) = signature
@@ -637,7 +646,8 @@ pub mod interactions_api_types {
     use crate::completion::{CompletionError, GetTokenUsage, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
-    use serde::{Deserialize, Serialize};
+    use serde::ser::SerializeMap;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use serde_json::{Value, json};
 
     // =================================================================
@@ -1519,11 +1529,81 @@ pub mod interactions_api_types {
     }
 
     /// Thought summary item.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
+    #[derive(Clone, Debug)]
     pub enum ThoughtSummaryContent {
         Text(TextContent),
         Image(ImageContent),
+    }
+
+    #[derive(Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum TaggedThoughtSummaryContent {
+        Text(TextContent),
+        Image(ImageContent),
+    }
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ThoughtSummaryContentWire {
+        Tagged(TaggedThoughtSummaryContent),
+        Text(TextContent),
+        Image(ImageContent),
+    }
+
+    impl Serialize for ThoughtSummaryContent {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut map = serializer.serialize_map(None)?;
+
+            match self {
+                Self::Text(TextContent { text, annotations }) => {
+                    map.serialize_entry("type", "text")?;
+                    map.serialize_entry("text", text)?;
+                    if let Some(annotations) = annotations {
+                        map.serialize_entry("annotations", annotations)?;
+                    }
+                }
+                Self::Image(ImageContent {
+                    data,
+                    uri,
+                    mime_type,
+                    resolution,
+                }) => {
+                    map.serialize_entry("type", "image")?;
+                    if let Some(data) = data {
+                        map.serialize_entry("data", data)?;
+                    }
+                    if let Some(uri) = uri {
+                        map.serialize_entry("uri", uri)?;
+                    }
+                    if let Some(mime_type) = mime_type {
+                        map.serialize_entry("mime_type", mime_type)?;
+                    }
+                    if let Some(resolution) = resolution {
+                        map.serialize_entry("resolution", resolution)?;
+                    }
+                }
+            }
+
+            map.end()
+        }
+    }
+
+    impl<'de> Deserialize<'de> for ThoughtSummaryContent {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let wire = ThoughtSummaryContentWire::deserialize(deserializer)?;
+            Ok(match wire {
+                ThoughtSummaryContentWire::Tagged(TaggedThoughtSummaryContent::Text(text))
+                | ThoughtSummaryContentWire::Text(text) => Self::Text(text),
+                ThoughtSummaryContentWire::Tagged(TaggedThoughtSummaryContent::Image(image))
+                | ThoughtSummaryContentWire::Image(image) => Self::Image(image),
+            })
+        }
     }
 
     /// Function call content item.
@@ -1854,6 +1934,7 @@ pub mod interactions_api_types {
                 }
                 message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
                     let mut signature = None;
+                    let mut has_nonempty_summary = false;
                     let summary = content
                         .into_iter()
                         .map(|reasoning_content| {
@@ -1871,6 +1952,9 @@ pub mod interactions_api_types {
                                 | message::ReasoningContent::Encrypted(text) => text,
                                 message::ReasoningContent::Redacted { data } => data,
                             };
+                            if !text.is_empty() {
+                                has_nonempty_summary = true;
+                            }
 
                             ThoughtSummaryContent::Text(TextContent {
                                 text,
@@ -1881,7 +1965,11 @@ pub mod interactions_api_types {
 
                     Ok(Self::Thought(ThoughtContent {
                         signature,
-                        summary: Some(summary),
+                        summary: if has_nonempty_summary {
+                            Some(summary)
+                        } else {
+                            None
+                        },
                     }))
                 }
                 message::AssistantContent::Image(message::Image {
@@ -2512,6 +2600,92 @@ mod tests {
         assert_eq!(response.usage.input_tokens, 5);
         assert_eq!(response.usage.output_tokens, 7);
         assert_eq!(response.usage.total_tokens, 12);
+    }
+
+    #[test]
+    fn test_response_signature_only_thought_mapping_roundtrip() {
+        let assistant_content = assistant_content_from_output(Content::Thought(ThoughtContent {
+            signature: Some("signed-thought".to_string()),
+            summary: None,
+        }))
+        .expect("conversion should succeed")
+        .expect("signature-only thought should be preserved");
+
+        match &assistant_content {
+            completion::AssistantContent::Reasoning(reasoning) => {
+                assert_eq!(reasoning.id, None);
+                assert_eq!(
+                    reasoning.content,
+                    vec![message::ReasoningContent::Text {
+                        text: String::new(),
+                        signature: Some("signed-thought".to_string()),
+                    }]
+                );
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+
+        let roundtrip = Content::try_from(assistant_content).expect("roundtrip should succeed");
+        match roundtrip {
+            Content::Thought(ThoughtContent { signature, summary }) => {
+                assert_eq!(signature.as_deref(), Some("signed-thought"));
+                assert!(
+                    summary.is_none(),
+                    "signature-only thought should omit summary"
+                );
+            }
+            other => panic!("unexpected content: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_reasoning_thought_serializes_summary_items_with_type() {
+        let thought = Content::try_from(message::AssistantContent::Reasoning(Reasoning {
+            id: None,
+            content: vec![message::ReasoningContent::Text {
+                text: "visible reasoning".to_string(),
+                signature: Some("sig-typed".to_string()),
+            }],
+        }))
+        .expect("reasoning should convert");
+
+        let value = serde_json::to_value(&thought).expect("thought should serialize");
+        assert_eq!(value.get("type").and_then(Value::as_str), Some("thought"));
+        assert_eq!(
+            value.get("signature").and_then(Value::as_str),
+            Some("sig-typed")
+        );
+
+        let summary = value
+            .get("summary")
+            .and_then(Value::as_array)
+            .expect("summary should be present");
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].get("type").and_then(Value::as_str), Some("text"));
+        assert_eq!(
+            summary[0].get("text").and_then(Value::as_str),
+            Some("visible reasoning")
+        );
+    }
+
+    #[test]
+    fn test_signature_only_reasoning_serializes_without_summary() {
+        let thought = Content::try_from(message::AssistantContent::Reasoning(Reasoning {
+            id: None,
+            content: vec![message::ReasoningContent::Text {
+                text: String::new(),
+                signature: Some("sig-only".to_string()),
+            }],
+        }))
+        .expect("reasoning should convert");
+
+        let value = serde_json::to_value(&thought).expect("thought should serialize");
+        assert_eq!(value.get("type").and_then(Value::as_str), Some("thought"));
+        assert_eq!(
+            value.get("signature").and_then(Value::as_str),
+            Some("sig-only")
+        );
+        assert!(value.get("summary").is_none());
     }
 
     #[test]
