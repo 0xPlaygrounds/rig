@@ -2,6 +2,7 @@ mod agent;
 mod embeddings;
 mod extractor;
 mod interactions_api;
+mod interactions_sse_streaming;
 mod models;
 mod multi_turn_streaming;
 mod reasoning_roundtrip;
