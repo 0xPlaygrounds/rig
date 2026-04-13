@@ -22,7 +22,7 @@ opt-level = "s"
 edition = "2024"
 
 [workspace.dependencies]
-anyhow = "1.0.98"
+anyhow = "1.0.102"
 arrow-array = "56"
 as-any = "0.3.2"
 assert_fs = "1.1.3"
