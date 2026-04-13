@@ -535,49 +535,8 @@ fn assistant_content_from_output(
                 arguments.unwrap_or(Value::Object(Map::new())),
             )))
         }
-        Content::Thought(ThoughtContent {
-            summary, signature, ..
-        }) => {
-            let mut reasoning_content = summary
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|content| match content {
-                    ThoughtSummaryContent::Text(text) => Some(message::ReasoningContent::Text {
-                        text: text.text,
-                        signature: None,
-                    }),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-
-            if reasoning_content.is_empty() {
-                if let Some(signature) = signature.clone() {
-                    // Gemini requires the thought signature to be replayed even when it omits
-                    // any readable summary text from the thought item.
-                    reasoning_content.push(message::ReasoningContent::Text {
-                        text: String::new(),
-                        signature: Some(signature),
-                    });
-                } else {
-                    return Ok(None);
-                }
-            }
-
-            if let Some(signature) = signature
-                && let Some(message::ReasoningContent::Text {
-                    signature: first_signature,
-                    ..
-                }) = reasoning_content
-                    .iter_mut()
-                    .find(|content| matches!(content, message::ReasoningContent::Text { .. }))
-            {
-                *first_signature = Some(signature);
-            }
-
-            Ok(Some(completion::AssistantContent::Reasoning(Reasoning {
-                id: None,
-                content: reasoning_content,
-            })))
+        Content::Thought(thought) => {
+            Ok(thought_to_reasoning(thought).map(completion::AssistantContent::Reasoning))
         }
         Content::Image(ImageContent {
             data,
@@ -623,6 +582,86 @@ fn assistant_content_from_output(
     }
 }
 
+fn thought_to_reasoning(thought: ThoughtContent) -> Option<Reasoning> {
+    let ThoughtContent { summary, signature } = thought;
+    let mut reasoning_content = summary
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|content| match content {
+            ThoughtSummaryContent::Text(text) => Some(message::ReasoningContent::Text {
+                text: text.text,
+                signature: None,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    if reasoning_content.is_empty() {
+        return signature.map(|signature| Reasoning {
+            id: None,
+            content: vec![message::ReasoningContent::Text {
+                text: String::new(),
+                signature: Some(signature),
+            }],
+        });
+    }
+
+    if let Some(signature) = signature
+        && let Some(message::ReasoningContent::Text {
+            signature: first_signature,
+            ..
+        }) = reasoning_content
+            .iter_mut()
+            .find(|content| matches!(content, message::ReasoningContent::Text { .. }))
+    {
+        *first_signature = Some(signature);
+    }
+
+    Some(Reasoning {
+        id: None,
+        content: reasoning_content,
+    })
+}
+
+fn reasoning_to_thought(reasoning: message::Reasoning) -> ThoughtContent {
+    let mut signature = None;
+    let mut has_nonempty_summary = false;
+    let summary = reasoning
+        .content
+        .into_iter()
+        .map(|reasoning_content| {
+            let text = match reasoning_content {
+                message::ReasoningContent::Text {
+                    text,
+                    signature: content_signature,
+                } => {
+                    if signature.is_none() {
+                        signature = content_signature;
+                    }
+                    text
+                }
+                message::ReasoningContent::Summary(text)
+                | message::ReasoningContent::Encrypted(text) => text,
+                message::ReasoningContent::Redacted { data } => data,
+            };
+
+            if !text.is_empty() {
+                has_nonempty_summary = true;
+            }
+
+            ThoughtSummaryContent::Text(TextContent {
+                text,
+                annotations: None,
+            })
+        })
+        .collect();
+
+    ThoughtContent {
+        signature,
+        summary: has_nonempty_summary.then_some(summary),
+    }
+}
+
 fn split_data_uri(
     src: message::DocumentSourceKind,
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
@@ -646,8 +685,7 @@ pub mod interactions_api_types {
     use crate::completion::{CompletionError, GetTokenUsage, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
-    use serde::ser::SerializeMap;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
     // =================================================================
@@ -1524,7 +1562,11 @@ pub mod interactions_api_types {
     pub struct ThoughtContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "thought_summary_serde::optional_vec"
+        )]
         pub summary: Option<Vec<ThoughtSummaryContent>>,
     }
 
@@ -1535,74 +1577,105 @@ pub mod interactions_api_types {
         Image(ImageContent),
     }
 
-    #[derive(Deserialize)]
-    #[serde(tag = "type", rename_all = "snake_case")]
-    enum TaggedThoughtSummaryContent {
-        Text(TextContent),
-        Image(ImageContent),
-    }
+    mod thought_summary_serde {
+        use super::{ImageContent, TextContent, ThoughtSummaryContent};
+        use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum ThoughtSummaryContentWire {
-        Tagged(TaggedThoughtSummaryContent),
-        Text(TextContent),
-        Image(ImageContent),
-    }
+        #[derive(Clone, Debug, Deserialize, Serialize)]
+        #[serde(tag = "type", rename_all = "snake_case")]
+        enum TaggedThoughtSummaryContent {
+            Text(TextContent),
+            Image(ImageContent),
+        }
 
-    impl Serialize for ThoughtSummaryContent {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            let mut map = serializer.serialize_map(None)?;
+        #[derive(Debug, Deserialize)]
+        #[serde(untagged)]
+        enum CompatibleThoughtSummaryContent {
+            Tagged(TaggedThoughtSummaryContent),
+            Text(TextContent),
+            Image(ImageContent),
+        }
 
-            match self {
-                Self::Text(TextContent { text, annotations }) => {
-                    map.serialize_entry("type", "text")?;
-                    map.serialize_entry("text", text)?;
-                    if let Some(annotations) = annotations {
-                        map.serialize_entry("annotations", annotations)?;
-                    }
-                }
-                Self::Image(ImageContent {
-                    data,
-                    uri,
-                    mime_type,
-                    resolution,
-                }) => {
-                    map.serialize_entry("type", "image")?;
-                    if let Some(data) = data {
-                        map.serialize_entry("data", data)?;
-                    }
-                    if let Some(uri) = uri {
-                        map.serialize_entry("uri", uri)?;
-                    }
-                    if let Some(mime_type) = mime_type {
-                        map.serialize_entry("mime_type", mime_type)?;
-                    }
-                    if let Some(resolution) = resolution {
-                        map.serialize_entry("resolution", resolution)?;
-                    }
+        impl From<ThoughtSummaryContent> for TaggedThoughtSummaryContent {
+            fn from(content: ThoughtSummaryContent) -> Self {
+                match content {
+                    ThoughtSummaryContent::Text(text) => Self::Text(text),
+                    ThoughtSummaryContent::Image(image) => Self::Image(image),
                 }
             }
-
-            map.end()
         }
-    }
 
-    impl<'de> Deserialize<'de> for ThoughtSummaryContent {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            let wire = ThoughtSummaryContentWire::deserialize(deserializer)?;
-            Ok(match wire {
-                ThoughtSummaryContentWire::Tagged(TaggedThoughtSummaryContent::Text(text))
-                | ThoughtSummaryContentWire::Text(text) => Self::Text(text),
-                ThoughtSummaryContentWire::Tagged(TaggedThoughtSummaryContent::Image(image))
-                | ThoughtSummaryContentWire::Image(image) => Self::Image(image),
-            })
+        impl From<TaggedThoughtSummaryContent> for ThoughtSummaryContent {
+            fn from(content: TaggedThoughtSummaryContent) -> Self {
+                match content {
+                    TaggedThoughtSummaryContent::Text(text) => Self::Text(text),
+                    TaggedThoughtSummaryContent::Image(image) => Self::Image(image),
+                }
+            }
+        }
+
+        impl From<CompatibleThoughtSummaryContent> for ThoughtSummaryContent {
+            fn from(content: CompatibleThoughtSummaryContent) -> Self {
+                match content {
+                    CompatibleThoughtSummaryContent::Tagged(content) => content.into(),
+                    CompatibleThoughtSummaryContent::Text(text) => Self::Text(text),
+                    CompatibleThoughtSummaryContent::Image(image) => Self::Image(image),
+                }
+            }
+        }
+
+        pub mod single {
+            use super::*;
+
+            pub fn serialize<S>(
+                content: &ThoughtSummaryContent,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                TaggedThoughtSummaryContent::from(content.clone()).serialize(serializer)
+            }
+
+            pub fn deserialize<'de, D>(deserializer: D) -> Result<ThoughtSummaryContent, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                CompatibleThoughtSummaryContent::deserialize(deserializer).map(Into::into)
+            }
+        }
+
+        pub mod optional_vec {
+            use super::*;
+
+            pub fn serialize<S>(
+                summary: &Option<Vec<ThoughtSummaryContent>>,
+                serializer: S,
+            ) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                summary
+                    .as_ref()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .cloned()
+                            .map(TaggedThoughtSummaryContent::from)
+                            .collect::<Vec<_>>()
+                    })
+                    .serialize(serializer)
+            }
+
+            pub fn deserialize<'de, D>(
+                deserializer: D,
+            ) -> Result<Option<Vec<ThoughtSummaryContent>>, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Option::<Vec<CompatibleThoughtSummaryContent>>::deserialize(deserializer)
+                    .map(|summary| summary.map(|items| items.into_iter().map(Into::into).collect()))
+            }
         }
     }
 
@@ -1932,45 +2005,8 @@ pub mod interactions_api_types {
                         id: Some(call_id),
                     }))
                 }
-                message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
-                    let mut signature = None;
-                    let mut has_nonempty_summary = false;
-                    let summary = content
-                        .into_iter()
-                        .map(|reasoning_content| {
-                            let text = match reasoning_content {
-                                message::ReasoningContent::Text {
-                                    text,
-                                    signature: content_signature,
-                                } => {
-                                    if signature.is_none() {
-                                        signature = content_signature;
-                                    }
-                                    text
-                                }
-                                message::ReasoningContent::Summary(text)
-                                | message::ReasoningContent::Encrypted(text) => text,
-                                message::ReasoningContent::Redacted { data } => data,
-                            };
-                            if !text.is_empty() {
-                                has_nonempty_summary = true;
-                            }
-
-                            ThoughtSummaryContent::Text(TextContent {
-                                text,
-                                annotations: None,
-                            })
-                        })
-                        .collect();
-
-                    Ok(Self::Thought(ThoughtContent {
-                        signature,
-                        summary: if has_nonempty_summary {
-                            Some(summary)
-                        } else {
-                            None
-                        },
-                    }))
+                message::AssistantContent::Reasoning(reasoning) => {
+                    Ok(Self::Thought(super::reasoning_to_thought(reasoning)))
                 }
                 message::AssistantContent::Image(message::Image {
                     data, media_type, ..
@@ -2364,6 +2400,7 @@ pub mod interactions_api_types {
     /// Streaming thought summary delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtSummaryDelta {
+        #[serde(with = "thought_summary_serde::single")]
         pub content: ThoughtSummaryContent,
     }
 
@@ -2686,6 +2723,74 @@ mod tests {
             Some("sig-only")
         );
         assert!(value.get("summary").is_none());
+    }
+
+    #[test]
+    fn test_thought_content_summary_deserializes_typed_and_legacy_items() {
+        let typed: ThoughtContent = serde_json::from_value(json!({
+            "signature": "sig-typed",
+            "summary": [
+                { "type": "text", "text": "typed text" }
+            ]
+        }))
+        .expect("typed thought summary should deserialize");
+
+        let typed_summary = typed.summary.expect("typed summary should exist");
+        assert_eq!(typed_summary.len(), 1);
+        match &typed_summary[0] {
+            ThoughtSummaryContent::Text(TextContent { text, annotations }) => {
+                assert_eq!(text, "typed text");
+                assert!(annotations.is_none());
+            }
+            other => panic!("unexpected typed summary content: {other:?}"),
+        }
+
+        let legacy: ThoughtContent = serde_json::from_value(json!({
+            "signature": "sig-legacy",
+            "summary": [
+                { "text": "legacy text" }
+            ]
+        }))
+        .expect("legacy thought summary should deserialize");
+
+        let legacy_summary = legacy.summary.expect("legacy summary should exist");
+        assert_eq!(legacy_summary.len(), 1);
+        match &legacy_summary[0] {
+            ThoughtSummaryContent::Text(TextContent { text, annotations }) => {
+                assert_eq!(text, "legacy text");
+                assert!(annotations.is_none());
+            }
+            other => panic!("unexpected legacy summary content: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_thought_summary_delta_deserializes_typed_and_legacy_content() {
+        let typed: ThoughtSummaryDelta = serde_json::from_value(json!({
+            "content": { "type": "text", "text": "typed delta" }
+        }))
+        .expect("typed summary delta should deserialize");
+
+        match typed.content {
+            ThoughtSummaryContent::Text(TextContent { text, annotations }) => {
+                assert_eq!(text, "typed delta");
+                assert!(annotations.is_none());
+            }
+            other => panic!("unexpected typed delta content: {other:?}"),
+        }
+
+        let legacy: ThoughtSummaryDelta = serde_json::from_value(json!({
+            "content": { "text": "legacy delta" }
+        }))
+        .expect("legacy summary delta should deserialize");
+
+        match legacy.content {
+            ThoughtSummaryContent::Text(TextContent { text, annotations }) => {
+                assert_eq!(text, "legacy delta");
+                assert!(annotations.is_none());
+            }
+            other => panic!("unexpected legacy delta content: {other:?}"),
+        }
     }
 
     #[test]
