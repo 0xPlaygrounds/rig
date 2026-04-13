@@ -9,4 +9,5 @@ mod reasoning_tool_roundtrip;
 mod streaming;
 mod streaming_tools;
 mod structured_output;
+mod tool_schema_streaming;
 mod transcription;
