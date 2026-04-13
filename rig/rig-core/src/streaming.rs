@@ -293,6 +293,40 @@ where
             }));
         self.reasoning_item_index = Some(self.assistant_items.len() - 1);
     }
+
+    fn replace_reasoning_placeholder(&mut self, reasoning: &Reasoning) -> bool {
+        let replacement_index = self
+            .reasoning_item_index
+            .filter(|&index| {
+                matches!(
+                    self.assistant_items.get(index),
+                    Some(AssistantContent::Reasoning(existing)) if existing.id == reasoning.id
+                )
+            })
+            .or_else(|| {
+                reasoning.id.as_ref().and_then(|reasoning_id| {
+                    self.assistant_items.iter().rposition(|item| {
+                        matches!(
+                            item,
+                            AssistantContent::Reasoning(existing)
+                                if existing.id.as_deref() == Some(reasoning_id.as_str())
+                        )
+                    })
+                })
+            });
+
+        let Some(index) = replacement_index else {
+            return false;
+        };
+
+        let Some(AssistantContent::Reasoning(existing)) = self.assistant_items.get_mut(index)
+        else {
+            return false;
+        };
+
+        *existing = reasoning.clone();
+        true
+    }
 }
 
 impl<R> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>>
@@ -365,11 +399,14 @@ where
                         content: vec![content],
                     };
                     stream.text_item_index = None;
-                    // Full reasoning block supersedes any delta accumulation
+                    // Full reasoning blocks should replace any in-progress delta placeholder so
+                    // replay history uses one canonical reasoning item in arrival order.
+                    if !stream.replace_reasoning_placeholder(&reasoning) {
+                        stream
+                            .assistant_items
+                            .push(AssistantContent::Reasoning(reasoning.clone()));
+                    }
                     stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::Reasoning(reasoning.clone()));
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
                 }
                 RawStreamingChoice::ReasoningDelta { id, reasoning } => {
@@ -737,6 +774,46 @@ mod tests {
         StreamingCompletionResponse::stream(to_stream_result(stream))
     }
 
+    fn create_reasoning_delta_then_full_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::ReasoningDelta {
+                id: Some("rs_replace".to_string()),
+                reasoning: "draft reasoning".to_string(),
+            });
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: Some("rs_replace".to_string()),
+                content: ReasoningContent::Text {
+                    text: "final reasoning".to_string(),
+                    signature: Some("sig_replace".to_string()),
+                },
+            });
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 2 }));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
+    fn create_noncontiguous_reasoning_delta_then_full_stream()
+    -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::ReasoningDelta {
+                id: Some("rs_interleaved_replace".to_string()),
+                reasoning: "draft reasoning".to_string(),
+            });
+            yield Ok(RawStreamingChoice::Message("visible text".to_string()));
+            yield Ok(RawStreamingChoice::Reasoning {
+                id: Some("rs_interleaved_replace".to_string()),
+                content: ReasoningContent::Text {
+                    text: "final reasoning".to_string(),
+                    signature: Some("sig_interleaved_replace".to_string()),
+                },
+            });
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 3 }));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
     fn create_interleaved_stream() -> StreamingCompletionResponse<MockResponse> {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
@@ -886,6 +963,49 @@ mod tests {
         assert!(matches!(
             choice_items.first(),
             Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_only"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_stream_replaces_reasoning_delta_placeholder_with_full_reasoning() {
+        let mut stream = create_reasoning_delta_then_full_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 1);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Reasoning(Reasoning { id: Some(id), content }))
+                if id == "rs_replace"
+                    && matches!(
+                        content.first(),
+                        Some(ReasoningContent::Text { text, signature: Some(signature) })
+                            if text == "final reasoning" && signature == "sig_replace"
+                    )
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_stream_replaces_noncontiguous_reasoning_delta_placeholder_with_full_reasoning() {
+        let mut stream = create_noncontiguous_reasoning_delta_then_full_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 2);
+        assert!(matches!(
+            choice_items.first(),
+            Some(AssistantContent::Reasoning(Reasoning { id: Some(id), content }))
+                if id == "rs_interleaved_replace"
+                    && matches!(
+                        content.first(),
+                        Some(ReasoningContent::Text { text, signature: Some(signature) })
+                            if text == "final reasoning"
+                                && signature == "sig_interleaved_replace"
+                    )
+        ));
+        assert!(matches!(
+            choice_items.get(1),
+            Some(AssistantContent::Text(Text { text })) if text == "visible text"
         ));
     }
 

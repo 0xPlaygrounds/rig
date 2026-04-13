@@ -103,6 +103,7 @@ impl<R> MultiTurnStreamItem<R> {
     }
 }
 
+#[cfg(test)]
 fn merge_reasoning_blocks(
     accumulated_reasoning: &mut Vec<crate::message::Reasoning>,
     incoming: &crate::message::Reasoning,
@@ -484,13 +485,7 @@ where
 
                 .await?;
 
-                let mut tool_calls = vec![];
                 let mut tool_results = vec![];
-                let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
-                // Kept separate from accumulated_reasoning so providers requiring
-                // signatures (e.g. Anthropic) never see unsigned blocks.
-                let mut pending_reasoning_delta_text = String::new();
-                let mut pending_reasoning_delta_id: Option<String> = None;
                 let mut saw_tool_call_this_turn = false;
 
                 while let Some(content) = stream.next().await {
@@ -542,8 +537,6 @@ where
                                             reason = reason,
                                             "Tool call rejected"
                                         );
-                                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-                                        tool_calls.push(tool_call_msg);
                                         tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
                                         saw_tool_call_this_turn = true;
                                         return Ok(reason);
@@ -577,9 +570,6 @@ where
                                         return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     }
 
-                                let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-
-                                tool_calls.push(tool_call_msg);
                                 tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
 
                                 saw_tool_call_this_turn = true;
@@ -612,20 +602,9 @@ where
                             }
                         }
                         Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
-                            // Accumulate reasoning for inclusion in chat history with tool calls.
-                            // OpenAI Responses API requires reasoning items to be sent back
-                            // alongside function_call items in multi-turn conversations.
-                            merge_reasoning_blocks(&mut accumulated_reasoning, &reasoning);
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Reasoning(reasoning)));
                         },
                         Ok(StreamedAssistantContent::ReasoningDelta { reasoning, id }) => {
-                            // Deltas lack signatures/encrypted content that full
-                            // blocks carry; mixing them into accumulated_reasoning
-                            // causes Anthropic to reject with "signature required".
-                            pending_reasoning_delta_text.push_str(&reasoning);
-                            if pending_reasoning_delta_id.is_none() {
-                                pending_reasoning_delta_id = id.clone();
-                            }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
@@ -648,41 +627,19 @@ where
                     }
                 }
 
-                // Providers like Gemini emit thinking as incremental deltas
-                // without signatures; assemble into a single block so
-                // reasoning survives into the next turn's chat history.
-                if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
-                    let mut assembled = crate::message::Reasoning::new(&pending_reasoning_delta_text);
-                    if let Some(id) = pending_reasoning_delta_id.take() {
-                        assembled = assembled.with_id(id);
-                    }
-                    accumulated_reasoning.push(assembled);
-                }
-
                 let turn_text_response = assistant_text_from_choice(&stream.choice);
                 tracing::Span::current().record("gen_ai.completion", &turn_text_response);
 
-                // Add text, reasoning, and tool calls to chat history.
-                // OpenAI Responses API requires reasoning items to precede function_call items.
-                if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
-                    let mut content_items: Vec<rig::message::AssistantContent> = vec![];
-
-                    // Text before tool calls so the model sees its own prior output
-                    if !turn_text_response.is_empty() {
-                        content_items.push(rig::message::AssistantContent::text(&turn_text_response));
-                    }
-
-                    // Reasoning must come before tool calls (OpenAI requirement)
-                    for reasoning in accumulated_reasoning.drain(..) {
-                        content_items.push(rig::message::AssistantContent::Reasoning(reasoning));
-                    }
-
-                    content_items.extend(tool_calls.clone());
-
+                // Replay the exact ordered assistant content produced by the stream so
+                // provider-specific item ordering (for example reasoning before tool calls) is
+                // preserved across follow-up turns.
+                if saw_tool_call_this_turn {
+                    let content_items = stream.choice.clone().into_iter().collect::<Vec<_>>();
                     if !content_items.is_empty() {
                         new_messages.push(Message::Assistant {
                             id: stream.message_id.clone(),
-                            content: OneOrMany::many(content_items).expect("Should have at least one item"),
+                            content: OneOrMany::many(content_items)
+                                .expect("tool turns should have replayable assistant content"),
                         });
                     }
                 }
@@ -933,11 +890,14 @@ mod tests {
         }
     }
 
-    fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
+    fn validate_follow_up_tool_history(
+        request: &CompletionRequest,
+        expected_text: Option<&str>,
+    ) -> Result<(), String> {
         let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
         if history.len() != 3 {
             return Err(format!(
-                "follow-up request should contain [original user prompt, assistant tool call, user tool result]: {history:?}"
+                "follow-up request should contain [original user prompt, assistant replay, user tool result]: {history:?}"
             ));
         }
 
@@ -954,19 +914,59 @@ mod tests {
             ));
         }
 
-        if !matches!(
-            history.get(1),
-            Some(Message::Assistant { content, .. })
-                if matches!(
-                    content.first(),
-                    AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
-                )
-        ) {
+        let Some(Message::Assistant { content, .. }) = history.get(1) else {
             return Err(format!(
-                "follow-up request is missing the assistant tool call in position 2: {history:?}"
+                "follow-up request is missing the assistant message in position 2: {history:?}"
             ));
+        };
+
+        let assistant_items = content.iter().collect::<Vec<_>>();
+        let expected_len = if expected_text.is_some() { 3 } else { 2 };
+        if assistant_items.len() != expected_len {
+            return Err(format!(
+                "assistant message should replay the exact streamed item order before the tool result: {history:?}"
+            ));
+        }
+
+        match assistant_items[0] {
+            AssistantContent::Reasoning(reasoning)
+                if matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text {
+                        text,
+                        signature: Some(signature)
+                    }) if text == "thinking" && signature == "sig-1"
+                ) => {}
+            _ => {
+                return Err(format!(
+                    "assistant message should replay reasoning before the tool call: {history:?}"
+                ));
+            }
+        }
+
+        let tool_call_index = if let Some(expected_text) = expected_text {
+            match assistant_items[1] {
+                AssistantContent::Text(text) if text.text == expected_text => {}
+                _ => {
+                    return Err(format!(
+                        "assistant message should preserve streamed text between reasoning and the tool call: {history:?}"
+                    ));
+                }
+            }
+            2
+        } else {
+            1
+        };
+
+        match assistant_items[tool_call_index] {
+            AssistantContent::ToolCall(tool_call)
+                if tool_call.id == "tool_call_1"
+                    && tool_call.call_id.as_deref() == Some("call_1") => {}
+            _ => {
+                return Err(format!(
+                    "assistant message should replay the tool call after the earlier assistant items: {history:?}"
+                ));
+            }
         }
 
         if !matches!(
@@ -990,6 +990,14 @@ mod tests {
     #[derive(Clone, Default)]
     struct MultiTurnMockModel {
         turn_counter: Arc<AtomicUsize>,
+        scenario: ToolTurnScenario,
+    }
+
+    #[derive(Clone, Copy, Default)]
+    enum ToolTurnScenario {
+        #[default]
+        ReasoningThenTool,
+        ReasoningTextTool,
     }
 
     #[allow(refining_impl_trait)]
@@ -1016,13 +1024,31 @@ mod tests {
             request: CompletionRequest,
         ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
             let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+            let scenario = self.scenario;
             let validation_error = if turn == 0 {
                 None
             } else {
-                validate_follow_up_tool_history(&request).err()
+                validate_follow_up_tool_history(
+                    &request,
+                    match scenario {
+                        ToolTurnScenario::ReasoningThenTool => None,
+                        ToolTurnScenario::ReasoningTextTool => Some("tool preamble"),
+                    },
+                )
+                .err()
             };
             let stream = async_stream::stream! {
                 if turn == 0 {
+                    yield Ok(RawStreamingChoice::Reasoning {
+                        id: None,
+                        content: ReasoningContent::Text {
+                            text: "thinking".to_string(),
+                            signature: Some("sig-1".to_string()),
+                        },
+                    });
+                    if matches!(scenario, ToolTurnScenario::ReasoningTextTool) {
+                        yield Ok(RawStreamingChoice::Message("tool preamble".to_string()));
+                    }
                     yield Ok(RawStreamingChoice::ToolCall(
                         RawStreamingToolCall::new(
                             "tool_call_1".to_string(),
@@ -1107,6 +1133,38 @@ mod tests {
                     AssistantContent::Text(text) if text.text == "done"
                 ))
         )));
+        assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_preserves_interleaved_assistant_item_order_for_tool_turn_replay() {
+        let model = MultiTurnMockModel {
+            turn_counter: Arc::new(AtomicUsize::new(0)),
+            scenario: ToolTurnScenario::ReasoningTextTool,
+        };
+        let turn_counter = model.turn_counter.clone();
+        let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.response().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(final_response_text.as_deref(), Some("done"));
         assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
     }
 

@@ -18,7 +18,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
-use crate::streaming;
+use crate::streaming::{self, ToolCallDeltaContent};
 use crate::telemetry::SpanCombinator;
 use serde_json::{Map, Value};
 
@@ -26,6 +26,33 @@ use serde_json::{Map, Value};
 struct ThoughtState {
     text: String,
     signature: Option<String>,
+}
+
+#[derive(Debug)]
+struct FunctionCallState {
+    internal_call_id: String,
+    provider_call_id: Option<String>,
+    name: Option<String>,
+    arguments: Option<Value>,
+    emitted_name: bool,
+}
+
+impl Default for FunctionCallState {
+    fn default() -> Self {
+        Self {
+            internal_call_id: nanoid::nanoid!(),
+            provider_call_id: None,
+            name: None,
+            arguments: None,
+            emitted_name: false,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct InteractionStreamState {
+    thoughts_by_index: HashMap<i32, ThoughtState>,
+    function_calls_by_index: HashMap<i32, FunctionCallState>,
 }
 
 /// Final metadata yielded by an Interactions streaming response.
@@ -98,7 +125,7 @@ where
         let stream = stream! {
             let mut final_interaction: Option<Interaction> = None;
             let mut final_usage: Option<InteractionUsage> = None;
-            let mut thought_states: HashMap<i32, ThoughtState> = HashMap::new();
+            let mut stream_state = InteractionStreamState::default();
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -124,25 +151,17 @@ where
 
                         match data {
                             InteractionSseEvent::ContentDelta { index, delta, .. } => {
-                                if let Some(choice) =
-                                    content_delta_to_choice(index, delta, &mut thought_states)
-                                {
+                                for choice in stream_state.handle_content_delta(index, delta) {
                                     yield Ok(choice);
                                 }
                             }
                             InteractionSseEvent::ContentStart { index, content, .. } => {
-                                for choice in content_start_to_choices(
-                                    index,
-                                    content,
-                                    &mut thought_states,
-                                ) {
+                                for choice in stream_state.handle_content_start(index, content) {
                                     yield Ok(choice);
                                 }
                             }
                             InteractionSseEvent::ContentStop { index, .. } => {
-                                if let Some(choice) =
-                                    content_stop_to_choice(index, &mut thought_states)
-                                {
+                                if let Some(choice) = stream_state.handle_content_stop(index) {
                                     yield Ok(choice);
                                 }
                             }
@@ -234,130 +253,269 @@ where
     Box::pin(stream)
 }
 
-fn extend_thought_state_with_summary(
-    thought_state: &mut ThoughtState,
-    summary: impl IntoIterator<Item = ThoughtSummaryContent>,
-) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
-    summary
-        .into_iter()
-        .filter_map(|content| match content {
-            ThoughtSummaryContent::Text(text) if !text.text.is_empty() => Some(text.text),
-            _ => None,
+impl ThoughtState {
+    fn seed_from_start(
+        &mut self,
+        summary: Option<Vec<ThoughtSummaryContent>>,
+        signature: Option<String>,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        self.signature = signature;
+        self.push_summary_items(summary.unwrap_or_default())
+    }
+
+    fn push_summary(
+        &mut self,
+        content: ThoughtSummaryContent,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        self.push_summary_items([content])
+    }
+
+    fn push_summary_items(
+        &mut self,
+        summary: impl IntoIterator<Item = ThoughtSummaryContent>,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        summary
+            .into_iter()
+            .filter_map(|content| match content {
+                ThoughtSummaryContent::Text(text) if !text.text.is_empty() => Some(text.text),
+                _ => None,
+            })
+            .map(|text| {
+                self.text.push_str(&text);
+                streaming::RawStreamingChoice::ReasoningDelta {
+                    id: None,
+                    reasoning: text,
+                }
+            })
+            .collect()
+    }
+
+    fn push_signature(&mut self, signature: String) {
+        merge_chunked_string(&mut self.signature, signature);
+    }
+
+    fn finish(self) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        if self.text.is_empty() && self.signature.is_none() {
+            return None;
+        }
+
+        Some(streaming::RawStreamingChoice::Reasoning {
+            id: None,
+            content: ReasoningContent::Text {
+                text: self.text,
+                signature: self.signature,
+            },
         })
-        .map(|text| {
-            thought_state.text.push_str(&text);
-            streaming::RawStreamingChoice::ReasoningDelta {
-                id: None,
-                reasoning: text,
-            }
-        })
-        .collect()
+    }
 }
 
-fn content_start_to_choices(
-    index: i32,
-    content: Content,
-    thought_states: &mut HashMap<i32, ThoughtState>,
-) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
-    match content {
-        Content::Text(TextContent { text, .. }) => {
-            if text.is_empty() {
+impl FunctionCallState {
+    fn seed_from_start(
+        &mut self,
+        FunctionCallContent {
+            name,
+            arguments,
+            id,
+        }: FunctionCallContent,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        self.apply_update(name, arguments, id)
+    }
+
+    fn push_delta(
+        &mut self,
+        FunctionCallDelta {
+            name,
+            arguments,
+            id,
+        }: FunctionCallDelta,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        self.apply_update(name, arguments, id)
+    }
+
+    fn apply_update(
+        &mut self,
+        name: Option<String>,
+        arguments: Option<Value>,
+        id: Option<String>,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        if let Some(id) = id {
+            merge_chunked_string(&mut self.provider_call_id, id);
+        }
+
+        let mut choices = Vec::new();
+
+        if let Some(name) = name {
+            merge_chunked_string(&mut self.name, name);
+            if !self.emitted_name {
+                if let (Some(id), Some(name)) = (self.delta_identifier(), self.name.clone()) {
+                    choices.push(streaming::RawStreamingChoice::ToolCallDelta {
+                        id,
+                        internal_call_id: self.internal_call_id.clone(),
+                        content: ToolCallDeltaContent::Name(name),
+                    });
+                }
+                self.emitted_name = true;
+            }
+        }
+
+        if let Some(arguments) = arguments {
+            let delta = arguments.to_string();
+            merge_json_chunk(&mut self.arguments, arguments);
+            if !delta.is_empty()
+                && let Some(id) = self.delta_identifier()
+            {
+                choices.push(streaming::RawStreamingChoice::ToolCallDelta {
+                    id,
+                    internal_call_id: self.internal_call_id.clone(),
+                    content: ToolCallDeltaContent::Delta(delta),
+                });
+            }
+        }
+
+        choices
+    }
+
+    fn delta_identifier(&self) -> Option<String> {
+        self.provider_call_id.clone().or_else(|| self.name.clone())
+    }
+
+    fn finish(self) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        let name = self.name?;
+        let call_id = self.provider_call_id.unwrap_or_else(|| name.clone());
+
+        Some(streaming::RawStreamingChoice::ToolCall(
+            streaming::RawStreamingToolCall::new(
+                name.clone(),
+                name,
+                self.arguments.unwrap_or(Value::Object(Map::new())),
+            )
+            .with_internal_call_id(self.internal_call_id)
+            .with_call_id(call_id),
+        ))
+    }
+}
+
+impl InteractionStreamState {
+    fn handle_content_start(
+        &mut self,
+        index: i32,
+        content: Content,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        self.clear_index(index);
+
+        match content {
+            Content::Text(TextContent { text, .. }) => {
+                if text.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![streaming::RawStreamingChoice::Message(text)]
+                }
+            }
+            Content::FunctionCall(function_call) => {
+                let mut state = FunctionCallState::default();
+                let choices = state.seed_from_start(function_call);
+                self.function_calls_by_index.insert(index, state);
+                choices
+            }
+            Content::Thought(ThoughtContent { summary, signature }) => {
+                let mut state = ThoughtState::default();
+                let choices = state.seed_from_start(summary, signature);
+                self.thoughts_by_index.insert(index, state);
+                choices
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn handle_content_delta(
+        &mut self,
+        index: i32,
+        delta: ContentDelta,
+    ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        match delta {
+            ContentDelta::Text(TextDelta {
+                text: Some(text), ..
+            }) => vec![streaming::RawStreamingChoice::Message(text)],
+            ContentDelta::Text(TextDelta { text: None, .. }) => Vec::new(),
+            ContentDelta::FunctionCall(function_call) => self
+                .function_calls_by_index
+                .entry(index)
+                .or_default()
+                .push_delta(function_call),
+            ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => self
+                .thoughts_by_index
+                .entry(index)
+                .or_default()
+                .push_summary(content),
+            ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
+                self.thoughts_by_index
+                    .entry(index)
+                    .or_default()
+                    .push_signature(signature);
                 Vec::new()
-            } else {
-                vec![streaming::RawStreamingChoice::Message(text)]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn handle_content_stop(
+        &mut self,
+        index: i32,
+    ) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+        if let Some(thought_state) = self.thoughts_by_index.remove(&index) {
+            return thought_state.finish();
+        }
+
+        self.function_calls_by_index
+            .remove(&index)
+            .and_then(FunctionCallState::finish)
+    }
+
+    fn clear_index(&mut self, index: i32) {
+        self.thoughts_by_index.remove(&index);
+        self.function_calls_by_index.remove(&index);
+    }
+}
+
+fn merge_chunked_string(target: &mut Option<String>, incoming: String) {
+    if incoming.is_empty() {
+        return;
+    }
+
+    match target {
+        Some(existing) if incoming.starts_with(existing.as_str()) => *existing = incoming,
+        Some(existing) if !existing.ends_with(&incoming) => existing.push_str(&incoming),
+        Some(_) => {}
+        None => *target = Some(incoming),
+    }
+}
+
+fn merge_json_chunk(target: &mut Option<Value>, incoming: Value) {
+    if incoming.is_null() {
+        return;
+    }
+
+    match target {
+        Some(existing) => merge_json_value(existing, incoming),
+        None => *target = Some(incoming),
+    }
+}
+
+fn merge_json_value(existing: &mut Value, incoming: Value) {
+    match (existing, incoming) {
+        (Value::String(existing), Value::String(incoming)) => existing.push_str(&incoming),
+        (Value::Array(existing), Value::Array(mut incoming)) => existing.append(&mut incoming),
+        (Value::Object(existing), Value::Object(incoming)) => {
+            for (key, value) in incoming {
+                if let Some(existing_value) = existing.get_mut(&key) {
+                    merge_json_value(existing_value, value);
+                } else {
+                    existing.insert(key, value);
+                }
             }
         }
-        Content::FunctionCall(FunctionCallContent {
-            name,
-            arguments,
-            id,
-        }) => {
-            let Some(name) = name else {
-                return Vec::new();
-            };
-            let call_id = id.unwrap_or_else(|| name.clone());
-            vec![streaming::RawStreamingChoice::ToolCall(
-                streaming::RawStreamingToolCall::new(
-                    name.clone(),
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                )
-                .with_call_id(call_id),
-            )]
-        }
-        Content::Thought(ThoughtContent { summary, signature }) => {
-            let mut thought_state = ThoughtState {
-                text: String::new(),
-                signature,
-            };
-            let choices =
-                extend_thought_state_with_summary(&mut thought_state, summary.unwrap_or_default());
-            thought_states.insert(index, thought_state);
-            choices
-        }
-        _ => Vec::new(),
+        (existing, incoming) => *existing = incoming,
     }
-}
-
-fn content_delta_to_choice(
-    index: i32,
-    delta: ContentDelta,
-    thought_states: &mut HashMap<i32, ThoughtState>,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
-    match delta {
-        ContentDelta::Text(TextDelta {
-            text: Some(text), ..
-        }) => Some(streaming::RawStreamingChoice::Message(text)),
-        ContentDelta::FunctionCall(FunctionCallDelta {
-            name,
-            arguments,
-            id,
-        }) => {
-            let name = name?;
-            let call_id = id.unwrap_or_else(|| name.clone());
-            Some(streaming::RawStreamingChoice::ToolCall(
-                streaming::RawStreamingToolCall::new(
-                    name.clone(),
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                )
-                .with_call_id(call_id),
-            ))
-        }
-        ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
-            let thought_state = thought_states.entry(index).or_default();
-            extend_thought_state_with_summary(thought_state, [content])
-                .into_iter()
-                .next()
-        }
-        ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
-            let thought_state = thought_states.entry(index).or_default();
-            thought_state
-                .signature
-                .get_or_insert_with(String::new)
-                .push_str(&signature);
-            None
-        }
-        _ => None,
-    }
-}
-
-fn content_stop_to_choice(
-    index: i32,
-    thought_states: &mut HashMap<i32, ThoughtState>,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
-    let thought_state = thought_states.remove(&index)?;
-    if thought_state.text.is_empty() && thought_state.signature.is_none() {
-        return None;
-    }
-
-    Some(streaming::RawStreamingChoice::Reasoning {
-        id: None,
-        content: ReasoningContent::Text {
-            text: thought_state.text,
-            signature: thought_state.signature,
-        },
-    })
 }
 
 #[cfg(test)]
@@ -382,9 +540,11 @@ mod tests {
             panic!("expected content delta");
         };
 
-        let choice =
-            content_delta_to_choice(0, delta, &mut HashMap::new()).expect("choice should exist");
-        match choice {
+        let mut stream_state = InteractionStreamState::default();
+        let mut choices = stream_state.handle_content_delta(0, delta);
+        assert_eq!(choices.len(), 1);
+
+        match choices.remove(0) {
             crate::streaming::RawStreamingChoice::Message(text) => {
                 assert_eq!(text, "Hello");
             }
@@ -393,49 +553,157 @@ mod tests {
     }
 
     #[test]
-    fn test_content_delta_function_call_event() {
-        let event_json = json!({
-            "event_type": "content.delta",
-            "index": 0,
-            "delta": {
-                "type": "function_call",
-                "name": "get_weather",
-                "arguments": {"location": "Paris"},
-                "id": "call-1"
+    fn test_content_start_function_call_waits_for_stop_before_emitting_tool_call() {
+        let mut stream_state = InteractionStreamState::default();
+
+        let choices = stream_state.handle_content_start(
+            0,
+            Content::FunctionCall(FunctionCallContent {
+                name: Some("get_weather".to_string()),
+                arguments: Some(json!({"location": "Paris"})),
+                id: Some("call-1".to_string()),
+            }),
+        );
+
+        assert_eq!(choices.len(), 2);
+        match &choices[0] {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content: ToolCallDeltaContent::Name(name),
+            } => {
+                assert_eq!(id, "call-1");
+                assert_eq!(name, "get_weather");
             }
-        });
+            other => panic!("unexpected start choice: {other:?}"),
+        }
+        match &choices[1] {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content: ToolCallDeltaContent::Delta(arguments),
+            } => {
+                assert_eq!(id, "call-1");
+                assert_eq!(arguments, "{\"location\":\"Paris\"}");
+            }
+            other => panic!("unexpected start choice: {other:?}"),
+        }
 
-        let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
-        let InteractionSseEvent::ContentDelta { delta, .. } = event else {
-            panic!("expected content delta");
-        };
-
-        let choice =
-            content_delta_to_choice(0, delta, &mut HashMap::new()).expect("choice should exist");
-        match choice {
-            crate::streaming::RawStreamingChoice::ToolCall(call) => {
+        let stop_choice = stream_state
+            .handle_content_stop(0)
+            .expect("stop should emit final tool call");
+        match stop_choice {
+            RawStreamingChoice::ToolCall(call) => {
                 assert_eq!(call.name, "get_weather");
+                assert_eq!(call.id, "get_weather");
                 assert_eq!(call.call_id.as_deref(), Some("call-1"));
+                assert_eq!(call.arguments, json!({"location": "Paris"}));
             }
-            other => panic!("unexpected choice: {other:?}"),
+            other => panic!("unexpected stop choice: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_function_call_fragments_merge_across_deltas() {
+        let mut stream_state = InteractionStreamState::default();
+
+        let first_choices = stream_state.handle_content_delta(
+            0,
+            ContentDelta::FunctionCall(FunctionCallDelta {
+                name: Some("lookup_".to_string()),
+                arguments: None,
+                id: Some("call_".to_string()),
+            }),
+        );
+        assert_eq!(first_choices.len(), 1);
+        match &first_choices[0] {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content: ToolCallDeltaContent::Name(name),
+            } => {
+                assert_eq!(id, "call_");
+                assert_eq!(name, "lookup_");
+            }
+            other => panic!("unexpected first choice: {other:?}"),
+        }
+
+        let second_choices = stream_state.handle_content_delta(
+            0,
+            ContentDelta::FunctionCall(FunctionCallDelta {
+                name: Some("order".to_string()),
+                arguments: Some(json!({"order_id": "A-17"})),
+                id: Some("1".to_string()),
+            }),
+        );
+        assert_eq!(second_choices.len(), 1);
+        match &second_choices[0] {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content: ToolCallDeltaContent::Delta(arguments),
+            } => {
+                assert_eq!(id, "call_1");
+                assert_eq!(arguments, "{\"order_id\":\"A-17\"}");
+            }
+            other => panic!("unexpected second choice: {other:?}"),
+        }
+
+        let third_choices = stream_state.handle_content_delta(
+            0,
+            ContentDelta::FunctionCall(FunctionCallDelta {
+                name: None,
+                arguments: Some(json!({"status": "backordered"})),
+                id: None,
+            }),
+        );
+        assert_eq!(third_choices.len(), 1);
+        match &third_choices[0] {
+            RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id: _,
+                content: ToolCallDeltaContent::Delta(arguments),
+            } => {
+                assert_eq!(id, "call_1");
+                assert_eq!(arguments, "{\"status\":\"backordered\"}");
+            }
+            other => panic!("unexpected third choice: {other:?}"),
+        }
+
+        let stop_choice = stream_state
+            .handle_content_stop(0)
+            .expect("stop should emit final tool call");
+        match stop_choice {
+            RawStreamingChoice::ToolCall(call) => {
+                assert_eq!(call.name, "lookup_order");
+                assert_eq!(call.id, "lookup_order");
+                assert_eq!(call.call_id.as_deref(), Some("call_1"));
+                assert_eq!(
+                    call.arguments,
+                    json!({
+                        "order_id": "A-17",
+                        "status": "backordered"
+                    })
+                );
+            }
+            other => panic!("unexpected stop choice: {other:?}"),
         }
     }
 
     #[test]
     fn test_thought_summary_and_signature_emit_final_signed_reasoning() {
-        let mut thought_states = HashMap::new();
+        let mut stream_state = InteractionStreamState::default();
 
-        let start_choices = content_start_to_choices(
+        let start_choices = stream_state.handle_content_start(
             0,
             Content::Thought(ThoughtContent {
                 summary: None,
                 signature: None,
             }),
-            &mut thought_states,
         );
         assert!(start_choices.is_empty());
 
-        let summary_choice = content_delta_to_choice(
+        let mut summary_choices = stream_state.handle_content_delta(
             0,
             ContentDelta::ThoughtSummary(ThoughtSummaryDelta {
                 content: ThoughtSummaryContent::Text(TextContent {
@@ -443,10 +711,9 @@ mod tests {
                     annotations: None,
                 }),
             }),
-            &mut thought_states,
-        )
-        .expect("summary delta should yield reasoning");
-        match summary_choice {
+        );
+        assert_eq!(summary_choices.len(), 1);
+        match summary_choices.remove(0) {
             RawStreamingChoice::ReasoningDelta { id, reasoning } => {
                 assert_eq!(id, None);
                 assert_eq!(reasoning, "thinking...");
@@ -454,19 +721,17 @@ mod tests {
             other => panic!("unexpected choice: {other:?}"),
         }
 
-        assert!(
-            content_delta_to_choice(
-                0,
-                ContentDelta::ThoughtSignature(ThoughtSignatureDelta {
-                    signature: "sig-123".to_string(),
-                }),
-                &mut thought_states,
-            )
-            .is_none()
+        let signature_choices = stream_state.handle_content_delta(
+            0,
+            ContentDelta::ThoughtSignature(ThoughtSignatureDelta {
+                signature: "sig-123".to_string(),
+            }),
         );
+        assert!(signature_choices.is_empty());
 
-        let stop_choice =
-            content_stop_to_choice(0, &mut thought_states).expect("stop should emit reasoning");
+        let stop_choice = stream_state
+            .handle_content_stop(0)
+            .expect("stop should emit reasoning");
         match stop_choice {
             RawStreamingChoice::Reasoning { id, content } => {
                 assert_eq!(id, None);
@@ -484,21 +749,19 @@ mod tests {
 
     #[test]
     fn test_signature_only_thought_emits_final_signed_reasoning() {
-        let mut thought_states = HashMap::new();
+        let mut stream_state = InteractionStreamState::default();
 
-        assert!(
-            content_delta_to_choice(
-                0,
-                ContentDelta::ThoughtSignature(ThoughtSignatureDelta {
-                    signature: "sig-only".to_string(),
-                }),
-                &mut thought_states,
-            )
-            .is_none()
+        let signature_choices = stream_state.handle_content_delta(
+            0,
+            ContentDelta::ThoughtSignature(ThoughtSignatureDelta {
+                signature: "sig-only".to_string(),
+            }),
         );
+        assert!(signature_choices.is_empty());
 
-        let stop_choice =
-            content_stop_to_choice(0, &mut thought_states).expect("stop should emit reasoning");
+        let stop_choice = stream_state
+            .handle_content_stop(0)
+            .expect("stop should emit reasoning");
         match stop_choice {
             RawStreamingChoice::Reasoning { id, content } => {
                 assert_eq!(id, None);
@@ -516,14 +779,15 @@ mod tests {
 
     #[test]
     fn test_content_stop_without_tracked_thought_emits_nothing() {
-        assert!(content_stop_to_choice(0, &mut HashMap::new()).is_none());
+        let mut stream_state = InteractionStreamState::default();
+        assert!(stream_state.handle_content_stop(0).is_none());
     }
 
     #[test]
     fn test_content_start_thought_seeds_summary_and_signature() {
-        let mut thought_states = HashMap::new();
+        let mut stream_state = InteractionStreamState::default();
 
-        let start_choices = content_start_to_choices(
+        let start_choices = stream_state.handle_content_start(
             0,
             Content::Thought(ThoughtContent {
                 summary: Some(vec![ThoughtSummaryContent::Text(TextContent {
@@ -532,7 +796,6 @@ mod tests {
                 })]),
                 signature: Some("sig-seeded".to_string()),
             }),
-            &mut thought_states,
         );
 
         assert_eq!(start_choices.len(), 1);
@@ -544,8 +807,9 @@ mod tests {
             other => panic!("unexpected choice: {other:?}"),
         }
 
-        let stop_choice =
-            content_stop_to_choice(0, &mut thought_states).expect("stop should emit reasoning");
+        let stop_choice = stream_state
+            .handle_content_stop(0)
+            .expect("stop should emit reasoning");
         match stop_choice {
             RawStreamingChoice::Reasoning { id, content } => {
                 assert_eq!(id, None);
