@@ -53,6 +53,52 @@ struct MacroArgs {
     required: Vec<String>,
 }
 
+fn parse_string_literal(expr: &Expr, field_name: &str) -> syn::Result<String> {
+    match expr {
+        Expr::Lit(ExprLit {
+            lit: Lit::Str(lit_str),
+            ..
+        }) => Ok(lit_str.value()),
+        _ => Err(syn::Error::new_spanned(
+            expr,
+            format!("`{field_name}` must be a string literal"),
+        )),
+    }
+}
+
+fn validate_explicit_tool_name(name: &str, expr: &Expr) -> syn::Result<()> {
+    if name.is_empty() || name.len() > 64 {
+        return Err(syn::Error::new_spanned(
+            expr,
+            "`name` must be between 1 and 64 characters long",
+        ));
+    }
+
+    let mut chars = name.chars();
+    let Some(first_char) = chars.next() else {
+        return Err(syn::Error::new_spanned(
+            expr,
+            "`name` must be between 1 and 64 characters long",
+        ));
+    };
+
+    if !first_char.is_ascii_alphabetic() && first_char != '_' {
+        return Err(syn::Error::new_spanned(
+            expr,
+            "`name` must start with an ASCII letter or underscore",
+        ));
+    }
+
+    if chars.any(|ch| !ch.is_ascii_alphanumeric() && ch != '_' && ch != '-') {
+        return Err(syn::Error::new_spanned(
+            expr,
+            "`name` may only contain ASCII letters, digits, underscores, or hyphens",
+        ));
+    }
+
+    Ok(())
+}
+
 impl Parse for MacroArgs {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut name = None;
@@ -75,44 +121,80 @@ impl Parse for MacroArgs {
         for meta in meta_list {
             match meta {
                 Meta::NameValue(nv) => {
-                    let ident = nv.path.get_ident().unwrap().to_string();
-                    if let Expr::Lit(ExprLit {
-                        lit: Lit::Str(lit_str),
-                        ..
-                    }) = nv.value
-                    {
-                        match ident.as_str() {
-                            "name" => name = Some(lit_str.value()),
-                            "description" => description = Some(lit_str.value()),
-                            _ => {}
+                    let ident = nv.path.get_ident().ok_or_else(|| {
+                        syn::Error::new_spanned(
+                            &nv.path,
+                            "unsupported top-level #[rig_tool] argument",
+                        )
+                    })?;
+
+                    match ident.to_string().as_str() {
+                        "name" => {
+                            let parsed_name = parse_string_literal(&nv.value, "name")?;
+                            validate_explicit_tool_name(&parsed_name, &nv.value)?;
+                            name = Some(parsed_name);
+                        }
+                        "description" => {
+                            description = Some(parse_string_literal(&nv.value, "description")?);
+                        }
+                        _ => {
+                            return Err(syn::Error::new_spanned(
+                                &nv.path,
+                                format!("unsupported top-level #[rig_tool] argument `{}`", ident),
+                            ));
                         }
                     }
                 }
-                Meta::List(list) if list.path.is_ident("params") => {
-                    let nested: Punctuated<Meta, Token![,]> =
-                        list.parse_args_with(Punctuated::parse_terminated)?;
+                Meta::List(list) => {
+                    let ident = list.path.get_ident().ok_or_else(|| {
+                        syn::Error::new_spanned(
+                            &list.path,
+                            "unsupported top-level #[rig_tool] argument",
+                        )
+                    })?;
 
-                    for meta in nested {
-                        if let Meta::NameValue(nv) = meta
-                            && let Expr::Lit(ExprLit {
-                                lit: Lit::Str(lit_str),
-                                ..
-                            }) = nv.value
-                        {
-                            let param_name = nv.path.get_ident().unwrap().to_string();
-                            param_descriptions.insert(param_name, lit_str.value());
+                    match ident.to_string().as_str() {
+                        "params" => {
+                            let nested: Punctuated<Meta, Token![,]> =
+                                list.parse_args_with(Punctuated::parse_terminated)?;
+
+                            for meta in nested {
+                                if let Meta::NameValue(nv) = meta
+                                    && let Expr::Lit(ExprLit {
+                                        lit: Lit::Str(lit_str),
+                                        ..
+                                    }) = nv.value
+                                {
+                                    let param_name = nv.path.get_ident().unwrap().to_string();
+                                    param_descriptions.insert(param_name, lit_str.value());
+                                }
+                            }
+                        }
+                        "required" => {
+                            let required_variables: Punctuated<Ident, Token![,]> =
+                                list.parse_args_with(Punctuated::parse_terminated)?;
+
+                            required_variables.into_iter().for_each(|x| {
+                                required.push(x.to_string());
+                            });
+                        }
+                        _ => {
+                            return Err(syn::Error::new_spanned(
+                                &list.path,
+                                format!("unsupported top-level #[rig_tool] argument `{}`", ident),
+                            ));
                         }
                     }
                 }
-                Meta::List(list) if list.path.is_ident("required") => {
-                    let required_variables: Punctuated<Ident, Token![,]> =
-                        list.parse_args_with(Punctuated::parse_terminated)?;
+                Meta::Path(path) => {
+                    let message = if let Some(ident) = path.get_ident() {
+                        format!("unsupported top-level #[rig_tool] argument `{ident}`")
+                    } else {
+                        "unsupported top-level #[rig_tool] argument".to_string()
+                    };
 
-                    required_variables.into_iter().for_each(|x| {
-                        required.push(x.to_string());
-                    });
+                    return Err(syn::Error::new_spanned(path, message));
                 }
-                _ => {}
             }
         }
 
@@ -202,6 +284,9 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
 /// ```rust
 /// use rig_derive::rig_tool;
 ///
+/// // Explicit names must be string literals that start with an ASCII letter
+/// // or `_`, may contain ASCII letters, digits, `_`, or `-`, and be at most
+/// // 64 characters long.
 /// #[rig_tool(name = "search-docs", description = "Search the documentation")]
 /// fn search_docs_impl(query: String) -> Result<String, rig::tool::ToolError> {
 ///     Ok(format!("Searching docs for {query}"))
