@@ -27,6 +27,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true }
+trybuild = "1.0"
 
 [[example]]
 name = "simple"

@@ -30,3 +30,16 @@ async fn test_tool_name_falls_back_to_function_name() {
     assert_eq!(tool.name(), "fallback_name_tool");
     assert_eq!(definition.name, "fallback_name_tool");
 }
+
+#[test]
+fn test_custom_name_trybuild_cases() {
+    let tests = trybuild::TestCases::new();
+
+    tests.pass("tests/ui/custom_name/pass_explicit_name.rs");
+    tests.pass("tests/ui/custom_name/pass_fallback_name.rs");
+    tests.compile_fail("tests/ui/custom_name/fail_name_non_string.rs");
+    tests.compile_fail("tests/ui/custom_name/fail_name_invalid_characters.rs");
+    tests.compile_fail("tests/ui/custom_name/fail_name_invalid_start.rs");
+    tests.compile_fail("tests/ui/custom_name/fail_name_too_long.rs");
+    tests.compile_fail("tests/ui/custom_name/fail_unknown_top_level_argument.rs");
+}
