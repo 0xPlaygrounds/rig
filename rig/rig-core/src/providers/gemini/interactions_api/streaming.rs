@@ -134,13 +134,9 @@ where
                         continue;
                     }
                     Ok(Event::Message(message)) => {
-                        if message.data.trim().is_empty() {
-                            continue;
-                        }
-
-                        let data = match serde_json::from_str::<InteractionSseEvent>(&message.data)
-                        {
-                            Ok(data) => data,
+                        let data = match parse_interaction_sse_event(&message.data) {
+                            Ok(Some(data)) => data,
+                            Ok(None) => continue,
                             Err(err) => {
                                 tracing::debug!(
                                     "Failed to deserialize interactions SSE event: {err}"
@@ -225,15 +221,13 @@ where
             match event_result {
                 Ok(Event::Open) => continue,
                 Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() {
-                        continue;
-                    }
-
-                    let data = serde_json::from_str::<InteractionSseEvent>(&message.data);
-                    let Ok(data) = data else {
-                        let err = data.unwrap_err();
-                        tracing::debug!("Failed to deserialize interactions SSE event: {err}");
-                        continue;
+                    let data = match parse_interaction_sse_event(&message.data) {
+                        Ok(Some(data)) => data,
+                        Ok(None) => continue,
+                        Err(err) => {
+                            tracing::debug!("Failed to deserialize interactions SSE event: {err}");
+                            continue;
+                        }
                     };
 
                     yield Ok(data);
@@ -251,6 +245,17 @@ where
     };
 
     Box::pin(stream)
+}
+
+fn parse_interaction_sse_event(
+    data: &str,
+) -> Result<Option<InteractionSseEvent>, serde_json::Error> {
+    let trimmed = data.trim();
+    if trimmed.is_empty() || !trimmed.starts_with('{') {
+        return Ok(None);
+    }
+
+    serde_json::from_str::<InteractionSseEvent>(trimmed).map(Some)
 }
 
 impl ThoughtState {
@@ -550,6 +555,33 @@ mod tests {
             }
             other => panic!("unexpected choice: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_parse_interaction_sse_event_ignores_non_json_payload() {
+        let parsed =
+            parse_interaction_sse_event("[DONE]").expect("non-json payload should be ignored");
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn test_content_start_text_without_text_field_deserializes_as_empty_text() {
+        let event_json = json!({
+            "event_type": "content.start",
+            "index": 0,
+            "content": {
+                "type": "text"
+            }
+        });
+
+        let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
+        let InteractionSseEvent::ContentStart { content, .. } = event else {
+            panic!("expected content start");
+        };
+
+        let mut stream_state = InteractionStreamState::default();
+        let choices = stream_state.handle_content_start(0, content);
+        assert!(choices.is_empty());
     }
 
     #[test]

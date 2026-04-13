@@ -15,9 +15,7 @@ use rig::completion::ToolDefinition;
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::CompletionModel as GeminiCompletionModel;
-use rig::providers::gemini::interactions_api::{
-    AdditionalParameters as InteractionsAdditionalParameters, InteractionsCompletionModel,
-};
+use rig::providers::gemini::interactions_api::InteractionsCompletionModel;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingChat};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -84,17 +82,6 @@ fn prior_history() -> Vec<Message> {
     ]
 }
 
-fn interactions_structured_output_params() -> serde_json::Value {
-    serde_json::to_value(InteractionsAdditionalParameters {
-        response_format: Some(
-            serde_json::to_value(schema_for!(OrderSummary)).expect("schema should serialize"),
-        ),
-        response_mime_type: Some("application/json".to_string()),
-        ..Default::default()
-    })
-    .expect("Gemini Interactions additional params should serialize")
-}
-
 fn build_generate_content_agent(call_count: Arc<AtomicUsize>) -> GenerateContentAgent {
     gemini::Client::from_env()
         .agent(gemini::completion::GEMINI_2_5_FLASH)
@@ -107,11 +94,11 @@ fn build_generate_content_agent(call_count: Arc<AtomicUsize>) -> GenerateContent
 
 fn build_interactions_agent(call_count: Arc<AtomicUsize>) -> InteractionsAgent {
     gemini::InteractionsClient::from_env()
-        .agent("gemini-2.5-flash")
+        .agent("gemini-3-flash-preview")
         .preamble(ORDER_SUMMARY_PREAMBLE)
         .tool(OrderLookupTool::new(call_count))
         .tool_choice(ToolChoice::Auto)
-        .additional_params(interactions_structured_output_params())
+        .output_schema::<OrderSummary>()
         .build()
 }
 
@@ -291,7 +278,7 @@ async fn generate_content_streaming_tool_and_output_schema_provider_rejects_requ
 
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
-async fn interactions_streaming_tool_and_native_response_format_roundtrips_structured_json() {
+async fn interactions_streaming_tool_and_output_schema_roundtrips_structured_json() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = build_interactions_agent(call_count.clone());
 
@@ -328,7 +315,7 @@ async fn interactions_streaming_tool_and_native_response_format_roundtrips_struc
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires GEMINI_API_KEY"]
-async fn interactions_streaming_tool_and_native_response_format_emits_no_sse_deserialize_errors() {
+async fn interactions_streaming_tool_and_output_schema_emits_no_sse_deserialize_errors() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = build_interactions_agent(call_count.clone());
 

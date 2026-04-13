@@ -308,6 +308,8 @@ pub(crate) fn create_request_body(
 
     let input = InteractionInput::Turns(turns);
 
+    let output_schema = completion_request.output_schema.clone();
+
     let raw_params = completion_request
         .additional_params
         .unwrap_or_else(|| Value::Object(Map::new()));
@@ -364,17 +366,11 @@ pub(crate) fn create_request_body(
         (None, None)
     };
 
-    let response_format = params.response_format.take();
+    let response_format = params
+        .response_format
+        .take()
+        .or_else(|| output_schema.map(|schema| schema.to_value()));
     let response_mime_type = params.response_mime_type.take();
-
-    if response_format.is_some() && response_mime_type.is_none() {
-        return Err(CompletionError::RequestError(Box::new(
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "response_mime_type is required when response_format is set",
-            ),
-        )));
-    }
 
     Ok(CreateInteractionRequest {
         model: if agent.is_some() { None } else { Some(model) },
@@ -1413,6 +1409,7 @@ pub mod interactions_api_types {
     /// Text content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TextContent {
+        #[serde(default)]
         pub text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub annotations: Option<Vec<Annotation>>,
@@ -2538,9 +2535,18 @@ pub mod interactions_api_types {
 mod tests {
     use super::*;
     use crate::OneOrMany;
-    use crate::completion::{CompletionRequest, Message};
+    use crate::completion::{CompletionRequest, Message, ToolDefinition};
     use crate::message::{self, ToolChoice as MessageToolChoice};
+    use schemars::{JsonSchema, schema_for};
     use serde_json::json;
+
+    #[allow(dead_code)]
+    #[derive(JsonSchema)]
+    struct StructuredOrderSummary {
+        order_id: String,
+        status: String,
+        eta_days: u64,
+    }
 
     #[test]
     fn test_create_request_body_simple() {
@@ -2591,6 +2597,90 @@ mod tests {
             Content::Text(TextContent { text, .. }) => assert_eq!(text, "Hello"),
             other => panic!("unexpected content: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_create_request_body_maps_output_schema_to_response_format() {
+        let prompt = Message::User {
+            content: OneOrMany::one(message::UserContent::text("Check order A-17")),
+        };
+        let output_schema = schema_for!(StructuredOrderSummary);
+
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(prompt),
+            documents: vec![],
+            tools: vec![ToolDefinition {
+                name: "lookup_order".to_string(),
+                description: "Look up an order".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "order_id": { "type": "string" }
+                    },
+                    "required": ["order_id"]
+                }),
+            }],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(MessageToolChoice::Auto),
+            additional_params: None,
+            output_schema: Some(output_schema.clone()),
+        };
+
+        let result = create_request_body("gemini-3-flash-preview".to_string(), request, Some(true))
+            .expect("request should build");
+
+        assert_eq!(result.response_format, Some(output_schema.to_value()));
+        assert_eq!(result.response_mime_type, None);
+        assert_eq!(result.stream, Some(true));
+        assert!(matches!(result.tools.as_ref(), Some(tools) if tools.len() == 1));
+    }
+
+    #[test]
+    fn test_create_request_body_allows_response_format_without_response_mime_type() {
+        let prompt = Message::User {
+            content: OneOrMany::one(message::UserContent::text("Return JSON")),
+        };
+        let response_format = json!({
+            "type": "object",
+            "properties": {
+                "status": { "type": "string" }
+            },
+            "required": ["status"]
+        });
+
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(prompt),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(json!({
+                "response_format": response_format
+            })),
+            output_schema: None,
+        };
+
+        let result =
+            create_request_body("gemini-3-flash-preview".to_string(), request, Some(false))
+                .expect("request should build");
+
+        assert_eq!(result.response_mime_type, None);
+        assert_eq!(
+            result.response_format,
+            Some(json!({
+                "type": "object",
+                "properties": {
+                    "status": { "type": "string" }
+                },
+                "required": ["status"]
+            }))
+        );
     }
 
     #[test]
