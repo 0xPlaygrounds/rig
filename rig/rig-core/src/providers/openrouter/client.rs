@@ -35,7 +35,7 @@ impl<H> Capabilities<H> for OpenRouterExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Nothing;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<super::OpenRouterModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
