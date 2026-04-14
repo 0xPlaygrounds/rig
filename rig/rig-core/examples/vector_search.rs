@@ -85,7 +85,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()?;
+        .build();
 
     let index = vector_store.index(embedding_model);
     let results = index

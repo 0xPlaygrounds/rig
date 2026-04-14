@@ -96,7 +96,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(3)
-        .build()?;
+        .build();
     tracing::info!("Searching for: '{}'", query);
 
     let results = vector_store
@@ -133,7 +133,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(database_query)
         .samples(2)
-        .build()?;
+        .build();
 
     let db_results = vector_store
         .top_n::<Word>(req)

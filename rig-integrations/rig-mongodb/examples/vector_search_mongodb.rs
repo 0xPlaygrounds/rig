@@ -115,8 +115,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     // Query the index
     let results = index.top_n::<Word>(req.clone()).await?;

@@ -73,8 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(2)
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 

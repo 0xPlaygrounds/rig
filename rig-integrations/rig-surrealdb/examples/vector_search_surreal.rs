@@ -71,7 +71,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(2)
-        .build()?;
+        .build();
 
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
@@ -90,7 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .query(query)
         .samples(1)
         .threshold(midpoint)
-        .build()?;
+        .build();
 
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 

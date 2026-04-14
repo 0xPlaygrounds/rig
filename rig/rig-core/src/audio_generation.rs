@@ -1,5 +1,6 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
+use crate::markers::{Missing, Provided};
 use crate::{
     http_client,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -46,7 +47,10 @@ where
         text: &str,
         voice: &str,
     ) -> impl std::future::Future<
-        Output = Result<AudioGenerationRequestBuilder<M>, AudioGenerationError>,
+        Output = Result<
+            AudioGenerationRequestBuilder<M, Provided<String>, Provided<String>>,
+            AudioGenerationError,
+        >,
     > + Send;
 }
 
@@ -69,11 +73,10 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
         Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
     > + Send;
 
-    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self> {
+    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing> {
         AudioGenerationRequestBuilder::new(self.clone())
     }
 }
-
 #[non_exhaustive]
 pub struct AudioGenerationRequest {
     pub text: String,
@@ -83,41 +86,56 @@ pub struct AudioGenerationRequest {
 }
 
 #[non_exhaustive]
-pub struct AudioGenerationRequestBuilder<M>
+pub struct AudioGenerationRequestBuilder<M, T = Missing, V = Missing>
 where
     M: AudioGenerationModel,
 {
     model: M,
-    text: String,
-    voice: String,
+    text: T,
+    voice: V,
     speed: f32,
     additional_params: Option<Value>,
 }
 
-impl<M> AudioGenerationRequestBuilder<M>
+impl<M> AudioGenerationRequestBuilder<M, Missing, Missing>
 where
     M: AudioGenerationModel,
 {
     pub fn new(model: M) -> Self {
         Self {
             model,
-            text: "".to_string(),
-            voice: "".to_string(),
+            text: Missing,
+            voice: Missing,
             speed: 1.0,
             additional_params: None,
         }
     }
+}
 
+impl<M, T, V> AudioGenerationRequestBuilder<M, T, V>
+where
+    M: AudioGenerationModel,
+{
     /// Sets the text for the audio generation request
-    pub fn text(mut self, text: &str) -> Self {
-        self.text = text.to_string();
-        self
+    pub fn text(self, text: &str) -> AudioGenerationRequestBuilder<M, Provided<String>, V> {
+        AudioGenerationRequestBuilder {
+            model: self.model,
+            text: Provided(text.to_string()),
+            voice: self.voice,
+            speed: self.speed,
+            additional_params: self.additional_params,
+        }
     }
 
     /// The voice of the generated audio
-    pub fn voice(mut self, voice: &str) -> Self {
-        self.voice = voice.to_string();
-        self
+    pub fn voice(self, voice: &str) -> AudioGenerationRequestBuilder<M, T, Provided<String>> {
+        AudioGenerationRequestBuilder {
+            model: self.model,
+            text: self.text,
+            voice: Provided(voice.to_string()),
+            speed: self.speed,
+            additional_params: self.additional_params,
+        }
     }
 
     /// The speed of the generated audio
@@ -131,11 +149,16 @@ where
         self.additional_params = Some(params);
         self
     }
+}
 
+impl<M> AudioGenerationRequestBuilder<M, Provided<String>, Provided<String>>
+where
+    M: AudioGenerationModel,
+{
     pub fn build(self) -> AudioGenerationRequest {
         AudioGenerationRequest {
-            text: self.text,
-            voice: self.voice,
+            text: self.text.0,
+            voice: self.voice.0,
             speed: self.speed,
             additional_params: self.additional_params,
         }

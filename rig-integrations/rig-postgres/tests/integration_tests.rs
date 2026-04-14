@@ -104,8 +104,7 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()
-        .expect("VectorSearchRequest should build");
+        .build();
 
     // search for a document
     let results = vector_store

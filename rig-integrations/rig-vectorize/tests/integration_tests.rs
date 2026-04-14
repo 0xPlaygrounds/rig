@@ -105,8 +105,7 @@ async fn test_insert_and_query() {
     let request = VectorSearchRequest::builder()
         .query(&doc.content)
         .samples(5)
-        .build()
-        .expect("Failed to build request");
+        .build();
 
     let results = vector_store
         .top_n_ids(request)
@@ -151,8 +150,7 @@ async fn test_top_n_returns_full_documents() {
     let request = VectorSearchRequest::builder()
         .query("Rust programming language systems")
         .samples(5)
-        .build()
-        .expect("Failed to build request");
+        .build();
 
     let results = vector_store
         .top_n::<TestDocument>(request)
@@ -216,8 +214,7 @@ async fn test_top_n_with_multiple_documents() {
     let request = VectorSearchRequest::builder()
         .query("programming language")
         .samples(10)
-        .build()
-        .expect("Failed to build request");
+        .build();
 
     let results = vector_store
         .top_n::<TestDocument>(request)
@@ -279,8 +276,7 @@ async fn test_query_with_eq_filter() {
         .query("language")
         .samples(10)
         .filter(filter)
-        .build()
-        .expect("Failed to build request");
+        .build();
 
     match vector_store.top_n::<TestDocument>(request).await {
         Ok(results) => {
@@ -358,8 +354,7 @@ async fn test_query_with_combined_filters() {
         .query("programming")
         .samples(10)
         .filter(filter)
-        .build()
-        .expect("Failed to build request");
+        .build();
 
     match vector_store.top_n::<TestDocument>(request).await {
         Ok(results) => {
@@ -442,8 +437,7 @@ async fn test_query_with_in_filter() {
         .query("Rust Vectorize")
         .samples(10)
         .filter(filter)
-        .build()
-        .expect("Failed to build request");
+        .build();
 
     match vector_store.top_n::<TestDocument>(request).await {
         Ok(results) => {

@@ -1,6 +1,7 @@
 //! Everything related to core image generation abstractions in Rig.
 //! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
 use crate::http_client;
+use crate::markers::{Missing, Provided};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -43,7 +44,7 @@ where
         prompt: &str,
         size: &(u32, u32),
     ) -> impl std::future::Future<
-        Output = Result<ImageGenerationRequestBuilder<M>, ImageGenerationError>,
+        Output = Result<ImageGenerationRequestBuilder<M, Provided<String>>, ImageGenerationError>,
     > + Send;
 }
 
@@ -68,11 +69,10 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
         Output = Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
     > + Send;
 
-    fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self> {
+    fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self, Missing> {
         ImageGenerationRequestBuilder::new(self.clone())
     }
 }
-
 /// An image generation request.
 #[non_exhaustive]
 pub struct ImageGenerationRequest {
@@ -85,35 +85,45 @@ pub struct ImageGenerationRequest {
 /// A builder for `ImageGenerationRequest`.
 /// Can be sent to a model provider.
 #[non_exhaustive]
-pub struct ImageGenerationRequestBuilder<M>
+pub struct ImageGenerationRequestBuilder<M, P = Missing>
 where
     M: ImageGenerationModel,
 {
     model: M,
-    prompt: String,
+    prompt: P,
     width: u32,
     height: u32,
     additional_params: Option<Value>,
 }
 
-impl<M> ImageGenerationRequestBuilder<M>
+impl<M> ImageGenerationRequestBuilder<M, Missing>
 where
     M: ImageGenerationModel,
 {
     pub fn new(model: M) -> Self {
         Self {
             model,
-            prompt: "".to_string(),
+            prompt: Missing,
             height: 256,
             width: 256,
             additional_params: None,
         }
     }
+}
 
+impl<M, P> ImageGenerationRequestBuilder<M, P>
+where
+    M: ImageGenerationModel,
+{
     /// Sets the prompt for the image generation request
-    pub fn prompt(mut self, prompt: &str) -> Self {
-        self.prompt = prompt.to_string();
-        self
+    pub fn prompt(self, prompt: &str) -> ImageGenerationRequestBuilder<M, Provided<String>> {
+        ImageGenerationRequestBuilder {
+            model: self.model,
+            prompt: Provided(prompt.to_string()),
+            width: self.width,
+            height: self.height,
+            additional_params: self.additional_params,
+        }
     }
 
     /// The width of the generated image
@@ -133,10 +143,15 @@ where
         self.additional_params = Some(params);
         self
     }
+}
 
+impl<M> ImageGenerationRequestBuilder<M, Provided<String>>
+where
+    M: ImageGenerationModel,
+{
     pub fn build(self) -> ImageGenerationRequest {
         ImageGenerationRequest {
-            prompt: self.prompt,
+            prompt: self.prompt.0,
             width: self.width,
             height: self.height,
             additional_params: self.additional_params,
