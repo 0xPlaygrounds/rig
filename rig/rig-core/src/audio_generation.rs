@@ -1,14 +1,10 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
-#[allow(deprecated)]
-use crate::client::audio_generation::AudioGenerationModelHandle;
 use crate::{
     http_client,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use futures::future::BoxFuture;
 use serde_json::Value;
-use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -75,50 +71,6 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self> {
         AudioGenerationRequestBuilder::new(self.clone())
-    }
-}
-
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.25.0",
-    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `AudioGenerationModel` instead."
-)]
-pub trait AudioGenerationModelDyn: Send + Sync {
-    fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> BoxFuture<'_, Result<AudioGenerationResponse<()>, AudioGenerationError>>;
-
-    fn audio_generation_request(
-        &self,
-    ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle<'_>>;
-}
-
-#[allow(deprecated)]
-impl<T> AudioGenerationModelDyn for T
-where
-    T: AudioGenerationModel,
-{
-    fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> BoxFuture<'_, Result<AudioGenerationResponse<()>, AudioGenerationError>> {
-        Box::pin(async move {
-            let resp = self.audio_generation(request).await;
-
-            resp.map(|r| AudioGenerationResponse {
-                audio: r.audio,
-                response: (),
-            })
-        })
-    }
-
-    fn audio_generation_request(
-        &self,
-    ) -> AudioGenerationRequestBuilder<AudioGenerationModelHandle<'_>> {
-        AudioGenerationRequestBuilder::new(AudioGenerationModelHandle {
-            inner: Arc::new(self.clone()),
-        })
     }
 }
 

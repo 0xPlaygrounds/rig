@@ -14,16 +14,6 @@ pub struct ClientBuilder<'a> {
 }
 
 impl<'a> ClientBuilder<'a> {
-    #[deprecated(
-        since = "0.2.6",
-        note = "Use `Client::from_env` or `Client::with_profile_name(\"aws_profile\")` instead"
-    )]
-    pub fn new() -> Self {
-        Self {
-            region: DEFAULT_AWS_REGION,
-        }
-    }
-
     /// Make sure to verify model and region [compatibility]
     ///
     /// [compatibility]: https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html
@@ -50,8 +40,9 @@ impl<'a> ClientBuilder<'a> {
 
 impl Default for ClientBuilder<'_> {
     fn default() -> Self {
-        #[allow(deprecated)]
-        Self::new()
+        Self {
+            region: DEFAULT_AWS_REGION,
+        }
     }
 }
 

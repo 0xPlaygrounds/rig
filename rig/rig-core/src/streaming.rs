@@ -12,7 +12,6 @@ use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::hooks::PromptHook;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
-use crate::client::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
@@ -534,57 +533,6 @@ pub trait StreamingCompletion<M: CompletionModel> {
     where
         I: IntoIterator<Item = T> + WasmCompatSend,
         T: Into<Message>;
-}
-
-pub(crate) struct StreamingResultDyn<R: Clone + Unpin + GetTokenUsage> {
-    pub(crate) inner: StreamingResult<R>,
-}
-
-fn map_raw_streaming_choice<R>(
-    chunk: RawStreamingChoice<R>,
-) -> RawStreamingChoice<FinalCompletionResponse>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    match chunk {
-        RawStreamingChoice::FinalResponse(res) => {
-            RawStreamingChoice::FinalResponse(FinalCompletionResponse {
-                usage: res.token_usage(),
-            })
-        }
-        RawStreamingChoice::Message(m) => RawStreamingChoice::Message(m),
-        RawStreamingChoice::ToolCallDelta {
-            id,
-            internal_call_id,
-            content,
-        } => RawStreamingChoice::ToolCallDelta {
-            id,
-            internal_call_id,
-            content,
-        },
-        RawStreamingChoice::Reasoning { id, content } => {
-            RawStreamingChoice::Reasoning { id, content }
-        }
-        RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-            RawStreamingChoice::ReasoningDelta { id, reasoning }
-        }
-        RawStreamingChoice::ToolCall(tool_call) => RawStreamingChoice::ToolCall(tool_call),
-        RawStreamingChoice::MessageId(id) => RawStreamingChoice::MessageId(id),
-    }
-}
-
-impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
-    type Item = Result<RawStreamingChoice<FinalCompletionResponse>, CompletionError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = self.get_mut();
-
-        match stream.inner.as_mut().poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(item)) => Poll::Ready(Some(item.map(map_raw_streaming_choice::<R>))),
-        }
-    }
 }
 
 /// A helper function to stream a completion request to stdout.
