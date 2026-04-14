@@ -1,0 +1,5 @@
+error: `name` must start with an ASCII letter or underscore
+ --> tests/ui/custom_name/fail_name_invalid_start.rs:5:19
+  |
+5 | #[rig_tool(name = "9bad")]
+  |                   ^^^^^^
