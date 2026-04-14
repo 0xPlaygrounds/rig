@@ -129,7 +129,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query1)
         .samples(1)
-        .build()?;
+        .build();
 
     // Query the index
     let results = index
@@ -144,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query2)
         .samples(1)
-        .build()?;
+        .build();
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

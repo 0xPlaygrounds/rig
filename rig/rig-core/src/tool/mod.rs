@@ -110,7 +110,8 @@ impl fmt::Display for ToolError {
 /// }
 /// ```
 pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
-    /// The name of the tool. This name should be unique.
+    /// The name of the tool. This name should be unique within a single
+    /// [`ToolSet`] or other registration scope that dispatches tools by name.
     const NAME: &'static str;
 
     /// The error type of the tool.

@@ -31,6 +31,7 @@ async fn whisper(file_path: &str) {
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
@@ -43,6 +44,7 @@ async fn gemini(file_path: &str) {
     let response = model
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
@@ -55,6 +57,7 @@ async fn azure(file_path: &str) {
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
@@ -67,6 +70,7 @@ async fn groq(file_path: &str) {
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
@@ -79,6 +83,7 @@ async fn huggingface(file_path: &str) {
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
@@ -91,6 +96,7 @@ async fn mistral(file_path: &str) {
     let response = model
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file using Mistral");

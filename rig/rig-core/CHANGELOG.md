@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.35.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.34.0...rig-core-v0.35.0) - 2026-04-12
+
+### Added
+
+- *(rig-1197)* handle llama.cpp tool call ([#1408](https://github.com/0xPlaygrounds/rig/pull/1408)) ([#1409](https://github.com/0xPlaygrounds/rig/pull/1409)) (by @inqode-lars)
+
+### Fixed
+
+- *(#1604)* delay response_format on initial tool turns  (#1622) (by @gold-silver-copper)
+- reduce `ToolServer` contention during tool lookup and execution ([#1607](https://github.com/0xPlaygrounds/rig/pull/1607)) (by @isSerge) - #1607
+- *(streaming)* preserve tool call history, deduplicate prompt ([#1590](https://github.com/0xPlaygrounds/rig/pull/1590)) (by @gold-silver-copper)
+- *(openai)* capture ResponseFailed errors in stream mode ([#1582](https://github.com/0xPlaygrounds/rig/pull/1582)) (by @gabrielrondon)
+
+### Other
+
+- (refactor): replace legacy Anthropic constants  ([#1616](https://github.com/0xPlaygrounds/rig/pull/1616)) (by @gold-silver-copper) - #1616
+- Add ModelLister for Ollama, Anthropic, Mistral, OpenAI, Gemini ([#1587](https://github.com/0xPlaygrounds/rig/pull/1587)) (by @LHelge) - #1587
+- gpt image 1.5 ([#1543](https://github.com/0xPlaygrounds/rig/pull/1543)) (by @kevinastock) - #1543
+- *(rig-core)* [**breaking**] migrate examples to integration tests ([#1603](https://github.com/0xPlaygrounds/rig/pull/1603)) (by @gold-silver-copper)
+- Do not stringify strings during tool output ([#1608](https://github.com/0xPlaygrounds/rig/pull/1608)) (by @gold-silver-copper) - #1608
+- *(rig-core)* upgrade rmcp integration to 1.3, gate tests ([#1596](https://github.com/0xPlaygrounds/rig/pull/1596)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
+* @LHelge
+* @kevinastock
+* @isSerge
+* @inqode-lars
+* @gabrielrondon
 
 ## [0.34.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.33.0...rig-core-v0.34.0) - 2026-03-29
 

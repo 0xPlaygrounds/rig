@@ -38,8 +38,7 @@ async fn derive_embeddings_and_vector_search() {
     let request = VectorSearchRequest::builder()
         .query("Hello world")
         .samples(1)
-        .build()
-        .expect("request should build");
+        .build();
     let results = index
         .top_n::<Greetings>(request)
         .await
