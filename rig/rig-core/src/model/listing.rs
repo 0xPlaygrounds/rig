@@ -334,6 +334,35 @@ pub enum ModelListingError {
     },
 }
 
+const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
+
+fn format_response_body_preview(body: &[u8]) -> String {
+    let preview_len = body.len().min(RESPONSE_BODY_PREVIEW_LIMIT);
+    let mut preview = String::from_utf8_lossy(&body[..preview_len]).into_owned();
+
+    if body.len() > RESPONSE_BODY_PREVIEW_LIMIT {
+        preview.push_str(&format!(
+            "\n...<truncated {} bytes>",
+            body.len() - RESPONSE_BODY_PREVIEW_LIMIT
+        ));
+    }
+
+    preview
+}
+
+fn format_response_context(
+    provider: &str,
+    path: &str,
+    details: impl fmt::Display,
+    body: &[u8],
+) -> String {
+    format!(
+        "provider={provider}\npath={path}\n{details}\nbody_bytes={}\nresponse_body_preview:\n{}",
+        body.len(),
+        format_response_body_preview(body)
+    )
+}
+
 impl ModelListingError {
     /// Creates a new ApiError with the given status code and message.
     pub fn api_error(status_code: u16, message: impl Into<String>) -> Self {
@@ -355,6 +384,38 @@ impl ModelListingError {
         Self::ParseError {
             message: message.into(),
         }
+    }
+
+    pub(crate) fn api_error_with_context(
+        provider: &str,
+        path: &str,
+        status_code: u16,
+        body: &[u8],
+    ) -> Self {
+        let message =
+            format_response_context(provider, path, format_args!("status={status_code}"), body);
+        Self::api_error(status_code, message)
+    }
+
+    pub(crate) fn parse_error_with_context(
+        provider: &str,
+        path: &str,
+        error: &serde_json::Error,
+        body: &[u8],
+    ) -> Self {
+        let message =
+            format_response_context(provider, path, format_args!("parse_error={error}"), body);
+        Self::parse_error(message)
+    }
+
+    pub(crate) fn parse_error_with_details(
+        provider: &str,
+        path: &str,
+        details: impl fmt::Display,
+        body: &[u8],
+    ) -> Self {
+        let message = format_response_context(provider, path, details, body);
+        Self::parse_error(message)
     }
 
     /// Creates a new AuthError with the given message.
@@ -404,6 +465,24 @@ impl fmt::Display for ModelListingError {
 }
 
 impl std::error::Error for ModelListingError {}
+
+impl From<crate::http_client::Error> for ModelListingError {
+    fn from(e: crate::http_client::Error) -> Self {
+        Self::request_error(e.to_string())
+    }
+}
+
+impl From<http::Error> for ModelListingError {
+    fn from(e: http::Error) -> Self {
+        Self::request_error(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ModelListingError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::parse_error(e.to_string())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -551,6 +630,68 @@ mod tests {
                 assert_eq!(message, "Not found");
             }
             _ => panic!("Expected ApiError"),
+        }
+    }
+
+    #[test]
+    fn test_format_response_body_preview_without_truncation() {
+        let preview = format_response_body_preview(br#"{"ok":true}"#);
+        assert_eq!(preview, r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn test_format_response_body_preview_with_truncation() {
+        let body = vec![b'a'; RESPONSE_BODY_PREVIEW_LIMIT + 3];
+        let preview = format_response_body_preview(&body);
+
+        assert!(preview.starts_with(&"a".repeat(RESPONSE_BODY_PREVIEW_LIMIT)));
+        assert!(preview.ends_with("\n...<truncated 3 bytes>"));
+    }
+
+    #[test]
+    fn test_api_error_with_context_includes_provider_path_and_preview() {
+        let error = ModelListingError::api_error_with_context(
+            "Gemini",
+            "/v1beta/models?pageSize=1000",
+            500,
+            br#"{"error":"boom"}"#,
+        );
+
+        match error {
+            ModelListingError::ApiError {
+                status_code,
+                message,
+            } => {
+                assert_eq!(status_code, 500);
+                assert!(message.contains("provider=Gemini"));
+                assert!(message.contains("path=/v1beta/models?pageSize=1000"));
+                assert!(message.contains("status=500"));
+                assert!(message.contains(r#"{"error":"boom"}"#));
+            }
+            _ => panic!("Expected ApiError"),
+        }
+    }
+
+    #[test]
+    fn test_parse_error_with_context_includes_parse_error_and_preview() {
+        let body = br#"{"models":[{"displayName":"broken"}]}"#;
+        let parse_error = serde_json::from_slice::<serde_json::Value>(b"{")
+            .expect_err("expected malformed JSON to fail");
+        let error = ModelListingError::parse_error_with_context(
+            "Gemini",
+            "/v1beta/models?pageSize=1000",
+            &parse_error,
+            body,
+        );
+
+        match error {
+            ModelListingError::ParseError { message } => {
+                assert!(message.contains("provider=Gemini"));
+                assert!(message.contains("path=/v1beta/models?pageSize=1000"));
+                assert!(message.contains("parse_error=EOF while parsing an object"));
+                assert!(message.contains(r#"{"models":[{"displayName":"broken"}]}"#));
+            }
+            _ => panic!("Expected ParseError"),
         }
     }
 }

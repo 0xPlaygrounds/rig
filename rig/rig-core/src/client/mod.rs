@@ -1,9 +1,7 @@
 //! This module provides traits for defining and creating provider clients.
 //! Clients are used to create models for completion, embeddings, etc.
-//! Dyn-compatible traits have been provided to allow for more provider-agnostic code.
 
 pub mod audio_generation;
-pub mod builder;
 pub mod completion;
 pub mod embeddings;
 pub mod image_generation;
@@ -16,7 +14,6 @@ pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
-use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
 pub use verify::{VerifyClient, VerifyError};
@@ -66,20 +63,6 @@ pub trait ProviderClient {
     fn from_env() -> Self;
 
     fn from_val(input: Self::Input) -> Self;
-}
-
-use crate::completion::{GetTokenUsage, Usage};
-
-/// The final streaming response from a dynamic client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FinalCompletionResponse {
-    pub usage: Option<Usage>,
-}
-
-impl GetTokenUsage for FinalCompletionResponse {
-    fn token_usage(&self) -> Option<Usage> {
-        self.usage
-    }
 }
 
 /// A trait for API keys. This determines whether the key is inserted into a [Client]'s default

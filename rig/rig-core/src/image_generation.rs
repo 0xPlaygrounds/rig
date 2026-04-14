@@ -1,12 +1,8 @@
 //! Everything related to core image generation abstractions in Rig.
 //! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
-#[allow(deprecated)]
-use crate::client::image_generation::ImageGenerationModelHandle;
 use crate::http_client;
 use crate::markers::{Missing, Provided};
-use futures::future::BoxFuture;
 use serde_json::Value;
-use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -77,50 +73,6 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
         ImageGenerationRequestBuilder::new(self.clone())
     }
 }
-
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.25.0",
-    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `ImageGenerationModel` instead."
-)]
-pub trait ImageGenerationModelDyn: Send + Sync {
-    fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> BoxFuture<'_, Result<ImageGenerationResponse<()>, ImageGenerationError>>;
-
-    fn image_generation_request(
-        &self,
-    ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle<'_>, Missing>;
-}
-
-#[allow(deprecated)]
-impl<T> ImageGenerationModelDyn for T
-where
-    T: ImageGenerationModel,
-{
-    fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> BoxFuture<'_, Result<ImageGenerationResponse<()>, ImageGenerationError>> {
-        Box::pin(async {
-            let resp = self.image_generation(request).await;
-            resp.map(|r| ImageGenerationResponse {
-                image: r.image,
-                response: (),
-            })
-        })
-    }
-
-    fn image_generation_request(
-        &self,
-    ) -> ImageGenerationRequestBuilder<ImageGenerationModelHandle<'_>, Missing> {
-        ImageGenerationRequestBuilder::new(ImageGenerationModelHandle {
-            inner: Arc::new(self.clone()),
-        })
-    }
-}
-
 /// An image generation request.
 #[non_exhaustive]
 pub struct ImageGenerationRequest {

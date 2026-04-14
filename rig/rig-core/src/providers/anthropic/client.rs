@@ -8,6 +8,7 @@ use crate::{
         ProviderClient,
     },
     http_client::{self, HttpClientExt},
+    providers::anthropic::model_listing::AnthropicModelLister,
 };
 
 // ================================================================
@@ -26,7 +27,7 @@ impl<H> Capabilities<H> for AnthropicExt {
 
     type Embeddings = Nothing;
     type Transcription = Nothing;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<AnthropicModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]

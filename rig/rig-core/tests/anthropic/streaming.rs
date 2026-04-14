@@ -13,7 +13,7 @@ use crate::support::{
 async fn streaming_smoke() {
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent(anthropic::completion::CLAUDE_4_SONNET)
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(STREAMING_PREAMBLE)
         .build();
 

@@ -6,8 +6,10 @@
 //! Finally, the module defines the [EmbeddingError] enum, which represents various errors that
 //! can occur during embedding generation or processing.
 
-use crate::wasm_compat::WasmBoxedFuture;
-use crate::{http_client, wasm_compat::*};
+use crate::{
+    http_client,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
@@ -72,51 +74,6 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
                 .pop()
                 .expect("There should be at least one embedding"))
         }
-    }
-}
-
-#[deprecated(
-    since = "0.25.0",
-    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `EmbeddingModel` instead."
-)]
-pub trait EmbeddingModelDyn: WasmCompatSend + WasmCompatSync {
-    fn max_documents(&self) -> usize;
-    fn ndims(&self) -> usize;
-    fn embed_text<'a>(
-        &'a self,
-        text: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Embedding, EmbeddingError>>;
-    fn embed_texts(
-        &self,
-        texts: Vec<String>,
-    ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
-}
-
-#[allow(deprecated)]
-impl<T> EmbeddingModelDyn for T
-where
-    T: EmbeddingModel + WasmCompatSend + WasmCompatSync,
-{
-    fn max_documents(&self) -> usize {
-        T::MAX_DOCUMENTS
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims()
-    }
-
-    fn embed_text<'a>(
-        &'a self,
-        text: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Embedding, EmbeddingError>> {
-        Box::pin(self.embed_text(text))
-    }
-
-    fn embed_texts(
-        &self,
-        texts: Vec<String>,
-    ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>> {
-        Box::pin(self.embed_texts(texts.into_iter().collect::<Vec<_>>()))
     }
 }
 

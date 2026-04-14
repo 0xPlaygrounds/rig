@@ -2,7 +2,7 @@
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
-use rig::providers::anthropic;
+use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
 
 use crate::support::{
     STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_smoke_structured_output,
@@ -13,7 +13,7 @@ use crate::support::{
 async fn structured_output_smoke() {
     let client = anthropic::Client::from_env();
     let agent = client
-        .agent("claude-sonnet-4-5")
+        .agent(CLAUDE_SONNET_4_6)
         .output_schema::<SmokeStructuredOutput>()
         .build();
 
