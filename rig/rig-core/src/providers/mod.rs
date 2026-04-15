@@ -53,7 +53,6 @@ pub mod copilot;
 pub mod deepseek;
 pub mod galadriel;
 pub mod gemini;
-pub mod github_copilot;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
