@@ -15,6 +15,7 @@ use crate::{
 };
 use futures::{StreamExt, stream};
 use hooks::{HookAction, PromptHook, ToolCallHookAction};
+use serde::{Deserialize, Serialize};
 use std::{
     future::IntoFuture,
     marker::PhantomData,
@@ -240,7 +241,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PromptResponse {
     pub output: String,
@@ -269,7 +270,8 @@ impl PromptResponse {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound = "T: Serialize + for<'a> Deserialize<'a>")]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
