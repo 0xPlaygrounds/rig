@@ -49,6 +49,7 @@ pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
 pub mod cohere;
+pub mod copilot;
 pub mod deepseek;
 pub mod galadriel;
 pub mod gemini;

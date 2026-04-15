@@ -690,8 +690,8 @@ where
 impl<M, Ext, H> ModelListingClient for Client<Ext, H>
 where
     Ext: Capabilities<H, ModelListing = Capable<M>> + Clone,
-    M: ModelLister<H, Client = Self> + Send + Sync + Clone + 'static,
-    H: Send + Sync + Clone,
+    M: ModelLister<H, Client = Self> + WasmCompatSend + WasmCompatSync + Clone + 'static,
+    H: WasmCompatSend + WasmCompatSync + Clone,
 {
     fn list_models(
         &self,
@@ -700,6 +700,104 @@ where
     > + WasmCompatSend {
         let lister = M::new(self.clone());
         async move { lister.list_all().await }
+    }
+}
+
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+mod wasm_model_listing_compile_checks {
+    use super::{ModelListingClient, Nothing};
+    use crate::{
+        http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response},
+        providers::{anthropic, mistral, ollama, openai, openrouter},
+        wasm_compat::WasmCompatSend,
+    };
+    use bytes::Bytes;
+    use std::{
+        future::{self, Future},
+        marker::PhantomData,
+        rc::Rc,
+    };
+
+    #[derive(Clone, Default)]
+    struct WasmOnlyHttpClient {
+        _not_send_sync: PhantomData<Rc<()>>,
+    }
+
+    impl HttpClientExt for WasmOnlyHttpClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            T: Into<Bytes> + WasmCompatSend,
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes>,
+        {
+            future::ready(Err(http_client::Error::StreamEnded))
+        }
+    }
+
+    fn assert_model_listing_client<C>(client: C)
+    where
+        C: ModelListingClient,
+    {
+        let _ = client.list_models();
+    }
+
+    fn assert_simple_model_listers_accept_wasm_only_http_clients() {
+        let _ = openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(WasmOnlyHttpClient::default())
+            .build()
+            .map(assert_model_listing_client);
+
+        let _ = openai::Client::builder()
+            .api_key("dummy-key")
+            .http_client(WasmOnlyHttpClient::default())
+            .build()
+            .map(assert_model_listing_client);
+
+        let _ = mistral::Client::builder()
+            .api_key("dummy-key")
+            .http_client(WasmOnlyHttpClient::default())
+            .build()
+            .map(assert_model_listing_client);
+
+        let _ = anthropic::Client::builder()
+            .api_key("dummy-key")
+            .http_client(WasmOnlyHttpClient::default())
+            .build()
+            .map(assert_model_listing_client);
+
+        let _ = ollama::Client::builder()
+            .api_key(Nothing)
+            .http_client(WasmOnlyHttpClient::default())
+            .build()
+            .map(assert_model_listing_client);
+    }
+
+    #[allow(dead_code)]
+    fn compile_assertions() {
+        assert_simple_model_listers_accept_wasm_only_http_clients();
     }
 }
 
