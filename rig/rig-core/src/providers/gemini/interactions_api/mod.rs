@@ -580,37 +580,26 @@ fn assistant_content_from_output(
 
 fn thought_to_reasoning(thought: ThoughtContent) -> Option<Reasoning> {
     let ThoughtContent { summary, signature } = thought;
-    let mut reasoning_content = summary
-        .unwrap_or_default()
+    let mut reasoning_content = signature
         .into_iter()
-        .filter_map(|content| match content {
-            ThoughtSummaryContent::Text(text) => Some(message::ReasoningContent::Text {
-                text: text.text,
-                signature: None,
-            }),
-            _ => None,
-        })
+        .map(message::ReasoningContent::Signature)
         .collect::<Vec<_>>();
 
-    if reasoning_content.is_empty() {
-        return signature.map(|signature| Reasoning {
-            id: None,
-            content: vec![message::ReasoningContent::Text {
-                text: String::new(),
-                signature: Some(signature),
-            }],
-        });
-    }
+    reasoning_content.extend(
+        summary
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|content| match content {
+                ThoughtSummaryContent::Text(text) if !text.text.is_empty() => {
+                    Some(message::ReasoningContent::Summary(text.text))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+    );
 
-    if let Some(signature) = signature
-        && let Some(message::ReasoningContent::Text {
-            signature: first_signature,
-            ..
-        }) = reasoning_content
-            .iter_mut()
-            .find(|content| matches!(content, message::ReasoningContent::Text { .. }))
-    {
-        *first_signature = Some(signature);
+    if reasoning_content.is_empty() {
+        return None;
     }
 
     Some(Reasoning {
@@ -621,40 +610,34 @@ fn thought_to_reasoning(thought: ThoughtContent) -> Option<Reasoning> {
 
 fn reasoning_to_thought(reasoning: message::Reasoning) -> ThoughtContent {
     let mut signature = None;
-    let mut has_nonempty_summary = false;
     let summary = reasoning
         .content
         .into_iter()
-        .map(|reasoning_content| {
-            let text = match reasoning_content {
-                message::ReasoningContent::Text {
-                    text,
-                    signature: content_signature,
-                } => {
-                    if signature.is_none() {
-                        signature = content_signature;
-                    }
-                    text
+        .filter_map(|reasoning_content| match reasoning_content {
+            message::ReasoningContent::Signature(content_signature) => {
+                if signature.is_none() {
+                    signature = Some(content_signature);
                 }
-                message::ReasoningContent::Summary(text)
-                | message::ReasoningContent::Encrypted(text) => text,
-                message::ReasoningContent::Redacted { data } => data,
-            };
-
-            if !text.is_empty() {
-                has_nonempty_summary = true;
+                None
             }
-
-            ThoughtSummaryContent::Text(TextContent {
-                text,
-                annotations: None,
-            })
+            message::ReasoningContent::Summary(text) | message::ReasoningContent::Text(text)
+                if !text.is_empty() =>
+            {
+                Some(ThoughtSummaryContent::Text(TextContent {
+                    text,
+                    annotations: None,
+                }))
+            }
+            message::ReasoningContent::Encrypted(_) | message::ReasoningContent::Redacted(_) => {
+                None
+            }
+            _ => None,
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     ThoughtContent {
         signature,
-        summary: has_nonempty_summary.then_some(summary),
+        summary: (!summary.is_empty()).then_some(summary),
     }
 }
 
@@ -1409,7 +1392,6 @@ pub mod interactions_api_types {
     /// Text content item.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct TextContent {
-        #[serde(default)]
         pub text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub annotations: Option<Vec<Annotation>>,
@@ -1873,6 +1855,38 @@ pub mod interactions_api_types {
         FileSearchResult(FileSearchResultContent),
     }
 
+    /// Streaming-only text content payload used by `content.start`.
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct StreamingTextStart {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub text: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub annotations: Option<Vec<Annotation>>,
+    }
+
+    /// Streaming-only content payload used by `content.start`.
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    pub enum StreamingContentStart {
+        Text(StreamingTextStart),
+        Image(ImageContent),
+        Audio(AudioContent),
+        Document(DocumentContent),
+        Video(VideoContent),
+        Thought(ThoughtContent),
+        FunctionCall(FunctionCallContent),
+        FunctionResult(FunctionResultContent),
+        CodeExecutionCall(CodeExecutionCallContent),
+        CodeExecutionResult(CodeExecutionResultContent),
+        UrlContextCall(UrlContextCallContent),
+        UrlContextResult(UrlContextResultContent),
+        GoogleSearchCall(GoogleSearchCallContent),
+        GoogleSearchResult(GoogleSearchResultContent),
+        McpServerToolCall(McpServerToolCallContent),
+        McpServerToolResult(McpServerToolResultContent),
+        FileSearchResult(FileSearchResultContent),
+    }
+
     impl TryFrom<message::UserContent> for Content {
         type Error = message::MessageError;
 
@@ -2281,7 +2295,7 @@ pub mod interactions_api_types {
         #[serde(rename = "content.start")]
         ContentStart {
             index: i32,
-            content: Content,
+            content: StreamingContentStart,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
@@ -2743,10 +2757,9 @@ mod tests {
                 assert_eq!(reasoning.id, None);
                 assert_eq!(
                     reasoning.content,
-                    vec![message::ReasoningContent::Text {
-                        text: String::new(),
-                        signature: Some("signed-thought".to_string()),
-                    }]
+                    vec![message::ReasoningContent::Signature(
+                        "signed-thought".to_string(),
+                    )]
                 );
             }
             other => panic!("unexpected content: {other:?}"),
@@ -2769,10 +2782,10 @@ mod tests {
     fn test_reasoning_thought_serializes_summary_items_with_type() {
         let thought = Content::try_from(message::AssistantContent::Reasoning(Reasoning {
             id: None,
-            content: vec![message::ReasoningContent::Text {
-                text: "visible reasoning".to_string(),
-                signature: Some("sig-typed".to_string()),
-            }],
+            content: vec![
+                message::ReasoningContent::Signature("sig-typed".to_string()),
+                message::ReasoningContent::Summary("visible reasoning".to_string()),
+            ],
         }))
         .expect("reasoning should convert");
 
@@ -2799,10 +2812,7 @@ mod tests {
     fn test_signature_only_reasoning_serializes_without_summary() {
         let thought = Content::try_from(message::AssistantContent::Reasoning(Reasoning {
             id: None,
-            content: vec![message::ReasoningContent::Text {
-                text: String::new(),
-                signature: Some("sig-only".to_string()),
-            }],
+            content: vec![message::ReasoningContent::Signature("sig-only".to_string())],
         }))
         .expect("reasoning should convert");
 
@@ -2813,6 +2823,16 @@ mod tests {
             Some("sig-only")
         );
         assert!(value.get("summary").is_none());
+    }
+
+    #[test]
+    fn test_full_text_content_requires_text_field() {
+        let error = serde_json::from_value::<TextContent>(json!({
+            "annotations": []
+        }))
+        .expect_err("full TextContent should reject a missing text field");
+
+        assert!(error.to_string().contains("missing field `text`"));
     }
 
     #[test]

@@ -453,7 +453,7 @@ fn handle_event(
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
                 id: None,
-                content: ReasoningContent::Redacted { data: data.clone() },
+                content: vec![ReasoningContent::Redacted(data.clone())],
             })),
             // Handle other content types - they don't need special handling
             _ => None,
@@ -470,10 +470,13 @@ fn handle_event(
 
                 return Some(Ok(RawStreamingChoice::Reasoning {
                     id: None,
-                    content: ReasoningContent::Text {
-                        text: thinking_state.thinking,
-                        signature,
-                    },
+                    content: signature
+                        .into_iter()
+                        .map(ReasoningContent::Signature)
+                        .chain(std::iter::once(ReasoningContent::Text(
+                            thinking_state.thinking,
+                        )))
+                        .collect(),
                 }));
             }
 
@@ -653,11 +656,11 @@ mod tests {
 
         assert!(result.is_some());
         match result.unwrap().unwrap() {
-            RawStreamingChoice::Reasoning {
-                content: ReasoningContent::Redacted { data },
-                ..
-            } => {
-                assert_eq!(data, "redacted_blob");
+            RawStreamingChoice::Reasoning { content, .. } => {
+                assert_eq!(
+                    content,
+                    vec![ReasoningContent::Redacted("redacted_blob".to_string())]
+                );
             }
             _ => panic!("Expected Redacted reasoning chunk"),
         }

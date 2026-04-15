@@ -766,18 +766,16 @@ mod tests {
         let mut accumulated = Vec::new();
         let first = crate::message::Reasoning {
             id: Some("rs_1".to_string()),
-            content: vec![ReasoningContent::Text {
-                text: "step-1".to_string(),
-                signature: Some("sig-1".to_string()),
-            }],
+            content: vec![
+                ReasoningContent::Signature("sig-1".to_string()),
+                ReasoningContent::Text("step-1".to_string()),
+            ],
         };
         let second = crate::message::Reasoning {
             id: Some("rs_1".to_string()),
             content: vec![
-                ReasoningContent::Text {
-                    text: "step-2".to_string(),
-                    signature: Some("sig-2".to_string()),
-                },
+                ReasoningContent::Signature("sig-2".to_string()),
+                ReasoningContent::Text("step-2".to_string()),
                 ReasoningContent::Summary("summary".to_string()),
             ],
         };
@@ -788,16 +786,22 @@ mod tests {
         assert_eq!(accumulated.len(), 1);
         let merged = accumulated.first().expect("expected accumulated reasoning");
         assert_eq!(merged.id.as_deref(), Some("rs_1"));
-        assert_eq!(merged.content.len(), 3);
+        assert_eq!(merged.content.len(), 5);
         assert!(matches!(
             merged.content.first(),
-            Some(ReasoningContent::Text { text, signature: Some(sig) })
-                if text == "step-1" && sig == "sig-1"
+            Some(ReasoningContent::Signature(sig)) if sig == "sig-1"
         ));
         assert!(matches!(
             merged.content.get(1),
-            Some(ReasoningContent::Text { text, signature: Some(sig) })
-                if text == "step-2" && sig == "sig-2"
+            Some(ReasoningContent::Text(text)) if text == "step-1"
+        ));
+        assert!(matches!(
+            merged.content.get(2),
+            Some(ReasoningContent::Signature(sig)) if sig == "sig-2"
+        ));
+        assert!(matches!(
+            merged.content.get(3),
+            Some(ReasoningContent::Text(text)) if text == "step-2"
         ));
     }
 
@@ -805,17 +809,11 @@ mod tests {
     fn merge_reasoning_blocks_keeps_distinct_ids_as_separate_items() {
         let mut accumulated = vec![crate::message::Reasoning {
             id: Some("rs_a".to_string()),
-            content: vec![ReasoningContent::Text {
-                text: "step-1".to_string(),
-                signature: None,
-            }],
+            content: vec![ReasoningContent::Text("step-1".to_string())],
         }];
         let incoming = crate::message::Reasoning {
             id: Some("rs_b".to_string()),
-            content: vec![ReasoningContent::Text {
-                text: "step-2".to_string(),
-                signature: None,
-            }],
+            content: vec![ReasoningContent::Text("step-2".to_string())],
         };
 
         merge_reasoning_blocks(&mut accumulated, &incoming);
@@ -834,17 +832,11 @@ mod tests {
     fn merge_reasoning_blocks_keeps_none_ids_separate_items() {
         let mut accumulated = vec![crate::message::Reasoning {
             id: None,
-            content: vec![ReasoningContent::Text {
-                text: "first".to_string(),
-                signature: None,
-            }],
+            content: vec![ReasoningContent::Text("first".to_string())],
         }];
         let incoming = crate::message::Reasoning {
             id: None,
-            content: vec![ReasoningContent::Text {
-                text: "second".to_string(),
-                signature: None,
-            }],
+            content: vec![ReasoningContent::Text("second".to_string())],
         };
 
         merge_reasoning_blocks(&mut accumulated, &incoming);
@@ -856,7 +848,7 @@ mod tests {
                 content
             }) if matches!(
                 content.first(),
-                Some(ReasoningContent::Text { text, .. }) if text == "first"
+                Some(ReasoningContent::Text(text)) if text == "first"
             )
         ));
         assert!(matches!(
@@ -866,7 +858,7 @@ mod tests {
                 content
             }) if matches!(
                 content.first(),
-                Some(ReasoningContent::Text { text, .. }) if text == "second"
+                Some(ReasoningContent::Text(text)) if text == "second"
             )
         ));
     }
@@ -930,13 +922,9 @@ mod tests {
 
         match assistant_items[0] {
             AssistantContent::Reasoning(reasoning)
-                if matches!(
-                    reasoning.content.first(),
-                    Some(ReasoningContent::Text {
-                        text,
-                        signature: Some(signature)
-                    }) if text == "thinking" && signature == "sig-1"
-                ) => {}
+                if matches!(reasoning.content.first(), Some(ReasoningContent::Signature(signature)) if signature == "sig-1")
+                    && matches!(reasoning.content.get(1), Some(ReasoningContent::Text(text)) if text == "thinking") =>
+                {}
             _ => {
                 return Err(format!(
                     "assistant message should replay reasoning before the tool call: {history:?}"
@@ -1041,10 +1029,10 @@ mod tests {
                 if turn == 0 {
                     yield Ok(RawStreamingChoice::Reasoning {
                         id: None,
-                        content: ReasoningContent::Text {
-                            text: "thinking".to_string(),
-                            signature: Some("sig-1".to_string()),
-                        },
+                        content: vec![
+                            ReasoningContent::Signature("sig-1".to_string()),
+                            ReasoningContent::Text("thinking".to_string()),
+                        ],
                     });
                     if matches!(scenario, ToolTurnScenario::ReasoningTextTool) {
                         yield Ok(RawStreamingChoice::Message("tool preamble".to_string()));

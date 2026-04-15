@@ -12,8 +12,9 @@ use rig::completion::{CompletionModel, GetTokenUsage, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice};
 use rig::providers::gemini;
 use rig::providers::gemini::interactions_api::{
-    AdditionalParameters, Content, ContentDelta, GenerationConfig, InteractionSseEvent,
-    InteractionsCompletionModel, ThinkingLevel, ThinkingSummaries, Tool as InteractionsTool,
+    AdditionalParameters, ContentDelta, GenerationConfig, InteractionSseEvent,
+    InteractionsCompletionModel, StreamingContentStart, ThinkingLevel, ThinkingSummaries,
+    Tool as InteractionsTool,
 };
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingChat};
 use rig::tool::Tool;
@@ -588,11 +589,11 @@ async fn raw_stream_tool_turn_emits_thought_signature_and_function_call_lifecycl
     while let Some(event) = stream.next().await {
         match event.expect("raw interaction stream should succeed") {
             InteractionSseEvent::ContentStart { index, content, .. } => match content {
-                Content::FunctionCall(_) => {
+                StreamingContentStart::FunctionCall(_) => {
                     function_call_indexes.insert(index);
                     saw_function_call_payload = true;
                 }
-                Content::Thought(thought) => {
+                StreamingContentStart::Thought(thought) => {
                     if thought.signature.is_some() {
                         saw_thought_signature = true;
                     }

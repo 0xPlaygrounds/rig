@@ -277,22 +277,25 @@ mod tests {
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "xr_1" && text == "s1"
+                content,
+            }) if id == "xr_1"
+                && matches!(content.as_slice(), [ReasoningContent::Summary(text)] if text == "s1")
         ));
         assert!(matches!(
             choices.get(1),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "xr_1" && text == "s2"
+                content,
+            }) if id == "xr_1"
+                && matches!(content.as_slice(), [ReasoningContent::Summary(text)] if text == "s2")
         ));
         assert!(matches!(
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Encrypted(data),
-            }) if id == "xr_1" && data == "enc"
+                content,
+            }) if id == "xr_1"
+                && matches!(content.as_slice(), [ReasoningContent::Encrypted(data)] if data == "enc")
         ));
     }
 }

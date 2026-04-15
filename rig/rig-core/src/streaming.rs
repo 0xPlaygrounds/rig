@@ -92,7 +92,7 @@ where
     /// A reasoning (in its entirety)
     Reasoning {
         id: Option<String>,
-        content: ReasoningContent,
+        content: Vec<ReasoningContent>,
     },
     /// A reasoning partial/delta
     ReasoningDelta {
@@ -273,10 +273,7 @@ where
     fn append_reasoning_chunk(&mut self, id: &Option<String>, text: &str) {
         if let Some(index) = self.reasoning_item_index
             && let Some(AssistantContent::Reasoning(existing)) = self.assistant_items.get_mut(index)
-            && let Some(ReasoningContent::Text {
-                text: existing_text,
-                ..
-            }) = existing.content.last_mut()
+            && let Some(ReasoningContent::Text(existing_text)) = existing.content.last_mut()
         {
             existing_text.push_str(text);
             return;
@@ -285,10 +282,7 @@ where
         self.assistant_items
             .push(AssistantContent::Reasoning(Reasoning {
                 id: id.clone(),
-                content: vec![ReasoningContent::Text {
-                    text: text.to_string(),
-                    signature: None,
-                }],
+                content: vec![ReasoningContent::Text(text.to_string())],
             }));
         self.reasoning_item_index = Some(self.assistant_items.len() - 1);
     }
@@ -393,10 +387,7 @@ where
                     content,
                 }))),
                 RawStreamingChoice::Reasoning { id, content } => {
-                    let reasoning = Reasoning {
-                        id,
-                        content: vec![content],
-                    };
+                    let reasoning = Reasoning { id, content };
                     stream.text_item_index = None;
                     // Full reasoning blocks should replace any in-progress delta placeholder so
                     // replay history uses one canonical reasoning item in arrival order.
@@ -698,10 +689,10 @@ mod tests {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_1".to_string()),
-                content: ReasoningContent::Text {
-                    text: "step one".to_string(),
-                    signature: Some("sig_1".to_string()),
-                },
+                content: vec![
+                    ReasoningContent::Signature("sig_1".to_string()),
+                    ReasoningContent::Text("step one".to_string()),
+                ],
             });
             yield Ok(RawStreamingChoice::Message("final answer".to_string()));
             yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 5 }));
@@ -714,7 +705,7 @@ mod tests {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_only".to_string()),
-                content: ReasoningContent::Summary("hidden summary".to_string()),
+                content: vec![ReasoningContent::Summary("hidden summary".to_string())],
             });
             yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 2 }));
         };
@@ -730,10 +721,10 @@ mod tests {
             });
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_replace".to_string()),
-                content: ReasoningContent::Text {
-                    text: "final reasoning".to_string(),
-                    signature: Some("sig_replace".to_string()),
-                },
+                content: vec![
+                    ReasoningContent::Signature("sig_replace".to_string()),
+                    ReasoningContent::Text("final reasoning".to_string()),
+                ],
             });
             yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 2 }));
         };
@@ -751,10 +742,10 @@ mod tests {
             yield Ok(RawStreamingChoice::Message("visible text".to_string()));
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_interleaved_replace".to_string()),
-                content: ReasoningContent::Text {
-                    text: "final reasoning".to_string(),
-                    signature: Some("sig_interleaved_replace".to_string()),
-                },
+                content: vec![
+                    ReasoningContent::Signature("sig_interleaved_replace".to_string()),
+                    ReasoningContent::Text("final reasoning".to_string()),
+                ],
             });
             yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 3 }));
         };
@@ -766,10 +757,7 @@ mod tests {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_interleaved".to_string()),
-                content: ReasoningContent::Text {
-                    text: "chain-of-thought".to_string(),
-                    signature: None,
-                },
+                content: vec![ReasoningContent::Text("chain-of-thought".to_string())],
             });
             yield Ok(RawStreamingChoice::Message("final-text".to_string()));
             yield Ok(RawStreamingChoice::ToolCall(
@@ -891,13 +879,8 @@ mod tests {
                 id: Some(id),
                 content
             }) if id == "rs_1"
-                && matches!(
-                    content.first(),
-                    Some(ReasoningContent::Text {
-                        text,
-                        signature: Some(signature)
-                    }) if text == "step one" && signature == "sig_1"
-                )
+                && matches!(content.first(), Some(ReasoningContent::Signature(signature)) if signature == "sig_1")
+                && matches!(content.get(1), Some(ReasoningContent::Text(text)) if text == "step one")
         )));
     }
 
@@ -925,11 +908,8 @@ mod tests {
             choice_items.first(),
             Some(AssistantContent::Reasoning(Reasoning { id: Some(id), content }))
                 if id == "rs_replace"
-                    && matches!(
-                        content.first(),
-                        Some(ReasoningContent::Text { text, signature: Some(signature) })
-                            if text == "final reasoning" && signature == "sig_replace"
-                    )
+                    && matches!(content.first(), Some(ReasoningContent::Signature(signature)) if signature == "sig_replace")
+                    && matches!(content.get(1), Some(ReasoningContent::Text(text)) if text == "final reasoning")
         ));
     }
 
@@ -944,12 +924,8 @@ mod tests {
             choice_items.first(),
             Some(AssistantContent::Reasoning(Reasoning { id: Some(id), content }))
                 if id == "rs_interleaved_replace"
-                    && matches!(
-                        content.first(),
-                        Some(ReasoningContent::Text { text, signature: Some(signature) })
-                            if text == "final reasoning"
-                                && signature == "sig_interleaved_replace"
-                    )
+                    && matches!(content.first(), Some(ReasoningContent::Signature(signature)) if signature == "sig_interleaved_replace")
+                    && matches!(content.get(1), Some(ReasoningContent::Text(text)) if text == "final reasoning")
         ));
         assert!(matches!(
             choice_items.get(1),

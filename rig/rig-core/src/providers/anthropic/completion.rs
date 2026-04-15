@@ -494,7 +494,15 @@ impl TryFrom<message::AssistantContent> for Content {
                 })
             }
             message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
-                thinking: reasoning.display_text(),
+                thinking: {
+                    let thinking = reasoning.display_text();
+                    if thinking.is_empty() && reasoning.first_signature().is_some() {
+                        return Err(MessageError::ConversionError(
+                            "Anthropic cannot encode a signature-only reasoning block".to_string(),
+                        ));
+                    }
+                    thinking
+                },
                 signature: reasoning.first_signature().map(str::to_owned),
             }),
         }
@@ -521,25 +529,36 @@ fn anthropic_content_from_assistant_content(
         }
         message::AssistantContent::Reasoning(reasoning) => {
             let mut converted = Vec::new();
+            let mut pending_signature = None;
             for block in reasoning.content {
                 match block {
-                    message::ReasoningContent::Text { text, signature } => {
+                    message::ReasoningContent::Signature(signature) => {
+                        pending_signature = Some(signature);
+                    }
+                    message::ReasoningContent::Text(text) => {
                         converted.push(Content::Thinking {
                             thinking: text,
-                            signature,
+                            signature: pending_signature.take(),
                         });
                     }
                     message::ReasoningContent::Summary(summary) => {
                         converted.push(Content::Thinking {
                             thinking: summary,
-                            signature: None,
+                            signature: pending_signature.take(),
                         });
                     }
-                    message::ReasoningContent::Redacted { data }
+                    message::ReasoningContent::Redacted(data)
                     | message::ReasoningContent::Encrypted(data) => {
+                        pending_signature = None;
                         converted.push(Content::RedactedThinking { data });
                     }
                 }
+            }
+
+            if pending_signature.is_some() {
+                return Err(MessageError::ConversionError(
+                    "Anthropic reasoning signature must be followed by text or summary".to_string(),
+                ));
             }
 
             if converted.is_empty() {
@@ -2181,18 +2200,12 @@ mod tests {
         let reasoning = message::Reasoning {
             id: None,
             content: vec![
-                message::ReasoningContent::Text {
-                    text: "step one".to_string(),
-                    signature: Some("sig-1".to_string()),
-                },
+                message::ReasoningContent::Signature("sig-1".to_string()),
+                message::ReasoningContent::Text("step one".to_string()),
                 message::ReasoningContent::Summary("summary".to_string()),
-                message::ReasoningContent::Text {
-                    text: "step two".to_string(),
-                    signature: Some("sig-2".to_string()),
-                },
-                message::ReasoningContent::Redacted {
-                    data: "redacted block".to_string(),
-                },
+                message::ReasoningContent::Signature("sig-2".to_string()),
+                message::ReasoningContent::Text("step two".to_string()),
+                message::ReasoningContent::Redacted("redacted block".to_string()),
             ],
         };
 
@@ -2238,7 +2251,7 @@ mod tests {
             message::AssistantContent::Reasoning(message::Reasoning { content, .. })
                 if matches!(
                     content.first(),
-                    Some(message::ReasoningContent::Redacted { data }) if data == "opaque-redacted"
+                    Some(message::ReasoningContent::Redacted(data)) if data == "opaque-redacted"
                 )
         ));
     }

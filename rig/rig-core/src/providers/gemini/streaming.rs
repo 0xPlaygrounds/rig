@@ -172,10 +172,13 @@ where
                                             // Gemini 3+ roundtrip.
                                             yield Ok(streaming::RawStreamingChoice::Reasoning {
                                                 id: None,
-                                                content: ReasoningContent::Text {
-                                                    text,
-                                                    signature: thought_signature,
-                                                },
+                                                content: thought_signature
+                                                    .into_iter()
+                                                    .map(ReasoningContent::Signature)
+                                                    .chain(std::iter::once(ReasoningContent::Text(
+                                                        text,
+                                                    )))
+                                                    .collect(),
                                             });
                                         } else {
                                             yield Ok(streaming::RawStreamingChoice::ReasoningDelta {

@@ -50,7 +50,7 @@ pub(crate) fn reasoning_choices_from_done_item(
         .map(|reasoning_summary| match reasoning_summary {
             ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
                 id: Some(id.to_owned()),
-                content: ReasoningContent::Summary(text.to_owned()),
+                content: vec![ReasoningContent::Summary(text.to_owned())],
             },
         })
         .collect::<Vec<_>>();
@@ -58,7 +58,7 @@ pub(crate) fn reasoning_choices_from_done_item(
     if let Some(encrypted_content) = encrypted_content {
         choices.push(RawStreamingChoice::Reasoning {
             id: Some(id.to_owned()),
-            content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
+            content: vec![ReasoningContent::Encrypted(encrypted_content.to_owned())],
         });
     }
 
@@ -629,22 +629,25 @@ mod tests {
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "rs_1" && text == "step 1"
+                content,
+            }) if id == "rs_1"
+                && matches!(content.as_slice(), [ReasoningContent::Summary(text)] if text == "step 1")
         ));
         assert!(matches!(
             choices.get(1),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "rs_1" && text == "step 2"
+                content,
+            }) if id == "rs_1"
+                && matches!(content.as_slice(), [ReasoningContent::Summary(text)] if text == "step 2")
         ));
         assert!(matches!(
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Encrypted(data),
-            }) if id == "rs_1" && data == "enc_blob"
+                content,
+            }) if id == "rs_1"
+                && matches!(content.as_slice(), [ReasoningContent::Encrypted(data)] if data == "enc_blob")
         ));
     }
 
@@ -660,8 +663,9 @@ mod tests {
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
                 id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "rs_2" && text == "only summary"
+                content,
+            }) if id == "rs_2"
+                && matches!(content.as_slice(), [ReasoningContent::Summary(text)] if text == "only summary")
         ));
     }
 

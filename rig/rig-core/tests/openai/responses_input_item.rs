@@ -87,9 +87,9 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
     reasoning
         .content
         .push(ReasoningContent::Encrypted("ciphertext".to_string()));
-    reasoning.content.push(ReasoningContent::Redacted {
-        data: "redacted".to_string(),
-    });
+    reasoning
+        .content
+        .push(ReasoningContent::Redacted("redacted".to_string()));
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),

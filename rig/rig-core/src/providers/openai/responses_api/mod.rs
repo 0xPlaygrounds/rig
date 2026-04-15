@@ -488,14 +488,15 @@ fn openai_reasoning_from_core(
     let mut encrypted_content = None;
     for content in &reasoning.content {
         match content {
-            crate::message::ReasoningContent::Text { text, .. }
+            crate::message::ReasoningContent::Text(text)
             | crate::message::ReasoningContent::Summary(text) => {
                 summary.push(ReasoningSummary::new(text));
             }
+            crate::message::ReasoningContent::Signature(_) => {}
             // OpenAI reasoning input has one opaque payload field; preserve either
             // encrypted or redacted blocks there, preferring the first one seen.
             crate::message::ReasoningContent::Encrypted(data)
-            | crate::message::ReasoningContent::Redacted { data } => {
+            | crate::message::ReasoningContent::Redacted(data) => {
                 encrypted_content.get_or_insert_with(|| data.clone());
             }
         }

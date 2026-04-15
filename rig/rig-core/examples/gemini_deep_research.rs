@@ -6,8 +6,8 @@ use rig::providers::gemini::{
     self,
     interactions_api::{
         AdditionalParameters, AgentConfig, Content, ContentDelta, InteractionSseEvent,
-        InteractionStatus, TextDelta, ThinkingSummaries, ThoughtSummaryContent,
-        ThoughtSummaryDelta,
+        InteractionStatus, StreamingContentStart, TextDelta, ThinkingSummaries,
+        ThoughtSummaryContent, ThoughtSummaryDelta,
     },
 };
 use std::time::Duration;
@@ -68,8 +68,10 @@ fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
             content, event_id, ..
         } => {
             track_event_id(&mut state.last_event_id, event_id);
-            if let Content::Text(text) = content {
-                print!("{}", text.text);
+            if let StreamingContentStart::Text(text) = content
+                && let Some(text) = text.text
+            {
+                print!("{text}");
                 state.saw_text = true;
             }
         }

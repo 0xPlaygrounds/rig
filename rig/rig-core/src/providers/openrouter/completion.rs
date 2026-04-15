@@ -636,14 +636,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         } => (
                             id.clone(),
                             *index,
-                            Some(message::ReasoningContent::Summary(summary.clone())),
+                            vec![message::ReasoningContent::Summary(summary.clone())],
                         ),
                         ReasoningDetails::Encrypted {
                             id, index, data, ..
                         } => (
                             id.clone(),
                             *index,
-                            Some(message::ReasoningContent::Encrypted(data.clone())),
+                            vec![message::ReasoningContent::Encrypted(data.clone())],
                         ),
                         ReasoningDetails::Text {
                             id,
@@ -651,28 +651,31 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                             text,
                             signature,
                             ..
-                        } => (
-                            id.clone(),
-                            *index,
-                            text.as_ref().map(|text| message::ReasoningContent::Text {
-                                text: text.clone(),
-                                signature: signature.clone(),
-                            }),
-                        ),
+                        } => {
+                            let mut parsed = Vec::new();
+                            if let Some(signature) = signature.clone() {
+                                parsed.push(message::ReasoningContent::Signature(signature));
+                            }
+                            if let Some(text) = text.clone() {
+                                parsed.push(message::ReasoningContent::Text(text));
+                            }
+                            (id.clone(), *index, parsed)
+                        }
                     };
 
-                    let Some(parsed_content) = parsed_content else {
+                    if parsed_content.is_empty() {
                         continue;
-                    };
+                    }
                     let sort_index = sort_index.unwrap_or(position);
 
                     let entry = grouped_reasoning.entry(reasoning_id.clone());
                     if matches!(entry, std::collections::hash_map::Entry::Vacant(_)) {
                         reasoning_order.push(reasoning_id);
                     }
-                    entry
-                        .or_default()
-                        .push((sort_index, position, parsed_content));
+                    let entry = entry.or_default();
+                    for (offset, content) in parsed_content.into_iter().enumerate() {
+                        entry.push((sort_index, position.saturating_mul(2) + offset, content));
+                    }
                 }
 
                 if grouped_reasoning.is_empty() {
@@ -1436,28 +1439,43 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                             reasoning = Some(display);
                         }
                     } else {
+                        let mut pending_signature = None;
                         for reasoning_block in &r.content {
                             let index = Some(reasoning_details.len());
                             match reasoning_block {
-                                message::ReasoningContent::Text { text, signature } => {
+                                message::ReasoningContent::Signature(signature) => {
+                                    pending_signature = Some(signature.clone());
+                                }
+                                message::ReasoningContent::Text(text) => {
                                     reasoning_details.push(ReasoningDetails::Text {
                                         id: r.id.clone(),
                                         format: None,
                                         index,
                                         text: Some(text.clone()),
-                                        signature: signature.clone(),
+                                        signature: pending_signature.take(),
                                     });
                                 }
                                 message::ReasoningContent::Summary(summary) => {
-                                    reasoning_details.push(ReasoningDetails::Summary {
-                                        id: r.id.clone(),
-                                        format: None,
-                                        index,
-                                        summary: summary.clone(),
-                                    });
+                                    if let Some(signature) = pending_signature.take() {
+                                        reasoning_details.push(ReasoningDetails::Text {
+                                            id: r.id.clone(),
+                                            format: None,
+                                            index,
+                                            text: Some(summary.clone()),
+                                            signature: Some(signature),
+                                        });
+                                    } else {
+                                        reasoning_details.push(ReasoningDetails::Summary {
+                                            id: r.id.clone(),
+                                            format: None,
+                                            index,
+                                            summary: summary.clone(),
+                                        });
+                                    }
                                 }
                                 message::ReasoningContent::Encrypted(data)
-                                | message::ReasoningContent::Redacted { data } => {
+                                | message::ReasoningContent::Redacted(data) => {
+                                    pending_signature = None;
                                     reasoning_details.push(ReasoningDetails::Encrypted {
                                         id: r.id.clone(),
                                         format: None,
@@ -1466,6 +1484,11 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                                     });
                                 }
                             }
+                        }
+                        if pending_signature.is_some() {
+                            return Err(Self::Error::ConversionError(
+                                "OpenRouter cannot encode a signature-only reasoning block".into(),
+                            ));
                         }
                     }
                 }
@@ -2696,7 +2719,13 @@ mod tests {
         assert!(items.iter().any(|item| matches!(
             item,
             completion::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
-                if id == "rs_1" && content.len() == 3
+                if id == "rs_1"
+                    && matches!(content.as_slice(), [
+                        message::ReasoningContent::Summary(summary),
+                        message::ReasoningContent::Signature(signature),
+                        message::ReasoningContent::Text(text),
+                        message::ReasoningContent::Encrypted(data),
+                    ] if summary == "s1" && signature == "sig_1" && text == "t1" && data == "enc_1")
         )));
     }
 
@@ -2705,10 +2734,8 @@ mod tests {
         let reasoning = message::Reasoning {
             id: Some("rs_2".to_string()),
             content: vec![
-                message::ReasoningContent::Text {
-                    text: "step".to_string(),
-                    signature: Some("sig_step".to_string()),
-                },
+                message::ReasoningContent::Signature("sig_step".to_string()),
+                message::ReasoningContent::Text("step".to_string()),
                 message::ReasoningContent::Summary("summary".to_string()),
                 message::ReasoningContent::Encrypted("enc_blob".to_string()),
             ],
@@ -2744,9 +2771,9 @@ mod tests {
     fn test_assistant_redacted_reasoning_emits_encrypted_detail_not_text() {
         let reasoning = message::Reasoning {
             id: Some("rs_redacted".to_string()),
-            content: vec![message::ReasoningContent::Redacted {
-                data: "opaque-redacted-data".to_string(),
-            }],
+            content: vec![message::ReasoningContent::Redacted(
+                "opaque-redacted-data".to_string(),
+            )],
         };
 
         let messages = Vec::<Message>::try_from(OneOrMany::one(

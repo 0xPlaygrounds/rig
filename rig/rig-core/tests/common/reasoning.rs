@@ -381,18 +381,17 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
 
     for content in &reasoning.content {
         let type_name = match content {
-            ReasoningContent::Text { signature, .. } => {
-                if signature.is_some() {
-                    stats.reasoning_has_signature = true;
-                }
-                "Text"
+            ReasoningContent::Text(_) => "Text",
+            ReasoningContent::Signature(_) => {
+                stats.reasoning_has_signature = true;
+                "Signature"
             }
             ReasoningContent::Encrypted(_) => {
                 stats.reasoning_has_encrypted = true;
                 "Encrypted"
             }
             ReasoningContent::Summary(_) => "Summary",
-            ReasoningContent::Redacted { .. } => "Redacted",
+            ReasoningContent::Redacted(_) => "Redacted",
             _ => "Unknown",
         };
         stats.reasoning_content_types.push(type_name);

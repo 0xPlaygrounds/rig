@@ -1158,12 +1158,21 @@ pub mod gemini_api_types {
                     )),
                 },
                 message::AssistantContent::ToolCall(tool_call) => Ok(tool_call.into()),
-                message::AssistantContent::Reasoning(reasoning) => Ok(Part {
-                    thought: Some(true),
-                    thought_signature: reasoning.first_signature().map(str::to_owned),
-                    part: PartKind::Text(reasoning.display_text()),
-                    additional_params: None,
-                }),
+                message::AssistantContent::Reasoning(reasoning) => {
+                    let thinking = reasoning.display_text();
+                    if thinking.is_empty() && reasoning.first_signature().is_some() {
+                        return Err(message::MessageError::ConversionError(
+                            "Gemini generateContent cannot encode a signature-only reasoning block"
+                                .to_string(),
+                        ));
+                    }
+                    Ok(Part {
+                        thought: Some(true),
+                        thought_signature: reasoning.first_signature().map(str::to_owned),
+                        part: PartKind::Text(thinking),
+                        additional_params: None,
+                    })
+                }
             }
         }
     }
@@ -2289,11 +2298,13 @@ mod tests {
             message::AssistantContent::Reasoning(message::Reasoning { content, .. })
                 if matches!(
                     content.first(),
-                    Some(message::ReasoningContent::Text {
-                        text,
-                        signature: Some(signature)
-                    }) if text == "thinking text" && signature == "thought_sig_123"
+                    Some(message::ReasoningContent::Signature(signature))
+                        if signature == "thought_sig_123"
                 )
+                    && matches!(
+                        content.get(1),
+                        Some(message::ReasoningContent::Text(text)) if text == "thinking text"
+                    )
         ));
     }
 

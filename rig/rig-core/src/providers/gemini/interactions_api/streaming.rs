@@ -9,8 +9,8 @@ use tracing_futures::Instrument;
 use super::InteractionsCompletionModel;
 use super::create_request_body;
 use super::interactions_api_types::{
-    Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
-    InteractionSseEvent, InteractionUsage, TextContent, TextDelta, ThoughtContent,
+    ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction, InteractionSseEvent,
+    InteractionUsage, StreamingContentStart, StreamingTextStart, TextDelta, ThoughtContent,
     ThoughtSignatureDelta, ThoughtSummaryContent, ThoughtSummaryDelta,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -21,6 +21,7 @@ use crate::message::ReasoningContent;
 use crate::streaming::{self, ToolCallDeltaContent};
 use crate::telemetry::SpanCombinator;
 use serde_json::{Map, Value};
+use std::fmt;
 
 #[derive(Debug, Default)]
 struct ThoughtState {
@@ -138,10 +139,10 @@ where
                             Ok(Some(data)) => data,
                             Ok(None) => continue,
                             Err(err) => {
-                                tracing::debug!(
-                                    "Failed to deserialize interactions SSE event: {err}"
-                                );
-                                continue;
+                                yield Err(CompletionError::ProviderError(format!(
+                                    "Failed to parse interactions SSE event: {err}"
+                                )));
+                                break;
                             }
                         };
 
@@ -225,8 +226,10 @@ where
                         Ok(Some(data)) => data,
                         Ok(None) => continue,
                         Err(err) => {
-                            tracing::debug!("Failed to deserialize interactions SSE event: {err}");
-                            continue;
+                            yield Err(CompletionError::ProviderError(format!(
+                                "Failed to parse interactions SSE event: {err}"
+                            )));
+                            break;
                         }
                     };
 
@@ -249,13 +252,44 @@ where
 
 fn parse_interaction_sse_event(
     data: &str,
-) -> Result<Option<InteractionSseEvent>, serde_json::Error> {
+) -> Result<Option<InteractionSseEvent>, InteractionSseParseError> {
     let trimmed = data.trim();
-    if trimmed.is_empty() || !trimmed.starts_with('{') {
+    if trimmed.is_empty() || trimmed == "[DONE]" {
         return Ok(None);
     }
+    if !trimmed.starts_with('{') {
+        return Err(InteractionSseParseError::UnexpectedPayload(
+            trimmed.to_owned(),
+        ));
+    }
 
-    serde_json::from_str::<InteractionSseEvent>(trimmed).map(Some)
+    let value: Value = serde_json::from_str(trimmed).map_err(InteractionSseParseError::Json)?;
+    if !value.is_object() {
+        return Err(InteractionSseParseError::UnexpectedPayload(
+            trimmed.to_owned(),
+        ));
+    }
+
+    serde_json::from_value::<InteractionSseEvent>(value)
+        .map(Some)
+        .map_err(InteractionSseParseError::Json)
+}
+
+#[derive(Debug)]
+enum InteractionSseParseError {
+    Json(serde_json::Error),
+    UnexpectedPayload(String),
+}
+
+impl fmt::Display for InteractionSseParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Json(error) => write!(f, "{error}"),
+            Self::UnexpectedPayload(payload) => {
+                write!(f, "unexpected non-object SSE payload: {payload}")
+            }
+        }
+    }
 }
 
 impl ThoughtState {
@@ -300,17 +334,20 @@ impl ThoughtState {
     }
 
     fn finish(self) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
-        if self.text.is_empty() && self.signature.is_none() {
+        let mut content = self
+            .signature
+            .into_iter()
+            .map(ReasoningContent::Signature)
+            .collect::<Vec<_>>();
+        if !self.text.is_empty() {
+            content.push(ReasoningContent::Summary(self.text));
+        }
+
+        if content.is_empty() {
             return None;
         }
 
-        Some(streaming::RawStreamingChoice::Reasoning {
-            id: None,
-            content: ReasoningContent::Text {
-                text: self.text,
-                signature: self.signature,
-            },
-        })
+        Some(streaming::RawStreamingChoice::Reasoning { id: None, content })
     }
 }
 
@@ -404,25 +441,27 @@ impl InteractionStreamState {
     fn handle_content_start(
         &mut self,
         index: i32,
-        content: Content,
+        content: StreamingContentStart,
     ) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
         self.clear_index(index);
 
         match content {
-            Content::Text(TextContent { text, .. }) => {
-                if text.is_empty() {
+            StreamingContentStart::Text(StreamingTextStart { text, .. }) => {
+                if text.as_ref().is_none_or(String::is_empty) {
                     Vec::new()
                 } else {
-                    vec![streaming::RawStreamingChoice::Message(text)]
+                    vec![streaming::RawStreamingChoice::Message(
+                        text.expect("checked is_some"),
+                    )]
                 }
             }
-            Content::FunctionCall(function_call) => {
+            StreamingContentStart::FunctionCall(function_call) => {
                 let mut state = FunctionCallState::default();
                 let choices = state.seed_from_start(function_call);
                 self.function_calls_by_index.insert(index, state);
                 choices
             }
-            Content::Thought(ThoughtContent { summary, signature }) => {
+            StreamingContentStart::Thought(ThoughtContent { summary, signature }) => {
                 let mut state = ThoughtState::default();
                 let choices = state.seed_from_start(summary, signature);
                 self.thoughts_by_index.insert(index, state);
@@ -526,6 +565,10 @@ fn merge_json_value(existing: &mut Value, incoming: Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::gemini::interactions_api::{
+        FunctionCallContent, InteractionSseEvent, StreamingContentStart, TextContent,
+        ThoughtContent, ThoughtSummaryContent,
+    };
     use crate::streaming::RawStreamingChoice;
     use serde_json::json;
 
@@ -558,14 +601,24 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_interaction_sse_event_ignores_non_json_payload() {
+    fn test_parse_interaction_sse_event_ignores_done_payload() {
         let parsed =
             parse_interaction_sse_event("[DONE]").expect("non-json payload should be ignored");
         assert!(parsed.is_none());
     }
 
     #[test]
-    fn test_content_start_text_without_text_field_deserializes_as_empty_text() {
+    fn test_parse_interaction_sse_event_rejects_unexpected_non_object_payload() {
+        let error = parse_interaction_sse_event("keepalive")
+            .expect_err("unexpected non-object payload should fail");
+        assert_eq!(
+            error.to_string(),
+            "unexpected non-object SSE payload: keepalive"
+        );
+    }
+
+    #[test]
+    fn test_content_start_text_without_text_field_deserializes_via_streaming_type() {
         let event_json = json!({
             "event_type": "content.start",
             "index": 0,
@@ -590,7 +643,7 @@ mod tests {
 
         let choices = stream_state.handle_content_start(
             0,
-            Content::FunctionCall(FunctionCallContent {
+            StreamingContentStart::FunctionCall(FunctionCallContent {
                 name: Some("get_weather".to_string()),
                 arguments: Some(json!({"location": "Paris"})),
                 id: Some("call-1".to_string()),
@@ -728,7 +781,7 @@ mod tests {
 
         let start_choices = stream_state.handle_content_start(
             0,
-            Content::Thought(ThoughtContent {
+            StreamingContentStart::Thought(ThoughtContent {
                 summary: None,
                 signature: None,
             }),
@@ -767,13 +820,13 @@ mod tests {
         match stop_choice {
             RawStreamingChoice::Reasoning { id, content } => {
                 assert_eq!(id, None);
-                match content {
-                    ReasoningContent::Text { text, signature } => {
-                        assert_eq!(text, "thinking...");
-                        assert_eq!(signature.as_deref(), Some("sig-123"));
-                    }
-                    other => panic!("unexpected reasoning content: {other:?}"),
-                }
+                assert_eq!(
+                    content,
+                    vec![
+                        ReasoningContent::Signature("sig-123".to_string()),
+                        ReasoningContent::Summary("thinking...".to_string()),
+                    ]
+                );
             }
             other => panic!("unexpected choice: {other:?}"),
         }
@@ -797,13 +850,10 @@ mod tests {
         match stop_choice {
             RawStreamingChoice::Reasoning { id, content } => {
                 assert_eq!(id, None);
-                match content {
-                    ReasoningContent::Text { text, signature } => {
-                        assert!(text.is_empty());
-                        assert_eq!(signature.as_deref(), Some("sig-only"));
-                    }
-                    other => panic!("unexpected reasoning content: {other:?}"),
-                }
+                assert_eq!(
+                    content,
+                    vec![ReasoningContent::Signature("sig-only".to_string())]
+                );
             }
             other => panic!("unexpected choice: {other:?}"),
         }
@@ -821,7 +871,7 @@ mod tests {
 
         let start_choices = stream_state.handle_content_start(
             0,
-            Content::Thought(ThoughtContent {
+            StreamingContentStart::Thought(ThoughtContent {
                 summary: Some(vec![ThoughtSummaryContent::Text(TextContent {
                     text: "seeded".to_string(),
                     annotations: None,
@@ -845,13 +895,13 @@ mod tests {
         match stop_choice {
             RawStreamingChoice::Reasoning { id, content } => {
                 assert_eq!(id, None);
-                match content {
-                    ReasoningContent::Text { text, signature } => {
-                        assert_eq!(text, "seeded");
-                        assert_eq!(signature.as_deref(), Some("sig-seeded"));
-                    }
-                    other => panic!("unexpected reasoning content: {other:?}"),
-                }
+                assert_eq!(
+                    content,
+                    vec![
+                        ReasoningContent::Signature("sig-seeded".to_string()),
+                        ReasoningContent::Summary("seeded".to_string()),
+                    ]
+                );
             }
             other => panic!("unexpected choice: {other:?}"),
         }

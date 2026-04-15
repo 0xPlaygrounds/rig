@@ -76,16 +76,14 @@ pub enum AssistantContent {
 #[non_exhaustive]
 /// A typed reasoning block used by providers that emit structured thinking data.
 pub enum ReasoningContent {
-    /// Plain reasoning text with an optional provider signature.
-    Text {
-        text: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        signature: Option<String>,
-    },
+    /// Plain reasoning text.
+    Text(String),
+    /// Provider replay signature kept separate from displayable text.
+    Signature(String),
     /// Provider-encrypted reasoning payload.
     Encrypted(String),
     /// Redacted reasoning payload preserved as opaque data.
-    Redacted { data: String },
+    Redacted(String),
     /// Provider-generated reasoning summary text.
     Summary(String),
 }
@@ -108,13 +106,12 @@ impl Reasoning {
 
     /// Create a new reasoning item from a single text item and optional signature.
     pub fn new_with_signature(input: &str, signature: Option<String>) -> Self {
-        Self {
-            id: None,
-            content: vec![ReasoningContent::Text {
-                text: input.to_string(),
-                signature,
-            }],
+        let mut content = Vec::new();
+        if let Some(signature) = signature {
+            content.push(ReasoningContent::Signature(signature));
         }
+        content.push(ReasoningContent::Text(input.to_string()));
+        Self { id: None, content }
     }
 
     /// Set or clear the provider reasoning ID.
@@ -133,13 +130,7 @@ impl Reasoning {
     pub fn multi(input: Vec<String>) -> Self {
         Self {
             id: None,
-            content: input
-                .into_iter()
-                .map(|text| ReasoningContent::Text {
-                    text,
-                    signature: None,
-                })
-                .collect(),
+            content: input.into_iter().map(ReasoningContent::Text).collect(),
         }
     }
 
@@ -147,7 +138,7 @@ impl Reasoning {
     pub fn redacted(data: impl Into<String>) -> Self {
         Self {
             id: None,
-            content: vec![ReasoningContent::Redacted { data: data.into() }],
+            content: vec![ReasoningContent::Redacted(data.into())],
         }
     }
 
@@ -172,10 +163,10 @@ impl Reasoning {
         self.content
             .iter()
             .filter_map(|content| match content {
-                ReasoningContent::Text { text, .. } => Some(text.as_str()),
+                ReasoningContent::Text(text) => Some(text.as_str()),
                 ReasoningContent::Summary(summary) => Some(summary.as_str()),
-                ReasoningContent::Redacted { data } => Some(data.as_str()),
-                ReasoningContent::Encrypted(_) => None,
+                ReasoningContent::Redacted(data) => Some(data.as_str()),
+                ReasoningContent::Encrypted(_) | ReasoningContent::Signature(_) => None,
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -184,18 +175,15 @@ impl Reasoning {
     /// Return the first text reasoning block, if present.
     pub fn first_text(&self) -> Option<&str> {
         self.content.iter().find_map(|content| match content {
-            ReasoningContent::Text { text, .. } => Some(text.as_str()),
+            ReasoningContent::Text(text) => Some(text.as_str()),
             _ => None,
         })
     }
 
-    /// Return the first signature from text reasoning, if present.
+    /// Return the first provider signature block, if present.
     pub fn first_signature(&self) -> Option<&str> {
         self.content.iter().find_map(|content| match content {
-            ReasoningContent::Text {
-                signature: Some(signature),
-                ..
-            } => Some(signature.as_str()),
+            ReasoningContent::Signature(signature) => Some(signature.as_str()),
             _ => None,
         })
     }
@@ -1326,14 +1314,10 @@ mod tests {
     #[test]
     fn reasoning_content_serde_roundtrip() {
         let variants = vec![
-            ReasoningContent::Text {
-                text: "plain".to_string(),
-                signature: Some("sig".to_string()),
-            },
+            ReasoningContent::Text("plain".to_string()),
+            ReasoningContent::Signature("sig".to_string()),
             ReasoningContent::Encrypted("opaque".to_string()),
-            ReasoningContent::Redacted {
-                data: "redacted".to_string(),
-            },
+            ReasoningContent::Redacted("redacted".to_string()),
             ReasoningContent::Summary("summary".to_string()),
         ];
 
