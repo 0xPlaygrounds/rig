@@ -628,9 +628,7 @@ fn reasoning_to_thought(reasoning: message::Reasoning) -> ThoughtContent {
                     annotations: None,
                 }))
             }
-            message::ReasoningContent::Encrypted(_) | message::ReasoningContent::Redacted(_) => {
-                None
-            }
+            message::ReasoningContent::Opaque(_) => None,
             _ => None,
         })
         .collect::<Vec<_>>();

@@ -58,7 +58,7 @@ pub(crate) fn reasoning_choices_from_done_item(
     if let Some(encrypted_content) = encrypted_content {
         choices.push(RawStreamingChoice::Reasoning {
             id: Some(id.to_owned()),
-            content: vec![ReasoningContent::Encrypted(encrypted_content.to_owned())],
+            content: vec![ReasoningContent::Opaque(encrypted_content.to_owned())],
         });
     }
 
@@ -647,7 +647,7 @@ mod tests {
                 id: Some(id),
                 content,
             }) if id == "rs_1"
-                && matches!(content.as_slice(), [ReasoningContent::Encrypted(data)] if data == "enc_blob")
+                && matches!(content.as_slice(), [ReasoningContent::Opaque(data)] if data == "enc_blob")
         ));
     }
 

@@ -326,7 +326,7 @@ pub(crate) struct StreamStats {
     pub(crate) reasoning_delta_count: usize,
     pub(crate) reasoning_content_types: Vec<&'static str>,
     pub(crate) reasoning_has_signature: bool,
-    pub(crate) reasoning_has_encrypted: bool,
+    pub(crate) reasoning_has_opaque: bool,
     pub(crate) tool_calls_in_stream: Vec<String>,
     pub(crate) tool_results_in_stream: usize,
     pub(crate) text_chunks: usize,
@@ -344,7 +344,7 @@ impl StreamStats {
             reasoning_delta_count: 0,
             reasoning_content_types: vec![],
             reasoning_has_signature: false,
-            reasoning_has_encrypted: false,
+            reasoning_has_opaque: false,
             tool_calls_in_stream: vec![],
             tool_results_in_stream: 0,
             text_chunks: 0,
@@ -386,12 +386,11 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
                 stats.reasoning_has_signature = true;
                 "Signature"
             }
-            ReasoningContent::Encrypted(_) => {
-                stats.reasoning_has_encrypted = true;
-                "Encrypted"
+            ReasoningContent::Opaque(_) => {
+                stats.reasoning_has_opaque = true;
+                "Opaque"
             }
             ReasoningContent::Summary(_) => "Summary",
-            ReasoningContent::Redacted(_) => "Redacted",
             _ => "Unknown",
         };
         stats.reasoning_content_types.push(type_name);

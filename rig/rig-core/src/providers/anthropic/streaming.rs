@@ -453,7 +453,7 @@ fn handle_event(
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
                 id: None,
-                content: vec![ReasoningContent::Redacted(data.clone())],
+                content: vec![ReasoningContent::Opaque(data.clone())],
             })),
             // Handle other content types - they don't need special handling
             _ => None,
@@ -659,7 +659,7 @@ mod tests {
             RawStreamingChoice::Reasoning { content, .. } => {
                 assert_eq!(
                     content,
-                    vec![ReasoningContent::Redacted("redacted_blob".to_string())]
+                    vec![ReasoningContent::Opaque("redacted_blob".to_string())]
                 );
             }
             _ => panic!("Expected Redacted reasoning chunk"),

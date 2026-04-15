@@ -493,10 +493,8 @@ fn openai_reasoning_from_core(
                 summary.push(ReasoningSummary::new(text));
             }
             crate::message::ReasoningContent::Signature(_) => {}
-            // OpenAI reasoning input has one opaque payload field; preserve either
-            // encrypted or redacted blocks there, preferring the first one seen.
-            crate::message::ReasoningContent::Encrypted(data)
-            | crate::message::ReasoningContent::Redacted(data) => {
+            // OpenAI reasoning input has one opaque payload field; preserve the first one seen.
+            crate::message::ReasoningContent::Opaque(data) => {
                 encrypted_content.get_or_insert_with(|| data.clone());
             }
         }
@@ -1213,7 +1211,7 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     })
                     .collect::<Vec<_>>();
                 if let Some(encrypted_content) = encrypted_content {
-                    content.push(message::ReasoningContent::Encrypted(encrypted_content));
+                    content.push(message::ReasoningContent::Opaque(encrypted_content));
                 }
                 vec![completion::AssistantContent::Reasoning(
                     message::Reasoning {

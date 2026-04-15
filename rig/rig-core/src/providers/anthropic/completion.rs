@@ -547,8 +547,7 @@ fn anthropic_content_from_assistant_content(
                             signature: pending_signature.take(),
                         });
                     }
-                    message::ReasoningContent::Redacted(data)
-                    | message::ReasoningContent::Encrypted(data) => {
+                    message::ReasoningContent::Opaque(data) => {
                         pending_signature = None;
                         converted.push(Content::RedactedThinking { data });
                     }
@@ -752,7 +751,7 @@ impl TryFrom<Content> for message::AssistantContent {
                 &thinking, signature,
             )),
             Content::RedactedThinking { data } => {
-                message::AssistantContent::Reasoning(Reasoning::redacted(data))
+                message::AssistantContent::Reasoning(Reasoning::opaque(data))
             }
             _ => {
                 return Err(MessageError::ConversionError(
@@ -2205,7 +2204,7 @@ mod tests {
                 message::ReasoningContent::Summary("summary".to_string()),
                 message::ReasoningContent::Signature("sig-2".to_string()),
                 message::ReasoningContent::Text("step two".to_string()),
-                message::ReasoningContent::Redacted("redacted block".to_string()),
+                message::ReasoningContent::Opaque("redacted block".to_string()),
             ],
         };
 
@@ -2251,7 +2250,7 @@ mod tests {
             message::AssistantContent::Reasoning(message::Reasoning { content, .. })
                 if matches!(
                     content.first(),
-                    Some(message::ReasoningContent::Redacted(data)) if data == "opaque-redacted"
+                    Some(message::ReasoningContent::Opaque(data)) if data == "opaque-redacted"
                 )
         ));
     }
@@ -2260,9 +2259,7 @@ mod tests {
     fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
         let reasoning = message::Reasoning {
             id: None,
-            content: vec![message::ReasoningContent::Encrypted(
-                "ciphertext".to_string(),
-            )],
+            content: vec![message::ReasoningContent::Opaque("ciphertext".to_string())],
         };
         let msg = message::Message::Assistant {
             id: None,

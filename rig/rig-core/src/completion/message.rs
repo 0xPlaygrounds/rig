@@ -80,10 +80,8 @@ pub enum ReasoningContent {
     Text(String),
     /// Provider replay signature kept separate from displayable text.
     Signature(String),
-    /// Provider-encrypted reasoning payload.
-    Encrypted(String),
-    /// Redacted reasoning payload preserved as opaque data.
-    Redacted(String),
+    /// Provider-specific opaque reasoning payload preserved for replay.
+    Opaque(String),
     /// Provider-generated reasoning summary text.
     Summary(String),
 }
@@ -134,19 +132,11 @@ impl Reasoning {
         }
     }
 
-    /// Create a redacted reasoning block.
-    pub fn redacted(data: impl Into<String>) -> Self {
+    /// Create an opaque reasoning block.
+    pub fn opaque(data: impl Into<String>) -> Self {
         Self {
             id: None,
-            content: vec![ReasoningContent::Redacted(data.into())],
-        }
-    }
-
-    /// Create an encrypted reasoning block.
-    pub fn encrypted(data: impl Into<String>) -> Self {
-        Self {
-            id: None,
-            content: vec![ReasoningContent::Encrypted(data.into())],
+            content: vec![ReasoningContent::Opaque(data.into())],
         }
     }
 
@@ -165,8 +155,7 @@ impl Reasoning {
             .filter_map(|content| match content {
                 ReasoningContent::Text(text) => Some(text.as_str()),
                 ReasoningContent::Summary(summary) => Some(summary.as_str()),
-                ReasoningContent::Redacted(data) => Some(data.as_str()),
-                ReasoningContent::Encrypted(_) | ReasoningContent::Signature(_) => None,
+                ReasoningContent::Opaque(_) | ReasoningContent::Signature(_) => None,
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -188,10 +177,10 @@ impl Reasoning {
         })
     }
 
-    /// Return the first encrypted reasoning payload, if present.
-    pub fn encrypted_content(&self) -> Option<&str> {
+    /// Return the first opaque reasoning payload, if present.
+    pub fn opaque_content(&self) -> Option<&str> {
         self.content.iter().find_map(|content| match content {
-            ReasoningContent::Encrypted(data) => Some(data.as_str()),
+            ReasoningContent::Opaque(data) => Some(data.as_str()),
             _ => None,
         })
     }
@@ -1298,17 +1287,14 @@ mod tests {
         assert_eq!(multi.display_text(), "a\nb");
         assert_eq!(multi.first_text(), Some("a"));
 
-        let redacted = Reasoning::redacted("redacted-value");
-        assert_eq!(redacted.display_text(), "redacted-value");
-        assert_eq!(redacted.first_text(), None);
-
-        let encrypted = Reasoning::encrypted("enc");
-        assert_eq!(encrypted.encrypted_content(), Some("enc"));
-        assert_eq!(encrypted.display_text(), "");
+        let opaque = Reasoning::opaque("opaque-value");
+        assert_eq!(opaque.display_text(), "");
+        assert_eq!(opaque.first_text(), None);
+        assert_eq!(opaque.opaque_content(), Some("opaque-value"));
 
         let summaries = Reasoning::summaries(vec!["s1".to_string(), "s2".to_string()]);
         assert_eq!(summaries.display_text(), "s1\ns2");
-        assert_eq!(summaries.encrypted_content(), None);
+        assert_eq!(summaries.opaque_content(), None);
     }
 
     #[test]
@@ -1316,8 +1302,7 @@ mod tests {
         let variants = vec![
             ReasoningContent::Text("plain".to_string()),
             ReasoningContent::Signature("sig".to_string()),
-            ReasoningContent::Encrypted("opaque".to_string()),
-            ReasoningContent::Redacted("redacted".to_string()),
+            ReasoningContent::Opaque("opaque".to_string()),
             ReasoningContent::Summary("summary".to_string()),
         ];
 

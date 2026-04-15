@@ -38,7 +38,7 @@ async fn streaming() {
 
     if stats.reasoning_block_count > 0 {
         assert!(
-            stats.reasoning_has_encrypted || stats.reasoning_content_types.contains(&"Summary"),
+            stats.reasoning_has_opaque || stats.reasoning_content_types.contains(&"Summary"),
             "[openai] Expected encrypted or summary reasoning content. Got: {:?}",
             stats.reasoning_content_types
         );

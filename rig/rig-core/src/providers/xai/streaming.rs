@@ -295,7 +295,7 @@ mod tests {
                 id: Some(id),
                 content,
             }) if id == "xr_1"
-                && matches!(content.as_slice(), [ReasoningContent::Encrypted(data)] if data == "enc")
+                && matches!(content.as_slice(), [ReasoningContent::Opaque(data)] if data == "enc")
         ));
     }
 }

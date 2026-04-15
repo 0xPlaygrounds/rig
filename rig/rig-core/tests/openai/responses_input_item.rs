@@ -40,8 +40,8 @@ fn assistant_reasoning_without_id_returns_error() {
 }
 
 #[test]
-fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
-    let reasoning = Reasoning::encrypted("encrypted_blob").with_id("rs_1".to_string());
+fn assistant_reasoning_opaque_only_serializes_encrypted_content() {
+    let reasoning = Reasoning::opaque("encrypted_blob").with_id("rs_1".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
         content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
@@ -86,10 +86,10 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
         .push(ReasoningContent::Summary("summary-2".to_string()));
     reasoning
         .content
-        .push(ReasoningContent::Encrypted("ciphertext".to_string()));
+        .push(ReasoningContent::Opaque("ciphertext".to_string()));
     reasoning
         .content
-        .push(ReasoningContent::Redacted("redacted".to_string()));
+        .push(ReasoningContent::Opaque("redacted".to_string()));
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
@@ -151,7 +151,7 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
 }
 
 #[test]
-fn openai_responses_reasoning_output_preserves_encrypted_content() {
+fn openai_responses_reasoning_output_preserves_opaque_content() {
     let output: Output = serde_json::from_value(serde_json::json!({
         "type": "reasoning",
         "id": "rs_out_1",
@@ -175,7 +175,7 @@ fn openai_responses_reasoning_output_preserves_encrypted_content() {
     ));
     assert!(matches!(
         reasoning.content.get(1),
-        Some(ReasoningContent::Encrypted(value)) if value == "cipher_blob"
+        Some(ReasoningContent::Opaque(value)) if value == "cipher_blob"
     ));
 }
 
@@ -239,8 +239,8 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
 }
 
 #[test]
-fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
-    let reasoning = Reasoning::redacted("opaque-redacted").with_id("rs_redacted".to_string());
+fn assistant_reasoning_opaque_only_roundtrips_to_encrypted_content() {
+    let reasoning = Reasoning::opaque("opaque-redacted").with_id("rs_redacted".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
         content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),

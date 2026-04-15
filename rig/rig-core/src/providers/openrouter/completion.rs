@@ -643,7 +643,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         } => (
                             id.clone(),
                             *index,
-                            vec![message::ReasoningContent::Encrypted(data.clone())],
+                            vec![message::ReasoningContent::Opaque(data.clone())],
                         ),
                         ReasoningDetails::Text {
                             id,
@@ -1473,8 +1473,7 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                                         });
                                     }
                                 }
-                                message::ReasoningContent::Encrypted(data)
-                                | message::ReasoningContent::Redacted(data) => {
+                                message::ReasoningContent::Opaque(data) => {
                                     pending_signature = None;
                                     reasoning_details.push(ReasoningDetails::Encrypted {
                                         id: r.id.clone(),
@@ -2724,7 +2723,7 @@ mod tests {
                         message::ReasoningContent::Summary(summary),
                         message::ReasoningContent::Signature(signature),
                         message::ReasoningContent::Text(text),
-                        message::ReasoningContent::Encrypted(data),
+                        message::ReasoningContent::Opaque(data),
                     ] if summary == "s1" && signature == "sig_1" && text == "t1" && data == "enc_1")
         )));
     }
@@ -2737,7 +2736,7 @@ mod tests {
                 message::ReasoningContent::Signature("sig_step".to_string()),
                 message::ReasoningContent::Text("step".to_string()),
                 message::ReasoningContent::Summary("summary".to_string()),
-                message::ReasoningContent::Encrypted("enc_blob".to_string()),
+                message::ReasoningContent::Opaque("enc_blob".to_string()),
             ],
         };
 
@@ -2771,7 +2770,7 @@ mod tests {
     fn test_assistant_redacted_reasoning_emits_encrypted_detail_not_text() {
         let reasoning = message::Reasoning {
             id: Some("rs_redacted".to_string()),
-            content: vec![message::ReasoningContent::Redacted(
+            content: vec![message::ReasoningContent::Opaque(
                 "opaque-redacted-data".to_string(),
             )],
         };

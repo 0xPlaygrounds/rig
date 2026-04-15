@@ -204,8 +204,8 @@ impl TryFrom<RigMessage> for Vec<Message> {
                     }
                     ReasoningContent::Signature(_) => {}
                     // xAI has a single encrypted_content field; only the first
-                    // encrypted/redacted block can be preserved.
-                    ReasoningContent::Redacted(data) | ReasoningContent::Encrypted(data) => {
+                    // opaque reasoning block can be preserved.
+                    ReasoningContent::Opaque(data) => {
                         if encrypted_content.is_some() {
                             tracing::warn!(
                                 "xAI: dropping additional encrypted/redacted reasoning block \
@@ -399,10 +399,10 @@ mod tests {
     use crate::providers::openai::responses_api::ReasoningSummary;
 
     #[test]
-    fn assistant_redacted_reasoning_is_serialized_as_encrypted_content() {
+    fn assistant_opaque_reasoning_is_serialized_as_encrypted_content() {
         let reasoning = Reasoning {
             id: Some("rs_1".to_string()),
-            content: vec![ReasoningContent::Redacted("opaque-redacted".to_string())],
+            content: vec![ReasoningContent::Opaque("opaque-redacted".to_string())],
         };
         let message = RigMessage::Assistant {
             id: Some("assistant_1".to_string()),
@@ -422,12 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn assistant_redacted_reasoning_does_not_leak_into_summary_text() {
+    fn assistant_opaque_reasoning_does_not_leak_into_summary_text() {
         let reasoning = Reasoning {
             id: Some("rs_2".to_string()),
             content: vec![
                 ReasoningContent::Text("explain".to_string()),
-                ReasoningContent::Redacted("opaque-redacted".to_string()),
+                ReasoningContent::Opaque("opaque-redacted".to_string()),
             ],
         };
         let message = RigMessage::Assistant {
