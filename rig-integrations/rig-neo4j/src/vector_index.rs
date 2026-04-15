@@ -8,10 +8,12 @@ use neo4rs::{Graph, Query};
 use rig::{
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
 };
+use rig::Embed;
+use rig::OneOrMany;
 use serde::{Deserialize, Serialize, de::Error};
 
 use crate::{Neo4jClient, Neo4jSearchFilter};
@@ -37,6 +39,7 @@ pub struct IndexConfig {
     pub index_name: String,
     pub embedding_property: String,
     pub similarity_function: VectorSimilarityFunction,
+    pub node_label: Option<String>,
 }
 
 impl Default for IndexConfig {
@@ -45,6 +48,7 @@ impl Default for IndexConfig {
             index_name: "vector_index".to_string(),
             embedding_property: "embedding".to_string(),
             similarity_function: VectorSimilarityFunction::Cosine,
+            node_label: None,
         }
     }
 }
@@ -55,6 +59,7 @@ impl IndexConfig {
             index_name: index_name.into(),
             embedding_property: "embedding".to_string(),
             similarity_function: VectorSimilarityFunction::Cosine,
+            node_label: None,
         }
     }
 
@@ -70,6 +75,11 @@ impl IndexConfig {
 
     pub fn embedding_property(mut self, embedding_property: &str) -> Self {
         self.embedding_property = embedding_property.to_string();
+        self
+    }
+
+    pub fn node_label(mut self, node_label: &str) -> Self {
+        self.node_label = Some(node_label.to_string());
         self
     }
 }
@@ -266,5 +276,69 @@ where
             .collect::<Vec<_>>();
 
         Ok(results)
+    }
+}
+
+impl<M> InsertDocuments for Neo4jVectorIndex<M>
+where
+    M: EmbeddingModel + Send + Sync,
+{
+    async fn insert_documents<Doc: Serialize + Embed + Send>(
+        &self,
+        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let node_label = self
+            .index_config
+            .node_label
+            .as_deref()
+            .unwrap_or("Document");
+
+        let embedding_property = &self.index_config.embedding_property;
+
+        // Build a list of parameter maps for UNWIND
+        let mut items: Vec<neo4rs::BoltType> = Vec::new();
+
+        for (document, embeddings) in documents {
+            let json_doc = serde_json::to_value(&document)?;
+
+            for embedding in embeddings {
+                let mut props = neo4rs::BoltMap::new();
+                // Flatten document properties into the node
+                if let serde_json::Value::Object(map) = &json_doc {
+                    for (k, v) in map {
+                        props.put(
+                            neo4rs::BoltString::new(k),
+                            crate::ToBoltType::to_bolt_type(v),
+                        );
+                    }
+                } else {
+                    props.put(
+                        neo4rs::BoltString::new("document"),
+                        crate::ToBoltType::to_bolt_type(&json_doc),
+                    );
+                }
+                props.put(
+                    neo4rs::BoltString::new("embedded_text"),
+                    neo4rs::BoltType::String(neo4rs::BoltString::new(&embedding.document)),
+                );
+                props.put(
+                    neo4rs::BoltString::new(embedding_property),
+                    crate::ToBoltType::to_bolt_type(&embedding.vec),
+                );
+                items.push(neo4rs::BoltType::Map(props));
+            }
+        }
+
+        let query_str = format!(
+            "UNWIND $items AS item CREATE (n:{}) SET n = item",
+            node_label
+        );
+
+        self.graph
+            .run(neo4rs::query(&query_str).param("items", items))
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        Ok(())
     }
 }
