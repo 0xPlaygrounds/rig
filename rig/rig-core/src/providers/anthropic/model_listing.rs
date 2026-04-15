@@ -3,6 +3,7 @@ use crate::{
     http_client::{self, HttpClientExt},
     model::{Model, ModelList, ModelListingError},
     providers::anthropic::Client,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
 
@@ -35,7 +36,7 @@ pub struct AnthropicModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for AnthropicModelLister<H>
 where
-    H: HttpClientExt + Send + Sync + 'static,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Client = Client<H>;
 

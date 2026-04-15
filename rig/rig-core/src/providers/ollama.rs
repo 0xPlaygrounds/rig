@@ -47,6 +47,7 @@ use crate::{
     json_utils, message,
     message::{ImageDetail, Text},
     streaming,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use async_stream::try_stream;
 use bytes::Bytes;
@@ -756,7 +757,7 @@ pub struct OllamaModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for OllamaModelLister<H>
 where
-    H: HttpClientExt + Send + Sync + 'static,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Client = Client<H>;
 

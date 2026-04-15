@@ -94,7 +94,7 @@ pub trait ModelListingClient {
 ///
 /// impl<H> ModelLister<H> for MyProviderModelLister<H>
 /// where
-///     H: HttpClientExt + Send + Sync,
+///     H: HttpClientExt + WasmCompatSend + WasmCompatSync,
 /// {
 ///     type Client = Client<MyProviderExt, H>;
 ///
