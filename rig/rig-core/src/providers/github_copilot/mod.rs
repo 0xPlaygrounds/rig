@@ -532,7 +532,7 @@ where
 
     fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
         let model = model.into();
-        let dims = ndims.unwrap_or_else(|| match model.as_str() {
+        let dims = ndims.unwrap_or(match model.as_str() {
             TEXT_EMBEDDING_3_LARGE => 3072,
             TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
             _ => 0,

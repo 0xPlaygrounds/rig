@@ -147,6 +147,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .as_ref()
                     .map(|d| d.cached_tokens as u64)
                     .unwrap_or(0),
+                cache_creation_input_tokens: 0,
             })
             .unwrap_or_default();
 

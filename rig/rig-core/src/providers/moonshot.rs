@@ -56,7 +56,7 @@ pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
 pub struct MoonshotExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MoonshotBuilder;
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct MoonshotAnthropicBuilder {
     anthropic: AnthropicCompatBuilder,
 }
@@ -64,14 +64,6 @@ pub struct MoonshotAnthropicBuilder {
 pub struct MoonshotAnthropicExt;
 
 type MoonshotApiKey = BearerAuth;
-
-impl Default for MoonshotAnthropicBuilder {
-    fn default() -> Self {
-        Self {
-            anthropic: AnthropicCompatBuilder::default(),
-        }
-    }
-}
 
 impl Provider for MoonshotExt {
     type Builder = MoonshotBuilder;

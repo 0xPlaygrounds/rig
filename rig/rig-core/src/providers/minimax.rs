@@ -60,7 +60,7 @@ pub struct MiniMaxExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MiniMaxBuilder;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct MiniMaxAnthropicBuilder {
     anthropic: AnthropicCompatBuilder,
 }
@@ -77,14 +77,6 @@ pub type ClientBuilder<H = reqwest::Client> =
 pub type AnthropicClient<H = reqwest::Client> = client::Client<MiniMaxAnthropicExt, H>;
 pub type AnthropicClientBuilder<H = reqwest::Client> =
     client::ClientBuilder<MiniMaxAnthropicBuilder, AnthropicKey, H>;
-
-impl Default for MiniMaxAnthropicBuilder {
-    fn default() -> Self {
-        Self {
-            anthropic: AnthropicCompatBuilder::default(),
-        }
-    }
-}
 
 impl Provider for MiniMaxExt {
     type Builder = MiniMaxBuilder;

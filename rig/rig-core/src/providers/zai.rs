@@ -59,7 +59,7 @@ pub struct ZAiExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ZAiBuilder;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ZAiAnthropicBuilder {
     anthropic: AnthropicCompatBuilder,
 }
@@ -75,14 +75,6 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<ZAiBuilder, 
 pub type AnthropicClient<H = reqwest::Client> = client::Client<ZAiAnthropicExt, H>;
 pub type AnthropicClientBuilder<H = reqwest::Client> =
     client::ClientBuilder<ZAiAnthropicBuilder, AnthropicKey, H>;
-
-impl Default for ZAiAnthropicBuilder {
-    fn default() -> Self {
-        Self {
-            anthropic: AnthropicCompatBuilder::default(),
-        }
-    }
-}
 
 impl Provider for ZAiExt {
     type Builder = ZAiBuilder;
