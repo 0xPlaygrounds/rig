@@ -4,14 +4,15 @@
 //! ```
 //! use rig::providers::anthropic;
 //!
-//! let client = anthropic::Anthropic::new("YOUR_API_KEY");
+//! let client = anthropic::Client::new("YOUR_API_KEY");
 //!
-//! let sonnet = client.completion_model(anthropic::CLAUDE_3_5_SONNET);
+//! let sonnet = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
 //! ```
 
 pub mod client;
 pub mod completion;
 pub mod decoders;
+pub mod model_listing;
 pub mod streaming;
 
 pub use client::{Client, ClientBuilder};

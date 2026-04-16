@@ -51,6 +51,8 @@ async fn main() {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
+You can find more examples in each crate's `examples/` directory (for example, `rig-core/examples`). Many provider-specific examples now also live as ignored live integration tests under `rig-core/tests`, organized by provider. When running those provider-backed tests, prefer `cargo test -p rig-core --test <provider> -- --ignored --test-threads=1` to avoid rate-limiting. More detailed walkthroughs are regularly published on our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
+
 ## Integrations
 Rig supports the following LLM providers out of the box:
 

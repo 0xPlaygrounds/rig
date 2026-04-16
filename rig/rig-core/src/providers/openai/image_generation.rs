@@ -14,6 +14,7 @@ use serde_json::json;
 pub const DALL_E_2: &str = "dall-e-2";
 pub const DALL_E_3: &str = "dall-e-3";
 pub const GPT_IMAGE_1: &str = "gpt-image-1";
+pub const GPT_IMAGE_1_5: &str = "gpt-image-1.5";
 
 #[derive(Debug, Deserialize)]
 pub struct ImageGenerationData {
@@ -84,7 +85,7 @@ where
             "size": format!("{}x{}", generation_request.width, generation_request.height),
         });
 
-        if self.model.as_str() != GPT_IMAGE_1 {
+        if self.model.as_str() != GPT_IMAGE_1 && self.model.as_str() != GPT_IMAGE_1_5 {
             merge_inplace(
                 &mut request,
                 json!({

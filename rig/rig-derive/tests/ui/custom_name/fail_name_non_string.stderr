@@ -1,0 +1,5 @@
+error: `name` must be a string literal
+ --> tests/ui/custom_name/fail_name_non_string.rs:5:19
+  |
+5 | #[rig_tool(name = 123)]
+  |                   ^^^

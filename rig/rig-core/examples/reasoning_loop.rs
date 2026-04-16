@@ -26,11 +26,11 @@ struct ReasoningAgent<M: CompletionModel> {
     executor: Agent<M>,
 }
 
-impl<M: CompletionModel> Prompt for ReasoningAgent<M> {
+impl<M: CompletionModel + 'static> Prompt for ReasoningAgent<M> {
     #[allow(refining_impl_trait)]
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         let prompt: Message = prompt.into();
-        let mut chat_history = vec![prompt.clone()];
+        let chat_history = vec![prompt.clone()];
         let extracted = self
             .chain_of_thought_extractor
             .extract(prompt)
@@ -49,14 +49,18 @@ impl<M: CompletionModel> Prompt for ReasoningAgent<M> {
         let response = self
             .executor
             .prompt(reasoning_prompt.as_str())
-            .with_history(&mut chat_history)
+            .with_history(&chat_history)
             .max_turns(20)
+            .extended_details()
             .await?;
-        tracing::info!(
-            "full chat history generated: {}",
-            serde_json::to_string_pretty(&chat_history).unwrap()
-        );
-        Ok(response)
+        if let Some(messages) = &response.messages {
+            let history_vec: Vec<_> = messages.clone().into_iter().collect();
+            tracing::info!(
+                "full chat history generated: {}",
+                serde_json::to_string_pretty(&history_vec).unwrap()
+            );
+        }
+        Ok(response.output)
     }
 }
 
@@ -71,12 +75,12 @@ async fn main() -> anyhow::Result<()> {
     let anthropic_client = anthropic::Client::from_env();
     let agent = ReasoningAgent {
         chain_of_thought_extractor: anthropic_client
-            .extractor(anthropic::completion::CLAUDE_3_5_SONNET)
+            .extractor(anthropic::completion::CLAUDE_SONNET_4_6)
             .preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
         executor: anthropic_client
-            .agent(anthropic::completion::CLAUDE_3_5_SONNET)
+            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

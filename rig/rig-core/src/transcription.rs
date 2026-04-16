@@ -1,11 +1,10 @@
 //! This module provides functionality for working with audio transcription models.
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
-#[allow(deprecated)]
-use crate::client::transcription::TranscriptionModelHandle;
-use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use crate::markers::{Missing, Provided};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{http_client, json_utils};
-use std::sync::Arc;
+use std::io;
 use std::{fs, path::Path};
 use thiserror::Error;
 
@@ -58,7 +57,7 @@ where
         filename: &str,
         data: &[u8],
     ) -> impl std::future::Future<
-        Output = Result<TranscriptionRequestBuilder<M>, TranscriptionError>,
+        Output = Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>, TranscriptionError>,
     > + WasmCompatSend;
 }
 
@@ -88,51 +87,10 @@ pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
     > + WasmCompatSend;
 
     /// Generates a transcription request builder for the given `file`
-    fn transcription_request(&self) -> TranscriptionRequestBuilder<Self> {
+    fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing> {
         TranscriptionRequestBuilder::new(self.clone())
     }
 }
-
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.25.0",
-    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `TranscriptionModel` instead."
-)]
-pub trait TranscriptionModelDyn: WasmCompatSend + WasmCompatSync {
-    fn transcription(
-        &self,
-        request: TranscriptionRequest,
-    ) -> WasmBoxedFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>>;
-
-    fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>>;
-}
-
-#[allow(deprecated)]
-impl<T> TranscriptionModelDyn for T
-where
-    T: TranscriptionModel,
-{
-    fn transcription(
-        &self,
-        request: TranscriptionRequest,
-    ) -> WasmBoxedFuture<'_, Result<TranscriptionResponse<()>, TranscriptionError>> {
-        Box::pin(async move {
-            let resp = self.transcription(request).await?;
-
-            Ok(TranscriptionResponse {
-                text: resp.text,
-                response: (),
-            })
-        })
-    }
-
-    fn transcription_request(&self) -> TranscriptionRequestBuilder<TranscriptionModelHandle<'_>> {
-        TranscriptionRequestBuilder::new(TranscriptionModelHandle {
-            inner: Arc::new(self.clone()),
-        })
-    }
-}
-
 /// Struct representing a general transcription request that can be sent to a transcription model provider.
 pub struct TranscriptionRequest {
     /// The file data to be sent to the transcription model provider
@@ -191,12 +149,12 @@ pub struct TranscriptionRequest {
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [TranscriptionModel::transcription_request] method.
-pub struct TranscriptionRequestBuilder<M>
+pub struct TranscriptionRequestBuilder<M, D>
 where
     M: TranscriptionModel,
 {
     model: M,
-    data: Vec<u8>,
+    data: D, // starts Missing, becomes Provided<Vec<u8>> after data is set or load_file is called
     filename: Option<String>,
     language: Option<String>,
     prompt: Option<String>,
@@ -204,14 +162,14 @@ where
     additional_params: Option<serde_json::Value>,
 }
 
-impl<M> TranscriptionRequestBuilder<M>
+impl<M> TranscriptionRequestBuilder<M, Missing>
 where
     M: TranscriptionModel,
 {
     pub fn new(model: M) -> Self {
         TranscriptionRequestBuilder {
             model,
-            data: vec![],
+            data: Missing,
             filename: None,
             language: None,
             prompt: None,
@@ -219,34 +177,52 @@ where
             additional_params: None,
         }
     }
+}
 
+impl<M, D> TranscriptionRequestBuilder<M, D>
+where
+    M: TranscriptionModel,
+{
     pub fn filename(mut self, filename: Option<String>) -> Self {
         self.filename = filename;
         self
     }
 
-    /// Sets the data for the request
-    pub fn data(mut self, data: Vec<u8>) -> Self {
-        self.data = data;
-        self
+    /// Sets the data for the request and transitions the builder to the next state where data is provided.
+    pub fn data(self, data: Vec<u8>) -> TranscriptionRequestBuilder<M, Provided<Vec<u8>>> {
+        TranscriptionRequestBuilder {
+            model: self.model,
+            data: Provided(data),
+            filename: self.filename,
+            language: self.language,
+            prompt: self.prompt,
+            temperature: self.temperature,
+            additional_params: self.additional_params,
+        }
     }
 
-    /// Load the specified file into data
-    pub fn load_file<P>(self, path: P) -> Self
+    /// Load the specified file into data and transitions the builder to the next state where data is provided.
+    pub fn load_file<P>(
+        self,
+        path: P,
+    ) -> io::Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>>
     where
         P: AsRef<Path>,
     {
         let path = path.as_ref();
-        let data = fs::read(path).expect("Failed to load audio file, file did not exist");
+        let data = fs::read(path)?;
 
-        self.filename(Some(
-            path.file_name()
-                .expect("Path was not a file")
-                .to_str()
-                .expect("Failed to convert filename to ascii")
-                .to_string(),
-        ))
-        .data(data)
+        let filename = path.file_name().map(|n| n.to_string_lossy().into_owned());
+
+        Ok(TranscriptionRequestBuilder {
+            model: self.model,
+            data: Provided(data),
+            filename: filename.or(self.filename),
+            language: self.language,
+            prompt: self.prompt,
+            temperature: self.temperature,
+            additional_params: self.additional_params,
+        })
     }
 
     /// Sets the output language for the transcription request
@@ -285,16 +261,18 @@ where
         self.additional_params = additional_params;
         self
     }
+}
 
+/// The build and send methods are only available when data is provided, ensuring that the request cannot be sent without the required data.
+impl<M> TranscriptionRequestBuilder<M, Provided<Vec<u8>>>
+where
+    M: TranscriptionModel,
+{
     /// Builds the transcription request
     /// Panics if data is empty.
     pub fn build(self) -> TranscriptionRequest {
-        if self.data.is_empty() {
-            panic!("Data cannot be empty!")
-        }
-
         TranscriptionRequest {
-            data: self.data,
+            data: self.data.0,
             filename: self.filename.unwrap_or("file".to_string()),
             language: self.language,
             prompt: self.prompt,
@@ -306,7 +284,6 @@ where
     /// Sends the transcription request to the transcription model provider and returns the transcription response
     pub async fn send(self) -> Result<TranscriptionResponse<M::Response>, TranscriptionError> {
         let model = self.model.clone();
-
         model.transcription(self.build()).await
     }
 }

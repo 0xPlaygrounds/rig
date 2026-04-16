@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.3...rig-sqlite-v0.2.4) - 2026-04-12
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.2...rig-sqlite-v0.2.3) - 2026-03-29
+
+### Added
+
+- *(rig-sqlite)* impl InsertDocuments trait for sqlite ([#1478](https://github.com/0xPlaygrounds/rig/pull/1478))
 
 ## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.1...rig-sqlite-v0.2.2) - 2026-03-17
 

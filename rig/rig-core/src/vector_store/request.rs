@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::VectorStoreError;
+use crate::markers::{Missing, Provided};
 
 /// A vector search request for querying a [`super::VectorStoreIndex`].
 ///
@@ -229,19 +230,19 @@ impl Filter<serde_json::Value> {
 
 /// Builder for [`VectorSearchRequest`]. Requires `query` and `samples`.
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct VectorSearchRequestBuilder<F = Filter<serde_json::Value>> {
-    query: Option<String>,
-    samples: Option<u64>,
+pub struct VectorSearchRequestBuilder<F = Filter<serde_json::Value>, Q = Missing, S = Missing> {
+    query: Q,
+    samples: S,
     threshold: Option<f64>,
     additional_params: Option<serde_json::Value>,
     filter: Option<F>,
 }
 
-impl<F> Default for VectorSearchRequestBuilder<F> {
+impl<F> Default for VectorSearchRequestBuilder<F, Missing, Missing> {
     fn default() -> Self {
         Self {
-            query: None,
-            samples: None,
+            query: Missing,
+            samples: Missing,
             threshold: None,
             additional_params: None,
             filter: None,
@@ -249,23 +250,33 @@ impl<F> Default for VectorSearchRequestBuilder<F> {
     }
 }
 
-impl<F> VectorSearchRequestBuilder<F>
+impl<F, Q, S> VectorSearchRequestBuilder<F, Q, S>
 where
     F: SearchFilter,
 {
     /// Sets the query text. Required.
-    pub fn query<T>(mut self, query: T) -> Self
+    pub fn query<T>(self, query: T) -> VectorSearchRequestBuilder<F, Provided<String>, S>
     where
         T: Into<String>,
     {
-        self.query = Some(query.into());
-        self
+        VectorSearchRequestBuilder {
+            query: Provided(query.into()),
+            samples: self.samples,
+            threshold: self.threshold,
+            additional_params: self.additional_params,
+            filter: self.filter,
+        }
     }
 
     /// Sets the maximum number of results. Required.
-    pub fn samples(mut self, samples: u64) -> Self {
-        self.samples = Some(samples);
-        self
+    pub fn samples(self, samples: u64) -> VectorSearchRequestBuilder<F, Q, Provided<u64>> {
+        VectorSearchRequestBuilder {
+            query: self.query,
+            samples: Provided(samples),
+            threshold: self.threshold,
+            additional_params: self.additional_params,
+            filter: self.filter,
+        }
     }
 
     /// Sets the minimum similarity threshold.
@@ -288,38 +299,18 @@ where
         self.filter = Some(filter);
         self
     }
+}
 
-    /// Builds the request, returning an error if required fields are missing.
-    pub fn build(self) -> Result<VectorSearchRequest<F>, VectorStoreError> {
-        let Some(query) = self.query else {
-            return Err(VectorStoreError::BuilderError(
-                "`query` is a required variable for building a vector search request".into(),
-            ));
-        };
-
-        let Some(samples) = self.samples else {
-            return Err(VectorStoreError::BuilderError(
-                "`samples` is a required variable for building a vector search request".into(),
-            ));
-        };
-
-        let additional_params = if let Some(params) = self.additional_params {
-            if !params.is_object() {
-                return Err(VectorStoreError::BuilderError(
-                    "Expected JSON object for additional params, got something else".into(),
-                ));
-            }
-            Some(params)
-        } else {
-            None
-        };
-
-        Ok(VectorSearchRequest {
-            query,
-            samples,
+/// Only implement `build()` when both `query` and `samples` have been provided.
+impl<F> VectorSearchRequestBuilder<F, Provided<String>, Provided<u64>> {
+    /// Builds the request
+    pub fn build(self) -> VectorSearchRequest<F> {
+        VectorSearchRequest {
+            query: self.query.0,
+            samples: self.samples.0,
             threshold: self.threshold,
-            additional_params,
+            additional_params: self.additional_params,
             filter: self.filter,
-        })
+        }
     }
 }

@@ -1,7 +1,10 @@
 //! Anthropic completion api implementation
 
+use crate::completion::CompletionRequest;
+use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
+    client::Provider,
     completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
@@ -9,33 +12,42 @@ use crate::{
     telemetry::{ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
-use std::{convert::Infallible, str::FromStr};
-
-use super::client::Client;
-use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use std::{convert::Infallible, str::FromStr};
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // Anthropic Completion API
 // ================================================================
 
-/// `claude-opus-4-0` completion model
-pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
-/// `claude-sonnet-4-0` completion model
-pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-/// `claude-3-7-sonnet-latest` completion model
-pub const CLAUDE_3_7_SONNET: &str = "claude-3-7-sonnet-latest";
-/// `claude-3-5-sonnet-latest` completion model
-pub const CLAUDE_3_5_SONNET: &str = "claude-3-5-sonnet-latest";
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
+/// `claude-opus-4-6` completion model
+pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
+/// `claude-sonnet-4-6` completion model
+pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
+/// `claude-haiku-4-5` completion model
+pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
+
+pub trait AnthropicCompatibleProvider: Provider {
+    const PROVIDER_NAME: &'static str;
+
+    fn default_max_tokens(model: &str) -> Option<u64> {
+        let _ = model;
+        None
+    }
+}
+
+impl AnthropicCompatibleProvider for super::client::AnthropicExt {
+    const PROVIDER_NAME: &'static str = "anthropic";
+
+    fn default_max_tokens(model: &str) -> Option<u64> {
+        default_max_tokens_for_model(model)
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -117,11 +129,14 @@ impl GetTokenUsage for Usage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         let mut usage = crate::completion::Usage::new();
 
-        usage.input_tokens = self.input_tokens
-            + self.cache_creation_input_tokens.unwrap_or_default()
-            + self.cache_read_input_tokens.unwrap_or_default();
+        usage.input_tokens = self.input_tokens;
         usage.output_tokens = self.output_tokens;
-        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        usage.cached_input_tokens = self.cache_read_input_tokens.unwrap_or_default();
+        usage.cache_creation_input_tokens = self.cache_creation_input_tokens.unwrap_or_default();
+        usage.total_tokens = self.input_tokens
+            + self.cache_read_input_tokens.unwrap_or_default()
+            + self.cache_creation_input_tokens.unwrap_or_default()
+            + self.output_tokens;
 
         Some(usage)
     }
@@ -134,11 +149,48 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
-/// Cache control directive for Anthropic prompt caching
+/// TTL for a cache control breakpoint.
+///
+/// The Anthropic API supports two TTL values:
+/// - `"5m"` — 5 minutes (default when `ttl` is omitted)
+/// - `"1h"` — 1 hour (requires the `extended-cache-ttl-2025-04-11` beta header)
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+pub enum CacheTtl {
+    /// 5-minute TTL (default).
+    #[default]
+    #[serde(rename = "5m")]
+    FiveMinutes,
+    /// 1-hour TTL. Requires the `extended-cache-ttl-2025-04-11` beta header.
+    #[serde(rename = "1h")]
+    OneHour,
+}
+
+/// Cache control directive for Anthropic prompt caching.
+///
+/// Serialises to `{"type":"ephemeral"}` (default TTL) or
+/// `{"type":"ephemeral","ttl":"1h"}` (extended TTL).
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CacheControl {
-    Ephemeral,
+    Ephemeral {
+        /// Optional TTL. Defaults to `"5m"` when omitted.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ttl: Option<CacheTtl>,
+    },
+}
+
+impl CacheControl {
+    /// Create a cache control with the default 5-minute TTL.
+    pub fn ephemeral() -> Self {
+        Self::Ephemeral { ttl: None }
+    }
+
+    /// Create a cache control with a 1-hour TTL.
+    pub fn ephemeral_1h() -> Self {
+        Self::Ephemeral {
+            ttl: Some(CacheTtl::OneHour),
+        }
+    }
 }
 
 /// System message content block with optional cache control
@@ -171,8 +223,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = completion::Usage {
             input_tokens: response.usage.input_tokens,
             output_tokens: response.usage.output_tokens,
-            total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+            total_tokens: response.usage.input_tokens
+                + response.usage.cache_read_input_tokens.unwrap_or(0)
+                + response.usage.cache_creation_input_tokens.unwrap_or(0)
+                + response.usage.output_tokens,
             cached_input_tokens: response.usage.cache_read_input_tokens.unwrap_or(0),
+            cache_creation_input_tokens: response.usage.cache_creation_input_tokens.unwrap_or(0),
         };
 
         Ok(completion::CompletionResponse {
@@ -784,37 +840,59 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
+    pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
     /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
     pub prompt_caching: bool,
+    /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
+    /// request). The API automatically places the breakpoint on the last cacheable block and moves
+    /// it forward as the conversation grows. No beta header is required.
+    pub automatic_caching: bool,
+    /// TTL for automatic caching. `None` uses the API default (5 minutes).
+    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL (requires the
+    /// `extended-cache-ttl-2025-04-11` beta header).
+    pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
-impl<T> CompletionModel<T>
+/// Anthropic completion model.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<T = reqwest::Client> =
+    GenericCompletionModel<super::client::AnthropicExt, T>;
+
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt,
+    Ext: AnthropicCompatibleProvider + Clone + 'static,
 {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
         let model = model.into();
-        let default_max_tokens = calculate_max_tokens(&model);
+        let default_max_tokens = Ext::default_max_tokens(&model);
 
         Self {
             client,
             model,
             default_max_tokens,
-            prompt_caching: false, // Default to off
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: Some(calculate_max_tokens_custom(model)),
-            prompt_caching: false, // Default to off
+            default_max_tokens: Ext::default_max_tokens(model)
+                .or_else(|| Some(default_max_tokens_with_fallback(model))),
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
         }
     }
 
@@ -829,43 +907,85 @@ where
         self.prompt_caching = true;
         self
     }
+
+    /// Enable Anthropic's automatic prompt caching.
+    ///
+    /// When enabled, a top-level `cache_control: { "type": "ephemeral" }` field is added to every
+    /// request. Anthropic's API automatically applies the cache breakpoint to the last cacheable
+    /// block and moves it forward as the conversation grows — no beta header and no manual
+    /// breakpoint management are required.
+    ///
+    /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
+    /// instead when you need fine-grained, per-block control over what is cached.
+    ///
+    /// To use a one-hour TTL instead of the default five minutes, pass `ttl: "1h"` via
+    /// `additional_params` or combine with an explicit block-level breakpoint that carries the
+    /// extended TTL.
+    ///
+    /// ```ignore
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+    ///     .with_automatic_caching();
+    /// ```
+    ///
+    /// ## Minimum cacheable prompt length
+    ///
+    /// The combined prompt (tools + system + messages up to the automatically chosen breakpoint)
+    /// must meet the model-specific minimum or caching is silently skipped by the API:
+    ///
+    /// | Model | Minimum tokens |
+    /// |-------|---------------|
+    /// | `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
+    /// | `claude-sonnet-4-6` | 2 048 |
+    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
+    /// | `claude-haiku-4-5` | 4 096 |
+    ///
+    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
+    pub fn with_automatic_caching(mut self) -> Self {
+        self.automatic_caching = true;
+        self
+    }
+
+    /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
+    ///
+    /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
+    /// top-level `cache_control` field. Requires the
+    /// `extended-cache-ttl-2025-04-11` beta header to be sent with the client:
+    ///
+    /// ```ignore
+    /// let client = anthropic::Client::builder()
+    ///     .api_key(std::env::var("ANTHROPIC_API_KEY").unwrap())
+    ///     .anthropic_beta("extended-cache-ttl-2025-04-11")
+    ///     .build()?;
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+    ///     .with_automatic_caching_1h();
+    /// ```
+    ///
+    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
+    pub fn with_automatic_caching_1h(mut self) -> Self {
+        self.automatic_caching = true;
+        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
+        self
+    }
 }
 
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
-fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4") {
-        Some(32000)
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        Some(64000)
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        Some(8192)
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
+fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+    if model.starts_with("claude-opus-4-6") {
+        Some(128_000)
+    } else if model.starts_with("claude-opus-4")
+        || model.starts_with("claude-sonnet-4")
+        || model.starts_with("claude-haiku-4-5")
     {
-        Some(4096)
+        Some(64_000)
     } else {
         None
     }
 }
 
-fn calculate_max_tokens_custom(model: &str) -> u64 {
-    if model.starts_with("claude-opus-4") {
-        32000
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        64000
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        8192
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        4096
-    } else {
-        2048
-    }
+fn default_max_tokens_with_fallback(model: &str) -> u64 {
+    default_max_tokens_for_model(model).unwrap_or(2_048)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -966,7 +1086,21 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
             sanitize_schema(items);
         }
 
-        for key in ["anyOf", "oneOf", "allOf"] {
+        // Anthropic doesn't support oneOf, convert to anyOf
+        if let Some(one_of) = obj.remove("oneOf") {
+            match obj.get_mut("anyOf") {
+                Some(Value::Array(existing)) => {
+                    if let Value::Array(mut incoming) = one_of {
+                        existing.append(&mut incoming);
+                    }
+                }
+                _ => {
+                    obj.insert("anyOf".to_string(), one_of);
+                }
+            }
+        }
+
+        for key in ["anyOf", "allOf"] {
             if let Some(variants) = obj.get_mut(key)
                 && let Value::Array(variants_array) = variants
             {
@@ -1011,6 +1145,11 @@ struct AnthropicCompletionRequest {
     output_config: Option<OutputConfig>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
+    /// Top-level cache_control for Anthropic's automatic caching mode. When set, the API
+    /// automatically places the cache breakpoint on the last cacheable block and advances it as
+    /// the conversation grows. No beta header is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<CacheControl>,
 }
 
 /// Helper to set cache_control on a Content block
@@ -1031,7 +1170,7 @@ fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>)
 pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message]) {
     // Add cache_control to the system prompt (if non-empty)
     if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut() {
-        *cache_control = Some(CacheControl::Ephemeral);
+        *cache_control = Some(CacheControl::ephemeral());
     }
 
     // Clear any existing cache_control from all message content blocks
@@ -1043,7 +1182,7 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
 
     // Add cache_control to the last content block of the last message
     if let Some(last_msg) = messages.last_mut() {
-        set_content_cache_control(last_msg.content.last_mut(), Some(CacheControl::Ephemeral));
+        set_content_cache_control(last_msg.content.last_mut(), Some(CacheControl::ephemeral()));
     }
 }
 
@@ -1075,6 +1214,10 @@ pub struct AnthropicRequestParams<'a> {
     pub model: &'a str,
     pub request: CompletionRequest,
     pub prompt_caching: bool,
+    /// Add a top-level `cache_control` field for Anthropic's automatic caching mode.
+    pub automatic_caching: bool,
+    /// TTL for the top-level cache_control. `None` omits the `ttl` field (API default is 5 min).
+    pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
@@ -1085,6 +1228,8 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             model,
             request: mut req,
             prompt_caching,
+            automatic_caching,
+            automatic_caching_ttl,
         } = params;
 
         // Check if max_tokens is set, required for Anthropic
@@ -1145,16 +1290,17 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             apply_cache_control(&mut system, &mut messages);
         }
 
-        // Map output_schema to Anthropic's output_config field
-        let output_config = req.output_schema.map(|schema| {
+        let output_config = if let Some(schema) = req.output_schema {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            OutputConfig {
+            Some(OutputConfig {
                 format: OutputFormat::JsonSchema {
                     schema: schema_value,
                 },
-            }
-        });
+            })
+        } else {
+            None
+        };
 
         Ok(Self {
             model: model.to_string(),
@@ -1165,6 +1311,14 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             tool_choice: req.tool_choice.and_then(|x| ToolChoice::try_from(x).ok()),
             tools,
             output_config,
+            // Automatic caching: one top-level field; the API moves the breakpoint automatically.
+            cache_control: if automatic_caching {
+                Some(CacheControl::Ephemeral {
+                    ttl: automatic_caching_ttl,
+                })
+            } else {
+                None
+            },
             additional_params: if additional_params_payload.is_null() {
                 None
             } else {
@@ -1190,13 +1344,14 @@ fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
-    type Client = Client<T>;
+    type Client = crate::client::Client<Ext, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
@@ -1215,14 +1370,15 @@ where
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "anthropic",
+                gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -1243,6 +1399,8 @@ where
             model: &request_model,
             request: completion_request,
             prompt_caching: self.prompt_caching,
+            automatic_caching: self.automatic_caching,
+            automatic_caching_ttl: self.automatic_caching_ttl.clone(),
         })?;
 
         if enabled!(Level::TRACE) {
@@ -1316,7 +1474,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 
@@ -1669,7 +1827,7 @@ mod tests {
         // Test SystemContent with cache_control
         let system = SystemContent::Text {
             text: "You are a helpful assistant.".to_string(),
-            cache_control: Some(CacheControl::Ephemeral),
+            cache_control: Some(CacheControl::ephemeral()),
         };
         let json = serde_json::to_string(&system).unwrap();
         assert!(json.contains(r#""cache_control":{"type":"ephemeral"}"#));
@@ -1686,7 +1844,7 @@ mod tests {
         // Test Content::Text with cache_control
         let content = Content::Text {
             text: "Test message".to_string(),
-            cache_control: Some(CacheControl::Ephemeral),
+            cache_control: Some(CacheControl::ephemeral()),
         };
         let json_content = serde_json::to_string(&content).unwrap();
         assert!(json_content.contains(r#""cache_control":{"type":"ephemeral"}"#));
@@ -1987,7 +2145,7 @@ mod tests {
                 data: "cached text".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
-            cache_control: Some(CacheControl::Ephemeral),
+            cache_control: Some(CacheControl::ephemeral()),
         };
 
         let json = serde_json::to_value(&content).unwrap();

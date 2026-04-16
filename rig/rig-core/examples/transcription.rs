@@ -8,7 +8,6 @@ use std::env::args;
 
 #[tokio::main]
 async fn main() {
-    // Load the path from the first command line argument
     let args = args().collect::<Vec<_>>();
 
     if args.len() <= 1 {
@@ -27,33 +26,29 @@ async fn main() {
 }
 
 async fn whisper(file_path: &str) {
-    // Create an OAI client
     let openai = openai::Client::from_env();
-    // Create the whisper transcription model
     let whisper = openai.transcription_model(openai::WHISPER_1);
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
-    let text = response.text;
-    println!("Whisper-1: {text}")
+    println!("Whisper-1: {}", response.text);
 }
 
 async fn gemini(file_path: &str) {
-    // Create an OAI client
     let gemini = gemini::Client::from_env();
-    // Create the whisper transcription model
-    let gemini = gemini.transcription_model(gemini::completion::GEMINI_2_0_FLASH);
-    let response = gemini
+    let model = gemini.transcription_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+    let response = model
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
-    let text = response.text;
-    println!("Gemini: {text}")
+    println!("Gemini: {}", response.text);
 }
 
 async fn azure(file_path: &str) {
@@ -62,25 +57,24 @@ async fn azure(file_path: &str) {
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
-    let text = response.text;
-    println!("Azure Whisper-1: {text}")
+    println!("Azure Whisper-1: {}", response.text);
 }
 
 async fn groq(file_path: &str) {
     let groq = groq::Client::from_env();
-    // Create the whisper transcription model
     let whisper = groq.transcription_model(groq::WHISPER_LARGE_V3);
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
-    let text = response.text;
-    println!("Groq Whisper-Large-V3: {text}")
+    println!("Groq Whisper-Large-V3: {}", response.text);
 }
 
 async fn huggingface(file_path: &str) {
@@ -89,11 +83,11 @@ async fn huggingface(file_path: &str) {
     let response = whisper
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file");
-    let text = response.text;
-    println!("Huggingface Whisper-Large-V3: {text}")
+    println!("HuggingFace Whisper-Large-V3: {}", response.text);
 }
 
 async fn mistral(file_path: &str) {
@@ -102,6 +96,7 @@ async fn mistral(file_path: &str) {
     let response = model
         .transcription_request()
         .load_file(file_path)
+        .expect("Failed to load file for transcription")
         .send()
         .await
         .expect("Failed to transcribe file using Mistral");

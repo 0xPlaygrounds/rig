@@ -6,8 +6,9 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
-    apply_cache_control, split_system_messages_from_history,
+    AnthropicCompatibleProvider, CacheControl, Content, GenericCompletionModel, Message,
+    SystemContent, ToolChoice, ToolDefinition, Usage, apply_cache_control,
+    split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -18,6 +19,7 @@ use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
 use crate::telemetry::SpanCombinator;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -77,6 +79,10 @@ pub struct PartialUsage {
     pub output_tokens: usize,
     #[serde(default)]
     pub input_tokens: Option<usize>,
+    #[serde(default)]
+    pub cache_creation_input_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_read_input_tokens: Option<u64>,
 }
 
 impl GetTokenUsage for PartialUsage {
@@ -85,7 +91,12 @@ impl GetTokenUsage for PartialUsage {
 
         usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
         usage.output_tokens = self.output_tokens as u64;
-        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        usage.cached_input_tokens = self.cache_read_input_tokens.unwrap_or(0);
+        usage.cache_creation_input_tokens = self.cache_creation_input_tokens.unwrap_or(0);
+        usage.total_tokens = usage.input_tokens
+            + usage.cached_input_tokens
+            + usage.cache_creation_input_tokens
+            + usage.output_tokens;
         Some(usage)
     }
 }
@@ -114,16 +125,21 @@ impl GetTokenUsage for StreamingCompletionResponse {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
         usage.output_tokens = self.usage.output_tokens as u64;
-        usage.total_tokens =
-            self.usage.input_tokens.unwrap_or(0) as u64 + self.usage.output_tokens as u64;
+        usage.cached_input_tokens = self.usage.cache_read_input_tokens.unwrap_or(0);
+        usage.cache_creation_input_tokens = self.usage.cache_creation_input_tokens.unwrap_or(0);
+        usage.total_tokens = usage.input_tokens
+            + usage.cached_input_tokens
+            + usage.cache_creation_input_tokens
+            + usage.output_tokens;
 
         Some(usage)
     }
 }
 
-impl<T> CompletionModel<T>
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -139,14 +155,15 @@ where
                 target: "rig::completions",
                 "chat_streaming",
                 gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "anthropic",
+                gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
                 gen_ai.response.model = &request_model,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
@@ -202,6 +219,18 @@ where
             "max_tokens": max_tokens,
             "stream": true,
         });
+
+        // Automatic caching: one top-level field; the API moves the breakpoint automatically.
+        // No beta header is required.
+        if self.automatic_caching {
+            let cc = CacheControl::Ephemeral {
+                ttl: self.automatic_caching_ttl.clone(),
+            };
+            merge_inplace(
+                &mut body,
+                json!({ "cache_control": serde_json::to_value(&cc)? }),
+            );
+        }
 
         // Add system prompt if non-empty
         if !system.is_empty() {
@@ -290,9 +319,14 @@ where
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
                                         if delta.stop_reason.is_some() {
+                                            // cache_creation_input_tokens and cache_read_input_tokens
+                                            // are cumulative totals on message_delta.usage per the
+                                            // Anthropic streaming API spec — use them directly.
                                             let usage = PartialUsage {
                                                  output_tokens: usage.output_tokens,
                                                  input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
+                                                 cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                                                 cache_read_input_tokens: usage.cache_read_input_tokens
                                             };
 
                                             let span = tracing::Span::current();

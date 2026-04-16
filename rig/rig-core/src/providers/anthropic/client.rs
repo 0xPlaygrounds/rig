@@ -8,6 +8,7 @@ use crate::{
         ProviderClient,
     },
     http_client::{self, HttpClientExt},
+    providers::anthropic::model_listing::AnthropicModelLister,
 };
 
 // ================================================================
@@ -26,7 +27,7 @@ impl<H> Capabilities<H> for AnthropicExt {
 
     type Embeddings = Nothing;
     type Transcription = Nothing;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<AnthropicModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -35,8 +36,8 @@ impl<H> Capabilities<H> for AnthropicExt {
 
 #[derive(Debug, Clone)]
 pub struct AnthropicBuilder {
-    anthropic_version: String,
-    anthropic_betas: Vec<String>,
+    pub(crate) anthropic_version: String,
+    pub(crate) anthropic_betas: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,21 +95,9 @@ impl ProviderBuilder for AnthropicBuilder {
 
     fn finish<H>(
         &self,
-        mut builder: client::ClientBuilder<Self, AnthropicKey, H>,
+        builder: client::ClientBuilder<Self, AnthropicKey, H>,
     ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        builder.headers_mut().insert(
-            "anthropic-version",
-            HeaderValue::from_str(&self.anthropic_version)?,
-        );
-
-        if !self.anthropic_betas.is_empty() {
-            builder.headers_mut().insert(
-                "anthropic-beta",
-                HeaderValue::from_str(&self.anthropic_betas.join(","))?,
-            );
-        }
-
-        Ok(builder)
+        finish_anthropic_builder(self, builder)
     }
 }
 
@@ -170,6 +159,45 @@ impl<H> ClientBuilder<H> {
             ext
         })
     }
+}
+
+pub fn normalize_anthropic_base_url(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+
+    if let Some(stripped) = trimmed.strip_suffix("/v1/messages") {
+        stripped.to_string()
+    } else if let Some(stripped) = trimmed.strip_suffix("/messages") {
+        stripped.to_string()
+    } else if let Some(stripped) = trimmed.strip_suffix("/v1") {
+        stripped.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub fn finish_anthropic_builder<ExtBuilder, H>(
+    ext: &AnthropicBuilder,
+    mut builder: client::ClientBuilder<ExtBuilder, AnthropicKey, H>,
+) -> http_client::Result<client::ClientBuilder<ExtBuilder, AnthropicKey, H>>
+where
+    ExtBuilder: Clone,
+{
+    let normalized_base_url = normalize_anthropic_base_url(builder.get_base_url());
+    builder = builder.base_url(normalized_base_url);
+
+    builder.headers_mut().insert(
+        "anthropic-version",
+        HeaderValue::from_str(&ext.anthropic_version)?,
+    );
+
+    if !ext.anthropic_betas.is_empty() {
+        builder.headers_mut().insert(
+            "anthropic-beta",
+            HeaderValue::from_str(&ext.anthropic_betas.join(","))?,
+        );
+    }
+
+    Ok(builder)
 }
 #[cfg(test)]
 mod tests {

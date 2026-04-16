@@ -1,6 +1,6 @@
 [package]
 name = "rig-derive"
-version = "0.1.11"
+version = "0.1.12"
 edition = { workspace = true }
 license = "MIT"
 description = "Internal crate that implements Rig derive macros."
@@ -27,6 +27,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true }
+trybuild = "1.0"
 
 [[example]]
 name = "simple"

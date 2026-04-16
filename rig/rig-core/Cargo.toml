@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.33.0"
+version = "0.35.0"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -33,14 +33,14 @@ ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-rig-derive = { version = "0.1.11", path = "../rig-derive", optional = true }
+rig-derive = { version = "0.1.12", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { version = "0.16", optional = true, features = ["client"] }
+rmcp = { version = "1", optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = "1.3.1"
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
@@ -63,7 +63,7 @@ reqwest-middleware = { version = "0.5.1", optional = true, features = [
 # Native-only dependency for OpenAI Responses websocket mode.
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio-tungstenite = { version = "0.23.1", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.23.1", optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -84,7 +84,7 @@ reqwest-middleware = { version = "0.5", features = [
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "0.16", features = [
+rmcp = { version = "1", features = [
   "client",
   "macros",
   "reqwest",                                  # required for some strange reason
@@ -104,7 +104,7 @@ tracing-opentelemetry = "0.31.0"
 
 
 [features]
-default = ["reqwest-rustls"]
+default = ["reqwest", "rustls"]
 all = ["derive", "pdf", "rayon"]
 audio = []
 image = []
@@ -121,19 +121,17 @@ wasm = [
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
-reqwest-native-tls = ["reqwest/native-tls"]
-reqwest-rustls = [
-  "reqwest/rustls",
+reqwest = [
   "reqwest/charset",
   "reqwest/http2",
   "reqwest/system-proxy",
 ]
+websocket = ["dep:tokio-tungstenite"]
+rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
+native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
 reqwest-middleware = ["dep:reqwest-middleware"]
-reqwest-middleware-rustls = ["reqwest-middleware", "reqwest-middleware/rustls"]
-
-[[test]]
-name = "embed_macro"
-required-features = ["derive"]
+reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
+reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls", "reqwest/native-tls"]
 
 [[example]]
 name = "rag"
@@ -156,50 +154,12 @@ name = "vector_search_cohere"
 required-features = ["derive"]
 
 [[example]]
-name = "gemini_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "agent_with_moonshot"
-
-[[example]]
 name = "pdf_agent"
 required-features = ["derive", "pdf"]
 
 [[example]]
-name = "agent_with_together"
-required-features = ["derive"]
-
-[[example]]
-name = "together_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "openai_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "hyperbolic_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "xai_audio_generation"
-required-features = ["audio"]
-
-[[example]]
-name = "mistral_embeddings"
-required-features = ["derive"]
-
-[[example]]
-name = "voyageai_embeddings"
-required-features = ["derive"]
-
-[[example]]
 name = "rmcp"
 required-features = ["rmcp"]
-
-[[example]]
-name = "request_hook"
 
 [[example]]
 name = "discord_bot"
@@ -209,9 +169,13 @@ required-features = ["discord-bot"]
 name = "custom_vector_store"
 
 [[example]]
+name = "complex_agentic_loop_claude"
+required-features = ["derive"]
+
+[[example]]
 name = "gemini_extractor_with_rag"
 required-features = ["derive"]
 
 [[example]]
-name = "xai_image_generation"
-required-features = ["image"]
+name = "vector_search_ollama"
+required-features = ["derive"]

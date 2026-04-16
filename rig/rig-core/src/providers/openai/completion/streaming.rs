@@ -12,7 +12,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
-use crate::providers::openai::completion::{CompletionModel, OpenAIRequestParams, Usage};
+use crate::providers::openai::completion::{GenericCompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
@@ -84,9 +84,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl<T> CompletionModel<T>
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt + Clone + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
 {
     pub(crate) async fn stream(
         &self,
@@ -222,7 +223,9 @@ where
                                 && existing.name != *new_name
                             {
                                 let evicted = tool_calls.remove(&index).expect("checked above");
-                                yield Ok(streaming::RawStreamingChoice::ToolCall(evicted));
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                    finalize_completed_streaming_tool_call(evicted),
+                                ));
                             }
 
                             let existing_tool_call = tool_calls.entry(index).or_insert_with(streaming::RawStreamingToolCall::empty);
@@ -288,7 +291,9 @@ where
                     // Finish reason
                     if let Some(finish_reason) = &choice.finish_reason && *finish_reason == FinishReason::ToolCalls {
                         for (_idx, tool_call) in tool_calls.into_iter() {
-                            yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
+                            yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                finalize_completed_streaming_tool_call(tool_call),
+                            ));
                         }
                         tool_calls = HashMap::new();
                     }
@@ -335,6 +340,16 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+fn finalize_completed_streaming_tool_call(
+    mut tool_call: streaming::RawStreamingToolCall,
+) -> streaming::RawStreamingToolCall {
+    if tool_call.arguments.is_null() {
+        tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+    }
+
+    tool_call
 }
 
 #[cfg(test)]
@@ -746,6 +761,94 @@ mod tests {
         assert!(
             args_str.contains("META Platforms news"),
             "expected accumulated arguments containing the full query, got: {args_str}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_zero_arg_tool_call_normalized_on_finish_reason() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            } = chunk.unwrap()
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(collected_tool_calls.len(), 1);
+        assert_eq!(collected_tool_calls[0].id, "call_123");
+        assert_eq!(collected_tool_calls[0].function.name, "ping");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({})
+        );
+    }
+
+    #[tokio::test]
+    async fn test_incomplete_zero_arg_tool_call_preserves_null_on_cleanup_flush() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        let sse = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n";
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            } = chunk.unwrap()
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(collected_tool_calls.len(), 1);
+        assert_eq!(collected_tool_calls[0].id, "call_123");
+        assert_eq!(collected_tool_calls[0].function.name, "ping");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::Value::Null
         );
     }
 }

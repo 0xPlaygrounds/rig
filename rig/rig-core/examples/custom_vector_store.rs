@@ -228,7 +228,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(2)
-        .build()?;
+        .build();
 
     // Execute the query
     let results: Vec<(f64, String, Document)> = store.top_n(req).await?;

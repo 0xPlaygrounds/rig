@@ -129,19 +129,6 @@ impl Reasoning {
         self
     }
 
-    #[deprecated(note = "Use `new_with_signature` or content-level signature handling instead")]
-    pub fn with_signature(mut self, signature: Option<String>) -> Self {
-        if let Some(existing_signature) =
-            self.content.iter_mut().find_map(|content| match content {
-                ReasoningContent::Text { signature, .. } => Some(signature),
-                _ => None,
-            })
-        {
-            *existing_signature = signature;
-        }
-        self
-    }
-
     /// Create reasoning content from multiple text blocks.
     pub fn multi(input: Vec<String>) -> Self {
         Self {
@@ -1135,6 +1122,12 @@ impl FromStr for Text {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(s.into())
+    }
+}
+
+impl From<&Message> for Message {
+    fn from(msg: &Message) -> Self {
+        msg.clone()
     }
 }
 

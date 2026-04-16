@@ -12,7 +12,6 @@ use crate::OneOrMany;
 use crate::agent::Agent;
 use crate::agent::prompt_request::hooks::PromptHook;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
-use crate::client::FinalCompletionResponse;
 use crate::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
     Message, Usage,
@@ -489,76 +488,51 @@ where
     /// ```
     type Hook: PromptHook<M>;
 
-    /// Stream a chat with history to the model
+    /// Stream a chat with history to the model.
     ///
-    /// The updated history (including the new prompt and response) is returned
-    /// in [`FinalResponse::history()`](crate::agent::prompt_request::streaming::FinalResponse::history).
-    fn stream_chat(
+    /// The messages returned by the model can be accessed via `FinalResponse::history()`
+    ///
+    /// You are responsible for managing history, a simple linear solution could look like:
+    /// ```ignore
+    ///  let mut history = vec![];
+    ///
+    ///  loop {
+    ///      let prompt = "Create GPT-67, make no mistakes";
+    ///      let mut stream = agent.stream_chat(prompt, &history).await;
+    ///
+    ///      while let Some(msg) = stream.next().await {
+    ///         match msg {
+    ///              Ok(MultiTurnStreamItem::FinalResponse(fin)) => {
+    ///                  history.extend_from_slice(fin.history().unwrap_or_default());
+    ///                  break;
+    ///             }
+    ///             Ok(_other) => { /* Do something with this chunk */ }
+    ///             Err(e) => return Err(e.into()),
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> StreamingPromptRequest<M, Self::Hook>;
+        chat_history: I,
+    ) -> StreamingPromptRequest<M, Self::Hook>
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// Trait for low-level streaming completion interface
 pub trait StreamingCompletion<M: CompletionModel> {
     /// Generate a streaming completion from a request
-    fn stream_completion(
+    fn stream_completion<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>;
-}
-
-pub(crate) struct StreamingResultDyn<R: Clone + Unpin + GetTokenUsage> {
-    pub(crate) inner: StreamingResult<R>,
-}
-
-fn map_raw_streaming_choice<R>(
-    chunk: RawStreamingChoice<R>,
-) -> RawStreamingChoice<FinalCompletionResponse>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    match chunk {
-        RawStreamingChoice::FinalResponse(res) => {
-            RawStreamingChoice::FinalResponse(FinalCompletionResponse {
-                usage: res.token_usage(),
-            })
-        }
-        RawStreamingChoice::Message(m) => RawStreamingChoice::Message(m),
-        RawStreamingChoice::ToolCallDelta {
-            id,
-            internal_call_id,
-            content,
-        } => RawStreamingChoice::ToolCallDelta {
-            id,
-            internal_call_id,
-            content,
-        },
-        RawStreamingChoice::Reasoning { id, content } => {
-            RawStreamingChoice::Reasoning { id, content }
-        }
-        RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-            RawStreamingChoice::ReasoningDelta { id, reasoning }
-        }
-        RawStreamingChoice::ToolCall(tool_call) => RawStreamingChoice::ToolCall(tool_call),
-        RawStreamingChoice::MessageId(id) => RawStreamingChoice::MessageId(id),
-    }
-}
-
-impl<R: Clone + Unpin + GetTokenUsage> Stream for StreamingResultDyn<R> {
-    type Item = Result<RawStreamingChoice<FinalCompletionResponse>, CompletionError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let stream = self.get_mut();
-
-        match stream.inner.as_mut().poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(item)) => Poll::Ready(Some(item.map(map_raw_streaming_choice::<R>))),
-        }
-    }
+        chat_history: I,
+    ) -> impl Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// A helper function to stream a completion request to stdout.

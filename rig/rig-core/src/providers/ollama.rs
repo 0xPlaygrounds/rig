@@ -32,11 +32,13 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2").build();
 //! ```
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
+    self, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
+    ProviderClient,
 };
 use crate::completion::{GetTokenUsage, Usage};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
+use crate::model::{Model, ModelList, ModelListingError};
 use crate::streaming::RawStreamingChoice;
 use crate::{
     OneOrMany,
@@ -45,6 +47,7 @@ use crate::{
     json_utils, message,
     message::{ImageDetail, Text},
     streaming,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use async_stream::try_stream;
 use bytes::Bytes;
@@ -73,7 +76,7 @@ impl<H> Capabilities<H> for OllamaExt {
     type Completion = Capable<CompletionModel<H>>;
     type Transcription = Nothing;
     type Embeddings = Capable<EmbeddingModel<H>>;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<OllamaModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
@@ -240,7 +243,7 @@ where
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = self.client.send(req).await?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
 
         if !response.status().is_success() {
             let text = http_client::text(response).await?;
@@ -350,6 +353,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         output_tokens: completion_tokens,
                         total_tokens: prompt_tokens + completion_tokens,
                         cached_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
                     },
                     raw_response,
                     message_id: None,
@@ -723,6 +727,67 @@ where
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
             stream,
         )))
+    }
+}
+
+// ---------- Model Listing  ----------
+
+#[derive(Debug, Deserialize)]
+struct ListModelsResponse {
+    models: Vec<ListModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListModelEntry {
+    name: String,
+    model: String,
+}
+
+impl From<ListModelEntry> for Model {
+    fn from(value: ListModelEntry) -> Self {
+        Model::new(value.model, value.name)
+    }
+}
+
+/// [`ModelLister`] implementation for the Ollama API (`GET /api/tags`).
+#[derive(Clone)]
+pub struct OllamaModelLister<H = reqwest::Client> {
+    client: Client<H>,
+}
+
+impl<H> ModelLister<H> for OllamaModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+{
+    type Client = Client<H>;
+
+    fn new(client: Self::Client) -> Self {
+        Self { client }
+    }
+
+    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
+        let path = "/api/tags";
+        let req = self.client.get(path)?.body(http_client::NoBody)?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
+
+        if !response.status().is_success() {
+            let status_code = response.status().as_u16();
+            let body = response.into_body().await?;
+            return Err(ModelListingError::api_error_with_context(
+                "Ollama",
+                path,
+                status_code,
+                &body,
+            ));
+        }
+
+        let body = response.into_body().await?;
+        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
+            ModelListingError::parse_error_with_context("Ollama", path, &error, &body)
+        })?;
+        let models = api_resp.models.into_iter().map(Model::from).collect();
+
+        Ok(ModelList::new(models))
     }
 }
 

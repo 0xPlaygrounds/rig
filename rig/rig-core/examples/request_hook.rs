@@ -1,70 +1,37 @@
-use rig::agent::{HookAction, PromptHook, ToolCallHookAction};
+//! Demonstrates observing prompt/response lifecycle events with `PromptHook`.
+//! Requires `OPENAI_API_KEY`.
+//! Run it to see the hook log the outgoing prompt and the incoming model response.
+
+use anyhow::Result;
+use rig::agent::{HookAction, PromptHook};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::UserContent;
-use rig::providers::{self, openai};
+use rig::providers::openai;
 
 #[derive(Clone)]
-struct SessionIdHook<'a> {
+struct LoggingHook<'a> {
     session_id: &'a str,
 }
 
-impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
-    async fn on_tool_call(
-        &self,
-        tool_name: &str,
-        tool_call_id: Option<String>,
-        internal_call_id: &str,
-        args: &str,
-    ) -> ToolCallHookAction {
-        println!(
-            "[Session {}] Calling tool: {} with call ID: {tool_call_id} (internal: {internal_call_id}) with args: {}",
-            self.session_id,
-            tool_name,
-            args,
-            tool_call_id = tool_call_id.unwrap_or("<no call ID provided>".to_string()),
-        );
-        ToolCallHookAction::Continue
-    }
-
-    async fn on_tool_result(
-        &self,
-        tool_name: &str,
-        _tool_call_id: Option<String>,
-        _internal_call_id: &str,
-        args: &str,
-        result: &str,
-    ) -> HookAction {
-        println!(
-            "[Session {}] Tool result for {} (args: {}): {}",
-            self.session_id, tool_name, args, result
-        );
-
-        HookAction::cont()
-    }
-
+impl<'a, M> PromptHook<M> for LoggingHook<'a>
+where
+    M: CompletionModel,
+{
     async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) -> HookAction {
-        let Message::User { content } = prompt else {
-            return HookAction::terminate(
-                "Prompt hook expects prompt input to always be a user message",
-            );
-        };
-
-        println!(
-            "[Session {}] Sending prompt: {}",
-            self.session_id,
-            content
+        if let Message::User { content } = prompt {
+            let prompt_text = content
                 .iter()
-                .filter_map(|c| {
-                    if let UserContent::Text(text_content) = c {
-                        Some(text_content.text.clone())
-                    } else {
-                        None
-                    }
+                .filter_map(|content| match content {
+                    UserContent::Text(text) => Some(text.text.clone()),
+                    _ => None,
                 })
                 .collect::<Vec<_>>()
-                .join("\n")
-        );
+                .join("\n");
+            if !prompt_text.is_empty() {
+                println!("[{}] sending prompt: {}", self.session_id, prompt_text);
+            }
+        }
 
         HookAction::cont()
     }
@@ -74,38 +41,29 @@ impl<'a, M: CompletionModel> PromptHook<M> for SessionIdHook<'a> {
         _prompt: &Message,
         response: &CompletionResponse<M::Response>,
     ) -> HookAction {
-        if let Ok(resp) = serde_json::to_string(&response.raw_response) {
-            println!("[Session {}] Received response: {}", self.session_id, resp);
-        } else {
-            println!(
-                "[Session {}] Received response: <non-serializable>",
-                self.session_id
-            );
-        }
-
+        println!(
+            "[{}] received response: {:?}",
+            self.session_id, response.choice
+        );
         HookAction::cont()
     }
 }
 
-// Example main function (pseudo-code, as actual Agent/CompletionModel setup is project-specific)
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
-    let client = providers::openai::Client::from_env();
-
-    // Create agent with a single context prompt
-    let comedian_agent = client
+async fn main() -> Result<()> {
+    let agent = openai::Client::from_env()
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 
-    let session_id = "abc123";
-    let hook = SessionIdHook { session_id };
-
-    // Prompt the agent and print the response
-    comedian_agent
+    let response = agent
         .prompt("Entertain me!")
-        .with_hook(hook)
+        .with_hook(LoggingHook {
+            session_id: "demo-session",
+        })
         .await?;
+
+    println!("\nFinal response:\n{response}");
 
     Ok(())
 }

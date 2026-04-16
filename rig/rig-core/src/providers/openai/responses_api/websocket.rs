@@ -191,14 +191,14 @@ impl ResponsesWebSocketEvent {
 ///
 /// The default builder applies a 30 second connection timeout and leaves the
 /// per-event timeout disabled.
-pub struct ResponsesWebSocketSessionBuilder<T = reqwest::Client> {
-    model: ResponsesCompletionModel<T>,
+pub struct ResponsesWebSocketSessionBuilder<H = reqwest::Client> {
+    model: ResponsesCompletionModel<H>,
     connect_timeout: Option<Duration>,
     event_timeout: Option<Duration>,
 }
 
-impl<T> ResponsesWebSocketSessionBuilder<T> {
-    pub(crate) fn new(model: ResponsesCompletionModel<T>) -> Self {
+impl<H> ResponsesWebSocketSessionBuilder<H> {
+    pub(crate) fn new(model: ResponsesCompletionModel<H>) -> Self {
         Self {
             model,
             connect_timeout: Some(DEFAULT_CONNECT_TIMEOUT),
@@ -235,9 +235,9 @@ impl<T> ResponsesWebSocketSessionBuilder<T> {
     }
 }
 
-impl<T> ResponsesWebSocketSessionBuilder<T>
+impl<H> ResponsesWebSocketSessionBuilder<H>
 where
-    T: HttpClientExt
+    H: HttpClientExt
         + Clone
         + std::fmt::Debug
         + Default
@@ -246,7 +246,7 @@ where
         + 'static,
 {
     /// Opens the websocket session using the configured builder options.
-    pub async fn connect(self) -> Result<ResponsesWebSocketSession<T>, CompletionError> {
+    pub async fn connect(self) -> Result<ResponsesWebSocketSession<H>, CompletionError> {
         ResponsesWebSocketSession::connect_with_timeouts(
             self.model,
             self.connect_timeout,
@@ -264,8 +264,8 @@ where
 ///
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
-pub struct ResponsesWebSocketSession<T = reqwest::Client> {
-    model: ResponsesCompletionModel<T>,
+pub struct ResponsesWebSocketSession<H = reqwest::Client> {
+    model: ResponsesCompletionModel<H>,
     previous_response_id: Option<String>,
     pending_done_response_id: Option<String>,
     socket: OpenAIWebSocket,
@@ -275,9 +275,9 @@ pub struct ResponsesWebSocketSession<T = reqwest::Client> {
     failed: bool,
 }
 
-impl<T> ResponsesWebSocketSession<T>
+impl<H> ResponsesWebSocketSession<H>
 where
-    T: HttpClientExt
+    H: HttpClientExt
         + Clone
         + std::fmt::Debug
         + Default
@@ -286,7 +286,7 @@ where
         + 'static,
 {
     async fn connect_with_timeouts(
-        model: ResponsesCompletionModel<T>,
+        model: ResponsesCompletionModel<H>,
         connect_timeout: Option<Duration>,
         event_timeout: Option<Duration>,
     ) -> Result<Self, CompletionError> {
@@ -602,7 +602,7 @@ where
     }
 }
 
-impl<T> Drop for ResponsesWebSocketSession<T> {
+impl<H> Drop for ResponsesWebSocketSession<H> {
     fn drop(&mut self) {
         if !self.closed {
             tracing::warn!(

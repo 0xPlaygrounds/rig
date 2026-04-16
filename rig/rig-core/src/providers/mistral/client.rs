@@ -1,9 +1,12 @@
+#[cfg(any(feature = "image", feature = "audio"))]
+use crate::client::Nothing;
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
         ProviderClient,
     },
     http_client,
+    providers::mistral::MistralModelLister,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -30,7 +33,7 @@ impl<H> Capabilities<H> for MistralExt {
     type Embeddings = Capable<super::EmbeddingModel<H>>;
 
     type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<MistralModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 

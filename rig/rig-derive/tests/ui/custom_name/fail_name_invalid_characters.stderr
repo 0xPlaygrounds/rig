@@ -1,0 +1,5 @@
+error: `name` may only contain ASCII letters, digits, underscores, or hyphens
+ --> tests/ui/custom_name/fail_name_invalid_characters.rs:5:19
+  |
+5 | #[rig_tool(name = "bad name!")]
+  |                   ^^^^^^^^^^^

@@ -64,14 +64,11 @@
 //! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
-use crate::client::FinalCompletionResponse;
-#[allow(deprecated)]
-use crate::client::completion::CompletionModelHandle;
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
 use crate::tool::server::ToolServerError;
-use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
-use crate::{OneOrMany, http_client, streaming};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::{OneOrMany, http_client};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -81,7 +78,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
-use std::sync::Arc;
 use thiserror::Error;
 
 // Errors
@@ -131,7 +127,7 @@ pub enum PromptError {
 
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]
-    ToolServerError(#[from] ToolServerError),
+    ToolServerError(#[from] Box<ToolServerError>),
 
     /// The LLM tried to call too many tools during a multi-turn conversation.
     /// To fix this, you may either need to lower the amount of tools your model has access to (and then create other agents to share the tool load)
@@ -146,15 +142,18 @@ pub enum PromptError {
     /// A prompting loop was cancelled.
     #[error("PromptCancelled: {reason}")]
     PromptCancelled {
-        chat_history: Box<Vec<Message>>,
+        chat_history: Vec<Message>,
         reason: String,
     },
 }
 
 impl PromptError {
-    pub(crate) fn prompt_cancelled(chat_history: Vec<Message>, reason: impl Into<String>) -> Self {
+    pub(crate) fn prompt_cancelled(
+        chat_history: impl IntoIterator<Item = Message>,
+        reason: impl Into<String>,
+    ) -> Self {
         Self::PromptCancelled {
-            chat_history: Box::new(chat_history),
+            chat_history: chat_history.into_iter().collect(),
             reason: reason.into(),
         }
     }
@@ -165,7 +164,7 @@ impl PromptError {
 pub enum StructuredOutputError {
     /// An error occurred during the prompt execution.
     #[error("PromptError: {0}")]
-    PromptError(#[from] PromptError),
+    PromptError(#[from] Box<PromptError>),
 
     /// Failed to deserialize the model's response into the target type.
     #[error("DeserializationError: {0}")]
@@ -272,11 +271,14 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
     /// is returned as a string.
     ///
     /// If the tool does not exist, or the tool call fails, then an error is returned.
-    fn chat(
+    fn chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
+        chat_history: I,
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// Trait defining a high-level typed prompt interface for structured output.
@@ -304,10 +306,9 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
 /// ```
 pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
     /// The type of the typed prompt request returned by `prompt_typed`.
-    type TypedRequest<'a, T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
+    type TypedRequest<T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
     where
-        Self: 'a,
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'a;
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
     /// Send a prompt and receive a typed structured response.
     ///
@@ -328,10 +329,7 @@ pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
     /// // Or specified explicitly with turbofish
     /// let forecast = agent.prompt_typed::<WeatherForecast>("What's the weather?").await?;
     /// ```
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> Self::TypedRequest<'_, T>
+    fn prompt_typed<T>(&self, prompt: impl Into<Message> + WasmCompatSend) -> Self::TypedRequest<T>
     where
         T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
@@ -349,12 +347,15 @@ pub trait Completion<M: CompletionModel> {
     ///
     /// For example, the request builder returned by [`Agent::completion`](crate::agent::Agent::completion) will already
     /// contain the `preamble` provided when creating the agent.
-    fn completion(
+    fn completion<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
+        chat_history: I,
     ) -> impl std::future::Future<Output = Result<CompletionRequestBuilder<M>, CompletionError>>
-    + WasmCompatSend;
+    + WasmCompatSend
+    where
+        I: IntoIterator<Item = T> + WasmCompatSend,
+        T: Into<Message>;
 }
 
 /// General completion response struct that contains the high-level completion choice
@@ -409,8 +410,10 @@ pub struct Usage {
     pub output_tokens: u64,
     /// We store this separately as some providers may only report one number
     pub total_tokens: u64,
-    /// The number of cached input tokens (from prompt caching). 0 if not reported by provider.
+    /// The number of input tokens read from a provider-managed cache
     pub cached_input_tokens: u64,
+    /// The number of input tokens written to a provider-managed cache
+    pub cache_creation_input_tokens: u64,
 }
 
 impl Usage {
@@ -421,6 +424,7 @@ impl Usage {
             output_tokens: 0,
             total_tokens: 0,
             cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
         }
     }
 }
@@ -440,6 +444,8 @@ impl Add for Usage {
             output_tokens: self.output_tokens + other.output_tokens,
             total_tokens: self.total_tokens + other.total_tokens,
             cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
+            cache_creation_input_tokens: self.cache_creation_input_tokens
+                + other.cache_creation_input_tokens,
         }
     }
 }
@@ -450,6 +456,7 @@ impl AddAssign for Usage {
         self.output_tokens += other.output_tokens;
         self.total_tokens += other.total_tokens;
         self.cached_input_tokens += other.cached_input_tokens;
+        self.cache_creation_input_tokens += other.cache_creation_input_tokens;
     }
 }
 
@@ -493,83 +500,8 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 
-#[allow(deprecated)]
-#[deprecated(
-    since = "0.25.0",
-    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `CompletionModel` instead."
-)]
-pub trait CompletionModelDyn: WasmCompatSend + WasmCompatSync {
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> WasmBoxedFuture<'_, Result<CompletionResponse<()>, CompletionError>>;
-
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> WasmBoxedFuture<
-        '_,
-        Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>,
-    >;
-
-    fn completion_request(
-        &self,
-        prompt: Message,
-    ) -> CompletionRequestBuilder<CompletionModelHandle<'_>>;
-}
-
-#[allow(deprecated)]
-impl<T, R> CompletionModelDyn for T
-where
-    T: CompletionModel<StreamingResponse = R>,
-    R: Clone + Unpin + GetTokenUsage + 'static,
-{
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> WasmBoxedFuture<'_, Result<CompletionResponse<()>, CompletionError>> {
-        Box::pin(async move {
-            self.completion(request)
-                .await
-                .map(|resp| CompletionResponse {
-                    choice: resp.choice,
-                    usage: resp.usage,
-                    raw_response: (),
-                    message_id: resp.message_id,
-                })
-        })
-    }
-
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> WasmBoxedFuture<
-        '_,
-        Result<StreamingCompletionResponse<FinalCompletionResponse>, CompletionError>,
-    > {
-        Box::pin(async move {
-            let resp = self.stream(request).await?;
-            let inner = resp.inner;
-
-            let stream = streaming::StreamingResultDyn {
-                inner: Box::pin(inner),
-            };
-
-            Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
-        })
-    }
-
-    /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(
-        &self,
-        prompt: Message,
-    ) -> CompletionRequestBuilder<CompletionModelHandle<'_>> {
-        CompletionRequestBuilder::new(CompletionModelHandle::new(Arc::new(self.clone())), prompt)
-    }
-}
-
 /// Struct representing a general completion request that can be sent to a completion model provider.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
@@ -797,14 +729,15 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Adds a message to the chat history for the completion request.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);
+
         self
     }
 
     /// Adds a list of messages to the chat history for the completion request.
-    pub fn messages(self, messages: Vec<Message>) -> Self {
-        messages
-            .into_iter()
-            .fold(self, |builder, msg| builder.message(msg))
+    pub fn messages(mut self, messages: impl IntoIterator<Item = Message>) -> Self {
+        self.chat_history.extend(messages);
+
+        self
     }
 
     /// Adds a document to the completion request.
@@ -814,7 +747,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Adds a list of documents to the completion request.
-    pub fn documents(self, documents: Vec<Document>) -> Self {
+    pub fn documents(self, documents: impl IntoIterator<Item = Document>) -> Self {
         documents
             .into_iter()
             .fold(self, |builder, doc| builder.document(doc))
@@ -928,12 +861,15 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
+        // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
         if let Some(preamble) = self.preamble {
             chat_history.insert(0, Message::system(preamble));
         }
-        let chat_history = OneOrMany::many([chat_history, vec![self.prompt]].concat())
-            .expect("There will always be atleast the prompt");
+        chat_history.push(self.prompt);
+
+        let chat_history =
+            OneOrMany::many(chat_history).expect("There will always be at least the prompt");
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
