@@ -1,19 +1,31 @@
+#[cfg(not(target_family = "wasm"))]
 use base64::Engine;
+#[cfg(not(target_family = "wasm"))]
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+#[cfg(not(target_family = "wasm"))]
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[cfg(not(target_family = "wasm"))]
 const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
+#[cfg(not(target_family = "wasm"))]
 const CHATGPT_DEVICE_CODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
+#[cfg(not(target_family = "wasm"))]
 const CHATGPT_DEVICE_TOKEN_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/token";
+#[cfg(not(target_family = "wasm"))]
 const CHATGPT_OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
+#[cfg(not(target_family = "wasm"))]
 const CHATGPT_DEVICE_VERIFY_URL: &str = "https://auth.openai.com/codex/device";
+#[cfg(not(target_family = "wasm"))]
 const CHATGPT_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+#[cfg(not(target_family = "wasm"))]
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 60;
+#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_TIMEOUT_SECONDS: i64 = 15 * 60;
+#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone)]
@@ -33,6 +45,7 @@ impl DeviceCodeHandler {
         Self(Some(Arc::new(handler)))
     }
 
+    #[cfg(not(target_family = "wasm"))]
     fn emit(&self, prompt: DeviceCodePrompt) {
         if let Some(handler) = &self.0 {
             handler(prompt);
@@ -100,6 +113,7 @@ pub struct AuthContext {
     pub account_id: Option<String>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct AuthRecord {
     access_token: Option<String>,
@@ -109,6 +123,7 @@ struct AuthRecord {
     account_id: Option<String>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct DeviceCodeResponse {
     device_auth_id: String,
@@ -118,12 +133,14 @@ struct DeviceCodeResponse {
     interval: Option<u64>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct DeviceTokenResponse {
     authorization_code: String,
     code_verifier: String,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct OAuthTokenResponse {
     access_token: String,
@@ -355,13 +372,14 @@ impl fmt::Debug for AuthSource {
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
+fn ensure_parent_dir(path: &std::path::Path) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn build_auth_record(tokens: OAuthTokenResponse) -> AuthRecord {
     let access_token = Some(tokens.access_token);
     let id_token = tokens.id_token;
@@ -380,12 +398,14 @@ fn build_auth_record(tokens: OAuthTokenResponse) -> AuthRecord {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn extract_expiration_timestamp(token: &str) -> Option<i64> {
     decode_jwt_claims(token)
         .get("exp")
         .and_then(|value| value.as_i64().or_else(|| value.as_u64().map(|v| v as i64)))
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn extract_account_id(token: Option<&str>) -> Option<String> {
     let claims = decode_jwt_claims(token?);
     claims
@@ -396,6 +416,7 @@ fn extract_account_id(token: Option<&str>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn decode_jwt_claims(token: &str) -> serde_json::Value {
     let payload = token.split('.').nth(1).unwrap_or_default();
     let decoded = BASE64_URL_SAFE_NO_PAD.decode(payload.as_bytes());
@@ -405,6 +426,7 @@ fn decode_jwt_claims(token: &str) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn token_expired(expires_at: Option<i64>) -> bool {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -417,6 +439,7 @@ fn token_expired(expires_at: Option<i64>) -> bool {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn deserialize_optional_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
 where
     D: Deserializer<'de>,

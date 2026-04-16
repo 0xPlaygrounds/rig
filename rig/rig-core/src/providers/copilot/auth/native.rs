@@ -1,13 +1,21 @@
 use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
+#[cfg(not(target_family = "wasm"))]
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+#[cfg(not(target_family = "wasm"))]
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
+#[cfg(not(target_family = "wasm"))]
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
+#[cfg(not(target_family = "wasm"))]
 const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+#[cfg(not(target_family = "wasm"))]
 const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/token";
+#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
+#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_TIMEOUT_SECONDS: u64 = 15 * 60;
+#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_SLOW_DOWN_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone)]
@@ -17,6 +25,7 @@ pub(super) struct PlatformAuthenticator {
     device_code_handler: DeviceCodeHandler,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyRecord {
     token: Option<String>,
@@ -24,11 +33,13 @@ struct ApiKeyRecord {
     endpoints: Option<ApiKeyEndpoints>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyEndpoints {
     api: Option<String>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct DeviceCodeResponse {
     device_code: String,
@@ -38,6 +49,7 @@ struct DeviceCodeResponse {
     expires_in: Option<u64>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct AccessTokenResponse {
     access_token: Option<String>,
@@ -45,6 +57,7 @@ struct AccessTokenResponse {
     error_description: Option<String>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AccessTokenState {
     token: String,
@@ -280,6 +293,7 @@ impl PlatformAuthenticator {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl ApiKeyRecord {
     fn api_base(&self) -> Option<String> {
         self.endpoints
@@ -300,13 +314,14 @@ fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt
     }
 }
 
-fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
+fn ensure_parent_dir(path: &std::path::Path) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn token_expired(expires_at: Option<i64>) -> bool {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -319,10 +334,12 @@ fn token_expired(expires_at: Option<i64>) -> bool {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn normalize_poll_interval_seconds(interval: Option<u64>) -> u64 {
     interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS).max(1)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn next_poll_interval_seconds(
     current_interval: u64,
     error: Option<&str>,
@@ -348,6 +365,7 @@ fn next_poll_interval_seconds(
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn format_oauth_error(prefix: &str, error: &str, description: Option<&str>) -> String {
     match description
         .map(str::trim)
@@ -358,6 +376,7 @@ fn format_oauth_error(prefix: &str, error: &str, description: Option<&str>) -> S
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn should_retry_with_fresh_access_token(err: &AuthError) -> bool {
     match err {
         AuthError::Http(err) => should_retry_with_fresh_access_token_status(err.status()),
@@ -365,6 +384,7 @@ fn should_retry_with_fresh_access_token(err: &AuthError) -> bool {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn should_retry_with_fresh_access_token_status(status: Option<reqwest::StatusCode>) -> bool {
     matches!(
         status,
