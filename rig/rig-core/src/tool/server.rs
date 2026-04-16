@@ -180,13 +180,13 @@ impl ToolServerHandle {
                 let text = text.clone();
                 let num_sample = *num_sample;
                 let index = index.clone();
-                
+
                 async move {
                     let req = VectorSearchRequest::builder()
                         .query(text)
                         .samples(num_sample as u64)
                         .build();
-                    
+
                     let ids = index
                         .as_ref()
                         .top_n_ids(req.map_filter(Filter::interpret))
@@ -194,7 +194,7 @@ impl ToolServerHandle {
                         .into_iter()
                         .map(|(_, id)| id)
                         .collect::<Vec<String>>();
-                        
+
                     Ok::<_, VectorStoreError>(ids)
                 }
             });
