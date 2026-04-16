@@ -2,13 +2,17 @@
 
 use assert_fs::TempDir;
 use rig::client::CompletionClient;
-use rig::completion::Prompt;
 use rig::providers::chatgpt;
+use rig::streaming::StreamingPrompt;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
 
-use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use crate::support::{
+    BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response, collect_stream_final_response,
+};
+
+const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
 
 fn oauth_builder_with_auth_file(path: &Path) -> chatgpt::ClientBuilder {
     let mut builder = chatgpt::Client::builder().oauth().auth_file(path);
@@ -63,13 +67,11 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device authorization should populate the auth cache"
     );
 
-    let response = client
-        .agent(chatgpt::GPT_5_3_CHAT_LATEST)
-        .preamble(BASIC_PREAMBLE)
-        .build()
-        .prompt(BASIC_PROMPT)
+    let agent = client.agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build();
+    let mut stream = agent.stream_prompt(BASIC_PROMPT).await;
+    let response = collect_stream_final_response(&mut stream)
         .await
-        .expect("authorized completion should succeed");
+        .expect("authorized streaming completion should succeed");
 
     assert_nonempty_response(&response);
 
@@ -77,12 +79,13 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         .build()
         .expect("cached ChatGPT OAuth client should build");
 
-    let cached_response = cached_client
-        .agent(chatgpt::GPT_5_3_CHAT_LATEST)
-        .build()
-        .prompt("Reply with the single word cached.")
+    let cached_agent = cached_client.agent(LIVE_MODEL).build();
+    let mut cached_stream = cached_agent
+        .stream_prompt("Reply with the single word cached.")
+        .await;
+    let cached_response = collect_stream_final_response(&mut cached_stream)
         .await
-        .expect("cached completion should succeed");
+        .expect("cached streaming completion should succeed");
 
     assert_nonempty_response(&cached_response);
 }
@@ -121,12 +124,13 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
         "refresh should persist a refresh token"
     );
 
-    let response = client
-        .agent(chatgpt::GPT_5_3_CHAT_LATEST)
-        .build()
-        .prompt("Reply with the single word refreshed.")
+    let agent = client.agent(LIVE_MODEL).build();
+    let mut stream = agent
+        .stream_prompt("Reply with the single word refreshed.")
+        .await;
+    let response = collect_stream_final_response(&mut stream)
         .await
-        .expect("refreshed completion should succeed");
+        .expect("refreshed streaming completion should succeed");
 
     assert_nonempty_response(&response);
 }

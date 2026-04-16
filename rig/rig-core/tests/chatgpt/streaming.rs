@@ -9,11 +9,13 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
+const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
+
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming_smoke() {
     let agent = live_client()
-        .agent(chatgpt::GPT_5_3_CHAT_LATEST)
+        .agent(LIVE_MODEL)
         .preamble(STREAMING_PREAMBLE)
         .build();
 
