@@ -44,6 +44,7 @@ impl fmt::Debug for DeviceCodeHandler {
 #[derive(Clone)]
 pub enum AuthSource {
     ApiKey(String),
+    GitHubAccessToken(String),
     OAuth,
 }
 
@@ -51,6 +52,7 @@ impl fmt::Debug for AuthSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
+            Self::GitHubAccessToken(_) => f.write_str("GitHubAccessToken(<redacted>)"),
             Self::OAuth => f.write_str("OAuth"),
         }
     }
@@ -114,6 +116,12 @@ impl Authenticator {
                 api_key: api_key.clone(),
                 api_base: None,
             }),
+            AuthSource::GitHubAccessToken(access_token) => {
+                let _guard = self.state_lock.lock().await;
+                self.platform
+                    .auth_context_with_github_access_token(access_token)
+                    .await
+            }
             AuthSource::OAuth => {
                 let _guard = self.state_lock.lock().await;
                 self.platform.auth_context_oauth().await

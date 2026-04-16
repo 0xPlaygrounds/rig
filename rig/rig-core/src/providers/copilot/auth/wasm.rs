@@ -18,4 +18,13 @@ impl PlatformAuthenticator {
             "GitHub Copilot OAuth is not supported on wasm targets".into(),
         ))
     }
+
+    pub(super) async fn auth_context_with_github_access_token(
+        &self,
+        _access_token: &str,
+    ) -> Result<AuthContext, AuthError> {
+        Err(AuthError::Message(
+            "GitHub Copilot OAuth is not supported on wasm targets".into(),
+        ))
+    }
 }

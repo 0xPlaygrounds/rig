@@ -13,6 +13,8 @@
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test copilot copilot::routing::codex_models_route_through_responses -- --ignored`
 
+#[path = "common/reasoning.rs"]
+mod reasoning;
 #[path = "common/support.rs"]
 mod support;
 

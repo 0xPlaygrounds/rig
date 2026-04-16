@@ -94,6 +94,30 @@ impl PlatformAuthenticator {
         })
     }
 
+    pub(super) async fn auth_context_with_github_access_token(
+        &self,
+        access_token: &str,
+    ) -> Result<AuthContext, AuthError> {
+        let record = self.read_api_key_record()?;
+        let api_base = record.api_base();
+        if let Some(token) = record.token
+            && !token_expired(record.expires_at)
+        {
+            return Ok(AuthContext {
+                api_key: token,
+                api_base,
+            });
+        }
+
+        let record = self.refresh_api_key(access_token).await?;
+        let api_base = record.api_base();
+        self.write_api_key_record(&record)?;
+        Ok(AuthContext {
+            api_key: record.token.unwrap_or_default(),
+            api_base,
+        })
+    }
+
     async fn access_token(&self) -> Result<AccessTokenState, AuthError> {
         if let Some(token) = self.read_access_token()? {
             return Ok(AccessTokenState {

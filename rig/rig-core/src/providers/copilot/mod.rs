@@ -80,6 +80,7 @@ pub use openai::EncodingFormat;
 #[derive(Clone)]
 pub enum CopilotAuth {
     ApiKey(String),
+    GitHubAccessToken(String),
     OAuth,
 }
 
@@ -98,6 +99,7 @@ impl Debug for CopilotAuth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
+            Self::GitHubAccessToken(_) => f.write_str("GitHubAccessToken(<redacted>)"),
             Self::OAuth => f.write_str("OAuth"),
         }
     }
@@ -173,6 +175,9 @@ impl ProviderBuilder for CopilotBuilder {
     {
         let auth = match builder.get_api_key() {
             CopilotAuth::ApiKey(api_key) => auth::AuthSource::ApiKey(api_key.clone()),
+            CopilotAuth::GitHubAccessToken(access_token) => {
+                auth::AuthSource::GitHubAccessToken(access_token.clone())
+            }
             CopilotAuth::OAuth => auth::AuthSource::OAuth,
         };
 
@@ -203,6 +208,8 @@ impl ProviderClient for Client {
 
         if let Some(api_key) = env_api_key(&get) {
             builder.api_key(api_key).build().unwrap()
+        } else if let Some(access_token) = env_github_access_token(&get) {
+            builder.github_access_token(access_token).build().unwrap()
         } else {
             builder.oauth().build().unwrap()
         }
@@ -214,6 +221,13 @@ impl ProviderClient for Client {
 }
 
 impl<H> client::ClientBuilder<CopilotBuilder, crate::markers::Missing, H> {
+    pub fn github_access_token(
+        self,
+        access_token: impl Into<String>,
+    ) -> client::ClientBuilder<CopilotBuilder, CopilotAuth, H> {
+        self.api_key(CopilotAuth::GitHubAccessToken(access_token.into()))
+    }
+
     pub fn oauth(self) -> client::ClientBuilder<CopilotBuilder, CopilotAuth, H> {
         self.api_key(CopilotAuth::OAuth)
     }
@@ -274,10 +288,14 @@ fn env_api_key<F>(get: &F) -> Option<String>
 where
     F: Fn(&str) -> Option<String>,
 {
-    first_env_value(
-        get,
-        &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY", "GITHUB_TOKEN"],
-    )
+    first_env_value(get, &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"])
+}
+
+fn env_github_access_token<F>(get: &F) -> Option<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    first_env_value(get, &["COPILOT_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"])
 }
 
 fn env_base_url<F>(get: &F) -> Option<String>
@@ -1417,7 +1435,7 @@ fn config_dir() -> Option<PathBuf> {
 mod tests {
     use super::{
         ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, env_api_key,
-        env_base_url, route_for_model,
+        env_base_url, env_github_access_token, route_for_model,
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
@@ -1720,11 +1738,25 @@ mod tests {
         let env = env_map(&[
             ("COPILOT_API_KEY", "copilot-key"),
             ("GITHUB_COPILOT_API_KEY", "github-key"),
-            ("GITHUB_TOKEN", "fallback-token"),
+            ("GITHUB_TOKEN", "bootstrap-token"),
         ]);
         let get = |name: &str| env.get(name).cloned();
 
         assert_eq!(env_api_key(&get).as_deref(), Some("github-key"));
+    }
+
+    #[test]
+    fn env_github_access_token_prefers_explicit_bootstrap_var() {
+        let env = env_map(&[
+            ("COPILOT_GITHUB_ACCESS_TOKEN", "explicit-bootstrap"),
+            ("GITHUB_TOKEN", "fallback-bootstrap"),
+        ]);
+        let get = |name: &str| env.get(name).cloned();
+
+        assert_eq!(
+            env_github_access_token(&get).as_deref(),
+            Some("explicit-bootstrap")
+        );
     }
 
     #[test]
@@ -1747,9 +1779,22 @@ mod tests {
         let get = |name: &str| env.get(name).cloned();
 
         assert!(env_api_key(&get).is_none());
+        assert!(env_github_access_token(&get).is_none());
         assert_eq!(
             env_base_url(&get).as_deref(),
             Some("https://copilot.example")
+        );
+    }
+
+    #[test]
+    fn env_github_token_is_not_treated_as_copilot_api_key() {
+        let env = env_map(&[("GITHUB_TOKEN", "bootstrap-token")]);
+        let get = |name: &str| env.get(name).cloned();
+
+        assert!(env_api_key(&get).is_none());
+        assert_eq!(
+            env_github_access_token(&get).as_deref(),
+            Some("bootstrap-token")
         );
     }
 }

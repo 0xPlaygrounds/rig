@@ -8,24 +8,69 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
+use crate::copilot::{
+    LIVE_MODEL, api_key_builder, copilot_api_key, copilot_github_access_token,
+    github_access_token_builder, oauth_builder,
+};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
-fn copilot_github_access_token() -> String {
-    std::env::var("COPILOT_GITHUB_ACCESS_TOKEN")
-        .or_else(|_| std::env::var("GITHUB_TOKEN"))
+fn required_copilot_api_key() -> String {
+    copilot_api_key().expect("GITHUB_COPILOT_API_KEY or COPILOT_API_KEY should be set")
+}
+
+fn required_copilot_github_access_token() -> String {
+    copilot_github_access_token()
         .expect("COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN should be set")
 }
 
 fn oauth_builder_with_token_dir(path: &Path) -> copilot::ClientBuilder {
-    let mut builder = copilot::Client::builder().oauth().token_dir(path);
+    oauth_builder().token_dir(path)
+}
 
-    if let Ok(base_url) =
-        std::env::var("GITHUB_COPILOT_API_BASE").or_else(|_| std::env::var("COPILOT_BASE_URL"))
-    {
-        builder = builder.base_url(base_url);
-    }
+#[tokio::test]
+#[ignore = "requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY"]
+async fn api_key_completion_smoke() {
+    let client = api_key_builder(required_copilot_api_key())
+        .build()
+        .expect("Copilot API key client should build");
 
-    builder
+    client
+        .authorize()
+        .await
+        .expect("api key auth should succeed");
+
+    let response = client
+        .agent(LIVE_MODEL)
+        .preamble(BASIC_PREAMBLE)
+        .build()
+        .prompt(BASIC_PROMPT)
+        .await
+        .expect("api key-backed completion should succeed");
+
+    assert_nonempty_response(&response);
+}
+
+#[tokio::test]
+#[ignore = "requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN"]
+async fn github_access_token_completion_smoke() {
+    let client = github_access_token_builder(required_copilot_github_access_token())
+        .build()
+        .expect("Copilot bootstrap-token client should build");
+
+    client
+        .authorize()
+        .await
+        .expect("bootstrap-token auth should succeed");
+
+    let response = client
+        .agent(LIVE_MODEL)
+        .preamble(BASIC_PREAMBLE)
+        .build()
+        .prompt(BASIC_PROMPT)
+        .await
+        .expect("bootstrap-token-backed completion should succeed");
+
+    assert_nonempty_response(&response);
 }
 
 #[tokio::test]
@@ -52,8 +97,13 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device flow should cache the Copilot API key"
     );
 
+    client
+        .authorize()
+        .await
+        .expect("cached oauth auth should succeed");
+
     let response = client
-        .agent(copilot::GPT_4O)
+        .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -65,8 +115,12 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let cached_client = oauth_builder_with_token_dir(token_dir)
         .build()
         .expect("cached Copilot client should build");
+    cached_client
+        .authorize()
+        .await
+        .expect("cached oauth auth should succeed");
     let cached_response = cached_client
-        .agent(copilot::GPT_4O)
+        .agent(LIVE_MODEL)
         .build()
         .prompt("Reply with the single word cached.")
         .await
@@ -83,7 +137,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
 
     fs::write(
         token_dir.join("access-token"),
-        copilot_github_access_token(),
+        required_copilot_github_access_token(),
     )
     .expect("access token should be written");
     fs::write(
@@ -130,7 +184,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     }
 
     let response = client
-        .agent(copilot::GPT_4O)
+        .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
