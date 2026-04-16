@@ -271,7 +271,6 @@ impl PromptResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound = "T: Serialize + for<'a> Deserialize<'a>")]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
@@ -824,5 +823,52 @@ where
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TypedPromptResponse;
+    use crate::completion::Usage;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize)]
+    struct SerializeOnly {
+        value: &'static str,
+    }
+
+    #[derive(Deserialize)]
+    struct DeserializeOnly {
+        value: String,
+    }
+
+    #[test]
+    fn typed_prompt_response_serializes_with_serialize_only_output() {
+        let response = TypedPromptResponse::new(
+            SerializeOnly { value: "ok" },
+            Usage {
+                input_tokens: 1,
+                output_tokens: 2,
+                total_tokens: 3,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            },
+        );
+
+        let json = serde_json::to_string(&response).expect("serialize typed prompt response");
+        assert!(json.contains("\"value\":\"ok\""));
+    }
+
+    #[test]
+    fn typed_prompt_response_deserializes_with_deserialize_only_output() {
+        let response: TypedPromptResponse<DeserializeOnly> = serde_json::from_str(
+            r#"{"output":{"value":"ok"},"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"cached_input_tokens":0,"cache_creation_input_tokens":0}}"#,
+        )
+        .expect("deserialize typed prompt response");
+
+        assert_eq!(response.output.value, "ok");
+        assert_eq!(response.usage.input_tokens, 1);
+        assert_eq!(response.usage.output_tokens, 2);
+        assert_eq!(response.usage.total_tokens, 3);
     }
 }
