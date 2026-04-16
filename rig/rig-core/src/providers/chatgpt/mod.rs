@@ -361,6 +361,7 @@ where
             ));
         }
 
+        request.temperature = None;
         request.max_output_tokens = None;
         request.stream = Some(true);
 
@@ -427,7 +428,22 @@ where
 
         let response = self.client.send(req).await?;
         let text = http_client::text(response).await?;
-        responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?.try_into()
+        let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
+
+        match raw_response.clone().try_into() {
+            Ok(response) => Ok(response),
+            Err(CompletionError::ResponseError(message))
+                if message == "Response contained no parts" =>
+            {
+                responses_api::streaming::completion_response_from_sse_body(
+                    &text,
+                    raw_response,
+                    "ChatGPT",
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -717,5 +733,60 @@ data: [DONE]"#;
 
         assert_eq!(instructions, "System one\n\nSystem two");
         assert_eq!(request.input.len(), 1);
+    }
+
+    #[test]
+    fn test_create_request_drops_temperature() {
+        let client = crate::providers::chatgpt::Client::builder()
+            .oauth()
+            .build()
+            .expect("client");
+        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
+
+        let request = model
+            .create_request(completion::CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .expect("request");
+
+        assert!(request.temperature.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_completion_response_from_sse_body_falls_back_to_streamed_text() {
+        let body = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+data: {"type":"response.completed","response":{"id":"resp_1","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[],"tools":[]}}
+data: [DONE]"#;
+
+        let raw_response = responses_api::streaming::parse_sse_completion_body(body, "ChatGPT")
+            .expect("expected response");
+        let response = responses_api::streaming::completion_response_from_sse_body(
+            body,
+            raw_response,
+            "ChatGPT",
+        )
+        .await
+        .expect("fallback response");
+
+        let text: String = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(text, "hi");
+        assert_eq!(response.usage.total_tokens, 2);
     }
 }
