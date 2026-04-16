@@ -1,120 +1,22 @@
-use std::fmt;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-#[cfg(not(target_family = "wasm"))]
+use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
-#[cfg(not(target_family = "wasm"))]
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
-#[cfg(not(target_family = "wasm"))]
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
-#[cfg(not(target_family = "wasm"))]
 const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
-#[cfg(not(target_family = "wasm"))]
 const GITHUB_API_KEY_URL: &str = "https://api.github.com/copilot_internal/v2/token";
-#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
-#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_TIMEOUT_SECONDS: u64 = 15 * 60;
-#[cfg(not(target_family = "wasm"))]
 const DEVICE_CODE_SLOW_DOWN_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone)]
-pub struct DeviceCodePrompt {
-    pub verification_uri: String,
-    pub user_code: String,
-}
-
-#[derive(Clone, Default)]
-pub struct DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
-
-impl DeviceCodeHandler {
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        Self(Some(Arc::new(handler)))
-    }
-
-    #[cfg(not(target_family = "wasm"))]
-    fn emit(&self, prompt: DeviceCodePrompt) {
-        if let Some(handler) = &self.0 {
-            handler(prompt);
-        } else {
-            println!(
-                "Sign in with GitHub Copilot:\n1) Visit {}\n2) Enter code: {}",
-                prompt.verification_uri, prompt.user_code
-            );
-        }
-    }
-}
-
-impl fmt::Debug for DeviceCodeHandler {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_some() {
-            f.write_str("DeviceCodeHandler(<callback>)")
-        } else {
-            f.write_str("DeviceCodeHandler(None)")
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum AuthSource {
-    ApiKey(String),
-    OAuth,
-}
-
-impl fmt::Debug for AuthSource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
-            Self::OAuth => f.write_str("OAuth"),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Authenticator {
-    source: AuthSource,
+pub(super) struct PlatformAuthenticator {
     access_token_file: Option<PathBuf>,
     api_key_file: Option<PathBuf>,
     device_code_handler: DeviceCodeHandler,
-    state_lock: Arc<Mutex<()>>,
 }
 
-impl fmt::Debug for Authenticator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Authenticator")
-            .field("source", &self.source)
-            .field("access_token_file", &self.access_token_file)
-            .field("api_key_file", &self.api_key_file)
-            .field("device_code_handler", &self.device_code_handler)
-            .finish()
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum AuthError {
-    #[error("{0}")]
-    Message(String),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Http(#[from] reqwest::Error),
-}
-
-#[derive(Debug, Clone)]
-pub struct AuthContext {
-    pub api_key: String,
-    pub api_base: Option<String>,
-}
-
-#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyRecord {
     token: Option<String>,
@@ -122,13 +24,11 @@ struct ApiKeyRecord {
     endpoints: Option<ApiKeyEndpoints>,
 }
 
-#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ApiKeyEndpoints {
     api: Option<String>,
 }
 
-#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct DeviceCodeResponse {
     device_code: String,
@@ -138,7 +38,6 @@ struct DeviceCodeResponse {
     expires_in: Option<u64>,
 }
 
-#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Deserialize)]
 struct AccessTokenResponse {
     access_token: Option<String>,
@@ -146,85 +45,55 @@ struct AccessTokenResponse {
     error_description: Option<String>,
 }
 
-#[cfg(not(target_family = "wasm"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AccessTokenState {
     token: String,
     from_cache: bool,
 }
 
-impl Authenticator {
-    pub fn new(
-        source: AuthSource,
+impl PlatformAuthenticator {
+    pub(super) fn new(
         access_token_file: Option<PathBuf>,
         api_key_file: Option<PathBuf>,
         device_code_handler: DeviceCodeHandler,
     ) -> Self {
         Self {
-            source,
             access_token_file,
             api_key_file,
             device_code_handler,
-            state_lock: Arc::new(Mutex::new(())),
         }
     }
 
-    pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
-        match &self.source {
-            AuthSource::ApiKey(api_key) => Ok(AuthContext {
-                api_key: api_key.clone(),
-                api_base: None,
-            }),
-            AuthSource::OAuth => {
-                let _guard = self.state_lock.lock().await;
-                self.auth_context_locked().await
-            }
-        }
-    }
-
-    async fn auth_context_locked(&self) -> Result<AuthContext, AuthError> {
-        #[cfg(target_family = "wasm")]
+    pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
+        let record = self.read_api_key_record()?;
+        let api_base = record.api_base();
+        if let Some(token) = record.token
+            && !token_expired(record.expires_at)
         {
-            Err(AuthError::Message(
-                "GitHub Copilot OAuth is not supported on wasm targets".into(),
-            ))
-        }
-
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let record = self.read_api_key_record()?;
-            let api_base = record.api_base();
-            if let Some(token) = record.token
-                && !token_expired(record.expires_at)
-            {
-                return Ok(AuthContext {
-                    api_key: token,
-                    api_base,
-                });
-            }
-
-            let access_token = self.access_token().await?;
-            let record = match self.refresh_api_key(&access_token.token).await {
-                Ok(record) => record,
-                Err(err)
-                    if access_token.from_cache && should_retry_with_fresh_access_token(&err) =>
-                {
-                    self.clear_access_token()?;
-                    let fresh_access_token = self.reauthenticate_access_token().await?;
-                    self.refresh_api_key(&fresh_access_token).await?
-                }
-                Err(err) => return Err(err),
-            };
-            let api_base = record.api_base();
-            self.write_api_key_record(&record)?;
-            Ok(AuthContext {
-                api_key: record.token.unwrap_or_default(),
+            return Ok(AuthContext {
+                api_key: token,
                 api_base,
-            })
+            });
         }
+
+        let access_token = self.access_token().await?;
+        let record = match self.refresh_api_key(&access_token.token).await {
+            Ok(record) => record,
+            Err(err) if access_token.from_cache && should_retry_with_fresh_access_token(&err) => {
+                self.clear_access_token()?;
+                let fresh_access_token = self.reauthenticate_access_token().await?;
+                self.refresh_api_key(&fresh_access_token).await?
+            }
+            Err(err) => return Err(err),
+        };
+        let api_base = record.api_base();
+        self.write_api_key_record(&record)?;
+        Ok(AuthContext {
+            api_key: record.token.unwrap_or_default(),
+            api_base,
+        })
     }
 
-    #[cfg(not(target_family = "wasm"))]
     async fn access_token(&self) -> Result<AccessTokenState, AuthError> {
         if let Some(token) = self.read_access_token()? {
             return Ok(AccessTokenState {
@@ -241,7 +110,6 @@ impl Authenticator {
             })
     }
 
-    #[cfg(not(target_family = "wasm"))]
     async fn login_device_flow(&self) -> Result<String, AuthError> {
         let client = reqwest::Client::new();
         let body = url::form_urlencoded::Serializer::new(String::new())
@@ -263,10 +131,13 @@ impl Authenticator {
             .json::<DeviceCodeResponse>()
             .await?;
 
-        self.device_code_handler.emit(DeviceCodePrompt {
-            verification_uri: device.verification_uri.clone(),
-            user_code: device.user_code.clone(),
-        });
+        emit_device_code_prompt(
+            &self.device_code_handler,
+            DeviceCodePrompt {
+                verification_uri: device.verification_uri.clone(),
+                user_code: device.user_code.clone(),
+            },
+        );
 
         let deadline = std::time::Instant::now()
             + std::time::Duration::from_secs(
@@ -312,7 +183,6 @@ impl Authenticator {
         ))
     }
 
-    #[cfg(not(target_family = "wasm"))]
     async fn refresh_api_key(&self, access_token: &str) -> Result<ApiKeyRecord, AuthError> {
         let client = reqwest::Client::new();
         let response = client
@@ -340,7 +210,6 @@ impl Authenticator {
         Ok(response)
     }
 
-    #[cfg(not(target_family = "wasm"))]
     fn read_access_token(&self) -> Result<Option<String>, AuthError> {
         let Some(path) = &self.access_token_file else {
             return Ok(None);
@@ -360,7 +229,6 @@ impl Authenticator {
         }
     }
 
-    #[cfg(not(target_family = "wasm"))]
     fn write_access_token(&self, token: &str) -> Result<(), AuthError> {
         let Some(path) = &self.access_token_file else {
             return Ok(());
@@ -371,7 +239,6 @@ impl Authenticator {
         Ok(())
     }
 
-    #[cfg(not(target_family = "wasm"))]
     fn clear_access_token(&self) -> Result<(), AuthError> {
         let Some(path) = &self.access_token_file else {
             return Ok(());
@@ -384,14 +251,12 @@ impl Authenticator {
         }
     }
 
-    #[cfg(not(target_family = "wasm"))]
     async fn reauthenticate_access_token(&self) -> Result<String, AuthError> {
         let token = self.login_device_flow().await?;
         self.write_access_token(&token)?;
         Ok(token)
     }
 
-    #[cfg(not(target_family = "wasm"))]
     fn read_api_key_record(&self) -> Result<ApiKeyRecord, AuthError> {
         let Some(path) = &self.api_key_file else {
             return Ok(ApiKeyRecord::default());
@@ -404,7 +269,6 @@ impl Authenticator {
         }
     }
 
-    #[cfg(not(target_family = "wasm"))]
     fn write_api_key_record(&self, record: &ApiKeyRecord) -> Result<(), AuthError> {
         let Some(path) = &self.api_key_file else {
             return Ok(());
@@ -416,7 +280,6 @@ impl Authenticator {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 impl ApiKeyRecord {
     fn api_base(&self) -> Option<String> {
         self.endpoints
@@ -426,15 +289,24 @@ impl ApiKeyRecord {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
-fn ensure_parent_dir(path: &std::path::Path) -> Result<(), std::io::Error> {
+fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
+    if let Some(callback) = &handler.0 {
+        callback(prompt);
+    } else {
+        println!(
+            "Sign in with GitHub Copilot:\n1) Visit {}\n2) Enter code: {}",
+            prompt.verification_uri, prompt.user_code
+        );
+    }
+}
+
+fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn token_expired(expires_at: Option<i64>) -> bool {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -447,12 +319,10 @@ fn token_expired(expires_at: Option<i64>) -> bool {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn normalize_poll_interval_seconds(interval: Option<u64>) -> u64 {
     interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS).max(1)
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn next_poll_interval_seconds(
     current_interval: u64,
     error: Option<&str>,
@@ -478,7 +348,6 @@ fn next_poll_interval_seconds(
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn format_oauth_error(prefix: &str, error: &str, description: Option<&str>) -> String {
     match description
         .map(str::trim)
@@ -489,7 +358,6 @@ fn format_oauth_error(prefix: &str, error: &str, description: Option<&str>) -> S
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn should_retry_with_fresh_access_token(err: &AuthError) -> bool {
     match err {
         AuthError::Http(err) => should_retry_with_fresh_access_token_status(err.status()),
@@ -497,7 +365,6 @@ fn should_retry_with_fresh_access_token(err: &AuthError) -> bool {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn should_retry_with_fresh_access_token_status(status: Option<reqwest::StatusCode>) -> bool {
     matches!(
         status,
