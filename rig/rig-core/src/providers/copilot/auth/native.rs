@@ -1,5 +1,6 @@
 use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
 use serde::{Deserialize, Serialize};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
@@ -22,6 +23,7 @@ struct ApiKeyRecord {
     token: Option<String>,
     expires_at: Option<i64>,
     endpoints: Option<ApiKeyEndpoints>,
+    bootstrap_token_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -66,9 +68,10 @@ impl PlatformAuthenticator {
 
     pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
         let record = self.read_api_key_record()?;
+        let cached_access_token = self.read_access_token().ok().flatten();
         let api_base = record.api_base();
-        if let Some(token) = record.token
-            && !token_expired(record.expires_at)
+        if record.can_reuse_for_oauth(cached_access_token.as_deref())
+            && let Some(token) = record.token
         {
             return Ok(AuthContext {
                 api_key: token,
@@ -76,13 +79,22 @@ impl PlatformAuthenticator {
             });
         }
 
-        let access_token = self.access_token().await?;
+        let access_token = if let Some(token) = cached_access_token {
+            AccessTokenState {
+                token,
+                from_cache: true,
+            }
+        } else {
+            self.access_token().await?
+        };
         let record = match self.refresh_api_key(&access_token.token).await {
-            Ok(record) => record,
+            Ok(record) => record.bind_to_bootstrap_token(&access_token.token),
             Err(err) if access_token.from_cache && should_retry_with_fresh_access_token(&err) => {
                 self.clear_access_token()?;
                 let fresh_access_token = self.reauthenticate_access_token().await?;
-                self.refresh_api_key(&fresh_access_token).await?
+                self.refresh_api_key(&fresh_access_token)
+                    .await?
+                    .bind_to_bootstrap_token(&fresh_access_token)
             }
             Err(err) => return Err(err),
         };
@@ -100,8 +112,8 @@ impl PlatformAuthenticator {
     ) -> Result<AuthContext, AuthError> {
         let record = self.read_api_key_record()?;
         let api_base = record.api_base();
-        if let Some(token) = record.token
-            && !token_expired(record.expires_at)
+        if record.can_reuse_for_bootstrap_token(access_token)
+            && let Some(token) = record.token
         {
             return Ok(AuthContext {
                 api_key: token,
@@ -109,7 +121,10 @@ impl PlatformAuthenticator {
             });
         }
 
-        let record = self.refresh_api_key(access_token).await?;
+        let record = self
+            .refresh_api_key(access_token)
+            .await?
+            .bind_to_bootstrap_token(access_token);
         let api_base = record.api_base();
         self.write_api_key_record(&record)?;
         Ok(AuthContext {
@@ -311,6 +326,44 @@ impl ApiKeyRecord {
             .and_then(|endpoints| endpoints.api.as_ref())
             .cloned()
     }
+
+    fn can_reuse_for_oauth(&self, bootstrap_token: Option<&str>) -> bool {
+        if !self.has_live_api_key() {
+            return false;
+        }
+
+        match bootstrap_token {
+            Some(bootstrap_token) => self.matches_bootstrap_token(bootstrap_token),
+            None => true,
+        }
+    }
+
+    fn can_reuse_for_bootstrap_token(&self, bootstrap_token: &str) -> bool {
+        self.has_live_api_key() && self.matches_bootstrap_token(bootstrap_token)
+    }
+
+    fn bind_to_bootstrap_token(mut self, bootstrap_token: &str) -> Self {
+        self.bootstrap_token_fingerprint = Some(bootstrap_token_fingerprint(bootstrap_token));
+        self
+    }
+
+    fn has_live_api_key(&self) -> bool {
+        self.token
+            .as_ref()
+            .is_some_and(|token| !token.trim().is_empty())
+            && !token_expired(self.expires_at)
+    }
+
+    fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
+        self.bootstrap_token_fingerprint.as_deref()
+            == Some(bootstrap_token_fingerprint(bootstrap_token).as_str())
+    }
+}
+
+fn bootstrap_token_fingerprint(bootstrap_token: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    bootstrap_token.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
@@ -399,8 +452,8 @@ fn should_retry_with_fresh_access_token_status(status: Option<reqwest::StatusCod
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyRecord, next_poll_interval_seconds, normalize_poll_interval_seconds,
-        should_retry_with_fresh_access_token_status,
+        ApiKeyRecord, bootstrap_token_fingerprint, next_poll_interval_seconds,
+        normalize_poll_interval_seconds, should_retry_with_fresh_access_token_status,
     };
     use reqwest::StatusCode;
 
@@ -421,6 +474,47 @@ mod tests {
             record.api_base().as_deref(),
             Some("https://api.individual.githubcopilot.com")
         );
+    }
+
+    #[test]
+    fn api_key_record_reuse_requires_matching_bootstrap_token_for_explicit_auth() {
+        let record = ApiKeyRecord {
+            token: Some("copilot-token".into()),
+            expires_at: Some(i64::MAX),
+            endpoints: None,
+            bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
+        };
+
+        assert!(record.can_reuse_for_bootstrap_token("github-token-a"));
+        assert!(!record.can_reuse_for_bootstrap_token("github-token-b"));
+    }
+
+    #[test]
+    fn api_key_record_oauth_reuse_requires_match_when_bootstrap_token_is_available() {
+        let record = ApiKeyRecord {
+            token: Some("copilot-token".into()),
+            expires_at: Some(i64::MAX),
+            endpoints: None,
+            bootstrap_token_fingerprint: Some(bootstrap_token_fingerprint("github-token-a")),
+        };
+
+        assert!(record.can_reuse_for_oauth(Some("github-token-a")));
+        assert!(!record.can_reuse_for_oauth(Some("github-token-b")));
+        assert!(record.can_reuse_for_oauth(None));
+    }
+
+    #[test]
+    fn legacy_api_key_record_without_fingerprint_forces_refresh_when_bootstrap_token_is_known() {
+        let record = ApiKeyRecord {
+            token: Some("copilot-token".into()),
+            expires_at: Some(i64::MAX),
+            endpoints: None,
+            bootstrap_token_fingerprint: None,
+        };
+
+        assert!(!record.can_reuse_for_bootstrap_token("github-token-a"));
+        assert!(!record.can_reuse_for_oauth(Some("github-token-a")));
+        assert!(record.can_reuse_for_oauth(None));
     }
 
     #[test]

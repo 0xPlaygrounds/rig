@@ -241,13 +241,32 @@ impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthr
 }
 
 fn anthropic_base_override(primary_env: &str, fallback_env: &str) -> Option<String> {
-    if let Ok(base_url) = std::env::var(primary_env) {
-        return Some(base_url);
+    let primary = std::env::var(primary_env).ok();
+    let fallback = std::env::var(fallback_env).ok();
+
+    resolve_anthropic_base_override(primary.as_deref(), fallback.as_deref())
+}
+
+fn resolve_anthropic_base_override(
+    primary: Option<&str>,
+    fallback: Option<&str>,
+) -> Option<String> {
+    primary
+        .map(str::to_owned)
+        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
+}
+
+fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
+    if base_url.contains("/anthropic") {
+        return Some(base_url.to_owned());
     }
 
-    std::env::var(fallback_env)
-        .ok()
-        .filter(|base_url| base_url.contains("/anthropic"))
+    let mut url = url::Url::parse(base_url).ok()?;
+    if !matches!(url.path(), "/v1" | "/v1/") {
+        return None;
+    }
+    url.set_path("/anthropic");
+    Some(url.to_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -629,7 +648,9 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 }
 #[cfg(test)]
 mod tests {
-    use super::MoonshotCompletionRequest;
+    use super::{
+        MoonshotCompletionRequest, normalize_anthropic_base_url, resolve_anthropic_base_override,
+    };
     use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
@@ -728,6 +749,43 @@ mod tests {
                 .and_then(|value| value.get("content"))
                 .and_then(|value| value.as_str()),
             Some("Please select a tool to handle the current issue.")
+        );
+    }
+
+    #[test]
+    fn normalize_openai_style_base_to_anthropic_base() {
+        assert_eq!(
+            normalize_anthropic_base_url("https://api.moonshot.ai/v1").as_deref(),
+            Some("https://api.moonshot.ai/anthropic")
+        );
+        assert_eq!(
+            normalize_anthropic_base_url("https://api.moonshot.cn/v1").as_deref(),
+            Some("https://api.moonshot.cn/anthropic")
+        );
+        assert_eq!(
+            normalize_anthropic_base_url("https://proxy.example.com/v1").as_deref(),
+            Some("https://proxy.example.com/anthropic")
+        );
+    }
+
+    #[test]
+    fn normalize_preserves_existing_anthropic_base() {
+        assert_eq!(
+            normalize_anthropic_base_url("https://proxy.example.com/anthropic").as_deref(),
+            Some("https://proxy.example.com/anthropic")
+        );
+    }
+
+    #[test]
+    fn anthropic_primary_override_wins() {
+        let override_url = resolve_anthropic_base_override(
+            Some("https://primary.example.com/anthropic"),
+            Some("https://api.moonshot.cn/v1"),
+        );
+
+        assert_eq!(
+            override_url.as_deref(),
+            Some("https://primary.example.com/anthropic")
         );
     }
 }
