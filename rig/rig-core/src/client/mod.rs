@@ -574,6 +574,10 @@ impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
     pub fn ext(&self) -> &Ext {
         &self.ext
     }
+
+    pub fn get_base_url(&self) -> &str {
+        &self.base_url
+    }
 }
 
 impl<ExtBuilder, Key, H> ClientBuilder<ExtBuilder, Key, H>

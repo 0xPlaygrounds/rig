@@ -3,7 +3,6 @@
 // ================================================================
 
 use super::{
-    CompletionsClient as Client,
     client::{ApiErrorResponse, ApiResponse},
     streaming::StreamingCompletionResponse,
 };
@@ -970,19 +969,28 @@ impl GetTokenUsage for Usage {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
+    pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
 }
 
-impl<T> CompletionModel<T>
+/// The completion model struct for OpenAI's Chat Completions API.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<H = reqwest::Client> =
+    GenericCompletionModel<super::OpenAICompletionsExt, H>;
+
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
-    T: Default + std::fmt::Debug + Clone + 'static,
+    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
 {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+    pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -991,7 +999,7 @@ where
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
         Self {
             client,
             model: model.into(),
@@ -1216,26 +1224,28 @@ impl crate::telemetry::ProviderRequestExt for CompletionRequest {
     }
 }
 
-impl CompletionModel<reqwest::Client> {
+impl GenericCompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
     pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
         crate::agent::AgentBuilder::new(self)
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt
-        + Default
-        + std::fmt::Debug
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: crate::client::Provider
+        + crate::client::DebugExt
         + Clone
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
+    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    type Client = super::CompletionsClient<T>;
+    type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
@@ -1326,7 +1336,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        Self::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 

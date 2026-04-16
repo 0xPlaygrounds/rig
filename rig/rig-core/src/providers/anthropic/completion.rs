@@ -1,7 +1,10 @@
 //! Anthropic completion api implementation
 
+use crate::completion::CompletionRequest;
+use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
+    client::Provider,
     completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
@@ -9,13 +12,9 @@ use crate::{
     telemetry::{ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
-use std::{convert::Infallible, str::FromStr};
-
-use super::client::Client;
-use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use std::{convert::Infallible, str::FromStr};
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
@@ -32,6 +31,23 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
+
+pub trait AnthropicCompatibleProvider: Provider {
+    const PROVIDER_NAME: &'static str;
+
+    fn default_max_tokens(model: &str) -> Option<u64> {
+        let _ = model;
+        None
+    }
+}
+
+impl AnthropicCompatibleProvider for super::client::AnthropicExt {
+    const PROVIDER_NAME: &'static str = "anthropic";
+
+    fn default_max_tokens(model: &str) -> Option<u64> {
+        default_max_tokens_for_model(model)
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -824,9 +840,10 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
+    pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
     /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
@@ -841,13 +858,21 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
-impl<T> CompletionModel<T>
+/// Anthropic completion model.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<T = reqwest::Client> =
+    GenericCompletionModel<super::client::AnthropicExt, T>;
+
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt,
+    Ext: AnthropicCompatibleProvider + Clone + 'static,
 {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
         let model = model.into();
-        let default_max_tokens = default_max_tokens_for_model(&model);
+        let default_max_tokens = Ext::default_max_tokens(&model);
 
         Self {
             client,
@@ -859,11 +884,12 @@ where
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: Some(default_max_tokens_with_fallback(model)),
+            default_max_tokens: Ext::default_max_tokens(model)
+                .or_else(|| Some(default_max_tokens_with_fallback(model))),
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
@@ -1318,13 +1344,14 @@ fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
-    type Client = Client<T>;
+    type Client = crate::client::Client<Ext, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
@@ -1343,7 +1370,7 @@ where
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "anthropic",
+                gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
@@ -1447,7 +1474,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 

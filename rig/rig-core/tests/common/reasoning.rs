@@ -407,10 +407,7 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
 pub(crate) async fn collect_stream_stats<R>(
     stream: impl futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>,
     provider: &str,
-) -> StreamStats
-where
-    R: std::fmt::Debug,
-{
+) -> StreamStats {
     let mut stats = StreamStats::new();
 
     futures::pin_mut!(stream);
