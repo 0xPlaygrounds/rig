@@ -969,15 +969,23 @@ impl GetTokenUsage for Usage {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
+pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
     pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
 }
 
-impl<Ext, H> CompletionModel<Ext, H>
+/// The completion model struct for OpenAI's Chat Completions API.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<H = reqwest::Client> =
+    GenericCompletionModel<super::OpenAICompletionsExt, H>;
+
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
     Ext: crate::client::Provider + Clone + 'static,
@@ -1216,13 +1224,13 @@ impl crate::telemetry::ProviderRequestExt for CompletionRequest {
     }
 }
 
-impl CompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
+impl GenericCompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
     pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
         crate::agent::AgentBuilder::new(self)
     }
 }
 
-impl<Ext, H> completion::CompletionModel for CompletionModel<Ext, H>
+impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -1328,7 +1336,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        Self::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 

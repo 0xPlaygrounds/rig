@@ -55,14 +55,22 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct EmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
+pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
     client: crate::client::Client<Ext, H>,
     pub model: String,
     pub encoding_format: Option<EncodingFormat>,
     pub user: Option<String>,
     ndims: usize,
 }
+
+/// The embedding model struct for OpenAI's Embeddings API.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type EmbeddingModel<H = reqwest::Client> =
+    GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
@@ -72,7 +80,7 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     }
 }
 
-impl<Ext, H> embeddings::EmbeddingModel for EmbeddingModel<Ext, H>
+impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
     Ext: crate::client::Provider + Clone + 'static,
@@ -168,7 +176,7 @@ where
     }
 }
 
-impl<Ext, H> EmbeddingModel<Ext, H>
+impl<Ext, H> GenericEmbeddingModel<Ext, H>
 where
     Ext: crate::client::Provider,
 {

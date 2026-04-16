@@ -59,7 +59,7 @@ impl Provider for OpenAICompletionsExt {
 
 impl<H> Capabilities<H> for OpenAIResponsesExt {
     type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<OpenAIResponsesExt, H>>;
+    type Embeddings = Capable<super::EmbeddingModel<H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Capable<super::OpenAIModelLister<H>>;
     #[cfg(feature = "image")]
@@ -69,8 +69,8 @@ impl<H> Capabilities<H> for OpenAIResponsesExt {
 }
 
 impl<H> Capabilities<H> for OpenAICompletionsExt {
-    type Completion = Capable<super::completion::CompletionModel<OpenAICompletionsExt, H>>;
-    type Embeddings = Capable<super::EmbeddingModel<OpenAICompletionsExt, H>>;
+    type Completion = Capable<super::completion::CompletionModel<H>>;
+    type Embeddings = Capable<super::GenericEmbeddingModel<OpenAICompletionsExt, H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Capable<super::OpenAIModelLister<H>>;
     #[cfg(feature = "image")]
@@ -191,7 +191,7 @@ where
     pub fn extractor<U>(
         &self,
         model: impl Into<String>,
-    ) -> ExtractorBuilder<super::completion::CompletionModel<OpenAICompletionsExt, H>, U>
+    ) -> ExtractorBuilder<super::completion::CompletionModel<H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {
@@ -265,6 +265,7 @@ pub(crate) enum ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::client::{CompletionClient, EmbeddingsClient};
     use crate::message::ImageDetail;
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
@@ -624,5 +625,24 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn test_legacy_chat_completion_model_type_annotation_still_compiles() {
+        let client = crate::providers::openai::Client::new("dummy-key")
+            .expect("Client::new() failed")
+            .completions_api();
+
+        let _model: crate::providers::openai::completion::CompletionModel<reqwest::Client> =
+            client.completion_model("gpt-4o");
+    }
+
+    #[test]
+    fn test_legacy_embedding_model_type_annotation_still_compiles() {
+        let client =
+            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+
+        let _model: crate::providers::openai::EmbeddingModel<reqwest::Client> =
+            client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
     }
 }

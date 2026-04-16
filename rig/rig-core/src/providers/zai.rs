@@ -89,7 +89,7 @@ impl Provider for ZAiAnthropicExt {
 }
 
 impl<H> Capabilities<H> for ZAiExt {
-    type Completion = Capable<super::openai::completion::CompletionModel<ZAiExt, H>>;
+    type Completion = Capable<super::openai::completion::GenericCompletionModel<ZAiExt, H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
     type ModelListing = Nothing;

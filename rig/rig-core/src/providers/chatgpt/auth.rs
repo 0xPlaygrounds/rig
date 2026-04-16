@@ -326,7 +326,7 @@ impl Authenticator {
             .json::<OAuthTokenResponse>()
             .await?;
 
-        Ok(build_auth_record(tokens))
+        Ok(build_auth_record(tokens, None))
     }
 
     #[cfg(not(target_family = "wasm"))]
@@ -362,7 +362,7 @@ impl Authenticator {
                 .await
                 .map_err(AuthError::from)
                 .map_err(RefreshTokensError::Auth)?;
-            return Ok(build_auth_record(tokens));
+            return Ok(build_auth_record(tokens, Some(refresh_token.to_owned())));
         }
 
         let body = response.text().await.unwrap_or_default();
@@ -399,7 +399,7 @@ fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn build_auth_record(tokens: OAuthTokenResponse) -> AuthRecord {
+fn build_auth_record(tokens: OAuthTokenResponse, previous_refresh_token: Option<String>) -> AuthRecord {
     let access_token = Some(tokens.access_token);
     let id_token = tokens.id_token;
     AuthRecord {
@@ -412,7 +412,7 @@ fn build_auth_record(tokens: OAuthTokenResponse) -> AuthRecord {
                 .and_then(|token| extract_account_id(Some(token)))
         }),
         access_token,
-        refresh_token: tokens.refresh_token,
+        refresh_token: tokens.refresh_token.or(previous_refresh_token),
         id_token,
     }
 }
@@ -525,7 +525,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DeviceCodeResponse, OAuthErrorResponse, format_refresh_error,
+        DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse, build_auth_record,
+        format_refresh_error,
         should_reauthenticate_after_refresh,
     };
     use reqwest::StatusCode;
@@ -592,6 +593,23 @@ mod tests {
         assert_eq!(
             format_refresh_error(StatusCode::BAD_GATEWAY, Some(&oauth_error), ""),
             "ChatGPT token refresh failed: 502 Bad Gateway temporarily_unavailable (please retry)"
+        );
+    }
+
+    #[test]
+    fn build_auth_record_preserves_existing_refresh_token_when_refresh_omits_one() {
+        let record = build_auth_record(
+            OAuthTokenResponse {
+                access_token: "access-token".into(),
+                refresh_token: None,
+                id_token: None,
+            },
+            Some("cached-refresh-token".into()),
+        );
+
+        assert_eq!(
+            record.refresh_token.as_deref(),
+            Some("cached-refresh-token")
         );
     }
 }

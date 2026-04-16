@@ -91,7 +91,7 @@ impl Provider for MiniMaxAnthropicExt {
 }
 
 impl<H> Capabilities<H> for MiniMaxExt {
-    type Completion = Capable<super::openai::completion::CompletionModel<MiniMaxExt, H>>;
+    type Completion = Capable<super::openai::completion::GenericCompletionModel<MiniMaxExt, H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
     type ModelListing = Nothing;
