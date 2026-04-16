@@ -1415,7 +1415,10 @@ fn config_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Client, CompletionRoute, env_api_key, env_base_url, route_for_model};
+    use super::{
+        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, env_api_key,
+        env_base_url, route_for_model,
+    };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
@@ -1570,6 +1573,91 @@ mod tests {
             }],
             "tools": []
         }"#
+    }
+
+    #[test]
+    fn deserialize_standard_openai_response() {
+        let json = r#"{
+            "id": "chatcmpl-abc123",
+            "object": "chat.completion",
+            "created": 1700000000,
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello!"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15
+            }
+        }"#;
+
+        let response: ChatCompletionResponse =
+            serde_json::from_str(json).expect("standard OpenAI response should deserialize");
+        assert_eq!(response.id, "chatcmpl-abc123");
+        assert_eq!(response.object.as_deref(), Some("chat.completion"));
+        assert_eq!(response.created, Some(1700000000));
+        assert_eq!(response.model, "gpt-4o");
+        assert_eq!(response.choices.len(), 1);
+        assert_eq!(response.choices[0].finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn deserialize_copilot_response_without_object_and_created() {
+        let response: ChatCompletionResponse = serde_json::from_str(minimal_chat_response())
+            .expect("Copilot response should deserialize");
+
+        assert_eq!(response.id, "chatcmpl-123");
+        assert_eq!(response.object, None);
+        assert_eq!(response.created, None);
+        assert_eq!(response.model, "gpt-4o");
+        assert_eq!(response.choices.len(), 1);
+    }
+
+    #[test]
+    fn deserialize_copilot_response_without_finish_reason() {
+        let json = r#"{
+            "id": "chatcmpl-claude-001",
+            "model": "claude-3.5-sonnet",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "Here is my analysis."
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 50,
+                "total_tokens": 80
+            }
+        }"#;
+
+        let response: ChatCompletionResponse =
+            serde_json::from_str(json).expect("Claude-via-Copilot response should deserialize");
+
+        assert_eq!(response.model, "claude-3.5-sonnet");
+        assert_eq!(response.choices[0].finish_reason, None);
+        assert_eq!(response.choices[0].index, 0);
+    }
+
+    #[test]
+    fn error_response_with_message_field() {
+        let json = r#"{"message": "rate limit exceeded"}"#;
+        let err: ChatApiErrorResponse = serde_json::from_str(json).expect("message-shaped error");
+
+        assert_eq!(err.error_message(), "rate limit exceeded");
+    }
+
+    #[test]
+    fn error_response_with_error_field() {
+        let json = r#"{"error": "model not found"}"#;
+        let err: ChatApiErrorResponse = serde_json::from_str(json).expect("error-shaped error");
+
+        assert_eq!(err.error_message(), "model not found");
     }
 
     #[test]
