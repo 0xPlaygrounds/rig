@@ -588,6 +588,8 @@ where
         let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
         let span = tracing::Span::current();
 
+        let mut terminated_with_error = false;
+
         while let Some(event_result) = event_source.next().await {
             match event_result {
                 Ok(Event::Open) => {
@@ -621,6 +623,7 @@ where
                             if let Err(error) =
                                 accumulator.record_response_chunk(kind, response, provider_name)
                             {
+                                terminated_with_error = true;
                                 yield Err(error);
                                 break;
                             }
@@ -632,6 +635,7 @@ where
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
+                    terminated_with_error = true;
                     yield Err(CompletionError::ProviderError(error.to_string()));
                     break;
                 }
@@ -639,6 +643,10 @@ where
         }
 
         event_source.close();
+
+        if terminated_with_error {
+            return;
+        }
 
         let final_usage = accumulator.final_usage.clone();
 
@@ -1191,6 +1199,63 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "ProviderError: OpenAI response stream was incomplete: max_output_tokens"
+        );
+    }
+
+    #[tokio::test]
+    async fn response_failed_chunk_terminates_stream_without_followup_items() {
+        let tool_call_done = json!({
+            "type": "response.output_item.done",
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_123",
+                "arguments": "{}",
+                "call_id": "call_123",
+                "name": "example_tool",
+                "status": "completed"
+            }
+        });
+
+        let mut response = sample_response(ResponseStatus::Failed);
+        response.error = Some(ResponseError {
+            code: "server_error".to_string(),
+            message: "response stream failed".to_string(),
+        });
+
+        let failed = json!({
+            "type": "response.failed",
+            "sequence_number": 2,
+            "response": response,
+        });
+
+        let sse_bytes = Bytes::from(format!(
+            "data: {}\n\ndata: {}\n\n",
+            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
+            serde_json::to_string(&failed).expect("failed should serialize"),
+        ));
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient { sse_bytes })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield an item")
+            .expect_err("stream should surface a provider error");
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: server_error: response stream failed"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate immediately after the first terminal error"
         );
     }
 

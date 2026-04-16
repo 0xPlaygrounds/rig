@@ -883,6 +883,8 @@ where
                 let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
                 let span = tracing::Span::current();
 
+                let mut terminated_with_error = false;
+
                 while let Some(event_result) = event_source.next().await {
                     match event_result {
                         Ok(crate::http_client::sse::Event::Open) => continue,
@@ -989,6 +991,7 @@ where
                                             .as_ref()
                                             .map(|err| err.message.clone())
                                             .unwrap_or_else(|| "Copilot response stream failed".into());
+                                        terminated_with_error = true;
                                         yield Err(CompletionError::ProviderError(error));
                                         break;
                                     }
@@ -1000,6 +1003,7 @@ where
                             break;
                         }
                         Err(error) => {
+                            terminated_with_error = true;
                             yield Err(CompletionError::ProviderError(error.to_string()));
                             break;
                         }
@@ -1007,6 +1011,10 @@ where
                 }
 
                 event_source.close();
+
+                if terminated_with_error {
+                    return;
+                }
 
                 for tool_call in &tool_calls {
                     yield Ok(tool_call.to_owned())
@@ -1277,6 +1285,8 @@ where
         let mut tool_calls: HashMap<usize, streaming::RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
 
+        let mut terminated_with_error = false;
+
         while let Some(event_result) = event_source.next().await {
             match event_result {
                 Ok(crate::http_client::sse::Event::Open) => continue,
@@ -1401,6 +1411,7 @@ where
                 }
                 Err(crate::http_client::Error::StreamEnded) => break,
                 Err(error) => {
+                    terminated_with_error = true;
                     yield Err(CompletionError::ProviderError(error.to_string()));
                     break;
                 }
@@ -1408,6 +1419,10 @@ where
         }
 
         event_source.close();
+
+        if terminated_with_error {
+            return;
+        }
 
         for (_idx, tool_call) in tool_calls.into_iter() {
             yield Ok(RawStreamingChoice::ToolCall(tool_call));
@@ -1478,8 +1493,11 @@ mod tests {
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
+    use crate::http_client::mock::MockStreamingClient;
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
+    use crate::streaming::StreamedAssistantContent;
     use bytes::Bytes;
+    use futures::StreamExt;
     use std::collections::HashMap;
     use std::future::{self, Future};
     use std::sync::{Arc, Mutex};
@@ -1567,6 +1585,77 @@ mod tests {
             future::ready(Err(http_client::Error::InvalidStatusCode(
                 http::StatusCode::NOT_IMPLEMENTED,
             )))
+        }
+    }
+
+    #[derive(Debug, Clone, Default)]
+    struct SequencedStreamingHttpClient {
+        chunks: Arc<Mutex<Option<Vec<http_client::Result<Bytes>>>>>,
+    }
+
+    impl SequencedStreamingHttpClient {
+        fn new(chunks: Vec<http_client::Result<Bytes>>) -> Self {
+            Self {
+                chunks: Arc::new(Mutex::new(Some(chunks))),
+            }
+        }
+    }
+
+    impl HttpClientExt for SequencedStreamingHttpClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>>
+        + crate::wasm_compat::WasmCompatSend
+        + 'static
+        where
+            T: Into<Bytes> + crate::wasm_compat::WasmCompatSend,
+            U: From<Bytes> + crate::wasm_compat::WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>>
+        + crate::wasm_compat::WasmCompatSend
+        + 'static
+        where
+            U: From<Bytes> + crate::wasm_compat::WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>>
+        + crate::wasm_compat::WasmCompatSend
+        where
+            T: Into<Bytes>,
+        {
+            let chunks = self
+                .chunks
+                .lock()
+                .expect("chunks lock")
+                .take()
+                .expect("streaming chunks should only be consumed once");
+
+            async move {
+                let byte_stream = futures::stream::iter(chunks);
+                let boxed_stream: http_client::sse::BoxedStream = Box::pin(byte_stream);
+
+                Response::builder()
+                    .status(http::StatusCode::OK)
+                    .header(http::header::CONTENT_TYPE, "text/event-stream")
+                    .body(boxed_stream)
+                    .map_err(http_client::Error::Protocol)
+            }
         }
     }
 
@@ -1813,6 +1902,115 @@ mod tests {
         assert!(
             String::from_utf8_lossy(&requests[0].body)
                 .contains("\"model\":\"text-embedding-3-small\"")
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_stream_terminates_after_terminal_error() {
+        let tool_call_done = serde_json::json!({
+            "type": "response.output_item.done",
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_123",
+                "arguments": "{}",
+                "call_id": "call_123",
+                "name": "example_tool",
+                "status": "completed"
+            }
+        });
+        let failed = serde_json::json!({
+            "type": "response.failed",
+            "sequence_number": 2,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "failed",
+                "error": {
+                    "code": "server_error",
+                    "message": "Copilot response stream failed"
+                },
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "gpt-5.3-codex",
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+        let sse_bytes = Bytes::from(format!(
+            "data: {}\n\ndata: {}\n\n",
+            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
+            serde_json::to_string(&failed).expect("failed should serialize"),
+        ));
+
+        let http_client = MockStreamingClient { sse_bytes };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let err = match stream.next().await.expect("stream should yield an item") {
+            Ok(_) => panic!("stream should surface a provider error"),
+            Err(err) => err,
+        };
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: Copilot response stream failed"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "responses stream should terminate immediately after a terminal error"
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_stream_terminates_after_transport_error() {
+        let chunks = vec![
+            Ok(Bytes::from(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+            )),
+            Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::BAD_GATEWAY,
+            )),
+        ];
+
+        let http_client = SequencedStreamingHttpClient::new(chunks);
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
+                Err(err) => {
+                    assert_eq!(
+                        err.to_string(),
+                        "ProviderError: Invalid status code: 502 Bad Gateway"
+                    );
+                    saw_error = true;
+                    break;
+                }
+                Ok(_) => panic!("unexpected non-error stream item before transport failure"),
+            }
+        }
+
+        assert!(saw_error, "stream should surface the transport error");
+        assert!(
+            stream.next().await.is_none(),
+            "chat stream should terminate immediately after a transport error"
         );
     }
 
