@@ -13,6 +13,8 @@
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test chatgpt chatgpt::completion::system_messages_are_lifted_into_instructions -- --ignored`
 
+#[path = "common/reasoning.rs"]
+mod reasoning;
 #[path = "common/support.rs"]
 mod support;
 

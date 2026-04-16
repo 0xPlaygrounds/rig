@@ -1,12 +1,22 @@
+mod agent;
 mod auth;
 mod completion;
+mod extractor;
+mod extractor_usage;
+mod multi_extract;
+mod permission_control;
+mod reasoning_roundtrip;
+mod reasoning_tool_roundtrip;
+mod request_hook;
 mod streaming;
+mod streaming_tools;
 
 use rig::providers::chatgpt::{self, ChatGPTAuth};
 use serde::Deserialize;
 use std::path::PathBuf;
 
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 60;
+pub(crate) const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
 
 #[derive(Debug, Deserialize)]
 struct CachedAuthRecord {

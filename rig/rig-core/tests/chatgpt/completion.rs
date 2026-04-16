@@ -5,15 +5,12 @@ use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::message::Message;
-use rig::providers::chatgpt;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 
-use crate::chatgpt::{live_builder, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_builder, live_client};
 use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
-
-const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
 
 fn aggregated_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
     choice

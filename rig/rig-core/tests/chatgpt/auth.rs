@@ -8,11 +8,10 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
+use crate::chatgpt::LIVE_MODEL;
 use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
-
-const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
 
 fn oauth_builder_with_auth_file(path: &Path) -> chatgpt::ClientBuilder {
     let mut builder = chatgpt::Client::builder().oauth().auth_file(path);
