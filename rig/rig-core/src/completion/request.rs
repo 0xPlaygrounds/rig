@@ -501,7 +501,7 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
