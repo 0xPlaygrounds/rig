@@ -1,10 +1,10 @@
+//! Native ChatGPT OAuth and token cache implementation.
+
+use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
 const CHATGPT_DEVICE_CODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -17,87 +17,9 @@ const DEVICE_CODE_TIMEOUT_SECONDS: i64 = 15 * 60;
 const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone)]
-pub struct DeviceCodePrompt {
-    pub verification_uri: String,
-    pub user_code: String,
-}
-
-#[derive(Clone, Default)]
-pub struct DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
-
-impl DeviceCodeHandler {
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        Self(Some(Arc::new(handler)))
-    }
-
-    fn emit(&self, prompt: DeviceCodePrompt) {
-        if let Some(handler) = &self.0 {
-            handler(prompt);
-        } else {
-            println!(
-                "Sign in with ChatGPT:\n1) Visit {}\n2) Enter code: {}\nDo not share this device code.",
-                prompt.verification_uri, prompt.user_code
-            );
-        }
-    }
-}
-
-impl fmt::Debug for DeviceCodeHandler {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_some() {
-            f.write_str("DeviceCodeHandler(<callback>)")
-        } else {
-            f.write_str("DeviceCodeHandler(None)")
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum AuthSource {
-    AccessToken {
-        access_token: String,
-        account_id: Option<String>,
-    },
-    OAuth,
-}
-
-#[derive(Clone)]
-pub struct Authenticator {
-    source: AuthSource,
+pub(super) struct PlatformAuthenticator {
     auth_file: Option<PathBuf>,
     device_code_handler: DeviceCodeHandler,
-    state_lock: Arc<Mutex<()>>,
-}
-
-impl fmt::Debug for Authenticator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Authenticator")
-            .field("source", &self.source)
-            .field("auth_file", &self.auth_file)
-            .field("device_code_handler", &self.device_code_handler)
-            .finish()
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum AuthError {
-    #[error("{0}")]
-    Message(String),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error(transparent)]
-    Http(#[from] reqwest::Error),
-}
-
-#[derive(Debug, Clone)]
-pub struct AuthContext {
-    pub access_token: String,
-    pub account_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -142,90 +64,57 @@ enum RefreshTokensError {
     Auth(AuthError),
 }
 
-impl Authenticator {
-    pub fn new(
-        source: AuthSource,
-        auth_file: Option<PathBuf>,
-        device_code_handler: DeviceCodeHandler,
-    ) -> Self {
+impl PlatformAuthenticator {
+    pub(super) fn new(auth_file: Option<PathBuf>, device_code_handler: DeviceCodeHandler) -> Self {
         Self {
-            source,
             auth_file,
             device_code_handler,
-            state_lock: Arc::new(Mutex::new(())),
         }
     }
 
-    pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
-        match &self.source {
-            AuthSource::AccessToken {
+    pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
+        let mut record = self.read_auth_record()?;
+
+        if let Some(access_token) = record.access_token.clone()
+            && !token_expired(record.expires_at)
+        {
+            let account_id = record
+                .account_id
+                .clone()
+                .or_else(|| extract_account_id(record.id_token.as_deref()))
+                .or_else(|| extract_account_id(Some(&access_token)));
+            if account_id != record.account_id {
+                record.account_id = account_id.clone();
+                self.write_auth_record(&record)?;
+            }
+            return Ok(AuthContext {
                 access_token,
                 account_id,
-            } => Ok(AuthContext {
-                access_token: access_token.clone(),
-                account_id: account_id.clone(),
-            }),
-            AuthSource::OAuth => {
-                let _guard = self.state_lock.lock().await;
-                self.auth_context_locked().await
+            });
+        }
+
+        if let Some(refresh_token) = record.refresh_token.clone() {
+            match self.refresh_tokens(&refresh_token).await {
+                Ok(refreshed) => {
+                    self.write_auth_record(&refreshed)?;
+                    return Ok(AuthContext {
+                        access_token: refreshed.access_token.unwrap_or_default(),
+                        account_id: refreshed.account_id,
+                    });
+                }
+                Err(RefreshTokensError::Reauthenticate) => {}
+                Err(RefreshTokensError::Auth(err)) => return Err(err),
             }
         }
+
+        let fresh = self.login_device_flow().await?;
+        self.write_auth_record(&fresh)?;
+        Ok(AuthContext {
+            access_token: fresh.access_token.unwrap_or_default(),
+            account_id: fresh.account_id,
+        })
     }
 
-    async fn auth_context_locked(&self) -> Result<AuthContext, AuthError> {
-        #[cfg(target_family = "wasm")]
-        {
-            Err(AuthError::Message(
-                "ChatGPT OAuth is not supported on wasm targets".into(),
-            ))
-        }
-
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let mut record = self.read_auth_record()?;
-
-            if let Some(access_token) = record.access_token.clone()
-                && !token_expired(record.expires_at)
-            {
-                let account_id = record
-                    .account_id
-                    .clone()
-                    .or_else(|| extract_account_id(record.id_token.as_deref()))
-                    .or_else(|| extract_account_id(Some(&access_token)));
-                if account_id != record.account_id {
-                    record.account_id = account_id.clone();
-                    self.write_auth_record(&record)?;
-                }
-                return Ok(AuthContext {
-                    access_token,
-                    account_id,
-                });
-            }
-
-            if let Some(refresh_token) = record.refresh_token.clone() {
-                match self.refresh_tokens(&refresh_token).await {
-                    Ok(refreshed) => {
-                        self.write_auth_record(&refreshed)?;
-                        return Ok(AuthContext {
-                            access_token: refreshed.access_token.unwrap_or_default(),
-                            account_id: refreshed.account_id,
-                        });
-                    }
-                    Err(RefreshTokensError::Reauthenticate) => {}
-                    Err(RefreshTokensError::Auth(err)) => return Err(err),
-                }
-            }
-
-            let fresh = self.login_device_flow().await?;
-            self.write_auth_record(&fresh)?;
-            Ok(AuthContext {
-                access_token: fresh.access_token.unwrap_or_default(),
-                account_id: fresh.account_id,
-            })
-        }
-    }
-
-    #[cfg(not(target_family = "wasm"))]
     fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
         let Some(path) = &self.auth_file else {
             return Ok(AuthRecord::default());
@@ -238,7 +127,6 @@ impl Authenticator {
         }
     }
 
-    #[cfg(not(target_family = "wasm"))]
     fn write_auth_record(&self, record: &AuthRecord) -> Result<(), AuthError> {
         let Some(path) = &self.auth_file else {
             return Ok(());
@@ -249,7 +137,6 @@ impl Authenticator {
         Ok(())
     }
 
-    #[cfg(not(target_family = "wasm"))]
     async fn login_device_flow(&self) -> Result<AuthRecord, AuthError> {
         let client = reqwest::Client::new();
         let device = client
@@ -261,10 +148,13 @@ impl Authenticator {
             .json::<DeviceCodeResponse>()
             .await?;
 
-        self.device_code_handler.emit(DeviceCodePrompt {
-            verification_uri: CHATGPT_DEVICE_VERIFY_URL.to_string(),
-            user_code: device.user_code.clone(),
-        });
+        emit_device_code_prompt(
+            &self.device_code_handler,
+            DeviceCodePrompt {
+                verification_uri: CHATGPT_DEVICE_VERIFY_URL.to_string(),
+                user_code: device.user_code.clone(),
+            },
+        );
 
         let interval = device.interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
         let start = std::time::Instant::now();
@@ -329,7 +219,6 @@ impl Authenticator {
         Ok(build_auth_record(tokens, None))
     }
 
-    #[cfg(not(target_family = "wasm"))]
     async fn refresh_tokens(&self, refresh_token: &str) -> Result<AuthRecord, RefreshTokensError> {
         let client = reqwest::Client::new();
         let form = [
@@ -382,16 +271,17 @@ impl Authenticator {
     }
 }
 
-impl fmt::Debug for AuthSource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AccessToken { .. } => f.write_str("AccessToken(<redacted>)"),
-            Self::OAuth => f.write_str("OAuth"),
-        }
+fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
+    if let Some(callback) = &handler.0 {
+        callback(prompt);
+    } else {
+        println!(
+            "Sign in with ChatGPT:\n1) Visit {}\n2) Enter code: {}\nDo not share this device code.",
+            prompt.verification_uri, prompt.user_code
+        );
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -399,7 +289,10 @@ fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn build_auth_record(tokens: OAuthTokenResponse, previous_refresh_token: Option<String>) -> AuthRecord {
+fn build_auth_record(
+    tokens: OAuthTokenResponse,
+    previous_refresh_token: Option<String>,
+) -> AuthRecord {
     let access_token = Some(tokens.access_token);
     let id_token = tokens.id_token;
     AuthRecord {
@@ -526,8 +419,7 @@ where
 mod tests {
     use super::{
         DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse, build_auth_record,
-        format_refresh_error,
-        should_reauthenticate_after_refresh,
+        format_refresh_error, should_reauthenticate_after_refresh,
     };
     use reqwest::StatusCode;
 

@@ -69,8 +69,7 @@ pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::C
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type EmbeddingModel<H = reqwest::Client> =
-    GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
+pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
