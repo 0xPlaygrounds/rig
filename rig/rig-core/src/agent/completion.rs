@@ -75,7 +75,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     // If the agent has RAG text, we need to fetch the dynamic context and tools
     let result = match &rag_text {
         Some(text) => {
-            // Map over the vector to create our async tasks
+            // Map over the vector to create async tasks
             let search_futures = dynamic_context.iter().map(|(num_sample, index)| {
                 // Clone values to move into the async block
                 let text = text.clone();
@@ -87,15 +87,15 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
                         .query(text)
                         .samples(num_sample as u64)
                         .build();
-                    Ok::<_, VectorStoreError>(
-                        index
-                            .top_n(req)
-                            .await?
-                            .into_iter()
-                            .map(|(_, id, doc)| {
-                                // Pretty print the document if possible for better readability
-                                let text = serde_json::to_string_pretty(&doc)
-                                    .unwrap_or_else(|_| doc.to_string());
+
+                    let docs = index
+                        .top_n(req)
+                        .await?
+                        .into_iter()
+                        .map(|(_, id, doc)| {
+                            // Pretty print the document if possible for better readability
+                            let text = serde_json::to_string_pretty(&doc)
+                                .unwrap_or_else(|_| doc.to_string());
 
                             Document {
                                 id,
@@ -103,7 +103,9 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
                                 additional_props: HashMap::new(),
                             }
                         })
-                        .collect::<Vec<_>>())
+                        .collect::<Vec<_>>();
+
+                    Ok::<_, VectorStoreError>(docs)
                 }
             });
 
