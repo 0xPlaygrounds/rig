@@ -4,9 +4,7 @@ use crate::completion::{self, CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
-use crate::providers::openai::responses_api::{
-    ReasoningSummary, ResponsesCompletionModel, ResponsesUsage,
-};
+use crate::providers::openai::responses_api::{ReasoningSummary, ResponsesUsage};
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use crate::wasm_compat::WasmCompatSend;
@@ -16,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{Level, debug, enabled, info_span};
 use tracing_futures::Instrument as _;
 
-use super::{CompletionResponse, Output};
+use super::{CompletionResponse, GenericResponsesCompletionModel, Output};
 
 type StreamingRawChoice = RawStreamingChoice<StreamingCompletionResponse>;
 
@@ -788,7 +786,7 @@ pub enum SummaryPartChunkPart {
     SummaryText { text: String },
 }
 
-impl<Ext, H> ResponsesCompletionModel<Ext, H>
+impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,

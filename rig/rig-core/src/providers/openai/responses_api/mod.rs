@@ -894,8 +894,9 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
 }
 
 /// The completion model struct for OpenAI's response API.
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct ResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
+pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
     /// The OpenAI client
     pub(crate) client: crate::client::Client<Ext, H>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
@@ -904,7 +905,14 @@ pub struct ResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = reqwest
     pub tools: Vec<ResponsesToolDefinition>,
 }
 
-impl<Ext, H> ResponsesCompletionModel<Ext, H>
+/// The completion model struct for OpenAI's Responses API.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type ResponsesCompletionModel<H = reqwest::Client> =
+    GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
+
+impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
     Ext: crate::client::Provider + Clone + 'static,
@@ -955,7 +963,7 @@ where
     }
 }
 
-impl<T> ResponsesCompletionModel<super::OpenAIResponsesExt, T>
+impl<T> GenericResponsesCompletionModel<super::OpenAIResponsesExt, T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
@@ -1298,7 +1306,7 @@ pub enum OutputRole {
     Assistant,
 }
 
-impl<Ext, H> completion::CompletionModel for ResponsesCompletionModel<Ext, H>
+impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -1406,7 +1414,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        ResponsesCompletionModel::stream(self, request).await
+        GenericResponsesCompletionModel::stream(self, request).await
     }
 }
 

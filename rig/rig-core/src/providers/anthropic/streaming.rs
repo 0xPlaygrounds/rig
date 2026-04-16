@@ -6,8 +6,9 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    AnthropicCompatibleProvider, CacheControl, CompletionModel, Content, Message, SystemContent,
-    ToolChoice, ToolDefinition, Usage, apply_cache_control, split_system_messages_from_history,
+    AnthropicCompatibleProvider, CacheControl, Content, GenericCompletionModel, Message,
+    SystemContent, ToolChoice, ToolDefinition, Usage, apply_cache_control,
+    split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -135,7 +136,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl<Ext, T> CompletionModel<Ext, T>
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,

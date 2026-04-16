@@ -23,7 +23,7 @@ impl Provider for AnthropicExt {
 }
 
 impl<H> Capabilities<H> for AnthropicExt {
-    type Completion = Capable<CompletionModel<AnthropicExt, H>>;
+    type Completion = Capable<CompletionModel<H>>;
 
     type Embeddings = Nothing;
     type Transcription = Nothing;

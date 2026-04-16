@@ -58,8 +58,7 @@ impl Provider for OpenAICompletionsExt {
 }
 
 impl<H> Capabilities<H> for OpenAIResponsesExt {
-    type Completion =
-        Capable<super::responses_api::ResponsesCompletionModel<OpenAIResponsesExt, H>>;
+    type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<OpenAIResponsesExt, H>>;
     type Transcription = Capable<super::TranscriptionModel<H>>;
     type ModelListing = Capable<super::OpenAIModelLister<H>>;
@@ -137,7 +136,7 @@ where
     pub fn extractor<U>(
         &self,
         model: impl Into<String>,
-    ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<OpenAIResponsesExt, H>, U>
+    ) -> ExtractorBuilder<super::responses_api::ResponsesCompletionModel<H>, U>
     where
         U: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync,
     {

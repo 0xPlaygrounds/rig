@@ -192,15 +192,13 @@ impl ResponsesWebSocketEvent {
 /// The default builder applies a 30 second connection timeout and leaves the
 /// per-event timeout disabled.
 pub struct ResponsesWebSocketSessionBuilder<H = reqwest::Client> {
-    model: ResponsesCompletionModel<super::super::OpenAIResponsesExt, H>,
+    model: ResponsesCompletionModel<H>,
     connect_timeout: Option<Duration>,
     event_timeout: Option<Duration>,
 }
 
 impl<H> ResponsesWebSocketSessionBuilder<H> {
-    pub(crate) fn new(
-        model: ResponsesCompletionModel<super::super::OpenAIResponsesExt, H>,
-    ) -> Self {
+    pub(crate) fn new(model: ResponsesCompletionModel<H>) -> Self {
         Self {
             model,
             connect_timeout: Some(DEFAULT_CONNECT_TIMEOUT),
@@ -267,7 +265,7 @@ where
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
 pub struct ResponsesWebSocketSession<H = reqwest::Client> {
-    model: ResponsesCompletionModel<super::super::OpenAIResponsesExt, H>,
+    model: ResponsesCompletionModel<H>,
     previous_response_id: Option<String>,
     pending_done_response_id: Option<String>,
     socket: OpenAIWebSocket,
@@ -288,7 +286,7 @@ where
         + 'static,
 {
     async fn connect_with_timeouts(
-        model: ResponsesCompletionModel<super::super::OpenAIResponsesExt, H>,
+        model: ResponsesCompletionModel<H>,
         connect_timeout: Option<Duration>,
         event_timeout: Option<Duration>,
     ) -> Result<Self, CompletionError> {

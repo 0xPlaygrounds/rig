@@ -840,8 +840,9 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
+pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
     pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
@@ -857,7 +858,14 @@ pub struct CompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Clien
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
-impl<Ext, T> CompletionModel<Ext, T>
+/// Anthropic completion model.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<T = reqwest::Client> =
+    GenericCompletionModel<super::client::AnthropicExt, T>;
+
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt,
     Ext: AnthropicCompatibleProvider + Clone + 'static,
@@ -1336,7 +1344,7 @@ fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-impl<Ext, T> completion::CompletionModel for CompletionModel<Ext, T>
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -1466,7 +1474,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 

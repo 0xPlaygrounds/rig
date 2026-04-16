@@ -330,9 +330,11 @@ where
         self
     }
 
-    fn openai_model(&self) -> responses_api::ResponsesCompletionModel<ChatGPTExt, H> {
-        let mut model =
-            responses_api::ResponsesCompletionModel::new(self.client.clone(), self.model.clone());
+    fn openai_model(&self) -> responses_api::GenericResponsesCompletionModel<ChatGPTExt, H> {
+        let mut model = responses_api::GenericResponsesCompletionModel::new(
+            self.client.clone(),
+            self.model.clone(),
+        );
         model.tools = self.tools.clone();
         model
     }

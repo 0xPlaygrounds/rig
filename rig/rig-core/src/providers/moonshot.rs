@@ -138,7 +138,7 @@ impl<H> Capabilities<H> for MoonshotExt {
 
 impl<H> Capabilities<H> for MoonshotAnthropicExt {
     type Completion =
-        Capable<super::anthropic::completion::CompletionModel<MoonshotAnthropicExt, H>>;
+        Capable<super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
     type ModelListing = Nothing;

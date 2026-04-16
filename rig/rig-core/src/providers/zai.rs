@@ -100,7 +100,8 @@ impl<H> Capabilities<H> for ZAiExt {
 }
 
 impl<H> Capabilities<H> for ZAiAnthropicExt {
-    type Completion = Capable<super::anthropic::completion::CompletionModel<ZAiAnthropicExt, H>>;
+    type Completion =
+        Capable<super::anthropic::completion::GenericCompletionModel<ZAiAnthropicExt, H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
     type ModelListing = Nothing;

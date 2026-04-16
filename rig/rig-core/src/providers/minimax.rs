@@ -103,7 +103,7 @@ impl<H> Capabilities<H> for MiniMaxExt {
 
 impl<H> Capabilities<H> for MiniMaxAnthropicExt {
     type Completion =
-        Capable<super::anthropic::completion::CompletionModel<MiniMaxAnthropicExt, H>>;
+        Capable<super::anthropic::completion::GenericCompletionModel<MiniMaxAnthropicExt, H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
     type ModelListing = Nothing;
