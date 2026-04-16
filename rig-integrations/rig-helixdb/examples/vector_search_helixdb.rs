@@ -61,8 +61,7 @@ async fn main() {
     let vector_req = VectorSearchRequest::builder()
         .query(query)
         .samples(5)
-        .build()
-        .unwrap();
+        .build();
 
     let docs = vector_store
         .top_n::<WordDefinition>(vector_req)

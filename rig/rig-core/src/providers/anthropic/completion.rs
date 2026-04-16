@@ -1,7 +1,10 @@
 //! Anthropic completion api implementation
 
+use crate::completion::CompletionRequest;
+use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
+    client::Provider,
     completion::{self, CompletionError, GetTokenUsage},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
@@ -9,29 +12,42 @@ use crate::{
     telemetry::{ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
-use std::{convert::Infallible, str::FromStr};
-
-use super::client::Client;
-use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use std::{convert::Infallible, str::FromStr};
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
 // Anthropic Completion API
 // ================================================================
 
-/// `claude-opus-4-0` completion model
-pub const CLAUDE_4_OPUS: &str = "claude-opus-4-0";
-/// `claude-sonnet-4-0` completion model
-pub const CLAUDE_4_SONNET: &str = "claude-sonnet-4-0";
-/// `claude-3-5-haiku-latest` completion model
-pub const CLAUDE_3_5_HAIKU: &str = "claude-3-5-haiku-latest";
+/// `claude-opus-4-6` completion model
+pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
+/// `claude-sonnet-4-6` completion model
+pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
+/// `claude-haiku-4-5` completion model
+pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
+
+pub trait AnthropicCompatibleProvider: Provider {
+    const PROVIDER_NAME: &'static str;
+
+    fn default_max_tokens(model: &str) -> Option<u64> {
+        let _ = model;
+        None
+    }
+}
+
+impl AnthropicCompatibleProvider for super::client::AnthropicExt {
+    const PROVIDER_NAME: &'static str = "anthropic";
+
+    fn default_max_tokens(model: &str) -> Option<u64> {
+        default_max_tokens_for_model(model)
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -824,9 +840,10 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
+    pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
     /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
@@ -841,13 +858,21 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
-impl<T> CompletionModel<T>
+/// Anthropic completion model.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<T = reqwest::Client> =
+    GenericCompletionModel<super::client::AnthropicExt, T>;
+
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt,
+    Ext: AnthropicCompatibleProvider + Clone + 'static,
 {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
         let model = model.into();
-        let default_max_tokens = calculate_max_tokens(&model);
+        let default_max_tokens = Ext::default_max_tokens(&model);
 
         Self {
             client,
@@ -859,11 +884,12 @@ where
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: Some(calculate_max_tokens_custom(model)),
+            default_max_tokens: Ext::default_max_tokens(model)
+                .or_else(|| Some(default_max_tokens_with_fallback(model))),
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
@@ -897,7 +923,7 @@ where
     /// extended TTL.
     ///
     /// ```ignore
-    /// let model = client.completion_model(anthropic::CLAUDE_4_SONNET)
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching();
     /// ```
     ///
@@ -910,9 +936,8 @@ where
     /// |-------|---------------|
     /// | `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
     /// | `claude-sonnet-4-6` | 2 048 |
-    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4`, `claude-sonnet-3-7` | 1 024 |
+    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
     /// | `claude-haiku-4-5` | 4 096 |
-    /// | `claude-haiku-3-5`, `claude-haiku-3` | 2 048 |
     ///
     /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
     pub fn with_automatic_caching(mut self) -> Self {
@@ -931,7 +956,7 @@ where
     ///     .api_key(std::env::var("ANTHROPIC_API_KEY").unwrap())
     ///     .anthropic_beta("extended-cache-ttl-2025-04-11")
     ///     .build()?;
-    /// let model = client.completion_model(anthropic::CLAUDE_4_SONNET)
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching_1h();
     /// ```
     ///
@@ -946,38 +971,21 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
-fn calculate_max_tokens(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4") {
-        Some(32000)
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        Some(64000)
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        Some(8192)
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
+fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+    if model.starts_with("claude-opus-4-6") {
+        Some(128_000)
+    } else if model.starts_with("claude-opus-4")
+        || model.starts_with("claude-sonnet-4")
+        || model.starts_with("claude-haiku-4-5")
     {
-        Some(4096)
+        Some(64_000)
     } else {
         None
     }
 }
 
-fn calculate_max_tokens_custom(model: &str) -> u64 {
-    if model.starts_with("claude-opus-4") {
-        32000
-    } else if model.starts_with("claude-sonnet-4") || model.starts_with("claude-3-7-sonnet") {
-        64000
-    } else if model.starts_with("claude-3-5-sonnet") || model.starts_with("claude-3-5-haiku") {
-        8192
-    } else if model.starts_with("claude-3-opus")
-        || model.starts_with("claude-3-sonnet")
-        || model.starts_with("claude-3-haiku")
-    {
-        4096
-    } else {
-        2048
-    }
+fn default_max_tokens_with_fallback(model: &str) -> u64 {
+    default_max_tokens_for_model(model).unwrap_or(2_048)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1282,16 +1290,17 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             apply_cache_control(&mut system, &mut messages);
         }
 
-        // Map output_schema to Anthropic's output_config field
-        let output_config = req.output_schema.map(|schema| {
+        let output_config = if let Some(schema) = req.output_schema {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            OutputConfig {
+            Some(OutputConfig {
                 format: OutputFormat::JsonSchema {
                     schema: schema_value,
                 },
-            }
-        });
+            })
+        } else {
+            None
+        };
 
         Ok(Self {
             model: model.to_string(),
@@ -1335,13 +1344,14 @@ fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
-    type Client = Client<T>;
+    type Client = crate::client::Client<Ext, T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model.into())
@@ -1360,7 +1370,7 @@ where
                 target: "rig::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "anthropic",
+                gen_ai.provider.name = Ext::PROVIDER_NAME,
                 gen_ai.request.model = &request_model,
                 gen_ai.system_instructions = &completion_request.preamble,
                 gen_ai.response.id = tracing::field::Empty,
@@ -1464,7 +1474,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        CompletionModel::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 

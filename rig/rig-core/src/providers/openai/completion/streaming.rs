@@ -12,7 +12,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils::{self, merge};
-use crate::providers::openai::completion::{CompletionModel, OpenAIRequestParams, Usage};
+use crate::providers::openai::completion::{GenericCompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming::{self, RawStreamingChoice};
 
 // ================================================================
@@ -84,9 +84,10 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
-impl<T> CompletionModel<T>
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt + Clone + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
 {
     pub(crate) async fn stream(
         &self,

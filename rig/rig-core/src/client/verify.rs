@@ -1,7 +1,4 @@
-use crate::{
-    http_client,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
-};
+use crate::{http_client, wasm_compat::WasmCompatSend};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -23,23 +20,4 @@ pub enum VerifyError {
 pub trait VerifyClient {
     /// Verify the configuration.
     fn verify(&self) -> impl Future<Output = Result<(), VerifyError>> + WasmCompatSend;
-}
-
-#[deprecated(
-    since = "0.25.0",
-    note = "`DynClientBuilder` and related features have been deprecated and will be removed in a future release. In this case, use `VerifyClient` instead."
-)]
-pub trait VerifyClientDyn {
-    /// Verify the configuration.
-    fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>>;
-}
-
-#[allow(deprecated)]
-impl<T> VerifyClientDyn for T
-where
-    T: VerifyClient,
-{
-    fn verify(&self) -> WasmBoxedFuture<'_, Result<(), VerifyError>> {
-        Box::pin(self.verify())
-    }
 }

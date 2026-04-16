@@ -60,7 +60,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()?;
+        .build();
 
     // Query the index
     let results = vector_store.top_n_ids(req).await?;

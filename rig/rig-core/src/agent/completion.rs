@@ -86,17 +86,16 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
                     let req = VectorSearchRequest::builder()
                         .query(text)
                         .samples(num_sample as u64)
-                        .build()
-                        .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
-                    
-                    let docs = index
-                        .top_n(req)
-                        .await?
-                        .into_iter()
-                        .map(|(_, id, doc)| {
-                            // Pretty print the document if possible for better readability
-                            let text = serde_json::to_string_pretty(&doc)
-                                .unwrap_or_else(|_| doc.to_string());
+                        .build();
+                    Ok::<_, VectorStoreError>(
+                        index
+                            .top_n(req)
+                            .await?
+                            .into_iter()
+                            .map(|(_, id, doc)| {
+                                // Pretty print the document if possible for better readability
+                                let text = serde_json::to_string_pretty(&doc)
+                                    .unwrap_or_else(|_| doc.to_string());
 
                             Document {
                                 id,
@@ -104,9 +103,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
                                 additional_props: HashMap::new(),
                             }
                         })
-                        .collect::<Vec<_>>();
-                        
-                    Ok::<_, VectorStoreError>(docs)
+                        .collect::<Vec<_>>())
                 }
             });
 

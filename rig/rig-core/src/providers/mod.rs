@@ -47,7 +47,9 @@
 //! be used with the Cohere provider client.
 pub mod anthropic;
 pub mod azure;
+pub mod chatgpt;
 pub mod cohere;
+pub mod copilot;
 pub mod deepseek;
 pub mod galadriel;
 pub mod gemini;
@@ -55,6 +57,7 @@ pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
 pub mod llamafile;
+pub mod minimax;
 pub mod mira;
 pub mod mistral;
 pub mod moonshot;
@@ -65,3 +68,4 @@ pub mod perplexity;
 pub mod together;
 pub mod voyageai;
 pub mod xai;
+pub mod zai;

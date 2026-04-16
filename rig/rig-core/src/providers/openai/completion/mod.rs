@@ -3,7 +3,6 @@
 // ================================================================
 
 use super::{
-    CompletionsClient as Client,
     client::{ApiErrorResponse, ApiResponse},
     streaming::StreamingCompletionResponse,
 };
@@ -184,6 +183,12 @@ impl Message {
             name: None,
         }
     }
+}
+
+fn history_contains_tool_result(messages: &[Message]) -> bool {
+    messages
+        .iter()
+        .any(|message| matches!(message, Message::ToolResult { .. }))
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -964,19 +969,28 @@ impl GetTokenUsage for Usage {
     }
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
+pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
+    pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
 }
 
-impl<T> CompletionModel<T>
+/// The completion model struct for OpenAI's Chat Completions API.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type CompletionModel<H = reqwest::Client> =
+    GenericCompletionModel<super::OpenAICompletionsExt, H>;
+
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
-    T: Default + std::fmt::Debug + Clone + 'static,
+    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
 {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+    pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -985,7 +999,7 @@ where
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
         Self {
             client,
             model: model.into(),
@@ -1097,6 +1111,8 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             }
         }
 
+        let history_has_tool_result = history_contains_tool_result(&full_history);
+
         let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
 
         let tools: Vec<ToolDefinition> = tools
@@ -1107,8 +1123,16 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             })
             .collect();
 
+        // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
+        // if `response_format` is sent on the first turn alongside tools. Delay the
+        // schema until after the conversation contains a tool result.
+        let should_apply_response_format =
+            output_schema.is_some() && (tools.is_empty() || history_has_tool_result);
+
         // Map output_schema to OpenAI's response_format and merge into additional_params
-        let additional_params = if let Some(schema) = output_schema {
+        let additional_params = if let Some(schema) = output_schema
+            && should_apply_response_format
+        {
             let name = schema
                 .as_object()
                 .and_then(|o| o.get("title"))
@@ -1200,26 +1224,28 @@ impl crate::telemetry::ProviderRequestExt for CompletionRequest {
     }
 }
 
-impl CompletionModel<reqwest::Client> {
+impl GenericCompletionModel<super::OpenAICompletionsExt, reqwest::Client> {
     pub fn into_agent_builder(self) -> crate::agent::AgentBuilder<Self> {
         crate::agent::AgentBuilder::new(self)
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt
-        + Default
-        + std::fmt::Debug
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: crate::client::Provider
+        + crate::client::DebugExt
         + Clone
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
+    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
 
-    type Client = super::CompletionsClient<T>;
+    type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
         Self::new(client.clone(), model)
@@ -1310,7 +1336,7 @@ where
         crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
         CompletionError,
     > {
-        Self::stream(self, request).await
+        GenericCompletionModel::stream(self, request).await
     }
 }
 
@@ -1523,6 +1549,129 @@ mod tests {
         });
 
         assert!(matches!(result, Err(CompletionError::RequestError(_))));
+    }
+
+    #[test]
+    fn request_conversion_omits_response_format_on_initial_tool_turn() {
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::user(
+                "Hello, whats the weather in London?",
+            )),
+            documents: vec![],
+            tools: vec![completion::ToolDefinition {
+                name: "weather".to_string(),
+                description: "Get the weather".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "city": { "type": "string" }
+                    },
+                    "required": ["city"]
+                }),
+            }],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: Some(
+                serde_json::from_value(serde_json::json!({
+                    "title": "WeatherResponse",
+                    "type": "object",
+                    "properties": {
+                        "city": { "type": "string" },
+                        "weather": { "type": "string" }
+                    },
+                    "required": ["city", "weather"]
+                }))
+                .expect("schema should deserialize"),
+            ),
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert!(
+            serialized.get("response_format").is_none(),
+            "initial tool turn should omit response_format: {serialized:?}"
+        );
+    }
+
+    #[test]
+    fn request_conversion_restores_response_format_after_tool_result() {
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                message::Message::user("Hello, whats the weather in London?"),
+                message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(message::AssistantContent::tool_call(
+                        "call_1",
+                        "weather",
+                        serde_json::json!({ "city": "London" }),
+                    )),
+                },
+                message::Message::tool_result(
+                    "call_1",
+                    "The weather in London is all fire and brimstone",
+                ),
+            ])
+            .expect("history should be non-empty"),
+            documents: vec![],
+            tools: vec![completion::ToolDefinition {
+                name: "weather".to_string(),
+                description: "Get the weather".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "city": { "type": "string" }
+                    },
+                    "required": ["city"]
+                }),
+            }],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: Some(
+                serde_json::from_value(serde_json::json!({
+                    "title": "WeatherResponse",
+                    "type": "object",
+                    "properties": {
+                        "city": { "type": "string" },
+                        "weather": { "type": "string" }
+                    },
+                    "required": ["city", "weather"]
+                }))
+                .expect("schema should deserialize"),
+            ),
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(openai_request).expect("serialization should succeed");
+
+        assert!(
+            serialized.get("response_format").is_some(),
+            "follow-up turn should restore response_format: {serialized:?}"
+        );
     }
 
     #[test]

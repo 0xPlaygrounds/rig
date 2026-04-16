@@ -4,7 +4,7 @@
 //! `cargo test -p rig-core --test anthropic anthropic::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
 use rig::client::{CompletionClient, ProviderClient};
-use rig::providers::anthropic;
+use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
 
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
@@ -13,9 +13,9 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     let client = anthropic::Client::from_env();
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        client.completion_model("claude-sonnet-4-5-20250929"),
+        client.completion_model(CLAUDE_SONNET_4_6),
         Some(serde_json::json!({
-            "thinking": { "type": "enabled", "budget_tokens": 2048 }
+            "thinking": { "type": "adaptive" }
         })),
     ))
     .await;
@@ -26,9 +26,9 @@ async fn streaming() {
 async fn nonstreaming() {
     let client = anthropic::Client::from_env();
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-        client.completion_model("claude-sonnet-4-5-20250929"),
+        client.completion_model(CLAUDE_SONNET_4_6),
         Some(serde_json::json!({
-            "thinking": { "type": "enabled", "budget_tokens": 2048 }
+            "thinking": { "type": "adaptive" }
         })),
     ))
     .await;

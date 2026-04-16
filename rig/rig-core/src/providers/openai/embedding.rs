@@ -1,5 +1,4 @@
 use super::{
-    Client,
     client::{ApiErrorResponse, ApiResponse},
     completion::Usage,
 };
@@ -56,14 +55,21 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
+#[doc(hidden)]
 #[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
+pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
+    client: crate::client::Client<Ext, H>,
     pub model: String,
     pub encoding_format: Option<EncodingFormat>,
     pub user: Option<String>,
     ndims: usize,
 }
+
+/// The embedding model struct for OpenAI's Embeddings API.
+///
+/// This preserves the historical public generic shape where the first generic
+/// parameter is the HTTP client type.
+pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
@@ -73,13 +79,15 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + Send + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
+    H: Clone + Default + std::fmt::Debug + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
 
-    type Client = Client<T>;
+    type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
         let model = model.into();
@@ -167,8 +175,15 @@ where
     }
 }
 
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
+impl<Ext, H> GenericEmbeddingModel<Ext, H>
+where
+    Ext: crate::client::Provider,
+{
+    pub fn new(
+        client: crate::client::Client<Ext, H>,
+        model: impl Into<String>,
+        ndims: usize,
+    ) -> Self {
         Self {
             client,
             model: model.into(),
@@ -178,7 +193,7 @@ impl<T> EmbeddingModel<T> {
         }
     }
 
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str, ndims: usize) -> Self {
         Self {
             client,
             model: model.into(),
@@ -189,7 +204,7 @@ impl<T> EmbeddingModel<T> {
     }
 
     pub fn with_encoding_format(
-        client: Client<T>,
+        client: crate::client::Client<Ext, H>,
         model: &str,
         ndims: usize,
         encoding_format: EncodingFormat,

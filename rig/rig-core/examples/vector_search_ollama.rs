@@ -93,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()?;
+        .build();
 
     let results = index
         .top_n::<WordDefinition>(req.clone())

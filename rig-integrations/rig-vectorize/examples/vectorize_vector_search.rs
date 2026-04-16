@@ -69,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let request = VectorSearchRequest::builder()
         .query(query)
         .samples(3)
-        .build()?;
+        .build();
 
     let results = vector_store.top_n::<Word>(request).await?;
 

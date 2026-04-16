@@ -173,8 +173,7 @@ async fn vector_search_test() {
         .samples(samples)
         .query(query)
         .filter(SqliteSearchFilter::eq("id", "doc1".into()).not())
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");

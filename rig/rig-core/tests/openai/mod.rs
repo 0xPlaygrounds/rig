@@ -6,6 +6,7 @@ mod extractor;
 mod extractor_usage;
 #[cfg(feature = "image")]
 mod image_generation;
+mod models;
 mod multi_extract;
 mod permission_control;
 mod reasoning_roundtrip;
@@ -17,5 +18,6 @@ mod streaming;
 mod streaming_tools;
 mod structured_output;
 mod transcription;
+mod typed_prompt_tools;
 #[cfg(feature = "websocket")]
 mod websocket;

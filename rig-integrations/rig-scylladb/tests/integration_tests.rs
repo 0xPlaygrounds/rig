@@ -127,8 +127,7 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     // Test vector search
     let results = vector_store
@@ -171,8 +170,7 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(1)
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     // Test with different query
     let results2 = vector_store

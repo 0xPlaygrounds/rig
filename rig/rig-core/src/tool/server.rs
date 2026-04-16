@@ -185,8 +185,7 @@ impl ToolServerHandle {
                     let req = VectorSearchRequest::builder()
                         .query(text)
                         .samples(num_sample as u64)
-                        .build()
-                        .expect("Creating VectorSearchRequest here shouldn't fail since the query and samples to return are always present");
+                        .build();
                     
                     let ids = index
                         .as_ref()
