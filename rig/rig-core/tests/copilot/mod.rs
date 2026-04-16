@@ -15,11 +15,10 @@ mod structured_output;
 mod typed_prompt_tools;
 
 use rig::providers::copilot;
+use std::borrow::Cow;
 
 pub(crate) const LIVE_MODEL: &str = copilot::GPT_4O;
 pub(crate) const LIVE_LIGHT_MODEL: &str = copilot::GPT_4O_MINI;
-pub(crate) const LIVE_RESPONSES_MODEL: &str = copilot::GPT_5_1_CODEX;
-pub(crate) const LIVE_EMBEDDING_MODEL: &str = copilot::TEXT_EMBEDDING_3_SMALL;
 
 fn first_env_value(keys: &[&str]) -> Option<String> {
     keys.iter().find_map(|name| {
@@ -35,6 +34,18 @@ pub(crate) fn copilot_api_key() -> Option<String> {
 
 pub(crate) fn copilot_github_access_token() -> Option<String> {
     first_env_value(&["COPILOT_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"])
+}
+
+pub(crate) fn live_responses_model() -> Cow<'static, str> {
+    first_env_value(&["GITHUB_COPILOT_RESPONSES_MODEL", "COPILOT_RESPONSES_MODEL"])
+        .map(Cow::Owned)
+        .unwrap_or_else(|| Cow::Borrowed(copilot::GPT_5_3_CODEX))
+}
+
+pub(crate) fn live_embedding_model() -> Cow<'static, str> {
+    first_env_value(&["GITHUB_COPILOT_EMBEDDING_MODEL", "COPILOT_EMBEDDING_MODEL"])
+        .map(Cow::Owned)
+        .unwrap_or_else(|| Cow::Borrowed(copilot::TEXT_EMBEDDING_3_SMALL))
 }
 
 fn env_base_url() -> Option<String> {

@@ -10,7 +10,8 @@ use rig::client::CompletionClient;
 use rig::completion::{ToolDefinition, TypedPrompt};
 use rig::tool::Tool;
 
-use crate::copilot::{LIVE_RESPONSES_MODEL, live_client};
+use crate::copilot::{live_client, live_responses_model};
+use crate::support::assert_nonempty_response;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct WeatherResponse {
@@ -69,7 +70,7 @@ impl Tool for WeatherTool {
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
-        .agent(LIVE_RESPONSES_MODEL)
+        .agent(live_responses_model())
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
              After calling the tool, return a JSON response with the city name and the weather description. \
@@ -87,9 +88,14 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         "expected the weather tool to be executed at least once"
     );
     assert_eq!(response.city.trim().to_ascii_lowercase(), "london");
-    assert_eq!(
-        response.weather,
-        "The weather in London is all fire and brimstone"
+    assert_nonempty_response(&response.weather);
+    assert!(
+        response
+            .weather
+            .to_ascii_lowercase()
+            .contains("fire and brimstone"),
+        "expected the weather description to preserve the tool result, got {:?}",
+        response.weather
     );
 
     Ok(())

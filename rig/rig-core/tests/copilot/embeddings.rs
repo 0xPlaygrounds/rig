@@ -1,6 +1,6 @@
 //! Copilot embeddings smoke test.
 
-use crate::copilot::{LIVE_EMBEDDING_MODEL, live_client};
+use crate::copilot::{live_client, live_embedding_model};
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
@@ -8,7 +8,7 @@ use rig::embeddings::EmbeddingModel;
 #[tokio::test]
 #[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn embeddings_smoke() {
-    let model = live_client().embedding_model(LIVE_EMBEDDING_MODEL);
+    let model = live_client().embedding_model(live_embedding_model());
 
     let embeddings = model
         .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))

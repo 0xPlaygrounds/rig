@@ -58,6 +58,8 @@ pub const GPT_4_1: &str = "gpt-4.1";
 pub const GPT_4_1_MINI: &str = "gpt-4.1-mini";
 /// `gpt-4.1-nano`
 pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
+/// `gpt-5.3-codex`
+pub const GPT_5_3_CODEX: &str = "gpt-5.3-codex";
 /// `gpt-5.1-codex`
 pub const GPT_5_1_CODEX: &str = "gpt-5.1-codex";
 /// `claude-sonnet-4` completion model (Anthropic, via Copilot)
@@ -842,7 +844,8 @@ where
     ) -> Result<StreamingCompletionResponse<CopilotStreamingResponse>, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
-        let request = self.responses_request(completion_request)?;
+        let mut request = self.responses_request(completion_request)?;
+        request.stream = Some(true);
         let auth = self.auth_context().await?;
 
         let headers = default_headers(&auth.api_key, initiator, has_vision);
@@ -1076,6 +1079,16 @@ pub struct EmbeddingModel<H = reqwest::Client> {
     ndims: usize,
 }
 
+#[derive(Deserialize)]
+struct CopilotEmbeddingResponse {
+    data: Vec<CopilotEmbeddingData>,
+}
+
+#[derive(Deserialize)]
+struct CopilotEmbeddingData {
+    embedding: Vec<serde_json::Number>,
+}
+
 impl<H> EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
@@ -1153,24 +1166,49 @@ where
         let response = self.client.send(req).await?;
         if response.status().is_success() {
             let body: Vec<u8> = response.into_body().await?;
-            let body: openai::ApiResponse<openai::EmbeddingResponse> =
-                serde_json::from_slice(&body)?;
-            match body {
-                openai::ApiResponse::Ok(response) => Ok(response
-                    .data
-                    .into_iter()
-                    .zip(documents.into_iter())
-                    .map(|(embedding, document)| embeddings::Embedding {
-                        document,
-                        vec: embedding
-                            .embedding
-                            .into_iter()
-                            .filter_map(|n| n.as_f64())
-                            .collect(),
-                    })
-                    .collect()),
-                openai::ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+            #[derive(Deserialize)]
+            struct NestedApiError {
+                error: NestedApiErrorMessage,
             }
+
+            #[derive(Deserialize)]
+            struct NestedApiErrorMessage {
+                message: String,
+            }
+
+            let body: CopilotEmbeddingResponse = match serde_json::from_slice(&body) {
+                Ok(parsed) => parsed,
+                Err(parse_error) => {
+                    if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {
+                        return Err(EmbeddingError::ProviderError(err.error.message));
+                    }
+
+                    let preview = String::from_utf8_lossy(&body);
+                    let preview = if preview.len() > 512 {
+                        format!("{}...", &preview[..512])
+                    } else {
+                        preview.into_owned()
+                    };
+
+                    return Err(EmbeddingError::ProviderError(format!(
+                        "Failed to parse Copilot embeddings response: {parse_error}; body: {preview}"
+                    )));
+                }
+            };
+
+            Ok(body
+                .data
+                .into_iter()
+                .zip(documents.into_iter())
+                .map(|(embedding, document)| embeddings::Embedding {
+                    document,
+                    vec: embedding
+                        .embedding
+                        .into_iter()
+                        .filter_map(|n| n.as_f64())
+                        .collect(),
+                })
+                .collect())
         } else {
             let text = http_client::text(response).await?;
             Err(EmbeddingError::ProviderError(text))
@@ -1434,8 +1472,9 @@ fn config_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, env_api_key,
-        env_base_url, env_github_access_token, route_for_model,
+        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute,
+        TEXT_EMBEDDING_3_SMALL, env_api_key, env_base_url, env_github_access_token,
+        route_for_model,
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
@@ -1567,7 +1606,7 @@ mod tests {
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
-            "model": "gpt-5.1-codex",
+            "model": "gpt-5.3-codex",
             "usage": {
                 "input_tokens": 4,
                 "input_tokens_details": {
@@ -1590,6 +1629,19 @@ mod tests {
                 }]
             }],
             "tools": []
+        }"#
+    }
+
+    fn minimal_embeddings_response() -> &'static str {
+        r#"{
+            "data": [
+                {
+                    "embedding": [0.1, 0.2, 0.3]
+                },
+                {
+                    "embedding": [0.4, 0.5, 0.6]
+                }
+            ]
         }"#
     }
 
@@ -1719,7 +1771,7 @@ mod tests {
             .http_client(http_client.clone())
             .build()
             .expect("build client");
-        let model = client.completion_model("gpt-5.1-codex");
+        let model = client.completion_model("gpt-5.3-codex");
         let request = model.completion_request("hello").build();
 
         let _response = model
@@ -1730,7 +1782,38 @@ mod tests {
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
         assert!(requests[0].uri.ends_with("/responses"));
-        assert!(String::from_utf8_lossy(&requests[0].body).contains("\"model\":\"gpt-5.1-codex\""));
+        assert!(String::from_utf8_lossy(&requests[0].body).contains("\"model\":\"gpt-5.3-codex\""));
+    }
+
+    #[tokio::test]
+    async fn embeddings_accept_minimal_copilot_response_shape() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel as _;
+
+        let http_client = RecordingHttpClient::new(minimal_embeddings_response());
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
+
+        let embeddings = model
+            .embed_texts(["one".to_string(), "two".to_string()])
+            .await
+            .expect("embeddings should deserialize");
+
+        assert_eq!(embeddings.len(), 2);
+        assert_eq!(embeddings[0].vec, vec![0.1, 0.2, 0.3]);
+        assert_eq!(embeddings[1].vec, vec![0.4, 0.5, 0.6]);
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].uri.ends_with("/embeddings"));
+        assert!(
+            String::from_utf8_lossy(&requests[0].body)
+                .contains("\"model\":\"text-embedding-3-small\"")
+        );
     }
 
     #[test]

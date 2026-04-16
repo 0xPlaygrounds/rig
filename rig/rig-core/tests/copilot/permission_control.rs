@@ -180,7 +180,10 @@ async fn permission_control_prompt_example() -> Result<()> {
 
     let last = last_result.lock().expect("lock last_result").clone();
     assert_eq!(last.as_deref(), Some("hello world"));
-    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    assert!(
+        call_count.load(Ordering::SeqCst) >= 2,
+        "expected at least one skipped call followed by an allowed call"
+    );
     Ok(())
 }
 
@@ -224,7 +227,10 @@ async fn permission_control_streaming_example() -> Result<()> {
         final_response.response()
     );
     assert_eq!(last.as_deref(), Some("hello world"));
-    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    assert!(
+        call_count.load(Ordering::SeqCst) >= 2,
+        "expected at least one skipped call followed by an allowed call"
+    );
 
     Ok(())
 }

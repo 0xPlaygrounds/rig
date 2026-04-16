@@ -7,7 +7,7 @@ use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::streaming::StreamingChat;
 
-use crate::copilot::{LIVE_RESPONSES_MODEL, live_client};
+use crate::copilot::{live_client, live_responses_model};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
@@ -15,7 +15,7 @@ use crate::reasoning::{self, WeatherTool};
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
-        .agent(LIVE_RESPONSES_MODEL)
+        .agent(live_responses_model())
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -46,7 +46,7 @@ async fn streaming() {
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
-        .agent(LIVE_RESPONSES_MODEL)
+        .agent(live_responses_model())
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
