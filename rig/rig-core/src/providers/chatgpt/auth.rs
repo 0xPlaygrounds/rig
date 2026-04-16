@@ -131,6 +131,17 @@ struct OAuthTokenResponse {
     id_token: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OAuthErrorResponse {
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+enum RefreshTokensError {
+    Reauthenticate,
+    Auth(AuthError),
+}
+
 impl Authenticator {
     pub fn new(
         source: AuthSource,
@@ -191,14 +202,18 @@ impl Authenticator {
                 });
             }
 
-            if let Some(refresh_token) = record.refresh_token.clone()
-                && let Ok(refreshed) = self.refresh_tokens(&refresh_token).await
-            {
-                self.write_auth_record(&refreshed)?;
-                return Ok(AuthContext {
-                    access_token: refreshed.access_token.unwrap_or_default(),
-                    account_id: refreshed.account_id,
-                });
+            if let Some(refresh_token) = record.refresh_token.clone() {
+                match self.refresh_tokens(&refresh_token).await {
+                    Ok(refreshed) => {
+                        self.write_auth_record(&refreshed)?;
+                        return Ok(AuthContext {
+                            access_token: refreshed.access_token.unwrap_or_default(),
+                            account_id: refreshed.account_id,
+                        });
+                    }
+                    Err(RefreshTokensError::Reauthenticate) => {}
+                    Err(RefreshTokensError::Auth(err)) => return Err(err),
+                }
             }
 
             let fresh = self.login_device_flow().await?;
@@ -315,7 +330,7 @@ impl Authenticator {
     }
 
     #[cfg(not(target_family = "wasm"))]
-    async fn refresh_tokens(&self, refresh_token: &str) -> Result<AuthRecord, AuthError> {
+    async fn refresh_tokens(&self, refresh_token: &str) -> Result<AuthRecord, RefreshTokensError> {
         let client = reqwest::Client::new();
         let form = [
             ("client_id", CHATGPT_CLIENT_ID),
@@ -328,7 +343,7 @@ impl Authenticator {
             .extend_pairs(form)
             .finish();
 
-        let tokens = client
+        let response = client
             .post(CHATGPT_OAUTH_TOKEN_URL)
             .header(
                 reqwest::header::CONTENT_TYPE,
@@ -336,12 +351,34 @@ impl Authenticator {
             )
             .body(body)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<OAuthTokenResponse>()
-            .await?;
+            .await
+            .map_err(AuthError::from)
+            .map_err(RefreshTokensError::Auth)?;
 
-        Ok(build_auth_record(tokens))
+        let status = response.status();
+        if status.is_success() {
+            let tokens = response
+                .json::<OAuthTokenResponse>()
+                .await
+                .map_err(AuthError::from)
+                .map_err(RefreshTokensError::Auth)?;
+            return Ok(build_auth_record(tokens));
+        }
+
+        let body = response.text().await.unwrap_or_default();
+        let oauth_error = serde_json::from_str::<OAuthErrorResponse>(&body).ok();
+        if should_reauthenticate_after_refresh(
+            status,
+            oauth_error
+                .as_ref()
+                .and_then(|error| error.error.as_deref()),
+        ) {
+            return Err(RefreshTokensError::Reauthenticate);
+        }
+
+        Err(RefreshTokensError::Auth(AuthError::Message(
+            format_refresh_error(status, oauth_error.as_ref(), &body),
+        )))
     }
 }
 
@@ -405,6 +442,45 @@ fn decode_jwt_claims(token: &str) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+fn should_reauthenticate_after_refresh(
+    status: reqwest::StatusCode,
+    error_code: Option<&str>,
+) -> bool {
+    matches!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNAUTHORIZED
+    ) && matches!(error_code, Some("invalid_grant"))
+}
+
+fn format_refresh_error(
+    status: reqwest::StatusCode,
+    oauth_error: Option<&OAuthErrorResponse>,
+    body: &str,
+) -> String {
+    let error_code = oauth_error.and_then(|error| error.error.as_deref());
+    let description = oauth_error.and_then(|error| error.error_description.as_deref());
+
+    if let Some(description) = description
+        .map(str::trim)
+        .filter(|description| !description.is_empty())
+    {
+        return format!(
+            "ChatGPT token refresh failed: {status} {} ({description})",
+            error_code.unwrap_or("unknown_error")
+        );
+    }
+
+    if let Some(error_code) = error_code {
+        return format!("ChatGPT token refresh failed: {status} {error_code}");
+    }
+
+    if !body.trim().is_empty() {
+        return format!("ChatGPT token refresh failed: {status} {body}");
+    }
+
+    format!("ChatGPT token refresh failed: {status}")
+}
+
 fn token_expired(expires_at: Option<i64>) -> bool {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -448,7 +524,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::DeviceCodeResponse;
+    use super::{
+        DeviceCodeResponse, OAuthErrorResponse, format_refresh_error,
+        should_reauthenticate_after_refresh,
+    };
+    use reqwest::StatusCode;
 
     #[test]
     fn device_code_response_accepts_numeric_interval() {
@@ -476,5 +556,42 @@ mod tests {
         .expect("device code response");
 
         assert_eq!(response.interval, Some(5));
+    }
+
+    #[test]
+    fn refresh_reauth_only_on_invalid_grant() {
+        assert!(should_reauthenticate_after_refresh(
+            StatusCode::BAD_REQUEST,
+            Some("invalid_grant")
+        ));
+        assert!(should_reauthenticate_after_refresh(
+            StatusCode::UNAUTHORIZED,
+            Some("invalid_grant")
+        ));
+        assert!(!should_reauthenticate_after_refresh(
+            StatusCode::BAD_GATEWAY,
+            Some("invalid_grant")
+        ));
+        assert!(!should_reauthenticate_after_refresh(
+            StatusCode::BAD_REQUEST,
+            Some("invalid_request")
+        ));
+        assert!(!should_reauthenticate_after_refresh(
+            StatusCode::UNAUTHORIZED,
+            None
+        ));
+    }
+
+    #[test]
+    fn refresh_error_uses_oauth_description_when_present() {
+        let oauth_error = OAuthErrorResponse {
+            error: Some("temporarily_unavailable".into()),
+            error_description: Some("please retry".into()),
+        };
+
+        assert_eq!(
+            format_refresh_error(StatusCode::BAD_GATEWAY, Some(&oauth_error), ""),
+            "ChatGPT token refresh failed: 502 Bad Gateway temporarily_unavailable (please retry)"
+        );
     }
 }

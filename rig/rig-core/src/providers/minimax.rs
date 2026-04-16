@@ -210,13 +210,38 @@ impl ProviderClient for AnthropicClient {
 }
 
 fn anthropic_base_override(primary_env: &str, fallback_env: &str) -> Option<String> {
-    if let Ok(base_url) = std::env::var(primary_env) {
-        return Some(base_url);
+    let primary = std::env::var(primary_env).ok();
+    let fallback = std::env::var(fallback_env).ok();
+
+    resolve_anthropic_base_override(primary.as_deref(), fallback.as_deref())
+}
+
+fn resolve_anthropic_base_override(
+    primary: Option<&str>,
+    fallback: Option<&str>,
+) -> Option<String> {
+    primary
+        .map(str::to_owned)
+        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
+}
+
+fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
+    if base_url.contains("/anthropic") {
+        return Some(base_url.to_owned());
     }
 
-    std::env::var(fallback_env)
-        .ok()
-        .filter(|base_url| base_url.contains("/anthropic"))
+    match base_url.trim_end_matches('/') {
+        GLOBAL_API_BASE_URL => Some(GLOBAL_ANTHROPIC_API_BASE_URL.to_owned()),
+        CHINA_API_BASE_URL => Some(CHINA_ANTHROPIC_API_BASE_URL.to_owned()),
+        _ => {
+            let mut url = url::Url::parse(base_url).ok()?;
+            if !matches!(url.path(), "/v1" | "/v1/") {
+                return None;
+            }
+            url.set_path("/anthropic");
+            Some(url.to_string())
+        }
+    }
 }
 
 impl<H> ClientBuilder<H> {
@@ -264,6 +289,11 @@ impl<H> AnthropicClientBuilder<H> {
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL, GLOBAL_ANTHROPIC_API_BASE_URL,
+        GLOBAL_API_BASE_URL, normalize_anthropic_base_url, resolve_anthropic_base_override,
+    };
+
     #[test]
     fn test_client_initialization() {
         let _client = crate::providers::minimax::Client::new("dummy-key").expect("Client::new()");
@@ -277,5 +307,42 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("AnthropicClient::builder()");
+    }
+
+    #[test]
+    fn normalize_openai_bases_to_anthropic_bases() {
+        assert_eq!(
+            normalize_anthropic_base_url(GLOBAL_API_BASE_URL).as_deref(),
+            Some(GLOBAL_ANTHROPIC_API_BASE_URL)
+        );
+        assert_eq!(
+            normalize_anthropic_base_url(CHINA_API_BASE_URL).as_deref(),
+            Some(CHINA_ANTHROPIC_API_BASE_URL)
+        );
+        assert_eq!(
+            normalize_anthropic_base_url("https://proxy.example.com/v1").as_deref(),
+            Some("https://proxy.example.com/anthropic")
+        );
+    }
+
+    #[test]
+    fn normalize_preserves_existing_anthropic_base() {
+        assert_eq!(
+            normalize_anthropic_base_url(CHINA_ANTHROPIC_API_BASE_URL).as_deref(),
+            Some(CHINA_ANTHROPIC_API_BASE_URL)
+        );
+    }
+
+    #[test]
+    fn anthropic_primary_override_wins() {
+        let override_url = resolve_anthropic_base_override(
+            Some("https://primary.example.com/anthropic"),
+            Some(CHINA_API_BASE_URL),
+        );
+
+        assert_eq!(
+            override_url.as_deref(),
+            Some("https://primary.example.com/anthropic")
+        );
     }
 }
