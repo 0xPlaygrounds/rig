@@ -22,12 +22,10 @@ use crate::client::{
 use crate::completion::{self, CompletionError};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
-    self, CompletionRequest as ResponsesRequest, Include, ResponsesUsage,
+    self, CompletionRequest as ResponsesRequest, Include,
 };
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use async_stream::stream;
-use futures::StreamExt;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use tracing::{Level, enabled, info_span};
@@ -332,12 +330,18 @@ where
         self
     }
 
+    fn openai_model(&self) -> responses_api::ResponsesCompletionModel<ChatGPTExt, H> {
+        let mut model =
+            responses_api::ResponsesCompletionModel::new(self.client.clone(), self.model.clone());
+        model.tools = self.tools.clone();
+        model
+    }
+
     fn create_request(
         &self,
         request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
-        let mut request = ResponsesRequest::try_from((self.model.clone(), request))?;
-        request.tools.extend(self.tools.clone());
+        let mut request = self.openai_model().create_completion_request(request)?;
 
         if let Some(system_instructions) =
             normalize_system_messages_into_instructions(&mut request)?
@@ -423,7 +427,7 @@ where
 
         let response = self.client.send(req).await?;
         let text = http_client::text(response).await?;
-        parse_chatgpt_sse_completion(&text)?.try_into()
+        responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?.try_into()
     }
 }
 
@@ -555,214 +559,15 @@ where
         };
 
         let client = self.client.clone();
-        let mut event_source = crate::http_client::sse::GenericEventSource::new(client, req)
+        let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
             .allow_missing_content_type();
 
-        let stream = tracing_futures::Instrument::instrument(
-            stream! {
-                let mut final_usage = ResponsesUsage::new();
-                let mut tool_calls: Vec<crate::streaming::RawStreamingChoice<responses_api::streaming::StreamingCompletionResponse>> = Vec::new();
-                let mut tool_call_internal_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-                let span = tracing::Span::current();
-
-                while let Some(event_result) = event_source.next().await {
-                    match event_result {
-                        Ok(crate::http_client::sse::Event::Open) => {
-                            tracing::trace!("SSE connection opened");
-                            continue;
-                        }
-                        Ok(crate::http_client::sse::Event::Message(evt)) => {
-                            if evt.data.trim().is_empty() {
-                                continue;
-                            }
-
-                            let data = serde_json::from_str::<responses_api::streaming::StreamingCompletionChunk>(&evt.data);
-
-                            let Ok(data) = data else {
-                                continue;
-                            };
-
-                            if let responses_api::streaming::StreamingCompletionChunk::Delta(chunk) = &data {
-                                use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
-                                use responses_api::streaming::{ItemChunkKind, StreamingItemDoneOutput};
-
-                                match &chunk.data {
-                                    ItemChunkKind::OutputItemAdded(message) => {
-                                        if let StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } = message {
-                                            let internal_call_id = tool_call_internal_ids
-                                                .entry(func.id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
-                                                .clone();
-                                            yield Ok(RawStreamingChoice::ToolCallDelta {
-                                                id: func.id.clone(),
-                                                internal_call_id,
-                                                content: ToolCallDeltaContent::Name(func.name.clone()),
-                                            });
-                                        }
-                                    }
-                                    ItemChunkKind::OutputItemDone(message) => {
-                                        match message {
-                                            StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } => {
-                                                let internal_id = tool_call_internal_ids
-                                                    .entry(func.id.clone())
-                                                    .or_insert_with(|| nanoid::nanoid!())
-                                                    .clone();
-                                                let raw_tool_call = RawStreamingToolCall::new(
-                                                    func.id.clone(),
-                                                    func.name.clone(),
-                                                    func.arguments.clone(),
-                                                )
-                                                .with_internal_call_id(internal_id)
-                                                .with_call_id(func.call_id.clone());
-                                                tool_calls.push(RawStreamingChoice::ToolCall(raw_tool_call));
-                                            }
-                                            StreamingItemDoneOutput { item: responses_api::Output::Reasoning { summary, id, encrypted_content, .. }, .. } => {
-                                                for reasoning_choice in responses_api::streaming::reasoning_choices_from_done_item(
-                                                    id,
-                                                    summary,
-                                                    encrypted_content.as_deref(),
-                                                ) {
-                                                    yield Ok(reasoning_choice);
-                                                }
-                                            }
-                                            StreamingItemDoneOutput { item: responses_api::Output::Message(msg), .. } => {
-                                                yield Ok(RawStreamingChoice::MessageId(msg.id.clone()));
-                                            }
-                                        }
-                                    }
-                                    ItemChunkKind::OutputTextDelta(delta) => {
-                                        yield Ok(crate::streaming::RawStreamingChoice::Message(delta.delta.clone()))
-                                    }
-                                    ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
-                                        yield Ok(crate::streaming::RawStreamingChoice::ReasoningDelta { id: None, reasoning: delta.delta.clone() })
-                                    }
-                                    ItemChunkKind::RefusalDelta(delta) => {
-                                        yield Ok(crate::streaming::RawStreamingChoice::Message(delta.delta.clone()))
-                                    }
-                                    ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                        let internal_call_id = tool_call_internal_ids
-                                            .entry(delta.item_id.clone())
-                                            .or_insert_with(|| nanoid::nanoid!())
-                                            .clone();
-                                        yield Ok(crate::streaming::RawStreamingChoice::ToolCallDelta {
-                                            id: delta.item_id.clone(),
-                                            internal_call_id,
-                                            content: crate::streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
-                                        })
-                                    }
-                                    _ => continue,
-                                }
-                            }
-
-                            if let responses_api::streaming::StreamingCompletionChunk::Response(chunk) = data {
-                                let responses_api::streaming::ResponseChunk { kind, response, .. } = *chunk;
-
-                                match kind {
-                                    responses_api::streaming::ResponseChunkKind::ResponseCompleted => {
-                                        span.record("gen_ai.response.id", response.id.as_str());
-                                        span.record("gen_ai.response.model", response.model.as_str());
-                                        if let Some(usage) = response.usage {
-                                            final_usage = usage;
-                                        }
-                                    }
-                                    responses_api::streaming::ResponseChunkKind::ResponseFailed
-                                    | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
-                                        let error = response
-                                            .error
-                                            .as_ref()
-                                            .map(|err| err.message.clone())
-                                            .unwrap_or_else(|| "ChatGPT response stream failed".into());
-                                        yield Err(CompletionError::ProviderError(error));
-                                        break;
-                                    }
-                                    _ => continue,
-                                }
-                            }
-                        }
-                        Err(crate::http_client::Error::StreamEnded) => {
-                            event_source.close();
-                        }
-                        Err(error) => {
-                            yield Err(CompletionError::ProviderError(error.to_string()));
-                            break;
-                        }
-                    }
-                }
-
-                event_source.close();
-
-                for tool_call in &tool_calls {
-                    yield Ok(tool_call.to_owned())
-                }
-
-                span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
-                span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
-                span.record(
-                    "gen_ai.usage.cached_tokens",
-                    final_usage
-                        .input_tokens_details
-                        .as_ref()
-                        .map(|d| d.cached_tokens)
-                        .unwrap_or(0),
-                );
-
-                yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-                    responses_api::streaming::StreamingCompletionResponse { usage: final_usage }
-                ));
-            },
+        Ok(responses_api::streaming::stream_from_event_source(
+            event_source,
             span,
-        );
-
-        Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
+            "ChatGPT",
+        ))
     }
-}
-
-fn parse_chatgpt_sse_completion(
-    body: &str,
-) -> Result<responses_api::CompletionResponse, CompletionError> {
-    let mut completed = None;
-    let mut provider_error = None;
-
-    for line in body.lines() {
-        let data = line
-            .strip_prefix("data:")
-            .map(str::trim)
-            .unwrap_or_default();
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-
-        let value = match serde_json::from_str::<serde_json::Value>(data) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-
-        let event_type = value.get("type").and_then(serde_json::Value::as_str);
-        match event_type {
-            Some("response.completed") => {
-                if let Some(response) = value.get("response") {
-                    completed = Some(serde_json::from_value(response.clone())?);
-                    break;
-                }
-            }
-            Some("response.failed") | Some("error") => {
-                provider_error = value
-                    .get("error")
-                    .and_then(|error| error.get("message"))
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToOwned::to_owned)
-                    .or_else(|| Some(data.to_string()));
-            }
-            _ => {}
-        }
-    }
-
-    completed.ok_or_else(|| {
-        CompletionError::ProviderError(
-            provider_error
-                .unwrap_or_else(|| "ChatGPT stream did not yield response.completed".into()),
-        )
-    })
 }
 
 fn default_user_agent() -> String {
@@ -844,7 +649,8 @@ mod tests {
 data: {"type":"response.completed","response":{"id":"resp_1","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"hi"}]}],"tools":[]}}
 data: [DONE]"#;
 
-        let response = parse_chatgpt_sse_completion(body).expect("expected response");
+        let response = responses_api::streaming::parse_sse_completion_body(body, "ChatGPT")
+            .expect("expected response");
         assert_eq!(response.id, "resp_1");
         assert_eq!(response.model, "gpt-5");
     }
