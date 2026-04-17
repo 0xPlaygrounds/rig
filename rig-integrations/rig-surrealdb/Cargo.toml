@@ -25,4 +25,8 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[example]]
 name = "vector_search_surreal"
-required-features = ["rig-core/derive"]
+required-features = ["rig-core/derive", "rig-core/rustls"]
+
+[[example]]
+name = "vector_store"
+required-features = ["rig-core/derive", "rig-core/rustls"]
