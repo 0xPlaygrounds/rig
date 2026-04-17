@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use rig::{
@@ -12,7 +11,7 @@ use rig::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{
     Connection, Surreal,
-    types::{Array, Number, Object, RecordId, RecordIdKey, SurrealValue, ToSql, Value},
+    types::{RecordId, RecordIdKey, SurrealValue, ToSql},
 };
 
 pub use surrealdb::engine::local::Mem;
@@ -88,31 +87,8 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-fn to_sql_value(json: serde_json::Value) -> Value {
-    match json {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Number(Number::Int(i))
-            } else if let Some(f) = n.as_f64() {
-                Value::Number(Number::Float(f))
-            } else {
-                Value::String(n.to_string())
-            }
-        }
-        serde_json::Value::String(s) => Value::String(s),
-        serde_json::Value::Array(arr) => {
-            Value::Array(Array::from_iter(arr.into_iter().map(to_sql_value)))
-        }
-        serde_json::Value::Object(obj) => {
-            let mut map = BTreeMap::new();
-            for (k, v) in obj {
-                map.insert(k, to_sql_value(v));
-            }
-            Value::Object(Object::new())
-        }
-    }
+fn to_sql_value(json: serde_json::Value) -> String {
+    json.into_value().to_sql()
 }
 
 impl<C, Model> InsertDocuments for SurrealVectorStore<C, Model>
