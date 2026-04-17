@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.4.5](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.4...rig-lancedb-v0.4.5) - 2026-04-17
+
+### Other
+
+- standardize required fields handling across builders ([#1611](https://github.com/0xPlaygrounds/rig/pull/1611)) (by @isSerge) - #1611
+
+### Contributors
+
+* @isSerge
 ## [0.4.4](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.3...rig-lancedb-v0.4.4) - 2026-04-12
 
 ### Other
