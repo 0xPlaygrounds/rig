@@ -38,8 +38,7 @@
 //! let extractor = client.extractor::<serde_json::Value>("llama3.2").build();
 //! ```
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder,
+    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
 use crate::completion::{GetTokenUsage, Usage};
