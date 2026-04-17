@@ -884,15 +884,21 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_text_response(&self) -> Option<String> {
-        let Message::User { ref content, .. } = self.choices.last()?.message.clone() else {
+        let Message::Assistant { content, .. } = self.choices.last()?.message.clone() else {
             return None;
         };
 
-        let UserContent::Text { text } = content.first() else {
-            return None;
-        };
+        let texts: Vec<String> = content.iter().filter_map(|c| match c {
+            AssistantContent::Text { text } => Some(text.clone()),
+            AssistantContent::Refusal { refusal } => Some(refusal.clone()),
+            _ => None,
+        }).collect();
 
-        Some(text)
+        if texts.is_empty() {
+            None
+        } else {
+            Some(texts.join("\n"))
+        }
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
