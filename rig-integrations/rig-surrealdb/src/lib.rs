@@ -11,7 +11,7 @@ use rig::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{
     Connection, Surreal,
-    types::{RecordId, RecordIdKey, SurrealValue, ToSql},
+    types::{RecordId, RecordIdKey, SurrealValue, ToSql, Value},
 };
 
 pub use surrealdb::engine::local::Mem;
@@ -87,8 +87,8 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-fn to_sql_value(json: serde_json::Value) -> String {
-    json.into_value().to_sql()
+fn to_sql_value(json: serde_json::Value) -> Value {
+    Value::from_t(json)
 }
 
 impl<C, Model> InsertDocuments for SurrealVectorStore<C, Model>
@@ -390,5 +390,30 @@ where
             .collect();
 
         Ok(rows)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SearchFilter, SurrealSearchFilter};
+    use serde_json::json;
+
+    #[test]
+    fn eq_preserves_nested_json_values() {
+        let filter = SurrealSearchFilter::eq(
+            "metadata",
+            json!({
+                "name": "rig",
+                "flags": { "native": true },
+                "tags": ["surreal", "json"]
+            }),
+        );
+
+        let sql = filter.to_string();
+
+        assert!(sql.starts_with("metadata = {"));
+        assert!(sql.contains("name: 'rig'"));
+        assert!(sql.contains("flags: { native: true }"));
+        assert!(sql.contains("tags: ['surreal', 'json']"));
     }
 }
