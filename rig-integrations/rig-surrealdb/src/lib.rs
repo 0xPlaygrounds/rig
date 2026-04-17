@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use rig::{
@@ -11,7 +12,7 @@ use rig::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{
     Connection, Surreal,
-    types::{RecordId, RecordIdKey, SurrealValue, ToSql, Value},
+    types::{Array, Number, Object, RecordId, RecordIdKey, SurrealValue, ToSql, Value},
 };
 
 pub use surrealdb::engine::local::Mem;
@@ -87,6 +88,33 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
+fn to_sql_value(json: serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Bool(b) => Value::Bool(b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Number(Number::Int(i))
+            } else if let Some(f) = n.as_f64() {
+                Value::Number(Number::Float(f))
+            } else {
+                Value::String(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Value::String(s),
+        serde_json::Value::Array(arr) => {
+            Value::Array(Array::from_iter(arr.into_iter().map(to_sql_value)))
+        }
+        serde_json::Value::Object(obj) => {
+            let mut map = BTreeMap::new();
+            for (k, v) in obj {
+                map.insert(k, to_sql_value(v));
+            }
+            Value::Object(Object::new())
+        }
+    }
+}
+
 impl<C, Model> InsertDocuments for SurrealVectorStore<C, Model>
 where
     C: Connection + Send + Sync,
@@ -140,18 +168,30 @@ impl std::fmt::Display for SurrealSearchFilter {
 }
 
 impl SearchFilter for SurrealSearchFilter {
-    type Value = Value;
+    type Value = serde_json::Value;
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("{} = {}", key.as_ref(), value.to_sql()))
+        Self(format!(
+            "{} = {}",
+            key.as_ref(),
+            to_sql_value(value).to_sql()
+        ))
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("{} > {}", key.as_ref(), value.to_sql()))
+        Self(format!(
+            "{} > {}",
+            key.as_ref(),
+            to_sql_value(value).to_sql()
+        ))
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("{} < {}", key.as_ref(), value.to_sql()))
+        Self(format!(
+            "{} < {}",
+            key.as_ref(),
+            to_sql_value(value).to_sql()
+        ))
     }
 
     fn and(self, rhs: Self) -> Self {
@@ -171,52 +211,55 @@ impl SurrealSearchFilter {
 
     /// Test if the value at `key` contains `val`
     pub fn contains(key: String, val: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINS {}", val.to_sql()))
+        Self(format!("{key} CONTAINS {}", to_sql_value(val).to_sql()))
     }
 
     /// Test if the value at `key` does *not* contain `val`
     pub fn does_not_contain(key: String, val: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINSNOT {}", val.to_sql()))
+        Self(format!("{key} CONTAINSNOT {}", to_sql_value(val).to_sql()))
     }
 
     /// Test if the value at `key` contains every element of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn all(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINSALL {}", vals.to_sql()))
+        Self(format!("{key} CONTAINSALL {}", to_sql_value(vals).to_sql()))
     }
 
     /// Test if the value at `key` contains any elements of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn any(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} CONTAINSANY {}", vals.to_sql()))
+        Self(format!("{key} CONTAINSANY {}", to_sql_value(vals).to_sql()))
     }
 
     /// Test if the value at `key` is a member of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} IN {}", vals.to_sql()))
+        Self(format!("{key} IN {}", to_sql_value(vals).to_sql()))
     }
 
     /// Test if the value at `key` is *not* a member of `vals`
     /// `vals` should be a SurrealDB collection
     pub fn not_member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} NOTIN {}", vals.to_sql()))
+        Self(format!("{key} NOTIN {}", to_sql_value(vals).to_sql()))
     }
 
     // Geospatial filters
     /// Test if the value at `key` is inside `geometry`
     pub fn inside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} INSIDE {}", geometry.to_sql()))
+        Self(format!("{key} INSIDE {}", to_sql_value(geometry).to_sql()))
     }
 
     /// Test if the value at `key` is outside `geometry`
     pub fn outside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} OUTSIDE {}", geometry.to_sql()))
+        Self(format!("{key} OUTSIDE {}", to_sql_value(geometry).to_sql()))
     }
 
     /// Test if the value at `key` intersects `geometry`
     pub fn intersects(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
-        Self(format!("{key} INTERSECTS {}", geometry.to_sql()))
+        Self(format!(
+            "{key} INTERSECTS {}",
+            to_sql_value(geometry).to_sql()
+        ))
     }
 
     // String ops
