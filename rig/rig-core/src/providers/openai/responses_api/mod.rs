@@ -1209,6 +1209,12 @@ pub enum Output {
         #[serde(default)]
         status: Option<ToolStatus>,
     },
+    /// Catch-all variant for unknown output types (e.g., `web_search_call`,
+    /// `file_search_call`, `computer_use_call`). This prevents unknown types
+    /// from breaking deserialization of the entire `CompletionResponse`,
+    /// which previously caused streaming token usage to be silently dropped.
+    #[serde(other)]
+    Unknown,
 }
 
 impl From<Output> for Vec<completion::AssistantContent> {
@@ -1251,6 +1257,7 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     },
                 )]
             }
+            Output::Unknown => Vec::new(),
         };
 
         res
