@@ -279,9 +279,9 @@ where
 impl Neo4jClient {
     const GET_INDEX_QUERY: &'static str = "
     SHOW VECTOR INDEXES
-    YIELD name, properties, options
+    YIELD name, labelsOrTypes, properties, options
     WHERE name=$index_name
-    RETURN name, properties, options
+    RETURN name, labelsOrTypes, properties, options
     ";
 
     const SHOW_INDEXES_QUERY: &'static str = "SHOW VECTOR INDEXES YIELD name RETURN name";
@@ -332,8 +332,10 @@ impl Neo4jClient {
         index_name: &str,
     ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct IndexInfo {
             name: String,
+            labels_or_types: Vec<String>,
             properties: Vec<String>,
             options: IndexOptions,
         }
@@ -368,11 +370,15 @@ impl Neo4jClient {
                     model.ndims()
                 );
             }
-            IndexConfig::new(index.name.clone())
+            let mut config = IndexConfig::new(index.name.clone())
                 .embedding_property(index.properties.first().unwrap())
                 .similarity_function(VectorSimilarityFunction::from_str(
                     &index.options.index_config.vector_similarity_function,
-                )?)
+                )?);
+            if let Some(label) = index.labels_or_types.first() {
+                config = config.node_label(label);
+            }
+            config
         } else {
             let indexes = Self::execute_and_collect::<String>(
                 &self.graph,
