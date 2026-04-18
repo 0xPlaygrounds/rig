@@ -3,22 +3,18 @@
 //! This module reuses OpenAI's Responses API streaming types since xAI's API
 //! is designed to be compatible with OpenAI's format.
 
-use async_stream::stream;
-use futures::StreamExt;
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
-    ItemChunkKind, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk,
-    StreamingCompletionResponse, StreamingItemDoneOutput, reasoning_choices_from_done_item,
+    ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
 };
-use crate::providers::openai::responses_api::{Output, ResponsesUsage};
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
-use crate::streaming::{self, RawStreamingChoice};
+use crate::streaming;
 
 impl<T> CompletionModel<T>
 where
@@ -87,178 +83,30 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     let span = tracing::Span::current();
-    let mut event_source = GenericEventSource::new(http_client, req);
+    let event_source = GenericEventSource::new(http_client, req);
 
-    let stream = stream! {
-        let span = tracing::Span::current();
-        let mut final_usage = ResponsesUsage::new();
-        let mut tool_call_internal_ids: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-
-                Ok(Event::Message(evt)) => {
-                    if evt.data.trim().is_empty() || evt.data == "[DONE]" {
-                        continue;
-                    }
-
-                    let data = match serde_json::from_str::<StreamingCompletionChunk>(&evt.data) {
-                        Ok(data) => data,
-                        Err(err) => {
-                            tracing::debug!(?err, data = evt.data, "Failed to parse SSE message");
-                            continue;
-                        }
-                    };
-
-                    if let StreamingCompletionChunk::Delta(chunk) = &data {
-                        match &chunk.data {
-                            ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
-                                item: Output::FunctionCall(func),
-                                ..
-                            }) => {
-                                let internal_call_id = tool_call_internal_ids
-                                    .entry(func.id.clone())
-                                    .or_insert_with(|| nanoid::nanoid!())
-                                    .clone();
-                                yield Ok(RawStreamingChoice::ToolCallDelta {
-                                    id: func.id.clone(),
-                                    internal_call_id,
-                                    content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
-                                });
-                            }
-
-                            ItemChunkKind::OutputItemDone(StreamingItemDoneOutput {
-                                item: Output::FunctionCall(func),
-                                ..
-                            }) => {
-                                let internal_id = tool_call_internal_ids
-                                    .entry(func.id.clone())
-                                    .or_insert_with(|| nanoid::nanoid!())
-                                    .clone();
-                                // Yield immediately so users can execute tools while stream continues
-                                yield Ok(RawStreamingChoice::ToolCall(
-                                    streaming::RawStreamingToolCall::new(
-                                        func.id.clone(),
-                                        func.name.clone(),
-                                        func.arguments.clone(),
-                                    )
-                                    .with_internal_call_id(internal_id)
-                                    .with_call_id(func.call_id.clone()),
-                                ));
-                            }
-
-                            ItemChunkKind::OutputItemDone(StreamingItemDoneOutput {
-                                item: Output::Reasoning {
-                                    summary,
-                                    id,
-                                    encrypted_content,
-                                    ..
-                                },
-                                ..
-                            }) => {
-                                for reasoning_choice in reasoning_choices_from_done_item(
-                                    id,
-                                    summary,
-                                    encrypted_content.as_deref(),
-                                ) {
-                                    yield Ok(reasoning_choice);
-                                }
-                            }
-
-                            ItemChunkKind::OutputTextDelta(delta) => {
-                                yield Ok(RawStreamingChoice::Message(delta.delta.clone()));
-                            }
-
-                            ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
-                                yield Ok(RawStreamingChoice::ReasoningDelta {
-                                    id: None,
-                                    reasoning: delta.delta.clone(),
-                                });
-                            }
-
-                            ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                let internal_call_id = tool_call_internal_ids
-                                    .entry(delta.item_id.clone())
-                                    .or_insert_with(|| nanoid::nanoid!())
-                                    .clone();
-                                yield Ok(RawStreamingChoice::ToolCallDelta {
-                                    id: delta.item_id.clone(),
-                                    internal_call_id,
-                                    content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone()),
-                                });
-                            }
-
-                            ItemChunkKind::RefusalDelta(delta) => {
-                                yield Ok(RawStreamingChoice::Message(delta.delta.clone()));
-                            }
-
-                            _ => continue,
-                        }
-                    }
-
-                    if let StreamingCompletionChunk::Response(chunk) = data
-                        && let ResponseChunk {
-                            kind: ResponseChunkKind::ResponseCompleted,
-                            response,
-                            ..
-                        } = *chunk
-                    {
-                            span.record("gen_ai.response.id", &response.id);
-                            span.record("gen_ai.response.model", &response.model);
-                            if let Some(usage) = response.usage {
-                                final_usage = usage;
-                            }
-                    }
-                }
-
-                Err(crate::http_client::Error::StreamEnded) => {
-                    break;
-                }
-
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::ProviderError(error.to_string()));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-
-        if !span.is_disabled() {
-            span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
-            span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
-            span.record(
-                "gen_ai.usage.cached_tokens",
-                final_usage
-                    .input_tokens_details
-                    .as_ref()
-                    .map(|d| d.cached_tokens)
-                    .unwrap_or(0),
-            );
-        }
-
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            usage: final_usage,
-        }));
-    }
-    .instrument(span);
-
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(stream_from_event_source_with_options(
+        event_source,
+        span,
+        "xAI",
+        ResponsesStreamOptions {
+            // Preserve xAI's existing behavior for this incremental refactor:
+            // emit completed tool calls as soon as their output item finishes.
+            emit_completed_tool_calls_immediately: true,
+            // Preserve xAI's existing behavior of ignoring terminal response
+            // states other than `response.completed`.
+            error_on_terminal_response: false,
+        },
+    ))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::reasoning_choices_from_done_item;
+    use super::send_xai_streaming_request;
     use crate::message::ReasoningContent;
     use crate::providers::openai::responses_api::ReasoningSummary;
-    use crate::streaming::RawStreamingChoice;
+    use crate::providers::openai::responses_api::streaming::reasoning_choices_from_done_item;
+    use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
 
     #[test]
     fn reasoning_done_item_emits_summary_then_encrypted() {
@@ -294,5 +142,205 @@ mod tests {
                 content: ReasoningContent::Encrypted(data),
             }) if id == "xr_1" && data == "enc"
         ));
+    }
+
+    #[tokio::test]
+    async fn xai_stream_preserves_immediate_tool_call_emission() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+        use serde_json::json;
+
+        fn sse_bytes(events: &[serde_json::Value]) -> Bytes {
+            Bytes::from(
+                events
+                    .iter()
+                    .map(|event| {
+                        format!(
+                            "data: {}\n\n",
+                            serde_json::to_string(event).expect("event should serialize")
+                        )
+                    })
+                    .collect::<String>(),
+            )
+        }
+
+        let events = vec![
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_123",
+                    "arguments": "{}",
+                    "call_id": "call_123",
+                    "name": "example_tool",
+                    "status": "in_progress"
+                }
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "item_id": "fc_123",
+                "content_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"query\":\"rig\"}"
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 3,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_123",
+                    "arguments": "{\"query\":\"rig\"}",
+                    "call_id": "call_123",
+                    "name": "example_tool",
+                    "status": "completed"
+                }
+            }),
+            json!({
+                "type": "response.reasoning_summary_text.delta",
+                "output_index": 0,
+                "summary_index": 0,
+                "sequence_number": 4,
+                "delta": "thinking"
+            }),
+            json!({
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 5,
+                "delta": "done"
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 6,
+                "response": {
+                    "id": "resp_123",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "completed",
+                    "error": null,
+                    "incomplete_details": null,
+                    "instructions": null,
+                    "max_output_tokens": null,
+                    "model": "grok-4-0709",
+                    "usage": {
+                        "input_tokens": 10,
+                        "input_tokens_details": null,
+                        "output_tokens": 5,
+                        "output_tokens_details": { "reasoning_tokens": 0 },
+                        "total_tokens": 15
+                    },
+                    "output": [],
+                    "tools": []
+                }
+            }),
+            json!({
+                "type": "response.incomplete",
+                "sequence_number": 7,
+                "response": {
+                    "id": "resp_123",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "incomplete",
+                    "error": null,
+                    "incomplete_details": { "reason": "max_output_tokens" },
+                    "instructions": null,
+                    "max_output_tokens": null,
+                    "model": "grok-4-0709",
+                    "usage": null,
+                    "output": [],
+                    "tools": []
+                }
+            }),
+        ];
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes(&events),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_xai_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield first item")
+            .expect("first item should be ok");
+        assert!(matches!(
+            first,
+            StreamedAssistantContent::ToolCallDelta { content: crate::streaming::ToolCallDeltaContent::Name(ref name), .. }
+                if name == "example_tool"
+        ));
+
+        let second = stream
+            .next()
+            .await
+            .expect("stream should yield second item")
+            .expect("second item should be ok");
+        let third = stream
+            .next()
+            .await
+            .expect("stream should yield third item")
+            .expect("third item should be ok");
+
+        let early_items = vec![second, third];
+
+        assert!(
+            early_items.iter().any(|item| matches!(
+                item,
+                StreamedAssistantContent::ToolCall { tool_call, .. }
+                    if tool_call.id == "fc_123"
+                        && tool_call.call_id.as_deref() == Some("call_123")
+                        && tool_call.function.name == "example_tool"
+                        && tool_call.function.arguments == serde_json::json!({"query":"rig"})
+            )),
+            "expected a completed tool call to be emitted immediately, got {early_items:?}"
+        );
+
+        let mut reasoning = String::new();
+        let mut text = String::new();
+        let mut final_usage = None;
+
+        for item in &early_items {
+            match item {
+                StreamedAssistantContent::ReasoningDelta {
+                    reasoning: chunk, ..
+                } => reasoning.push_str(chunk),
+                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+                StreamedAssistantContent::Final(response) => {
+                    final_usage = Some(response.usage.clone())
+                }
+                _ => {}
+            }
+        }
+
+        while let Some(item) = stream.next().await {
+            match item.expect("remaining stream items should be ok") {
+                StreamedAssistantContent::ReasoningDelta {
+                    reasoning: chunk, ..
+                } => reasoning.push_str(&chunk),
+                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+                StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
+                _ => {}
+            }
+        }
+
+        assert_eq!(reasoning, "thinking");
+        assert_eq!(text, "done");
+        let usage = final_usage.expect("expected final usage");
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
     }
 }

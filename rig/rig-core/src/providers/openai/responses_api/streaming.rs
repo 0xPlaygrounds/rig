@@ -146,6 +146,21 @@ fn response_error_message(error: Option<&super::ResponseError>, fallback: &str) 
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ResponsesStreamOptions {
+    pub(crate) error_on_terminal_response: bool,
+    pub(crate) emit_completed_tool_calls_immediately: bool,
+}
+
+impl ResponsesStreamOptions {
+    pub(crate) const fn strict() -> Self {
+        Self {
+            error_on_terminal_response: true,
+            emit_completed_tool_calls_immediately: false,
+        }
+    }
+}
+
 pub(crate) fn parse_sse_completion_body(
     body: &str,
     provider_name: &str,
@@ -254,7 +269,11 @@ impl RawChoiceAccumulator {
         }
     }
 
-    fn decode_item_chunk(&mut self, item: ItemChunkKind) -> Vec<StreamingRawChoice> {
+    fn decode_item_chunk(
+        &mut self,
+        item: ItemChunkKind,
+        options: ResponsesStreamOptions,
+    ) -> Vec<StreamingRawChoice> {
         let mut immediate = Vec::new();
 
         match item {
@@ -274,7 +293,11 @@ impl RawChoiceAccumulator {
                 });
             }
             ItemChunkKind::OutputItemDone(message) => {
-                self.push_output_item_done(message.item, &mut immediate);
+                self.push_output_item_done(
+                    message.item,
+                    &mut immediate,
+                    options.emit_completed_tool_calls_immediately,
+                );
             }
             ItemChunkKind::OutputTextDelta(delta) => {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
@@ -311,6 +334,7 @@ impl RawChoiceAccumulator {
         kind: ResponseChunkKind,
         response: CompletionResponse,
         provider_name: &str,
+        options: ResponsesStreamOptions,
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
@@ -319,7 +343,9 @@ impl RawChoiceAccumulator {
                 }
                 Ok(())
             }
-            ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
+            ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete
+                if options.error_on_terminal_response =>
+            {
                 let error_message = response_chunk_error_message(&kind, &response, provider_name)
                     .expect("terminal response should have an error message");
                 Err(CompletionError::ProviderError(error_message))
@@ -328,7 +354,12 @@ impl RawChoiceAccumulator {
         }
     }
 
-    fn push_output_item_done(&mut self, item: Output, immediate: &mut Vec<StreamingRawChoice>) {
+    fn push_output_item_done(
+        &mut self,
+        item: Output,
+        immediate: &mut Vec<StreamingRawChoice>,
+        emit_completed_tool_calls_immediately: bool,
+    ) {
         match item {
             Output::FunctionCall(func) => {
                 let internal_call_id = self
@@ -336,12 +367,17 @@ impl RawChoiceAccumulator {
                     .entry(func.id.clone())
                     .or_insert_with(|| nanoid::nanoid!())
                     .clone();
-                self.tool_calls
-                    .push(streaming::RawStreamingChoice::ToolCall(
-                        streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
-                            .with_internal_call_id(internal_call_id)
-                            .with_call_id(func.call_id),
-                    ));
+                let tool_call =
+                    streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
+                        .with_internal_call_id(internal_call_id)
+                        .with_call_id(func.call_id);
+
+                if emit_completed_tool_calls_immediately {
+                    immediate.push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                } else {
+                    self.tool_calls
+                        .push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                }
             }
             Output::Reasoning {
                 id,
@@ -381,6 +417,7 @@ pub(crate) fn raw_choices_from_sse_body(
 ) -> Result<Vec<StreamingRawChoice>, CompletionError> {
     let mut raw_choices = Vec::new();
     let mut accumulator = RawChoiceAccumulator::new(initial_usage);
+    let options = ResponsesStreamOptions::strict();
 
     for line in body.lines() {
         let data = line
@@ -394,11 +431,11 @@ pub(crate) fn raw_choices_from_sse_body(
         if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
             match chunk {
                 StreamingCompletionChunk::Delta(chunk) => {
-                    raw_choices.extend(accumulator.decode_item_chunk(chunk.data));
+                    raw_choices.extend(accumulator.decode_item_chunk(chunk.data, options));
                 }
                 StreamingCompletionChunk::Response(chunk) => {
                     let ResponseChunk { kind, response, .. } = *chunk;
-                    accumulator.record_response_chunk(kind, response, provider_name)?;
+                    accumulator.record_response_chunk(kind, response, provider_name, options)?;
                 }
             }
             continue;
@@ -448,7 +485,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     .cloned()
                     .and_then(|item| serde_json::from_value::<Output>(item).ok())
                 {
-                    accumulator.push_output_item_done(item, &mut raw_choices);
+                    accumulator.push_output_item_done(item, &mut raw_choices, false);
                 }
             }
             Some("response.function_call_arguments.delta") => {
@@ -477,7 +514,7 @@ pub(crate) fn raw_choices_from_sse_body(
                         Some("response.incomplete") => ResponseChunkKind::ResponseIncomplete,
                         _ => unreachable!("filtered above"),
                     };
-                    accumulator.record_response_chunk(kind, response, provider_name)?;
+                    accumulator.record_response_chunk(kind, response, provider_name, options)?;
                 }
             }
             Some("error") => {
@@ -577,9 +614,27 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
 }
 
 pub(crate) fn stream_from_event_source<HttpClient, RequestBody>(
+    event_source: GenericEventSource<HttpClient, RequestBody>,
+    span: tracing::Span,
+    provider_name: &'static str,
+) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
+where
+    HttpClient: HttpClientExt + Clone + 'static,
+    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
+{
+    stream_from_event_source_with_options(
+        event_source,
+        span,
+        provider_name,
+        ResponsesStreamOptions::strict(),
+    )
+}
+
+pub(crate) fn stream_from_event_source_with_options<HttpClient, RequestBody>(
     mut event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     provider_name: &'static str,
+    options: ResponsesStreamOptions,
 ) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
 where
     HttpClient: HttpClientExt + Clone + 'static,
@@ -611,7 +666,7 @@ where
 
                     match data {
                         StreamingCompletionChunk::Delta(chunk) => {
-                            for choice in accumulator.decode_item_chunk(chunk.data) {
+                            for choice in accumulator.decode_item_chunk(chunk.data, options) {
                                 yield Ok(choice);
                             }
                         }
@@ -622,7 +677,7 @@ where
                                 span.record("gen_ai.response.model", response.model.as_str());
                             }
                             if let Err(error) =
-                                accumulator.record_response_chunk(kind, response, provider_name)
+                                accumulator.record_response_chunk(kind, response, provider_name, options)
                             {
                                 terminated_with_error = true;
                                 yield Err(error);
