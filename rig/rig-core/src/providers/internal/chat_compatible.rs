@@ -1,0 +1,255 @@
+//! Shared helpers for chat-compatible streaming providers.
+//!
+//! Several providers expose an SSE stream that looks like OpenAI Chat
+//! Completions: text arrives in deltas, tool calls are streamed piecemeal, and
+//! a trailing event may carry usage. This module centralizes the common stream
+//! state machine while leaving request parsing and provider-specific metadata to
+//! small profile hooks.
+
+use std::collections::HashMap;
+
+use async_stream::stream;
+use futures::StreamExt;
+use http::Request;
+use tracing_futures::Instrument;
+
+use crate::completion::{CompletionError, GetTokenUsage};
+use crate::http_client::HttpClientExt;
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
+use crate::wasm_compat::WasmCompatSend;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompatibleFinishReason {
+    ToolCalls,
+    Other,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompatibleToolCallChunk {
+    pub(crate) index: usize,
+    pub(crate) id: Option<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) arguments: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompatibleChoice<D> {
+    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) text: Option<String>,
+    pub(crate) reasoning: Option<String>,
+    pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
+    pub(crate) details: Vec<D>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompatibleChunk<U, D> {
+    pub(crate) choice: Option<CompatibleChoice<D>>,
+    pub(crate) usage: Option<U>,
+}
+
+pub(crate) type NormalizedCompatibleChunk<U, D> =
+    Result<Option<CompatibleChunk<U, D>>, CompletionError>;
+
+pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
+    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
+    type Detail: WasmCompatSend + 'static;
+    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
+
+    fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
+
+    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+
+    fn should_evict(
+        &self,
+        _existing: &RawStreamingToolCall,
+        _incoming: &CompatibleToolCallChunk,
+    ) -> bool {
+        false
+    }
+
+    fn decorate_tool_call(
+        &self,
+        _detail: &Self::Detail,
+        _tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
+    ) {
+    }
+
+    fn finalize_usage(&self, _span: &tracing::Span, _usage: &Self::Usage) {}
+}
+
+pub(crate) async fn send_compatible_streaming_request<T, P>(
+    http_client: T,
+    req: Request<Vec<u8>>,
+    profile: P,
+) -> Result<streaming::StreamingCompletionResponse<P::FinalResponse>, CompletionError>
+where
+    T: HttpClientExt + Clone + 'static,
+    P: CompatibleStreamProfile + 'static,
+{
+    let span = tracing::Span::current();
+    let instrument_span = span.clone();
+    let mut event_source = GenericEventSource::new(http_client, req);
+
+    let stream = stream! {
+        let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
+        let mut final_usage = None;
+
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::trace!("SSE connection opened");
+                    continue;
+                }
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() || message.data == "[DONE]" {
+                        continue;
+                    }
+
+                    let chunk = match profile.normalize_chunk(&message.data) {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => continue,
+                        Err(error) => {
+                            yield Err(error);
+                            break;
+                        }
+                    };
+
+                    if let Some(usage) = chunk.usage {
+                        final_usage = Some(usage);
+                    }
+
+                    let Some(choice) = chunk.choice else {
+                        continue;
+                    };
+
+                    for incoming in choice.tool_calls {
+                        if let Some(existing) = tool_calls.get(&incoming.index)
+                            && profile.should_evict(existing, &incoming)
+                        {
+                            let evicted = tool_calls
+                                .remove(&incoming.index)
+                                .expect("checked above");
+                            yield Ok(RawStreamingChoice::ToolCall(
+                                finalize_completed_streaming_tool_call(evicted),
+                            ));
+                        }
+
+                        let existing_tool_call = tool_calls
+                            .entry(incoming.index)
+                            .or_insert_with(RawStreamingToolCall::empty);
+
+                        if let Some(id) = incoming.id
+                            && !id.is_empty()
+                        {
+                            existing_tool_call.id = id;
+                        }
+
+                        if let Some(name) = incoming.name
+                            && !name.is_empty()
+                        {
+                            existing_tool_call.name = name.clone();
+                            yield Ok(RawStreamingChoice::ToolCallDelta {
+                                id: existing_tool_call.id.clone(),
+                                internal_call_id: existing_tool_call.internal_call_id.clone(),
+                                content: ToolCallDeltaContent::Name(name),
+                            });
+                        }
+
+                        if let Some(arguments) = incoming.arguments
+                            && !arguments.is_empty()
+                        {
+                            append_tool_call_arguments(existing_tool_call, &arguments);
+                            yield Ok(RawStreamingChoice::ToolCallDelta {
+                                id: existing_tool_call.id.clone(),
+                                internal_call_id: existing_tool_call.internal_call_id.clone(),
+                                content: ToolCallDeltaContent::Delta(arguments),
+                            });
+                        }
+                    }
+
+                    for detail in &choice.details {
+                        profile.decorate_tool_call(detail, &mut tool_calls);
+                    }
+
+                    if let Some(reasoning) = choice.reasoning
+                        && !reasoning.is_empty()
+                    {
+                        yield Ok(RawStreamingChoice::ReasoningDelta {
+                            id: None,
+                            reasoning,
+                        });
+                    }
+
+                    if let Some(content) = choice.text
+                        && !content.is_empty()
+                    {
+                        yield Ok(RawStreamingChoice::Message(content));
+                    }
+
+                    if choice.finish_reason == CompatibleFinishReason::ToolCalls {
+                        for (_, tool_call) in tool_calls.drain() {
+                            yield Ok(RawStreamingChoice::ToolCall(
+                                finalize_completed_streaming_tool_call(tool_call),
+                            ));
+                        }
+                    }
+                }
+                Err(crate::http_client::Error::StreamEnded) => {
+                    break;
+                }
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    break;
+                }
+            }
+        }
+
+        event_source.close();
+
+        for (_, tool_call) in tool_calls.drain() {
+            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+        }
+
+        let final_usage = final_usage.unwrap_or_default();
+        profile.finalize_usage(&span, &final_usage);
+        yield Ok(RawStreamingChoice::FinalResponse(
+            profile.build_final_response(final_usage),
+        ));
+    }
+    .instrument(instrument_span);
+
+    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+        stream,
+    )))
+}
+
+fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str) {
+    let current_args = match &tool_call.arguments {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(existing) => existing.clone(),
+        value => value.to_string(),
+    };
+
+    let combined = format!("{current_args}{chunk}");
+
+    if combined.trim_start().starts_with('{') && combined.trim_end().ends_with('}') {
+        match serde_json::from_str(&combined) {
+            Ok(parsed) => tool_call.arguments = parsed,
+            Err(_) => tool_call.arguments = serde_json::Value::String(combined),
+        }
+    } else {
+        tool_call.arguments = serde_json::Value::String(combined);
+    }
+}
+
+pub(crate) fn finalize_completed_streaming_tool_call(
+    mut tool_call: RawStreamingToolCall,
+) -> RawStreamingToolCall {
+    if tool_call.arguments.is_null() {
+        tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+    }
+
+    tool_call
+}

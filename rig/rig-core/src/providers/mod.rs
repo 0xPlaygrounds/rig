@@ -56,6 +56,7 @@ pub mod gemini;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
+pub(crate) mod internal;
 pub mod llamafile;
 pub mod minimax;
 pub mod mira;
