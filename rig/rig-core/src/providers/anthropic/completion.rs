@@ -214,6 +214,17 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
+        // If content is empty and stop_reason is "end_turn", this is an expected
+        // end-of-turn response per Anthropic's documentation. Return an empty text
+        // content instead of erroring.
+        let content = if content.is_empty() && response.stop_reason.as_deref() == Some("end_turn") {
+            vec![message::AssistantContent::Text(message::Text {
+                text: String::new(),
+            })]
+        } else {
+            content
+        };
+
         let choice = OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
