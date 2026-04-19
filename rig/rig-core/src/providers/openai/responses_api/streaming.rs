@@ -67,17 +67,7 @@ pub(crate) fn reasoning_choices_from_done_item(
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.input_tokens;
-        usage.output_tokens = self.usage.output_tokens;
-        usage.total_tokens = self.usage.total_tokens;
-        usage.cached_input_tokens = self
-            .usage
-            .input_tokens_details
-            .as_ref()
-            .map(|d| d.cached_tokens)
-            .unwrap_or(0);
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -147,24 +137,26 @@ fn response_error_message(error: Option<&super::ResponseError>, fallback: &str) 
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct ResponsesStreamOptions {
-    pub(crate) error_on_terminal_response: bool,
-    pub(crate) emit_completed_tool_calls_immediately: bool,
+pub(crate) enum ResponsesStreamOptions {
+    Strict,
+    StrictWithImmediateToolCalls,
 }
 
 impl ResponsesStreamOptions {
     pub(crate) const fn strict() -> Self {
-        Self {
-            error_on_terminal_response: true,
-            emit_completed_tool_calls_immediately: false,
-        }
+        Self::Strict
     }
 
     pub(crate) const fn strict_with_immediate_tool_calls() -> Self {
-        Self {
-            error_on_terminal_response: true,
-            emit_completed_tool_calls_immediately: true,
-        }
+        Self::StrictWithImmediateToolCalls
+    }
+
+    const fn errors_on_terminal_response(self) -> bool {
+        true
+    }
+
+    const fn emits_completed_tool_calls_immediately(self) -> bool {
+        matches!(self, Self::StrictWithImmediateToolCalls)
     }
 }
 
@@ -303,7 +295,7 @@ impl RawChoiceAccumulator {
                 self.push_output_item_done(
                     message.item,
                     &mut immediate,
-                    options.emit_completed_tool_calls_immediately,
+                    options.emits_completed_tool_calls_immediately(),
                 );
             }
             ItemChunkKind::OutputTextDelta(delta) => {
@@ -351,7 +343,7 @@ impl RawChoiceAccumulator {
                 Ok(())
             }
             ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete
-                if options.error_on_terminal_response =>
+                if options.errors_on_terminal_response() =>
             {
                 let error_message = response_chunk_error_message(&kind, &response, provider_name)
                     .expect("terminal response should have an error message");
@@ -606,17 +598,7 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
     response
         .usage
         .as_ref()
-        .map(|usage| completion::Usage {
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
-            total_tokens: usage.total_tokens,
-            cached_input_tokens: usage
-                .input_tokens_details
-                .as_ref()
-                .map(|details| details.cached_tokens)
-                .unwrap_or(0),
-            cache_creation_input_tokens: 0,
-        })
+        .and_then(GetTokenUsage::token_usage)
         .unwrap_or_default()
 }
 
@@ -925,6 +907,7 @@ mod tests {
     use crate::completion::CompletionModel;
     use crate::http_client::mock::MockStreamingClient;
     use crate::message::ReasoningContent;
+    use crate::providers::internal::chat_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
@@ -977,19 +960,12 @@ mod tests {
         }
     }
 
-    fn sse_event_bytes(event: serde_json::Value) -> Bytes {
-        Bytes::from(format!(
-            "data: {}\n\n",
-            serde_json::to_string(&event).expect("event should serialize")
-        ))
-    }
-
     async fn first_error_from_event(
         event: serde_json::Value,
     ) -> crate::completion::CompletionError {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
+                sse_bytes: sse_bytes_from_json_events(&[event]),
             })
             .api_key("test-key")
             .build()
@@ -1008,7 +984,7 @@ mod tests {
     async fn final_usage_from_event(event: serde_json::Value) -> ResponsesUsage {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
+                sse_bytes: sse_bytes_from_json_events(&[event]),
             })
             .api_key("test-key")
             .build()
@@ -1296,14 +1272,10 @@ mod tests {
             "response": response,
         });
 
-        let sse_bytes = Bytes::from(format!(
-            "data: {}\n\ndata: {}\n\n",
-            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
-            serde_json::to_string(&failed).expect("failed should serialize"),
-        ));
-
         let client = openai::Client::builder()
-            .http_client(MockStreamingClient { sse_bytes })
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
+            })
             .api_key("test-key")
             .build()
             .expect("client should build");

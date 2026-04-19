@@ -97,6 +97,7 @@ where
 mod tests {
     use super::send_xai_streaming_request;
     use crate::message::ReasoningContent;
+    use crate::providers::internal::chat_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::ReasoningSummary;
     use crate::providers::openai::responses_api::streaming::reasoning_choices_from_done_item;
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
@@ -140,23 +141,8 @@ mod tests {
     #[tokio::test]
     async fn xai_stream_uses_shared_responses_stream_behavior() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
         use futures::StreamExt;
         use serde_json::json;
-
-        fn sse_bytes(events: &[serde_json::Value]) -> Bytes {
-            Bytes::from(
-                events
-                    .iter()
-                    .map(|event| {
-                        format!(
-                            "data: {}\n\n",
-                            serde_json::to_string(event).expect("event should serialize")
-                        )
-                    })
-                    .collect::<String>(),
-            )
-        }
 
         let events = vec![
             json!({
@@ -234,7 +220,7 @@ mod tests {
         ];
 
         let client = MockStreamingClient {
-            sse_bytes: sse_bytes(&events),
+            sse_bytes: sse_bytes_from_json_events(&events),
         };
 
         let req = http::Request::builder()
@@ -313,7 +299,6 @@ mod tests {
     #[tokio::test]
     async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
         use futures::StreamExt;
         use serde_json::json;
 
@@ -353,13 +338,9 @@ mod tests {
             }
         });
 
-        let sse_bytes = Bytes::from(format!(
-            "data: {}\n\ndata: {}\n\n",
-            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
-            serde_json::to_string(&failed).expect("failed should serialize"),
-        ));
-
-        let client = MockStreamingClient { sse_bytes };
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
+        };
         let req = http::Request::builder()
             .method("POST")
             .uri("http://localhost/v1/responses")

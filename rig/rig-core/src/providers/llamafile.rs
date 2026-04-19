@@ -29,8 +29,7 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::chat_compatible::{
-    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
 use crate::providers::openai::{self, StreamingToolCall};
 use crate::{
@@ -408,16 +407,7 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-        usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
-        usage.cached_input_tokens = self
-            .usage
-            .prompt_tokens_details
-            .as_ref()
-            .map_or(0, |details| details.cached_tokens as u64);
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -444,36 +434,25 @@ impl CompatibleStreamProfile for LlamafileCompatibleProfile {
             }
         };
 
-        let choice = data.choices.first().map(|choice| CompatibleChoice {
-            finish_reason: if choice.finish_reason
-                == Some(openai::completion::streaming::FinishReason::ToolCalls)
-            {
-                CompatibleFinishReason::ToolCalls
-            } else {
-                CompatibleFinishReason::Other
+        Ok(Some(chat_compatible::normalize_first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage,
+            &data.choices,
+            |choice| CompatibleChoiceData {
+                finish_reason: if choice.finish_reason
+                    == Some(openai::completion::streaming::FinishReason::ToolCalls)
+                {
+                    CompatibleFinishReason::ToolCalls
+                } else {
+                    CompatibleFinishReason::Other
+                },
+                text: choice.delta.content.clone(),
+                reasoning: None,
+                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
+                details: Vec::new(),
             },
-            text: choice.delta.content.clone(),
-            reasoning: None,
-            tool_calls: choice
-                .delta
-                .tool_calls
-                .iter()
-                .map(|tool_call| CompatibleToolCallChunk {
-                    index: tool_call.index,
-                    id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    arguments: tool_call.function.arguments.clone(),
-                })
-                .collect(),
-            details: Vec::new(),
-        });
-
-        Ok(Some(CompatibleChunk {
-            response_id: data.id,
-            response_model: data.model,
-            choice,
-            usage: data.usage,
-        }))
+        )))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -617,9 +596,10 @@ where
 mod tests {
     use super::*;
     use crate::client::Nothing;
-    use crate::providers::internal::chat_compatible::test_support::assert_zero_arg_tool_call_is_emitted;
     use crate::http_client::mock::MockStreamingClient;
-    use bytes::Bytes;
+    use crate::providers::internal::chat_compatible::test_support::{
+        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
+    };
 
     #[test]
     fn test_client_initialization() {
@@ -670,10 +650,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_preserves_zero_arg_tool_calls_at_eof() {
-        let sse = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]}}],\"usage\":null}\n\n";
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]}}],\"usage\":null}",
+            ]),
         };
 
         let req = http::Request::builder()

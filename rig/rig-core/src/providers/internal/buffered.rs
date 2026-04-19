@@ -18,7 +18,9 @@ where
         + 'static,
 {
     let completion::CompletionResponse {
-        choice, raw_response, ..
+        choice,
+        raw_response,
+        ..
     } = response;
 
     let stream = stream! {

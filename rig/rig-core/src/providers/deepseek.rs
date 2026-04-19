@@ -21,8 +21,7 @@ use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
 use crate::providers::internal::chat_compatible::{
-    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
 use crate::{
     OneOrMany,
@@ -147,17 +146,16 @@ pub struct Usage {
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.completion_tokens as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        usage.cached_input_tokens = self
-            .prompt_tokens_details
-            .as_ref()
-            .and_then(|details| details.cached_tokens)
-            .map(u64::from)
-            .unwrap_or(0);
-        Some(usage)
+        Some(crate::providers::internal::completion_usage(
+            self.prompt_tokens as u64,
+            self.completion_tokens as u64,
+            self.total_tokens as u64,
+            self.prompt_tokens_details
+                .as_ref()
+                .and_then(|details| details.cached_tokens)
+                .map(u64::from)
+                .unwrap_or(0),
+        ))
     }
 }
 
@@ -715,19 +713,7 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.output_tokens = self.usage.completion_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-        usage.cached_input_tokens = self
-            .usage
-            .prompt_tokens_details
-            .as_ref()
-            .and_then(|d| d.cached_tokens)
-            .map(|c| c as u64)
-            .unwrap_or(0);
-
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -754,30 +740,19 @@ impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
             }
         };
 
-        let choice = data.choices.first().map(|choice| CompatibleChoice {
-            finish_reason: CompatibleFinishReason::Other,
-            text: choice.delta.content.clone(),
-            reasoning: choice.delta.reasoning_content.clone(),
-            tool_calls: choice
-                .delta
-                .tool_calls
-                .iter()
-                .map(|tool_call| CompatibleToolCallChunk {
-                    index: tool_call.index,
-                    id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    arguments: tool_call.function.arguments.clone(),
-                })
-                .collect(),
-            details: Vec::new(),
-        });
-
-        Ok(Some(CompatibleChunk {
-            response_id: data.id,
-            response_model: data.model,
-            choice,
-            usage: data.usage,
-        }))
+        Ok(Some(chat_compatible::normalize_first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage,
+            &data.choices,
+            |choice| CompatibleChoiceData {
+                finish_reason: CompatibleFinishReason::Other,
+                text: choice.delta.content.clone(),
+                reasoning: choice.delta.reasoning_content.clone(),
+                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
+                details: Vec::new(),
+            },
+        )))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -817,7 +792,9 @@ pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::internal::chat_compatible::test_support::assert_completed_tool_call_precedes_text;
+    use crate::providers::internal::chat_compatible::test_support::{
+        assert_completed_tool_call_precedes_text, sse_bytes_from_data_lines,
+    };
 
     #[test]
     fn test_deserialize_vec_choice() {
@@ -1080,19 +1057,16 @@ mod tests {
     async fn test_streaming_deepseek_profile_handles_reasoning_tools_and_usage() {
         use crate::http_client::mock::MockStreamingClient;
         use crate::streaming::StreamedAssistantContent;
-        use bytes::Bytes;
         use futures::StreamExt;
 
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"subtract\",\"arguments\":\"\"}}],\"reasoning_content\":\"thinking\"}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"x\\\":1,\"}}],\"reasoning_content\":\" harder\"}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\" there\",\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"\\\"y\\\":2}\"}}],\"reasoning_content\":null}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":7,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":3}}}\n\n",
-            "data: [DONE]\n\n",
-        );
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"subtract\",\"arguments\":\"\"}}],\"reasoning_content\":\"thinking\"}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"x\\\":1,\"}}],\"reasoning_content\":\" harder\"}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":\" there\",\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"\\\"y\\\":2}\"}}],\"reasoning_content\":null}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":7,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":3}}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -1148,17 +1122,14 @@ mod tests {
     #[tokio::test]
     async fn test_streaming_deepseek_emits_complete_single_chunk_tool_call_before_later_text() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
-
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"subtract\",\"arguments\":\"{\\\"x\\\":1,\\\"y\\\":2}\"}}],\"reasoning_content\":\"thinking\"}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[],\"reasoning_content\":null}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":7,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":3}}}\n\n",
-            "data: [DONE]\n\n",
-        );
 
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"subtract\",\"arguments\":\"{\\\"x\\\":1,\\\"y\\\":2}\"}}],\"reasoning_content\":\"thinking\"}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[],\"reasoning_content\":null}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":7,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":3}}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()

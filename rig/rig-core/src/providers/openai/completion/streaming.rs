@@ -7,7 +7,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::{self, merge};
 use crate::providers::internal::chat_compatible::{
-    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
 use crate::providers::openai::completion::{GenericCompletionModel, OpenAIRequestParams, Usage};
@@ -27,6 +27,17 @@ pub(crate) struct StreamingToolCall {
     pub(crate) index: usize,
     pub(crate) id: Option<String>,
     pub(crate) function: StreamingFunction,
+}
+
+impl From<&StreamingToolCall> for CompatibleToolCallChunk {
+    fn from(value: &StreamingToolCall) -> Self {
+        Self {
+            index: value.index,
+            id: value.id.clone(),
+            name: value.function.name.clone(),
+            arguments: value.function.arguments.clone(),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -71,16 +82,7 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-        usage.cached_input_tokens = self
-            .usage
-            .prompt_tokens_details
-            .as_ref()
-            .map_or(0, |d| d.cached_tokens as u64);
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -170,34 +172,23 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
             }
         };
 
-        let choice = data.choices.first().map(|choice| CompatibleChoice {
-            finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
-                CompatibleFinishReason::ToolCalls
-            } else {
-                CompatibleFinishReason::Other
+        Ok(Some(chat_compatible::normalize_first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage,
+            &data.choices,
+            |choice| CompatibleChoiceData {
+                finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
+                    CompatibleFinishReason::ToolCalls
+                } else {
+                    CompatibleFinishReason::Other
+                },
+                text: choice.delta.content.clone(),
+                reasoning: choice.delta.reasoning_content.clone(),
+                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
+                details: Vec::new(),
             },
-            text: choice.delta.content.clone(),
-            reasoning: choice.delta.reasoning_content.clone(),
-            tool_calls: choice
-                .delta
-                .tool_calls
-                .iter()
-                .map(|tool_call| CompatibleToolCallChunk {
-                    index: tool_call.index,
-                    id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    arguments: tool_call.function.arguments.clone(),
-                })
-                .collect(),
-            details: Vec::new(),
-        });
-
-        Ok(Some(CompatibleChunk {
-            response_id: data.id,
-            response_model: data.model,
-            choice,
-            usage: data.usage,
-        }))
+        )))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -223,7 +214,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::internal::chat_compatible::test_support::assert_zero_arg_tool_call_is_emitted;
+    use crate::providers::internal::chat_compatible::test_support::{
+        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
+    };
 
     #[test]
     fn test_streaming_function_deserialization() {
@@ -402,18 +395,15 @@ mod tests {
     #[tokio::test]
     async fn test_streaming_usage_only_chunk_is_not_ignored() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
         use futures::StreamExt;
 
         // Some providers emit a final "usage-only" chunk where `choices` is empty.
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n",
-            "data: [DONE]\n\n",
-        );
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -442,18 +432,15 @@ mod tests {
     #[tokio::test]
     async fn test_streaming_cached_input_tokens_populated() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
         use futures::StreamExt;
 
         // Usage chunk includes prompt_tokens_details with cached_tokens.
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\n",
-            "data: [DONE]\n\n",
-        );
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"prompt_tokens_details\":{\"cached_tokens\":80}}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -499,32 +486,23 @@ mod tests {
     #[tokio::test]
     async fn test_duplicate_index_different_id_tool_calls() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
         use futures::StreamExt;
 
         // Simulate a gateway that sends two tool calls both at index 0.
         // First tool call: id="call_aaa", name="command", args={"cmd":"ls"}
         // Second tool call: id="call_bbb", name="git", args={"action":"log"}
-        let sse = concat!(
-            // First tool call starts
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_aaa\",\"function\":{\"name\":\"command\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            // First tool call argument chunks
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"ls\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            // Second tool call starts AT THE SAME index 0 but with a NEW id
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bbb\",\"function\":{\"name\":\"git\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            // Second tool call argument chunks
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"action\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"log\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            // Finish with tool_calls reason
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
-            // Usage chunk
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}\n\n",
-            "data: [DONE]\n\n",
-        );
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_aaa\",\"function\":{\"name\":\"command\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"ls\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bbb\",\"function\":{\"name\":\"git\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"action\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"log\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -576,22 +554,19 @@ mod tests {
     #[tokio::test]
     async fn test_unique_id_per_chunk_single_tool_call() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
         use futures::StreamExt;
 
         // Each chunk carries a different id but they all represent delta
         // fragments of the SAME tool call at index 0.
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-aaa\",\"function\":{\"name\":\"web_search\",\"arguments\":\"null\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-bbb\",\"function\":{\"name\":\"\",\"arguments\":\"{\\\"query\\\": \\\"META\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-ccc\",\"function\":{\"name\":\"\",\"arguments\":\" Platforms news\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":8,\"total_tokens\":23}}\n\n",
-            "data: [DONE]\n\n",
-        );
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-aaa\",\"function\":{\"name\":\"web_search\",\"arguments\":\"null\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-bbb\",\"function\":{\"name\":\"\",\"arguments\":\"{\\\"query\\\": \\\"META\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-ccc\",\"function\":{\"name\":\"\",\"arguments\":\" Platforms news\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":8,\"total_tokens\":23}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -636,16 +611,13 @@ mod tests {
     #[tokio::test]
     async fn test_zero_arg_tool_call_normalized_on_finish_reason() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
-
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}\n\n",
-            "data: [DONE]\n\n",
-        );
 
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -664,12 +636,11 @@ mod tests {
     #[tokio::test]
     async fn test_zero_arg_tool_call_is_preserved_at_eof() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
-
-        let sse = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n";
 
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            ]),
         };
 
         let req = http::Request::builder()

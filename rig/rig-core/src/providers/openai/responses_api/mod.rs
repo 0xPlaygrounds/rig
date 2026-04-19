@@ -10,7 +10,7 @@
 use super::InputAudio;
 use super::completion::ToolChoice;
 use super::responses_api::streaming::StreamingCompletionResponse;
-use crate::completion::CompletionError;
+use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
@@ -655,6 +655,20 @@ impl ResponsesUsage {
             output_tokens_details: OutputTokensDetails::new(),
             total_tokens: 0,
         }
+    }
+}
+
+impl GetTokenUsage for ResponsesUsage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        Some(crate::providers::internal::completion_usage(
+            self.input_tokens,
+            self.output_tokens,
+            self.total_tokens,
+            self.input_tokens_details
+                .as_ref()
+                .map(|details| details.cached_tokens)
+                .unwrap_or(0),
+        ))
     }
 }
 

@@ -955,17 +955,15 @@ impl fmt::Display for Usage {
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = (self.total_tokens - self.prompt_tokens) as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        usage.cached_input_tokens = self
-            .prompt_tokens_details
-            .as_ref()
-            .map(|d| d.cached_tokens as u64)
-            .unwrap_or(0);
-
-        Some(usage)
+        Some(crate::providers::internal::completion_usage(
+            self.prompt_tokens as u64,
+            (self.total_tokens - self.prompt_tokens) as u64,
+            self.total_tokens as u64,
+            self.prompt_tokens_details
+                .as_ref()
+                .map(|d| d.cached_tokens as u64)
+                .unwrap_or(0),
+        ))
     }
 }
 

@@ -24,8 +24,7 @@ use crate::completion::GetTokenUsage;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
 use crate::providers::internal::chat_compatible::{
-    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
 
 use crate::{
@@ -631,19 +630,7 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-        usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
-        usage.cached_input_tokens = self
-            .usage
-            .prompt_tokens_details
-            .as_ref()
-            .map(|d| d.cached_tokens as u64)
-            .unwrap_or(0);
-
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -670,40 +657,31 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
             }
         };
 
-        let choice = data.choices.first().map(|choice| match &choice.delta {
-            StreamingDelta::Reasoning { reasoning } => CompatibleChoice {
-                finish_reason: CompatibleFinishReason::Other,
-                text: None,
-                reasoning: Some(reasoning.clone()),
-                tool_calls: Vec::new(),
-                details: Vec::new(),
+        Ok(Some(chat_compatible::normalize_first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage,
+            &data.choices,
+            |choice| match &choice.delta {
+                StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: None,
+                    reasoning: Some(reasoning.clone()),
+                    tool_calls: Vec::new(),
+                    details: Vec::new(),
+                },
+                StreamingDelta::MessageContent {
+                    content,
+                    tool_calls,
+                } => CompatibleChoiceData {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: content.clone(),
+                    reasoning: None,
+                    tool_calls: chat_compatible::tool_call_chunks(tool_calls),
+                    details: Vec::new(),
+                },
             },
-            StreamingDelta::MessageContent {
-                content,
-                tool_calls,
-            } => CompatibleChoice {
-                finish_reason: CompatibleFinishReason::Other,
-                text: content.clone(),
-                reasoning: None,
-                tool_calls: tool_calls
-                    .iter()
-                    .map(|tool_call| CompatibleToolCallChunk {
-                        index: tool_call.index,
-                        id: tool_call.id.clone(),
-                        name: tool_call.function.name.clone(),
-                        arguments: tool_call.function.arguments.clone(),
-                    })
-                    .collect(),
-                details: Vec::new(),
-            },
-        });
-
-        Ok(Some(CompatibleChunk {
-            response_id: data.id,
-            response_model: data.model,
-            choice,
-            usage: data.usage,
-        }))
+        )))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -737,7 +715,9 @@ mod tests {
     use super::send_compatible_streaming_request;
     use crate::{
         OneOrMany,
-        providers::internal::chat_compatible::test_support::assert_completed_tool_call_precedes_text,
+        providers::internal::chat_compatible::test_support::{
+            assert_completed_tool_call_precedes_text, sse_bytes_from_data_lines,
+        },
         providers::{
             groq::{GroqAdditionalParameters, GroqCompletionRequest},
             openai::{Message, UserContent},
@@ -800,20 +780,17 @@ mod tests {
     async fn test_streaming_groq_profile_handles_reasoning_tools_and_usage() {
         use crate::http_client::mock::MockStreamingClient;
         use crate::streaming::StreamedAssistantContent;
-        use bytes::Bytes;
         use futures::StreamExt;
 
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking\"}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"\"}}]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}\n\n",
-            "data: [DONE]\n\n",
-        );
-
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"reasoning\":\"thinking\"}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"\"}}]}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()
@@ -861,17 +838,14 @@ mod tests {
     #[tokio::test]
     async fn test_streaming_groq_emits_complete_single_chunk_tool_call_before_later_text() {
         use crate::http_client::mock::MockStreamingClient;
-        use bytes::Bytes;
-
-        let sse = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}\n\n",
-            "data: [DONE]\n\n",
-        );
 
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from(sse),
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}",
+                "[DONE]",
+            ]),
         };
 
         let req = http::Request::builder()

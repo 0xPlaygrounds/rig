@@ -7,7 +7,7 @@ use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::providers::internal::chat_compatible::{
-    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
 use crate::providers::openrouter::{
@@ -22,13 +22,7 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.output_tokens = self.usage.completion_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -69,6 +63,17 @@ struct StreamingToolCall {
     pub function: StreamingFunction,
 }
 
+impl From<&StreamingToolCall> for CompatibleToolCallChunk {
+    fn from(value: &StreamingToolCall) -> Self {
+        Self {
+            index: value.index,
+            id: value.id.clone(),
+            name: value.function.name.clone(),
+            arguments: value.function.arguments.clone(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Usage {
     pub prompt_tokens: u32,
@@ -78,11 +83,12 @@ pub struct Usage {
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.completion_tokens as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        Some(usage)
+        Some(crate::providers::internal::completion_usage(
+            self.prompt_tokens as u64,
+            self.completion_tokens as u64,
+            self.total_tokens as u64,
+            0,
+        ))
     }
 }
 
@@ -196,34 +202,23 @@ impl CompatibleStreamProfile for OpenRouterCompatibleProfile {
             }
         };
 
-        let choice = data.choices.first().map(|choice| CompatibleChoice {
-            finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
-                CompatibleFinishReason::ToolCalls
-            } else {
-                CompatibleFinishReason::Other
+        Ok(Some(chat_compatible::normalize_first_choice_chunk(
+            Some(data.id),
+            Some(data.model),
+            data.usage,
+            &data.choices,
+            |choice| CompatibleChoiceData {
+                finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
+                    CompatibleFinishReason::ToolCalls
+                } else {
+                    CompatibleFinishReason::Other
+                },
+                text: choice.delta.content.clone(),
+                reasoning: choice.delta.reasoning.clone(),
+                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
+                details: choice.delta.reasoning_details.clone(),
             },
-            text: choice.delta.content.clone(),
-            reasoning: choice.delta.reasoning.clone(),
-            tool_calls: choice
-                .delta
-                .tool_calls
-                .iter()
-                .map(|tool_call| CompatibleToolCallChunk {
-                    index: tool_call.index,
-                    id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    arguments: tool_call.function.arguments.clone(),
-                })
-                .collect(),
-            details: choice.delta.reasoning_details.clone(),
-        });
-
-        Ok(Some(CompatibleChunk {
-            response_id: Some(data.id),
-            response_model: Some(data.model),
-            choice,
-            usage: data.usage,
-        }))
+        )))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {

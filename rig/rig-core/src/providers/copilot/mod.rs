@@ -26,7 +26,7 @@ use crate::completion::{self, CompletionError, GetTokenUsage};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::chat_compatible::{
-    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
 use crate::providers::openai;
@@ -1242,6 +1242,17 @@ struct ChatStreamingToolCall {
     function: ChatStreamingFunction,
 }
 
+impl From<&ChatStreamingToolCall> for CompatibleToolCallChunk {
+    fn from(value: &ChatStreamingToolCall) -> Self {
+        Self {
+            index: value.index,
+            id: value.id.clone(),
+            name: value.function.name.clone(),
+            arguments: value.function.arguments.clone(),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Default)]
 struct ChatStreamingDelta {
     #[serde(default)]
@@ -1297,34 +1308,23 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
             }
         };
 
-        let choice = data.choices.first().map(|choice| CompatibleChoice {
-            finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
-                CompatibleFinishReason::ToolCalls
-            } else {
-                CompatibleFinishReason::Other
+        Ok(Some(chat_compatible::normalize_first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage,
+            &data.choices,
+            |choice| CompatibleChoiceData {
+                finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
+                    CompatibleFinishReason::ToolCalls
+                } else {
+                    CompatibleFinishReason::Other
+                },
+                text: choice.delta.content.clone(),
+                reasoning: choice.delta.reasoning_content.clone(),
+                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
+                details: Vec::new(),
             },
-            text: choice.delta.content.clone(),
-            reasoning: choice.delta.reasoning_content.clone(),
-            tool_calls: choice
-                .delta
-                .tool_calls
-                .iter()
-                .map(|tool_call| CompatibleToolCallChunk {
-                    index: tool_call.index,
-                    id: tool_call.id.clone(),
-                    name: tool_call.function.name.clone(),
-                    arguments: tool_call.function.arguments.clone(),
-                })
-                .collect(),
-            details: Vec::new(),
-        });
-
-        Ok(Some(CompatibleChunk {
-            response_id: data.id,
-            response_model: data.model,
-            choice,
-            usage: data.usage,
-        }))
+        )))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -1382,7 +1382,9 @@ mod tests {
     use crate::completion::CompletionModel;
     use crate::http_client::mock::MockStreamingClient;
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
-    use crate::providers::internal::chat_compatible::test_support::assert_zero_arg_tool_call_is_emitted;
+    use crate::providers::internal::chat_compatible::test_support::{
+        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines, sse_bytes_from_json_events,
+    };
     use crate::streaming::StreamedAssistantContent;
     use bytes::Bytes;
     use futures::StreamExt;
@@ -1828,13 +1830,9 @@ mod tests {
                 "tools": []
             }
         });
-        let sse_bytes = Bytes::from(format!(
-            "data: {}\n\ndata: {}\n\n",
-            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
-            serde_json::to_string(&failed).expect("failed should serialize"),
-        ));
-
-        let http_client = MockStreamingClient { sse_bytes };
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
+        };
         let client = Client::builder()
             .api_key("copilot-token")
             .http_client(http_client)
@@ -1861,9 +1859,9 @@ mod tests {
     #[tokio::test]
     async fn chat_stream_terminates_after_transport_error() {
         let chunks = vec![
-            Ok(Bytes::from(
-                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-            )),
+            Ok(sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            ])),
             Err(http_client::Error::InvalidStatusCode(
                 http::StatusCode::BAD_GATEWAY,
             )),
@@ -1904,9 +1902,9 @@ mod tests {
 
     #[tokio::test]
     async fn chat_stream_preserves_zero_arg_tool_calls_at_eof() {
-        let chunks = vec![Ok(Bytes::from(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
-        ))];
+        let chunks = vec![Ok(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+        ]))];
 
         let http_client = SequencedStreamingHttpClient::new(chunks);
         let client = Client::builder()

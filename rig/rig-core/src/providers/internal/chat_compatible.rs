@@ -44,6 +44,15 @@ pub(crate) struct CompatibleChoice<D> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct CompatibleChoiceData<T, D> {
+    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) text: Option<String>,
+    pub(crate) reasoning: Option<String>,
+    pub(crate) tool_calls: Vec<T>,
+    pub(crate) details: Vec<D>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct CompatibleChunk<U, D> {
     pub(crate) response_id: Option<String>,
     pub(crate) response_model: Option<String>,
@@ -53,6 +62,52 @@ pub(crate) struct CompatibleChunk<U, D> {
 
 pub(crate) type NormalizedCompatibleChunk<U, D> =
     Result<Option<CompatibleChunk<U, D>>, CompletionError>;
+
+impl<T, D> From<CompatibleChoiceData<T, D>> for CompatibleChoice<D>
+where
+    T: Into<CompatibleToolCallChunk>,
+{
+    fn from(value: CompatibleChoiceData<T, D>) -> Self {
+        Self {
+            finish_reason: value.finish_reason,
+            text: value.text,
+            reasoning: value.reasoning,
+            tool_calls: value.tool_calls.into_iter().map(Into::into).collect(),
+            details: value.details,
+        }
+    }
+}
+
+pub(crate) fn normalize_first_choice_chunk<U, D, Choice, ToolCall, F>(
+    response_id: Option<String>,
+    response_model: Option<String>,
+    usage: Option<U>,
+    choices: &[Choice],
+    map_choice: F,
+) -> CompatibleChunk<U, D>
+where
+    ToolCall: Into<CompatibleToolCallChunk>,
+    F: FnOnce(&Choice) -> CompatibleChoiceData<ToolCall, D>,
+{
+    let choice = choices.first().map(|choice| map_choice(choice).into());
+
+    CompatibleChunk {
+        response_id,
+        response_model,
+        choice,
+        usage,
+    }
+}
+
+pub(crate) fn tool_call_chunks<T>(tool_calls: &[T]) -> Vec<CompatibleToolCallChunk>
+where
+    for<'a> CompatibleToolCallChunk: From<&'a T>,
+{
+    tool_calls
+        .iter()
+        .map(CompatibleToolCallChunk::from)
+        .collect()
+}
 
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
@@ -408,7 +463,34 @@ fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<Raw
 pub(crate) mod test_support {
     use crate::completion::GetTokenUsage;
     use crate::streaming::{self, StreamedAssistantContent};
+    use bytes::Bytes;
     use futures::StreamExt;
+
+    pub(crate) fn sse_bytes_from_data_lines<T>(events: impl IntoIterator<Item = T>) -> Bytes
+    where
+        T: AsRef<str>,
+    {
+        Bytes::from(
+            events
+                .into_iter()
+                .map(|event| format!("data: {}\n\n", event.as_ref()))
+                .collect::<String>(),
+        )
+    }
+
+    pub(crate) fn sse_bytes_from_json_events(events: &[serde_json::Value]) -> Bytes {
+        Bytes::from(
+            events
+                .iter()
+                .map(|event| {
+                    format!(
+                        "data: {}\n\n",
+                        serde_json::to_string(event).expect("event should serialize")
+                    )
+                })
+                .collect::<String>(),
+        )
+    }
 
     pub(crate) async fn assert_zero_arg_tool_call_is_emitted<R>(
         mut stream: streaming::StreamingCompletionResponse<R>,
@@ -439,7 +521,10 @@ pub(crate) mod test_support {
         assert_eq!(collected_tool_calls.len(), 1);
         assert_eq!(collected_tool_calls[0].id, expected_id);
         assert_eq!(collected_tool_calls[0].function.name, expected_name);
-        assert_eq!(collected_tool_calls[0].function.arguments, serde_json::json!({}));
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({})
+        );
     }
 
     pub(crate) async fn assert_completed_tool_call_precedes_text<R>(
@@ -488,9 +573,9 @@ mod tests {
     };
     use crate::completion::{CompletionError, GetTokenUsage};
     use crate::http_client::mock::MockStreamingClient;
+    use crate::providers::internal::chat_compatible::test_support::sse_bytes_from_data_lines;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
-    use bytes::Bytes;
     use futures::StreamExt;
 
     #[derive(Clone, Default)]
@@ -541,7 +626,9 @@ mod tests {
                     }),
                     usage: None,
                 })),
-                "bad" => Err(CompletionError::ProviderError("normalize failed".to_owned())),
+                "bad" => Err(CompletionError::ProviderError(
+                    "normalize failed".to_owned(),
+                )),
                 _ => Ok(None),
             }
         }
@@ -602,7 +689,7 @@ mod tests {
     #[tokio::test]
     async fn normalize_chunk_errors_terminate_without_flushing_or_finalizing() {
         let client = MockStreamingClient {
-            sse_bytes: Bytes::from("data: start\n\ndata: bad\n\n"),
+            sse_bytes: sse_bytes_from_data_lines(["start", "bad"]),
         };
 
         let req = http::Request::builder()
