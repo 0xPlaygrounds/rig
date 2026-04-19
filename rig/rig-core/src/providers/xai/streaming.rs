@@ -133,7 +133,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn xai_stream_uses_shared_responses_stream_behavior() {
+    async fn xai_stream_emits_completed_tool_calls_immediately() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
@@ -243,6 +243,7 @@ mod tests {
             .expect("stream should start");
 
         let mut saw_name_delta = false;
+        let mut saw_tool_call = false;
         let mut reasoning = String::new();
         let mut text = String::new();
         let mut tool_calls = Vec::new();
@@ -263,9 +264,18 @@ mod tests {
                 } => {}
                 StreamedAssistantContent::ReasoningDelta {
                     reasoning: chunk, ..
-                } => reasoning.push_str(&chunk),
+                } => {
+                    assert!(
+                        saw_tool_call,
+                        "completed tool call should be emitted before subsequent reasoning deltas"
+                    );
+                    reasoning.push_str(&chunk);
+                }
                 StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-                StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    saw_tool_call = true;
+                    tool_calls.push(tool_call);
+                }
                 StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
                 _ => {}
             }
@@ -286,7 +296,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn xai_stream_surfaces_terminal_errors_without_followup_items() {
+    async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
@@ -294,6 +304,7 @@ mod tests {
 
         let tool_call_done = json!({
             "type": "response.output_item.done",
+            "output_index": 0,
             "sequence_number": 1,
             "item": {
                 "type": "function_call",
@@ -343,6 +354,21 @@ mod tests {
         let mut stream = send_xai_streaming_request(client, req)
             .await
             .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield an item")
+            .expect("completed tool call should be surfaced before the terminal error");
+        match first {
+            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                assert_eq!(tool_call.id, "fc_123");
+                assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
+                assert_eq!(tool_call.function.name, "example_tool");
+                assert_eq!(tool_call.function.arguments, serde_json::json!({}));
+            }
+            other => panic!("expected completed tool call before the terminal error, got {other:?}"),
+        }
 
         let err = stream
             .next()
