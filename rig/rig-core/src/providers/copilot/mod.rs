@@ -1333,24 +1333,8 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         })
     }
 
-    fn should_evict(
-        &self,
-        existing: &streaming::RawStreamingToolCall,
-        incoming: &CompatibleToolCallChunk,
-    ) -> bool {
-        if let Some(new_id) = &incoming.id
-            && !new_id.is_empty()
-            && let Some(new_name) = &incoming.name
-            && !new_name.is_empty()
-            && !existing.id.is_empty()
-            && existing.id != *new_id
-            && !existing.name.is_empty()
-            && existing.name != *new_name
-        {
-            return true;
-        }
-
-        false
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        true
     }
 }
 
@@ -1398,6 +1382,7 @@ mod tests {
     use crate::completion::CompletionModel;
     use crate::http_client::mock::MockStreamingClient;
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
+    use crate::providers::internal::chat_compatible::test_support::assert_zero_arg_tool_call_is_emitted;
     use crate::streaming::StreamedAssistantContent;
     use bytes::Bytes;
     use futures::StreamExt;
@@ -1931,29 +1916,9 @@ mod tests {
             .expect("build client");
         let model = client.completion_model("gpt-4o");
         let request = model.completion_request("hello").build();
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let stream = model.stream(request).await.expect("stream should start");
 
-        let mut saw_final = false;
-        let mut collected_tool_calls = Vec::new();
-        while let Some(item) = stream.next().await {
-            match item.expect("stream item should be ok") {
-                StreamedAssistantContent::ToolCallDelta { .. } => {}
-                StreamedAssistantContent::Final(_) => saw_final = true,
-                StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    collected_tool_calls.push(tool_call);
-                }
-                _ => panic!("unexpected stream item at EOF"),
-            }
-        }
-
-        assert!(saw_final, "stream should still yield a final response");
-        assert_eq!(collected_tool_calls.len(), 1);
-        assert_eq!(collected_tool_calls[0].id, "call_123");
-        assert_eq!(collected_tool_calls[0].function.name, "ping");
-        assert_eq!(
-            collected_tool_calls[0].function.arguments,
-            serde_json::json!({})
-        );
+        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 
     #[test]

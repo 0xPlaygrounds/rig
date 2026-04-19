@@ -480,36 +480,12 @@ impl CompatibleStreamProfile for LlamafileCompatibleProfile {
         StreamingCompletionResponse { usage }
     }
 
-    fn should_evict(
-        &self,
-        existing: &crate::streaming::RawStreamingToolCall,
-        incoming: &CompatibleToolCallChunk,
-    ) -> bool {
-        if let Some(new_id) = &incoming.id
-            && !new_id.is_empty()
-            && let Some(new_name) = &incoming.name
-            && !new_name.is_empty()
-            && !existing.id.is_empty()
-            && existing.id != *new_id
-            && !existing.name.is_empty()
-            && existing.name != *new_name
-        {
-            return true;
-        }
-
-        false
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        true
     }
 
-    fn should_emit_completed_tool_call_immediately(
-        &self,
-        _tool_call: &crate::streaming::RawStreamingToolCall,
-        incoming: &CompatibleToolCallChunk,
-    ) -> bool {
-        incoming.name.as_ref().is_some_and(|name| !name.is_empty())
-            && incoming
-                .arguments
-                .as_ref()
-                .is_some_and(|arguments| !arguments.is_empty())
+    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
+        true
     }
 }
 
@@ -641,10 +617,9 @@ where
 mod tests {
     use super::*;
     use crate::client::Nothing;
+    use crate::providers::internal::chat_compatible::test_support::assert_zero_arg_tool_call_is_emitted;
     use crate::http_client::mock::MockStreamingClient;
-    use crate::streaming::StreamedAssistantContent;
     use bytes::Bytes;
-    use futures::StreamExt;
 
     #[test]
     fn test_client_initialization() {
@@ -707,30 +682,10 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_streaming_request(client, req, tracing::Span::current())
+        let stream = send_streaming_request(client, req, tracing::Span::current())
             .await
             .expect("stream should start");
 
-        let mut saw_final = false;
-        let mut collected_tool_calls = Vec::new();
-        while let Some(chunk) = stream.next().await {
-            match chunk.expect("stream item should be ok") {
-                StreamedAssistantContent::ToolCallDelta { .. } => {}
-                StreamedAssistantContent::Final(_) => saw_final = true,
-                StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    collected_tool_calls.push(tool_call);
-                }
-                other => panic!("unexpected stream item at EOF: {other:?}"),
-            }
-        }
-
-        assert!(saw_final, "stream should still yield a final response");
-        assert_eq!(collected_tool_calls.len(), 1);
-        assert_eq!(collected_tool_calls[0].id, "call_123");
-        assert_eq!(collected_tool_calls[0].function.name, "ping");
-        assert_eq!(
-            collected_tool_calls[0].function.arguments,
-            serde_json::json!({})
-        );
+        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 }

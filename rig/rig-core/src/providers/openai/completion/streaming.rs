@@ -204,24 +204,8 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
         StreamingCompletionResponse { usage }
     }
 
-    fn should_evict(
-        &self,
-        existing: &crate::streaming::RawStreamingToolCall,
-        incoming: &CompatibleToolCallChunk,
-    ) -> bool {
-        if let Some(new_id) = &incoming.id
-            && !new_id.is_empty()
-            && let Some(new_name) = &incoming.name
-            && !new_name.is_empty()
-            && !existing.id.is_empty()
-            && existing.id != *new_id
-            && !existing.name.is_empty()
-            && existing.name != *new_name
-        {
-            return true;
-        }
-
-        false
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        true
     }
 }
 
@@ -239,6 +223,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::internal::chat_compatible::test_support::assert_zero_arg_tool_call_is_emitted;
 
     #[test]
     fn test_streaming_function_deserialization() {
@@ -652,7 +637,6 @@ mod tests {
     async fn test_zero_arg_tool_call_normalized_on_finish_reason() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
-        use futures::StreamExt;
 
         let sse = concat!(
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
@@ -670,35 +654,17 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let stream = send_compatible_streaming_request(client, req)
             .await
             .unwrap();
 
-        let mut collected_tool_calls = Vec::new();
-        while let Some(chunk) = stream.next().await {
-            if let streaming::StreamedAssistantContent::ToolCall {
-                tool_call,
-                internal_call_id: _,
-            } = chunk.unwrap()
-            {
-                collected_tool_calls.push(tool_call);
-            }
-        }
-
-        assert_eq!(collected_tool_calls.len(), 1);
-        assert_eq!(collected_tool_calls[0].id, "call_123");
-        assert_eq!(collected_tool_calls[0].function.name, "ping");
-        assert_eq!(
-            collected_tool_calls[0].function.arguments,
-            serde_json::json!({})
-        );
+        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 
     #[tokio::test]
     async fn test_zero_arg_tool_call_is_preserved_at_eof() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
-        use futures::StreamExt;
 
         let sse = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n";
 
@@ -712,27 +678,10 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let stream = send_compatible_streaming_request(client, req)
             .await
             .unwrap();
 
-        let mut collected_tool_calls = Vec::new();
-        while let Some(chunk) = stream.next().await {
-            if let streaming::StreamedAssistantContent::ToolCall {
-                tool_call,
-                internal_call_id: _,
-            } = chunk.unwrap()
-            {
-                collected_tool_calls.push(tool_call);
-            }
-        }
-
-        assert_eq!(collected_tool_calls.len(), 1);
-        assert_eq!(collected_tool_calls[0].id, "call_123");
-        assert_eq!(collected_tool_calls[0].function.name, "ping");
-        assert_eq!(
-            collected_tool_calls[0].function.arguments,
-            serde_json::json!({})
-        );
+        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 }

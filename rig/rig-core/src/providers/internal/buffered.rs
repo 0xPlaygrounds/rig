@@ -17,8 +17,12 @@ where
         + WasmCompatSend
         + 'static,
 {
+    let completion::CompletionResponse {
+        choice, raw_response, ..
+    } = response;
+
     let stream = stream! {
-        for content in response.choice.clone() {
+        for content in choice {
             let mapped = match map_content(content) {
                 Ok(mapped) => mapped,
                 Err(error) => {
@@ -32,7 +36,7 @@ where
             }
         }
 
-        yield Ok(RawStreamingChoice::FinalResponse(response.raw_response.clone()));
+        yield Ok(RawStreamingChoice::FinalResponse(raw_response));
     };
 
     Ok(StreamingCompletionResponse::stream(Box::pin(stream)))

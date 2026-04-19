@@ -63,12 +63,17 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
 
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        false
+    }
+
     fn should_evict(
         &self,
-        _existing: &RawStreamingToolCall,
-        _incoming: &CompatibleToolCallChunk,
+        existing: &RawStreamingToolCall,
+        incoming: &CompatibleToolCallChunk,
     ) -> bool {
-        false
+        self.uses_distinct_tool_call_eviction()
+            && should_evict_distinct_named_tool_call(existing, incoming)
     }
 
     fn decorate_tool_call(
@@ -78,13 +83,45 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     ) {
     }
 
+    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
+        false
+    }
+
     fn should_emit_completed_tool_call_immediately(
         &self,
         _tool_call: &RawStreamingToolCall,
-        _incoming: &CompatibleToolCallChunk,
+        incoming: &CompatibleToolCallChunk,
     ) -> bool {
-        false
+        self.emits_complete_single_chunk_tool_calls()
+            && incoming_represents_completed_tool_call(incoming)
     }
+}
+
+pub(crate) fn should_evict_distinct_named_tool_call(
+    existing: &RawStreamingToolCall,
+    incoming: &CompatibleToolCallChunk,
+) -> bool {
+    if let Some(new_id) = &incoming.id
+        && !new_id.is_empty()
+        && let Some(new_name) = &incoming.name
+        && !new_name.is_empty()
+        && !existing.id.is_empty()
+        && existing.id != *new_id
+        && !existing.name.is_empty()
+        && existing.name != *new_name
+    {
+        return true;
+    }
+
+    false
+}
+
+pub(crate) fn incoming_represents_completed_tool_call(incoming: &CompatibleToolCallChunk) -> bool {
+    incoming.name.as_ref().is_some_and(|name| !name.is_empty())
+        && incoming
+            .arguments
+            .as_ref()
+            .is_some_and(|arguments| !arguments.is_empty())
 }
 
 pub(crate) async fn send_compatible_streaming_request<T, P>(
@@ -364,6 +401,82 @@ fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<Raw
             Some(tool_call)
         }
         _ => Some(tool_call),
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::completion::GetTokenUsage;
+    use crate::streaming::{self, StreamedAssistantContent};
+    use futures::StreamExt;
+
+    pub(crate) async fn assert_zero_arg_tool_call_is_emitted<R>(
+        mut stream: streaming::StreamingCompletionResponse<R>,
+        expected_id: &str,
+        expected_name: &str,
+        expect_final_response: bool,
+    ) where
+        R: Clone + Unpin + GetTokenUsage,
+    {
+        let mut saw_final = false;
+        let mut collected_tool_calls = Vec::new();
+
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::ToolCallDelta { .. } => {}
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    collected_tool_calls.push(tool_call);
+                }
+                _ => panic!("unexpected stream item while asserting zero-arg tool call"),
+            }
+        }
+
+        if expect_final_response {
+            assert!(saw_final, "stream should still yield a final response");
+        }
+
+        assert_eq!(collected_tool_calls.len(), 1);
+        assert_eq!(collected_tool_calls[0].id, expected_id);
+        assert_eq!(collected_tool_calls[0].function.name, expected_name);
+        assert_eq!(collected_tool_calls[0].function.arguments, serde_json::json!({}));
+    }
+
+    pub(crate) async fn assert_completed_tool_call_precedes_text<R>(
+        mut stream: streaming::StreamingCompletionResponse<R>,
+        expected_id: &str,
+        expected_name: &str,
+        expected_arguments: serde_json::Value,
+        expected_text: &str,
+    ) where
+        R: Clone + Unpin + GetTokenUsage,
+    {
+        let mut saw_tool_call = false;
+        let mut saw_text_after_tool_call = false;
+
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    assert_eq!(tool_call.id, expected_id);
+                    assert_eq!(tool_call.function.name, expected_name);
+                    assert_eq!(tool_call.function.arguments, expected_arguments);
+                    saw_tool_call = true;
+                }
+                StreamedAssistantContent::Text(chunk) => {
+                    assert_eq!(chunk.text, expected_text);
+                    if saw_tool_call {
+                        saw_text_after_tool_call = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        assert!(saw_tool_call, "expected completed tool call to be emitted");
+        assert!(
+            saw_text_after_tool_call,
+            "expected completed tool call before later text chunks"
+        );
     }
 }
 
