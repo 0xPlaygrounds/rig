@@ -219,24 +219,6 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
 
         false
     }
-
-    fn finalize_usage(&self, span: &tracing::Span, usage: &Self::Usage) {
-        if !span.is_disabled() {
-            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-            span.record(
-                "gen_ai.usage.output_tokens",
-                usage.total_tokens - usage.prompt_tokens,
-            );
-            span.record(
-                "gen_ai.usage.cached_tokens",
-                usage
-                    .prompt_tokens_details
-                    .as_ref()
-                    .map(|d| d.cached_tokens)
-                    .unwrap_or(0),
-            );
-        }
-    }
 }
 
 pub async fn send_compatible_streaming_request<T>(

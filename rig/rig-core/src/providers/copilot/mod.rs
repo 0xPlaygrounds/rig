@@ -1425,9 +1425,33 @@ where
             return;
         }
 
-        if !tool_calls.is_empty() {
+        let mut dropped_tool_calls = 0;
+        for (_idx, tool_call) in tool_calls.into_iter() {
+            match &tool_call.arguments {
+                serde_json::Value::Null => dropped_tool_calls += 1,
+                serde_json::Value::String(arguments) if arguments.trim().is_empty() => {
+                    dropped_tool_calls += 1;
+                }
+                serde_json::Value::String(arguments) => {
+                    let Ok(arguments_json) = crate::json_utils::parse_tool_arguments(arguments) else {
+                        dropped_tool_calls += 1;
+                        continue;
+                    };
+
+                    yield Ok(RawStreamingChoice::ToolCall(
+                        streaming::RawStreamingToolCall {
+                            arguments: arguments_json,
+                            ..tool_call
+                        }
+                    ));
+                }
+                _ => yield Ok(RawStreamingChoice::ToolCall(tool_call)),
+            }
+        }
+
+        if dropped_tool_calls > 0 {
             tracing::debug!(
-                dropped_tool_calls = tool_calls.len(),
+                dropped_tool_calls,
                 "Dropping incomplete tool calls at stream end"
             );
         }

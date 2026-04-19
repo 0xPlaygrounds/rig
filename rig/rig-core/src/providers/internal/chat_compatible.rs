@@ -16,6 +16,7 @@ use tracing_futures::Instrument;
 use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
+use crate::json_utils;
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::wasm_compat::WasmCompatSend;
 
@@ -74,8 +75,6 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
         _tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
     ) {
     }
-
-    fn finalize_usage(&self, _span: &tracing::Span, _usage: &Self::Usage) {}
 }
 
 pub(crate) async fn send_compatible_streaming_request<T, P>(
@@ -214,15 +213,24 @@ where
             return;
         }
 
-        if !tool_calls.is_empty() {
+        let mut dropped_tool_calls = 0;
+        for (_, tool_call) in tool_calls.drain() {
+            if let Some(tool_call) = finalize_eof_tool_call(tool_call) {
+                yield Ok(RawStreamingChoice::ToolCall(tool_call));
+            } else {
+                dropped_tool_calls += 1;
+            }
+        }
+
+        if dropped_tool_calls > 0 {
             tracing::debug!(
-                dropped_tool_calls = tool_calls.len(),
+                dropped_tool_calls,
                 "Dropping incomplete tool calls at stream end"
             );
         }
 
         let final_usage = final_usage.unwrap_or_default();
-        profile.finalize_usage(&span, &final_usage);
+        record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
             profile.build_final_response(final_usage),
         ));
@@ -232,6 +240,23 @@ where
     Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
         stream,
     )))
+}
+
+fn record_usage<T>(span: &tracing::Span, usage: &T)
+where
+    T: GetTokenUsage,
+{
+    if span.is_disabled() {
+        return;
+    }
+
+    let Some(usage) = usage.token_usage() else {
+        return;
+    };
+
+    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+    span.record("gen_ai.usage.cached_tokens", usage.cached_input_tokens);
 }
 
 fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str) {
@@ -261,4 +286,20 @@ pub(crate) fn finalize_completed_streaming_tool_call(
     }
 
     tool_call
+}
+
+fn finalize_eof_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStreamingToolCall> {
+    match &tool_call.arguments {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(arguments) => {
+            if arguments.trim().is_empty() {
+                return None;
+            }
+
+            let parsed = json_utils::parse_tool_arguments(arguments).ok()?;
+            tool_call.arguments = parsed;
+            Some(tool_call)
+        }
+        _ => Some(tool_call),
+    }
 }
