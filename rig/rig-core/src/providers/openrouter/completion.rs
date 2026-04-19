@@ -1357,13 +1357,14 @@ impl From<openai::Message> for Message {
                 audio,
                 name,
                 tool_calls,
+                reasoning_content,
             } => Self::Assistant {
                 content,
                 refusal,
                 audio,
                 name,
                 tool_calls,
-                reasoning: None,
+                reasoning: reasoning_content,
                 reasoning_details: Vec::new(),
             },
             openai::Message::ToolResult {
