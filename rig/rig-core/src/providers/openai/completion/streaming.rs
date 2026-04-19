@@ -695,7 +695,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_incomplete_zero_arg_tool_call_is_dropped_at_eof() {
+    async fn test_zero_arg_tool_call_is_preserved_at_eof() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
@@ -727,6 +727,12 @@ mod tests {
             }
         }
 
-        assert!(collected_tool_calls.is_empty());
+        assert_eq!(collected_tool_calls.len(), 1);
+        assert_eq!(collected_tool_calls[0].id, "call_123");
+        assert_eq!(collected_tool_calls[0].function.name, "ping");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({})
+        );
     }
 }

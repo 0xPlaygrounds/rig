@@ -319,11 +319,20 @@ pub(crate) fn finalize_completed_streaming_tool_call(
 }
 
 fn finalize_eof_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStreamingToolCall> {
+    // Canonical EOF cleanup for chat-compatible providers:
+    // a pending tool call with an established name but no streamed arguments is
+    // treated as a valid parameterless invocation and normalized to `{}`.
+    // Only nameless entries or syntactically partial argument payloads are dropped.
+    if tool_call.name.is_empty() {
+        return None;
+    }
+
     match &tool_call.arguments {
-        serde_json::Value::Null => None,
+        serde_json::Value::Null => Some(finalize_completed_streaming_tool_call(tool_call)),
         serde_json::Value::String(arguments) => {
             if arguments.trim().is_empty() {
-                return None;
+                tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
+                return Some(tool_call);
             }
 
             let parsed = json_utils::parse_tool_arguments(arguments).ok()?;
@@ -331,5 +340,57 @@ fn finalize_eof_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStre
             Some(tool_call)
         }
         _ => Some(tool_call),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::finalize_eof_tool_call;
+    use crate::streaming::RawStreamingToolCall;
+
+    #[test]
+    fn eof_cleanup_preserves_parameterless_tool_calls() {
+        let tool_call = RawStreamingToolCall::new(
+            "call_123".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::Null,
+        );
+
+        let finalized = finalize_eof_tool_call(tool_call).expect("tool call should be preserved");
+
+        assert_eq!(finalized.id, "call_123");
+        assert_eq!(finalized.name, "ping");
+        assert_eq!(finalized.arguments, serde_json::json!({}));
+    }
+
+    #[test]
+    fn eof_cleanup_preserves_empty_argument_chunks_as_empty_object() {
+        let tool_call = RawStreamingToolCall::new(
+            "call_123".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::String(String::new()),
+        );
+
+        let finalized = finalize_eof_tool_call(tool_call).expect("tool call should be preserved");
+
+        assert_eq!(finalized.arguments, serde_json::json!({}));
+    }
+
+    #[test]
+    fn eof_cleanup_drops_nameless_pending_entries() {
+        let tool_call = RawStreamingToolCall::empty();
+
+        assert!(finalize_eof_tool_call(tool_call).is_none());
+    }
+
+    #[test]
+    fn eof_cleanup_drops_partial_argument_payloads() {
+        let tool_call = RawStreamingToolCall::new(
+            "call_123".to_owned(),
+            "ping".to_owned(),
+            serde_json::Value::String("{\"x\":".to_owned()),
+        );
+
+        assert!(finalize_eof_tool_call(tool_call).is_none());
     }
 }

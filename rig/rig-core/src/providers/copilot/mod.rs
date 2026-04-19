@@ -1918,7 +1918,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chat_stream_drops_incomplete_tool_calls_at_eof() {
+    async fn chat_stream_preserves_zero_arg_tool_calls_at_eof() {
         let chunks = vec![Ok(Bytes::from(
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
         ))];
@@ -1934,18 +1934,26 @@ mod tests {
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut saw_final = false;
+        let mut collected_tool_calls = Vec::new();
         while let Some(item) = stream.next().await {
             match item.expect("stream item should be ok") {
                 StreamedAssistantContent::ToolCallDelta { .. } => {}
                 StreamedAssistantContent::Final(_) => saw_final = true,
                 StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    panic!("unexpected incomplete tool call emitted at EOF: {tool_call:?}");
+                    collected_tool_calls.push(tool_call);
                 }
                 _ => panic!("unexpected stream item at EOF"),
             }
         }
 
         assert!(saw_final, "stream should still yield a final response");
+        assert_eq!(collected_tool_calls.len(), 1);
+        assert_eq!(collected_tool_calls[0].id, "call_123");
+        assert_eq!(collected_tool_calls[0].function.name, "ping");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({})
+        );
     }
 
     #[test]
