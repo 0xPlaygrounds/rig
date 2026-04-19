@@ -11,7 +11,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
-    ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
+    StreamingCompletionResponse, stream_from_event_source,
 };
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming;
@@ -85,19 +85,7 @@ where
     let span = tracing::Span::current();
     let event_source = GenericEventSource::new(http_client, req);
 
-    Ok(stream_from_event_source_with_options(
-        event_source,
-        span,
-        "xAI",
-        ResponsesStreamOptions {
-            // Preserve xAI's existing behavior for this incremental refactor:
-            // emit completed tool calls as soon as their output item finishes.
-            emit_completed_tool_calls_immediately: true,
-            // Preserve xAI's existing behavior of ignoring terminal response
-            // states other than `response.completed`.
-            error_on_terminal_response: false,
-        },
-    ))
+    Ok(stream_from_event_source(event_source, span, "xAI"))
 }
 
 #[cfg(test)]
@@ -145,7 +133,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn xai_stream_preserves_immediate_tool_call_emission() {
+    async fn xai_stream_uses_shared_responses_stream_behavior() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
@@ -238,24 +226,6 @@ mod tests {
                     "tools": []
                 }
             }),
-            json!({
-                "type": "response.incomplete",
-                "sequence_number": 7,
-                "response": {
-                    "id": "resp_123",
-                    "object": "response",
-                    "created_at": 0,
-                    "status": "incomplete",
-                    "error": null,
-                    "incomplete_details": { "reason": "max_output_tokens" },
-                    "instructions": null,
-                    "max_output_tokens": null,
-                    "model": "grok-4-0709",
-                    "usage": null,
-                    "output": [],
-                    "tools": []
-                }
-            }),
         ];
 
         let client = MockStreamingClient {
@@ -272,75 +242,120 @@ mod tests {
             .await
             .expect("stream should start");
 
-        let first = stream
-            .next()
-            .await
-            .expect("stream should yield first item")
-            .expect("first item should be ok");
-        assert!(matches!(
-            first,
-            StreamedAssistantContent::ToolCallDelta { content: crate::streaming::ToolCallDeltaContent::Name(ref name), .. }
-                if name == "example_tool"
-        ));
-
-        let second = stream
-            .next()
-            .await
-            .expect("stream should yield second item")
-            .expect("second item should be ok");
-        let third = stream
-            .next()
-            .await
-            .expect("stream should yield third item")
-            .expect("third item should be ok");
-
-        let early_items = vec![second, third];
-
-        assert!(
-            early_items.iter().any(|item| matches!(
-                item,
-                StreamedAssistantContent::ToolCall { tool_call, .. }
-                    if tool_call.id == "fc_123"
-                        && tool_call.call_id.as_deref() == Some("call_123")
-                        && tool_call.function.name == "example_tool"
-                        && tool_call.function.arguments == serde_json::json!({"query":"rig"})
-            )),
-            "expected a completed tool call to be emitted immediately, got {early_items:?}"
-        );
-
+        let mut saw_name_delta = false;
         let mut reasoning = String::new();
         let mut text = String::new();
+        let mut tool_calls = Vec::new();
         let mut final_usage = None;
-
-        for item in &early_items {
-            match item {
-                StreamedAssistantContent::ReasoningDelta {
-                    reasoning: chunk, ..
-                } => reasoning.push_str(chunk),
-                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-                StreamedAssistantContent::Final(response) => {
-                    final_usage = Some(response.usage.clone())
-                }
-                _ => {}
-            }
-        }
 
         while let Some(item) = stream.next().await {
             match item.expect("remaining stream items should be ok") {
+                StreamedAssistantContent::ToolCallDelta {
+                    content: crate::streaming::ToolCallDeltaContent::Name(name),
+                    ..
+                } => {
+                    saw_name_delta = true;
+                    assert_eq!(name, "example_tool");
+                }
+                StreamedAssistantContent::ToolCallDelta {
+                    content: crate::streaming::ToolCallDeltaContent::Delta(_),
+                    ..
+                } => {}
                 StreamedAssistantContent::ReasoningDelta {
                     reasoning: chunk, ..
                 } => reasoning.push_str(&chunk),
                 StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+                StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
                 StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
                 _ => {}
             }
         }
 
+        assert!(saw_name_delta, "expected tool name delta");
         assert_eq!(reasoning, "thinking");
         assert_eq!(text, "done");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "fc_123");
+        assert_eq!(tool_calls[0].call_id.as_deref(), Some("call_123"));
+        assert_eq!(tool_calls[0].function.name, "example_tool");
+        assert_eq!(tool_calls[0].function.arguments, serde_json::json!({"query":"rig"}));
         let usage = final_usage.expect("expected final usage");
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn xai_stream_surfaces_terminal_errors_without_followup_items() {
+        use crate::http_client::mock::MockStreamingClient;
+        use bytes::Bytes;
+        use futures::StreamExt;
+        use serde_json::json;
+
+        let tool_call_done = json!({
+            "type": "response.output_item.done",
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_123",
+                "arguments": "{}",
+                "call_id": "call_123",
+                "name": "example_tool",
+                "status": "completed"
+            }
+        });
+
+        let failed = json!({
+            "type": "response.failed",
+            "sequence_number": 2,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 0,
+                "status": "failed",
+                "error": {
+                    "code": "server_error",
+                    "message": "response stream failed"
+                },
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "grok-4-0709",
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+
+        let sse_bytes = Bytes::from(format!(
+            "data: {}\n\ndata: {}\n\n",
+            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
+            serde_json::to_string(&failed).expect("failed should serialize"),
+        ));
+
+        let client = MockStreamingClient { sse_bytes };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_xai_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield an item")
+            .expect_err("stream should surface a provider error");
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: server_error: response stream failed"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate immediately after the first terminal error"
+        );
     }
 }
