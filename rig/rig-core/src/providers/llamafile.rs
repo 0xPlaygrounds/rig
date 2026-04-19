@@ -499,6 +499,18 @@ impl CompatibleStreamProfile for LlamafileCompatibleProfile {
 
         false
     }
+
+    fn should_emit_completed_tool_call_immediately(
+        &self,
+        _tool_call: &crate::streaming::RawStreamingToolCall,
+        incoming: &CompatibleToolCallChunk,
+    ) -> bool {
+        incoming.name.as_ref().is_some_and(|name| !name.is_empty())
+            && incoming
+                .arguments
+                .as_ref()
+                .is_some_and(|arguments| !arguments.is_empty())
+    }
 }
 
 async fn send_streaming_request<T>(

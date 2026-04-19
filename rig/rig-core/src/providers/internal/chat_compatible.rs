@@ -77,6 +77,14 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
         _tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
     ) {
     }
+
+    fn should_emit_completed_tool_call_immediately(
+        &self,
+        _tool_call: &RawStreamingToolCall,
+        _incoming: &CompatibleToolCallChunk,
+    ) -> bool {
+        false
+    }
 }
 
 pub(crate) async fn send_compatible_streaming_request<T, P>(
@@ -147,32 +155,47 @@ where
                             .entry(incoming.index)
                             .or_insert_with(RawStreamingToolCall::empty);
 
-                        if let Some(id) = incoming.id
+                        if let Some(id) = incoming.id.as_ref()
                             && !id.is_empty()
                         {
-                            existing_tool_call.id = id;
+                            existing_tool_call.id = id.clone();
                         }
 
-                        if let Some(name) = incoming.name
+                        if let Some(name) = incoming.name.as_ref()
                             && !name.is_empty()
                         {
                             existing_tool_call.name = name.clone();
                             yield Ok(RawStreamingChoice::ToolCallDelta {
                                 id: existing_tool_call.id.clone(),
                                 internal_call_id: existing_tool_call.internal_call_id.clone(),
-                                content: ToolCallDeltaContent::Name(name),
+                                content: ToolCallDeltaContent::Name(name.clone()),
                             });
                         }
 
-                        if let Some(arguments) = incoming.arguments
+                        if let Some(arguments) = incoming.arguments.as_ref()
                             && !arguments.is_empty()
                         {
-                            append_tool_call_arguments(existing_tool_call, &arguments);
+                            append_tool_call_arguments(existing_tool_call, arguments);
                             yield Ok(RawStreamingChoice::ToolCallDelta {
                                 id: existing_tool_call.id.clone(),
                                 internal_call_id: existing_tool_call.internal_call_id.clone(),
-                                content: ToolCallDeltaContent::Delta(arguments),
+                                content: ToolCallDeltaContent::Delta(arguments.clone()),
                             });
+                        }
+
+                        let emit_completed_tool_call_immediately = profile
+                            .should_emit_completed_tool_call_immediately(
+                                existing_tool_call,
+                                &incoming,
+                            );
+                        let finalized_tool_call = emit_completed_tool_call_immediately
+                            .then(|| tool_calls.get(&incoming.index).cloned())
+                            .flatten()
+                            .and_then(finalize_pending_tool_call);
+
+                        if let Some(tool_call) = finalized_tool_call {
+                            tool_calls.remove(&incoming.index);
+                            yield Ok(RawStreamingChoice::ToolCall(tool_call));
                         }
                     }
 
@@ -223,7 +246,7 @@ where
 
         let mut dropped_tool_calls = 0;
         for (_, tool_call) in tool_calls.drain() {
-            if let Some(tool_call) = finalize_eof_tool_call(tool_call) {
+            if let Some(tool_call) = finalize_pending_tool_call(tool_call) {
                 yield Ok(RawStreamingChoice::ToolCall(tool_call));
             } else {
                 dropped_tool_calls += 1;
@@ -318,8 +341,8 @@ pub(crate) fn finalize_completed_streaming_tool_call(
     tool_call
 }
 
-fn finalize_eof_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStreamingToolCall> {
-    // Canonical EOF cleanup for chat-compatible providers:
+fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStreamingToolCall> {
+    // Canonical cleanup for chat-compatible providers:
     // a pending tool call with an established name but no streamed arguments is
     // treated as a valid parameterless invocation and normalized to `{}`.
     // Only nameless entries or syntactically partial argument payloads are dropped.
@@ -345,7 +368,7 @@ fn finalize_eof_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStre
 
 #[cfg(test)]
 mod tests {
-    use super::finalize_eof_tool_call;
+    use super::finalize_pending_tool_call;
     use crate::streaming::RawStreamingToolCall;
 
     #[test]
@@ -356,7 +379,8 @@ mod tests {
             serde_json::Value::Null,
         );
 
-        let finalized = finalize_eof_tool_call(tool_call).expect("tool call should be preserved");
+        let finalized =
+            finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
 
         assert_eq!(finalized.id, "call_123");
         assert_eq!(finalized.name, "ping");
@@ -371,7 +395,8 @@ mod tests {
             serde_json::Value::String(String::new()),
         );
 
-        let finalized = finalize_eof_tool_call(tool_call).expect("tool call should be preserved");
+        let finalized =
+            finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
 
         assert_eq!(finalized.arguments, serde_json::json!({}));
     }
@@ -380,7 +405,7 @@ mod tests {
     fn eof_cleanup_drops_nameless_pending_entries() {
         let tool_call = RawStreamingToolCall::empty();
 
-        assert!(finalize_eof_tool_call(tool_call).is_none());
+        assert!(finalize_pending_tool_call(tool_call).is_none());
     }
 
     #[test]
@@ -391,6 +416,6 @@ mod tests {
             serde_json::Value::String("{\"x\":".to_owned()),
         );
 
-        assert!(finalize_eof_tool_call(tool_call).is_none());
+        assert!(finalize_pending_tool_call(tool_call).is_none());
     }
 }

@@ -11,7 +11,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
-    StreamingCompletionResponse, stream_from_event_source,
+    ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
 };
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming;
@@ -85,7 +85,12 @@ where
     let span = tracing::Span::current();
     let event_source = GenericEventSource::new(http_client, req);
 
-    Ok(stream_from_event_source(event_source, span, "xAI"))
+    Ok(stream_from_event_source_with_options(
+        event_source,
+        span,
+        "xAI",
+        ResponsesStreamOptions::strict_with_immediate_tool_calls(),
+    ))
 }
 
 #[cfg(test)]
@@ -247,6 +252,7 @@ mod tests {
         let mut text = String::new();
         let mut tool_calls = Vec::new();
         let mut final_usage = None;
+        let mut saw_tool_call_before_reasoning_or_text = false;
 
         while let Some(item) = stream.next().await {
             match item.expect("remaining stream items should be ok") {
@@ -261,11 +267,23 @@ mod tests {
                     content: crate::streaming::ToolCallDeltaContent::Delta(_),
                     ..
                 } => {}
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    tool_calls.push(tool_call);
+                }
                 StreamedAssistantContent::ReasoningDelta {
                     reasoning: chunk, ..
-                } => reasoning.push_str(&chunk),
-                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-                StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
+                } => {
+                    if !tool_calls.is_empty() {
+                        saw_tool_call_before_reasoning_or_text = true;
+                    }
+                    reasoning.push_str(&chunk);
+                }
+                StreamedAssistantContent::Text(chunk) => {
+                    if !tool_calls.is_empty() {
+                        saw_tool_call_before_reasoning_or_text = true;
+                    }
+                    text.push_str(&chunk.text);
+                }
                 StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
                 _ => {}
             }
@@ -278,7 +296,14 @@ mod tests {
         assert_eq!(tool_calls[0].id, "fc_123");
         assert_eq!(tool_calls[0].call_id.as_deref(), Some("call_123"));
         assert_eq!(tool_calls[0].function.name, "example_tool");
-        assert_eq!(tool_calls[0].function.arguments, serde_json::json!({"query":"rig"}));
+        assert_eq!(
+            tool_calls[0].function.arguments,
+            serde_json::json!({"query":"rig"})
+        );
+        assert!(
+            saw_tool_call_before_reasoning_or_text,
+            "expected completed tool call before later reasoning/text chunks"
+        );
         let usage = final_usage.expect("expected final usage");
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -286,7 +311,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn xai_stream_surfaces_terminal_errors_without_followup_items() {
+    async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
         use crate::http_client::mock::MockStreamingClient;
         use bytes::Bytes;
         use futures::StreamExt;
@@ -294,6 +319,7 @@ mod tests {
 
         let tool_call_done = json!({
             "type": "response.output_item.done",
+            "output_index": 0,
             "sequence_number": 1,
             "item": {
                 "type": "function_call",
@@ -344,10 +370,25 @@ mod tests {
             .await
             .expect("stream should start");
 
-        let err = stream
+        match stream
             .next()
             .await
             .expect("stream should yield an item")
+            .expect("first stream item should be ok")
+        {
+            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                assert_eq!(tool_call.id, "fc_123");
+                assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
+                assert_eq!(tool_call.function.name, "example_tool");
+                assert_eq!(tool_call.function.arguments, serde_json::json!({}));
+            }
+            other => panic!("expected completed tool call before terminal error, got {other:?}"),
+        }
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield terminal error")
             .expect_err("stream should surface a provider error");
         assert_eq!(
             err.to_string(),

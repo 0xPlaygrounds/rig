@@ -159,6 +159,13 @@ impl ResponsesStreamOptions {
             emit_completed_tool_calls_immediately: false,
         }
     }
+
+    pub(crate) const fn strict_with_immediate_tool_calls() -> Self {
+        Self {
+            error_on_terminal_response: true,
+            emit_completed_tool_calls_immediately: true,
+        }
+    }
 }
 
 pub(crate) fn parse_sse_completion_body(

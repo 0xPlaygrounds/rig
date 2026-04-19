@@ -729,6 +729,18 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
 
         false
     }
+
+    fn should_emit_completed_tool_call_immediately(
+        &self,
+        _tool_call: &crate::streaming::RawStreamingToolCall,
+        incoming: &CompatibleToolCallChunk,
+    ) -> bool {
+        incoming.name.as_ref().is_some_and(|name| !name.is_empty())
+            && incoming
+                .arguments
+                .as_ref()
+                .is_some_and(|arguments| !arguments.is_empty())
+    }
 }
 
 pub async fn send_compatible_streaming_request<T>(
@@ -867,5 +879,64 @@ mod tests {
         let usage = final_usage.expect("expected final usage");
         assert_eq!(usage.prompt_tokens, 11);
         assert_eq!(usage.total_tokens, 17);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_groq_emits_complete_single_chunk_tool_call_before_later_text() {
+        use crate::http_client::mock::MockStreamingClient;
+        use crate::streaming::StreamedAssistantContent;
+        use bytes::Bytes;
+        use futures::StreamExt;
+
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}\n\n",
+            "data: [DONE]\n\n",
+        );
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut saw_tool_call = false;
+        let mut saw_text_after_tool_call = false;
+
+        while let Some(chunk) = stream.next().await {
+            match chunk.unwrap() {
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    assert_eq!(tool_call.id, "call_123");
+                    assert_eq!(tool_call.function.name, "search");
+                    assert_eq!(
+                        tool_call.function.arguments,
+                        serde_json::json!({"query":"rig"})
+                    );
+                    saw_tool_call = true;
+                }
+                StreamedAssistantContent::Text(chunk) => {
+                    assert_eq!(chunk.text, "done");
+                    if saw_tool_call {
+                        saw_text_after_tool_call = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        assert!(saw_tool_call, "expected completed tool call to be emitted");
+        assert!(
+            saw_text_after_tool_call,
+            "expected completed tool call before later text chunks"
+        );
     }
 }
