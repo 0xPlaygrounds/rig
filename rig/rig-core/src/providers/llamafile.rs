@@ -27,20 +27,19 @@ use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
 };
 use crate::completion::GetTokenUsage;
-use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::empty_or_none;
+use crate::providers::internal::chat_compatible::{
+    self, CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+    CompatibleToolCallChunk,
+};
 use crate::providers::openai::{self, StreamingToolCall};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils,
 };
-use async_stream::stream;
 use bytes::Bytes;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing::{Level, info_span};
 use tracing_futures::Instrument;
 
@@ -257,6 +256,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -387,10 +387,14 @@ struct StreamingDelta {
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
+    #[serde(default)]
+    finish_reason: Option<openai::completion::streaming::FinishReason>,
 }
 
 #[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk {
+    id: Option<String>,
+    model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<openai::Usage>,
 }
@@ -408,7 +412,92 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.input_tokens = self.usage.prompt_tokens as u64;
         usage.total_tokens = self.usage.total_tokens as u64;
         usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
+        usage.cached_input_tokens = self
+            .usage
+            .prompt_tokens_details
+            .as_ref()
+            .map_or(0, |details| details.cached_tokens as u64);
         Some(usage)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct LlamafileCompatibleProfile;
+
+impl CompatibleStreamProfile for LlamafileCompatibleProfile {
+    type Usage = openai::Usage;
+    type Detail = ();
+    type FinalResponse = StreamingCompletionResponse;
+
+    fn normalize_chunk(
+        &self,
+        data: &str,
+    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
+            Ok(data) => data,
+            Err(error) => {
+                tracing::debug!(
+                    ?error,
+                    "Couldn't parse SSE payload as StreamingCompletionChunk"
+                );
+                return Ok(None);
+            }
+        };
+
+        let choice = data.choices.first().map(|choice| CompatibleChoice {
+            finish_reason: if choice.finish_reason
+                == Some(openai::completion::streaming::FinishReason::ToolCalls)
+            {
+                CompatibleFinishReason::ToolCalls
+            } else {
+                CompatibleFinishReason::Other
+            },
+            text: choice.delta.content.clone(),
+            reasoning: None,
+            tool_calls: choice
+                .delta
+                .tool_calls
+                .iter()
+                .map(|tool_call| CompatibleToolCallChunk {
+                    index: tool_call.index,
+                    id: tool_call.id.clone(),
+                    name: tool_call.function.name.clone(),
+                    arguments: tool_call.function.arguments.clone(),
+                })
+                .collect(),
+            details: Vec::new(),
+        });
+
+        Ok(Some(CompatibleChunk {
+            response_id: data.id,
+            response_model: data.model,
+            choice,
+            usage: data.usage,
+        }))
+    }
+
+    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+        StreamingCompletionResponse { usage }
+    }
+
+    fn should_evict(
+        &self,
+        existing: &crate::streaming::RawStreamingToolCall,
+        incoming: &CompatibleToolCallChunk,
+    ) -> bool {
+        if let Some(new_id) = &incoming.id
+            && !new_id.is_empty()
+            && let Some(new_name) = &incoming.name
+            && !new_name.is_empty()
+            && !existing.id.is_empty()
+            && existing.id != *new_id
+            && !existing.name.is_empty()
+            && existing.name != *new_name
+        {
+            return true;
+        }
+
+        false
     }
 }
 
@@ -423,142 +512,11 @@ async fn send_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    let mut event_source = GenericEventSource::new(client, req);
-
-    let stream = stream! {
-        let span = tracing::Span::current();
-        let mut final_usage = openai::Usage {
-            prompt_tokens: 0,
-            total_tokens: 0,
-            prompt_tokens_details: None,
-        };
-        let mut text_response = String::new();
-        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
-        let mut terminated_with_error = false;
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-                Ok(Event::Message(message)) => {
-                    let data_str = message.data.trim();
-                    if data_str.is_empty() || data_str == "[DONE]" {
-                        continue;
-                    }
-
-                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(data_str);
-                    let Ok(data) = parsed else {
-                        let err = parsed.unwrap_err();
-                        tracing::debug!("Couldn't parse SSE payload: {:?}", err);
-                        continue;
-                    };
-
-                    if let Some(choice) = data.choices.first() {
-                        let delta = &choice.delta;
-
-                        // Handle tool calls
-                        for tool_call in &delta.tool_calls {
-                            let function = &tool_call.function;
-
-                            // Start of tool call
-                            if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-                                && empty_or_none(&function.arguments)
-                            {
-                                let id = tool_call.id.clone().unwrap_or_default();
-                                let name = function.name.clone().unwrap();
-                                calls.insert(tool_call.index, (id, name, String::new()));
-                            }
-                            // Continuation
-                            else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
-                                && let Some(arguments) = &function.arguments
-                                && !arguments.is_empty()
-                            {
-                                if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                    let combined = format!("{}{}", existing_args, arguments);
-                                    calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
-                                }
-                            }
-                            // Complete tool call in a single chunk
-                            else {
-                                let id = tool_call.id.clone().unwrap_or_default();
-                                let name = function.name.clone().unwrap_or_default();
-                                let arguments_str = function.arguments.clone().unwrap_or_default();
-
-                                let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments_str) else {
-                                    tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
-                                    continue;
-                                };
-
-                                yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                                    crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-                                ));
-                            }
-                        }
-
-                        // Streamed content
-                        if let Some(content) = &delta.content {
-                            text_response += content;
-                            yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
-                        }
-                    }
-
-                    if let Some(usage) = data.usage {
-                        final_usage = usage;
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => break,
-                Err(err) => {
-                    tracing::error!(?err, "SSE error");
-                    terminated_with_error = true;
-                    yield Err(CompletionError::ResponseError(err.to_string()));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-
-        if terminated_with_error {
-            return;
-        }
-
-        let mut dropped_tool_calls = 0;
-        for (_, (id, name, arguments)) in calls {
-            if arguments.trim().is_empty() {
-                dropped_tool_calls += 1;
-                continue;
-            }
-
-            let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments) else {
-                dropped_tool_calls += 1;
-                continue;
-            };
-
-            yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-            ));
-        }
-
-        if dropped_tool_calls > 0 {
-            tracing::debug!(
-                dropped_tool_calls,
-                "Dropping incomplete tool calls at stream end"
-            );
-        }
-
-        span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
-        span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
-
-        yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse { usage: final_usage }
-        ));
-    }.instrument(span);
-
-    Ok(crate::streaming::StreamingCompletionResponse::stream(
-        Box::pin(stream),
-    ))
+    tracing::Instrument::instrument(
+        chat_compatible::send_compatible_streaming_request(client, req, LlamafileCompatibleProfile),
+        span,
+    )
+    .await
 }
 
 // ================================================================
@@ -744,6 +702,7 @@ mod tests {
         let mut saw_final = false;
         while let Some(chunk) = stream.next().await {
             match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::ToolCallDelta { .. } => {}
                 StreamedAssistantContent::Final(_) => saw_final = true,
                 StreamedAssistantContent::ToolCall { tool_call, .. } => {
                     panic!("unexpected incomplete tool call emitted at EOF: {tool_call:?}");
