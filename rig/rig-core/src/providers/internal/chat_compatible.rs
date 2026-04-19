@@ -45,6 +45,8 @@ pub(crate) struct CompatibleChoice<D> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChunk<U, D> {
+    pub(crate) response_id: Option<String>,
+    pub(crate) response_model: Option<String>,
     pub(crate) choice: Option<CompatibleChoice<D>>,
     pub(crate) usage: Option<U>,
 }
@@ -114,6 +116,12 @@ where
                             break;
                         }
                     };
+
+                    record_response_metadata(
+                        &span,
+                        chunk.response_id.as_deref(),
+                        chunk.response_model.as_deref(),
+                    );
 
                     if let Some(usage) = chunk.usage {
                         final_usage = Some(usage);
@@ -257,6 +265,28 @@ where
     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
     span.record("gen_ai.usage.cached_tokens", usage.cached_input_tokens);
+}
+
+fn record_response_metadata(
+    span: &tracing::Span,
+    response_id: Option<&str>,
+    response_model: Option<&str>,
+) {
+    if span.is_disabled() {
+        return;
+    }
+
+    if let Some(response_id) = response_id
+        && !response_id.is_empty()
+    {
+        span.record("gen_ai.response.id", response_id);
+    }
+
+    if let Some(response_model) = response_model
+        && !response_model.is_empty()
+    {
+        span.record("gen_ai.response.model", response_model);
+    }
 }
 
 fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str) {

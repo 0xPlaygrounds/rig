@@ -58,6 +58,8 @@ struct StreamingChoice {
 
 #[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk {
+    id: Option<String>,
+    model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
 }
@@ -131,7 +133,7 @@ where
                 gen_ai.provider.name = "openai",
                 gen_ai.request.model = self.model,
                 gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = self.model,
+                gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cached_tokens = tracing::field::Empty,
@@ -191,6 +193,8 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
         });
 
         Ok(Some(CompatibleChunk {
+            response_id: data.id,
+            response_model: data.model,
             choice,
             usage: data.usage,
         }))

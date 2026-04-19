@@ -702,6 +702,8 @@ struct StreamingChoice {
 
 #[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk {
+    id: Option<String>,
+    model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
 }
@@ -771,6 +773,8 @@ impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
         });
 
         Ok(Some(CompatibleChunk {
+            response_id: data.id,
+            response_model: data.model,
             choice,
             usage: data.usage,
         }))

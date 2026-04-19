@@ -1762,7 +1762,7 @@ where
                         let span = tracing::Span::current();
                         span.record_token_usage(&response.usage);
                         span.record("gen_ai.response.id", &response.id);
-                        span.record("gen_ai.response.model_name", &response.model);
+                        span.record("gen_ai.response.model", &response.model);
 
                         tracing::debug!(target: "rig::completions",
                             "OpenRouter response: {response:?}");

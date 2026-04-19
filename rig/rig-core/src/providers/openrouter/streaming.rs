@@ -219,6 +219,8 @@ impl CompatibleStreamProfile for OpenRouterCompatibleProfile {
         });
 
         Ok(Some(CompatibleChunk {
+            response_id: Some(data.id),
+            response_model: Some(data.model),
             choice,
             usage: data.usage,
         }))

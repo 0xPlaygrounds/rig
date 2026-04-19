@@ -630,7 +630,7 @@ where
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
             let span = tracing::Span::current();
-            span.record("gen_ai.response.model_name", &response.model);
+            span.record("gen_ai.response.model", &response.model);
             span.record(
                 "gen_ai.usage.input_tokens",
                 response.prompt_eval_count.unwrap_or_default(),
