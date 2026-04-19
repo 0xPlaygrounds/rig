@@ -120,6 +120,7 @@ where
                         Ok(Some(chunk)) => chunk,
                         Ok(None) => continue,
                         Err(error) => {
+                            terminated_with_error = true;
                             yield Err(error);
                             break;
                         }
@@ -368,8 +369,74 @@ fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<Raw
 
 #[cfg(test)]
 mod tests {
-    use super::finalize_pending_tool_call;
+    use super::{
+        CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+        CompatibleToolCallChunk, finalize_pending_tool_call, send_compatible_streaming_request,
+    };
+    use crate::completion::{CompletionError, GetTokenUsage};
+    use crate::http_client::mock::MockStreamingClient;
     use crate::streaming::RawStreamingToolCall;
+    use crate::streaming::StreamedAssistantContent;
+    use bytes::Bytes;
+    use futures::StreamExt;
+
+    #[derive(Clone, Default)]
+    struct TestUsage;
+
+    impl GetTokenUsage for TestUsage {
+        fn token_usage(&self) -> Option<crate::completion::Usage> {
+            None
+        }
+    }
+
+    #[derive(Clone, Default, Debug)]
+    struct TestFinalResponse;
+
+    impl GetTokenUsage for TestFinalResponse {
+        fn token_usage(&self) -> Option<crate::completion::Usage> {
+            None
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct ErrorAfterPendingToolCallProfile;
+
+    impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
+        type Usage = TestUsage;
+        type Detail = ();
+        type FinalResponse = TestFinalResponse;
+
+        fn normalize_chunk(
+            &self,
+            data: &str,
+        ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+            match data {
+                "start" => Ok(Some(CompatibleChunk {
+                    response_id: None,
+                    response_model: None,
+                    choice: Some(CompatibleChoice {
+                        finish_reason: CompatibleFinishReason::Other,
+                        text: None,
+                        reasoning: None,
+                        tool_calls: vec![CompatibleToolCallChunk {
+                            index: 0,
+                            id: Some("call_123".to_owned()),
+                            name: Some("ping".to_owned()),
+                            arguments: Some(String::new()),
+                        }],
+                        details: Vec::new(),
+                    }),
+                    usage: None,
+                })),
+                "bad" => Err(CompletionError::ProviderError("normalize failed".to_owned())),
+                _ => Ok(None),
+            }
+        }
+
+        fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+            TestFinalResponse
+        }
+    }
 
     #[test]
     fn eof_cleanup_preserves_parameterless_tool_calls() {
@@ -417,5 +484,51 @@ mod tests {
         );
 
         assert!(finalize_pending_tool_call(tool_call).is_none());
+    }
+
+    #[tokio::test]
+    async fn normalize_chunk_errors_terminate_without_flushing_or_finalizing() {
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from("data: start\n\ndata: bad\n\n"),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, ErrorAfterPendingToolCallProfile)
+                .await
+                .expect("stream should start");
+
+        match stream
+            .next()
+            .await
+            .expect("expected tool call delta before normalize error")
+            .expect("first item should be ok")
+        {
+            StreamedAssistantContent::ToolCallDelta { id, content, .. } => {
+                assert_eq!(id, "call_123");
+                assert_eq!(
+                    content,
+                    crate::streaming::ToolCallDeltaContent::Name("ping".to_owned())
+                );
+            }
+            other => panic!("expected tool call delta, got {other:?}"),
+        }
+
+        let err = stream
+            .next()
+            .await
+            .expect("expected normalize error")
+            .expect_err("second item should be the normalize error");
+        assert_eq!(err.to_string(), "ProviderError: normalize failed");
+
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate immediately after normalize_chunk error"
+        );
     }
 }
