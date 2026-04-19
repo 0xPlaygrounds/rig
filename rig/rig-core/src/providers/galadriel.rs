@@ -668,6 +668,13 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use crate::client::CompletionClient;
+    use crate::completion::CompletionModel;
+    use crate::http_client::mock::MockStreamingClient;
+    use crate::providers::internal::chat_compatible::test_support::{
+        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
+    };
+
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -676,5 +683,23 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn stream_inherits_shared_openai_tool_call_eof_behavior() {
+        let client = crate::providers::galadriel::Client::builder()
+            .api_key("dummy-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_data_lines([
+                    "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                ]),
+            })
+            .build()
+            .expect("Client::builder() failed");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+        let stream = model.stream(request).await.expect("stream should start");
+
+        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 }

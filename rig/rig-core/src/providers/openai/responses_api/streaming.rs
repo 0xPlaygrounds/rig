@@ -642,7 +642,7 @@ where
                     continue;
                 }
                 Ok(Event::Message(evt)) => {
-                    if evt.data.trim().is_empty() {
+                    if evt.data.trim().is_empty() || evt.data == "[DONE]" {
                         continue;
                     }
 
@@ -1321,6 +1321,96 @@ mod tests {
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn done_sentinel_is_ignored_without_debug_parse_noise() {
+        use std::io::{self, Write};
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone)]
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl Write for SharedWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("log buffer mutex should not be poisoned")
+                    .extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut response = sample_response(ResponseStatus::Completed);
+        response.usage = Some(ResponsesUsage {
+            input_tokens: 4,
+            input_tokens_details: None,
+            output_tokens: 2,
+            output_tokens_details: OutputTokensDetails {
+                reasoning_tokens: 0,
+            },
+            total_tokens: 6,
+        });
+
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_writer({
+                let captured = captured.clone();
+                move || SharedWriter(captured.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(format!(
+                    "data: {}\n\ndata: [DONE]\n\n",
+                    serde_json::to_string(&json!({
+                        "type": "response.completed",
+                        "sequence_number": 1,
+                        "response": response,
+                    }))
+                    .expect("response event should serialize")
+                )),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut final_usage = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream should complete successfully") {
+                StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
+                _ => {}
+            }
+        }
+
+        let usage = final_usage.expect("expected final response");
+        assert_eq!(usage.input_tokens, 4);
+        assert_eq!(usage.output_tokens, 2);
+        assert_eq!(usage.total_tokens, 6);
+
+        let logs = String::from_utf8(
+            captured
+                .lock()
+                .expect("log buffer mutex should not be poisoned")
+                .clone(),
+        )
+        .expect("captured logs should be valid UTF-8");
+        assert!(
+            !logs.contains("Couldn't deserialize SSE data as StreamingCompletionChunk"),
+            "expected [DONE] to bypass the parse-failure debug path, logs were: {logs}"
+        );
     }
 
     // requires `derive` rig-core feature due to using tool macro

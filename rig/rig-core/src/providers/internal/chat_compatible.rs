@@ -163,12 +163,20 @@ pub(crate) fn should_evict_distinct_named_tool_call(
         && !existing.id.is_empty()
         && existing.id != *new_id
         && !existing.name.is_empty()
-        && existing.name != *new_name
     {
-        return true;
+        return existing.name != *new_name || incoming_starts_new_tool_call(incoming);
     }
 
     false
+}
+
+fn incoming_starts_new_tool_call(incoming: &CompatibleToolCallChunk) -> bool {
+    incoming.name.as_ref().is_some_and(|name| !name.is_empty())
+        && incoming
+            .arguments
+            .as_ref()
+            .map(|arguments| arguments.is_empty())
+            .unwrap_or(true)
 }
 
 pub(crate) fn incoming_represents_completed_tool_call(incoming: &CompatibleToolCallChunk) -> bool {
@@ -638,6 +646,94 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    struct DistinctToolCallEvictionProfile;
+
+    impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
+        type Usage = TestUsage;
+        type Detail = ();
+        type FinalResponse = TestFinalResponse;
+
+        fn normalize_chunk(
+            &self,
+            data: &str,
+        ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+            let choice = match data {
+                "first_start" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: vec![CompatibleToolCallChunk {
+                        index: 0,
+                        id: Some("call_aaa".to_owned()),
+                        name: Some("search".to_owned()),
+                        arguments: Some(String::new()),
+                    }],
+                    details: Vec::new(),
+                }),
+                "first_args" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: vec![CompatibleToolCallChunk {
+                        index: 0,
+                        id: None,
+                        name: None,
+                        arguments: Some("{\"query\":\"one\"}".to_owned()),
+                    }],
+                    details: Vec::new(),
+                }),
+                "second_start" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: vec![CompatibleToolCallChunk {
+                        index: 0,
+                        id: Some("call_bbb".to_owned()),
+                        name: Some("search".to_owned()),
+                        arguments: Some(String::new()),
+                    }],
+                    details: Vec::new(),
+                }),
+                "second_args" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: vec![CompatibleToolCallChunk {
+                        index: 0,
+                        id: None,
+                        name: None,
+                        arguments: Some("{\"query\":\"two\"}".to_owned()),
+                    }],
+                    details: Vec::new(),
+                }),
+                "finish" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::ToolCalls,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: Vec::new(),
+                    details: Vec::new(),
+                }),
+                _ => None,
+            };
+
+            Ok(choice.map(|choice| CompatibleChunk {
+                response_id: None,
+                response_model: None,
+                choice: Some(choice),
+                usage: None,
+            }))
+        }
+
+        fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+            TestFinalResponse
+        }
+
+        fn uses_distinct_tool_call_eviction(&self) -> bool {
+            true
+        }
+    }
+
     #[test]
     fn eof_cleanup_preserves_parameterless_tool_calls() {
         let tool_call = RawStreamingToolCall::new(
@@ -729,6 +825,53 @@ mod tests {
         assert!(
             stream.next().await.is_none(),
             "stream should terminate immediately after normalize_chunk error"
+        );
+    }
+
+    #[tokio::test]
+    async fn distinct_same_name_tool_calls_evict_by_id_when_a_new_call_starts() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "first_start",
+                "first_args",
+                "second_start",
+                "second_args",
+                "finish",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, DistinctToolCallEvictionProfile)
+                .await
+                .expect("stream should start");
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::ToolCall { tool_call, .. } =
+                item.expect("stream item should be ok")
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(collected_tool_calls.len(), 2);
+        assert_eq!(collected_tool_calls[0].id, "call_aaa");
+        assert_eq!(collected_tool_calls[0].function.name, "search");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({"query":"one"})
+        );
+        assert_eq!(collected_tool_calls[1].id, "call_bbb");
+        assert_eq!(collected_tool_calls[1].function.name, "search");
+        assert_eq!(
+            collected_tool_calls[1].function.arguments,
+            serde_json::json!({"query":"two"})
         );
     }
 }

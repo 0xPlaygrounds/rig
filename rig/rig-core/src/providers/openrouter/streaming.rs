@@ -261,6 +261,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http_client::mock::MockStreamingClient;
+    use crate::providers::internal::chat_compatible::test_support::sse_bytes_from_data_lines;
+    use crate::streaming::StreamedAssistantContent;
+    use futures::StreamExt;
     use serde_json::json;
 
     #[test]
@@ -463,5 +467,50 @@ mod tests {
         let error = response.error.as_ref().unwrap();
         assert_eq!(error.code, 500);
         assert_eq!(error.message, "Provider disconnected");
+    }
+
+    #[tokio::test]
+    async fn encrypted_reasoning_details_attach_to_emitted_tool_calls() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"id\":\"gen-1\",\"model\":\"openai/gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"type\":\"function\",\"function\":{\"name\":\"search\",\"arguments\":\"\"}}],\"reasoning_details\":[]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"id\":\"gen-2\",\"model\":\"openai/gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[],\"reasoning_details\":[{\"type\":\"reasoning.encrypted\",\"id\":\"call_123\",\"format\":\"opaque\",\"index\":0,\"data\":\"enc_blob\"}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"id\":\"gen-3\",\"model\":\"openai/gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[],\"reasoning_details\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+                "[DONE]",
+            ]),
+        };
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let tool_call = loop {
+            match stream.next().await.expect("stream should yield an item") {
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => break tool_call,
+                Ok(_) => continue,
+                Err(err) => panic!("stream should not error: {err}"),
+            }
+        };
+
+        assert_eq!(tool_call.id, "call_123");
+        assert_eq!(tool_call.function.name, "search");
+        assert_eq!(tool_call.function.arguments, serde_json::json!({}));
+        assert_eq!(tool_call.signature.as_deref(), Some("enc_blob"));
+        assert_eq!(
+            tool_call.additional_params,
+            Some(json!({
+                "type": "reasoning.encrypted",
+                "id": "call_123",
+                "format": "opaque",
+                "index": 0,
+                "data": "enc_blob"
+            }))
+        );
     }
 }
