@@ -1425,8 +1425,11 @@ where
             return;
         }
 
-        for (_idx, tool_call) in tool_calls.into_iter() {
-            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+        if !tool_calls.is_empty() {
+            tracing::debug!(
+                dropped_tool_calls = tool_calls.len(),
+                "Dropping incomplete tool calls at stream end"
+            );
         }
 
         let final_usage = final_usage.unwrap_or_default();
@@ -2013,6 +2016,37 @@ mod tests {
             stream.next().await.is_none(),
             "chat stream should terminate immediately after a transport error"
         );
+    }
+
+    #[tokio::test]
+    async fn chat_stream_drops_incomplete_tool_calls_at_eof() {
+        let chunks = vec![Ok(Bytes::from(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}\n\n",
+        ))];
+
+        let http_client = SequencedStreamingHttpClient::new(chunks);
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be ok") {
+                StreamedAssistantContent::ToolCallDelta { .. } => {}
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    panic!("unexpected incomplete tool call emitted at EOF: {tool_call:?}");
+                }
+                _ => panic!("unexpected stream item at EOF"),
+            }
+        }
+
+        assert!(saw_final, "stream should still yield a final response");
     }
 
     #[test]

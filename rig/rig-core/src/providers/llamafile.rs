@@ -434,6 +434,7 @@ where
         };
         let mut text_response = String::new();
         let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
+        let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -510,6 +511,7 @@ where
                 Err(crate::http_client::Error::StreamEnded) => break,
                 Err(err) => {
                     tracing::error!(?err, "SSE error");
+                    terminated_with_error = true;
                     yield Err(CompletionError::ResponseError(err.to_string()));
                     break;
                 }
@@ -518,14 +520,15 @@ where
 
         event_source.close();
 
-        // Flush accumulated tool calls
-        for (_, (id, name, arguments)) in calls {
-            let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments) else {
-                continue;
-            };
-            yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-            ));
+        if terminated_with_error {
+            return;
+        }
+
+        if !calls.is_empty() {
+            tracing::debug!(
+                dropped_tool_calls = calls.len(),
+                "Dropping incomplete tool calls at stream end"
+            );
         }
 
         span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
@@ -651,6 +654,10 @@ where
 mod tests {
     use super::*;
     use crate::client::Nothing;
+    use crate::http_client::mock::MockStreamingClient;
+    use crate::streaming::StreamedAssistantContent;
+    use bytes::Bytes;
+    use futures::StreamExt;
 
     #[test]
     fn test_client_initialization() {
@@ -697,5 +704,37 @@ mod tests {
         assert_eq!(request.messages.len(), 2); // system + user
         assert_eq!(request.temperature, Some(0.7));
         assert_eq!(request.max_tokens, Some(256));
+    }
+
+    #[tokio::test]
+    async fn test_streaming_drops_incomplete_tool_calls_at_eof() {
+        let sse = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]}}],\"usage\":null}\n\n";
+
+        let client = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_streaming_request(client, req, tracing::Span::current())
+            .await
+            .expect("stream should start");
+
+        let mut saw_final = false;
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    panic!("unexpected incomplete tool call emitted at EOF: {tool_call:?}");
+                }
+                other => panic!("unexpected stream item at EOF: {other:?}"),
+            }
+        }
+
+        assert!(saw_final, "stream should still yield a final response");
     }
 }

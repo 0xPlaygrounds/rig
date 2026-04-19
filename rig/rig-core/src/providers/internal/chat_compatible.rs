@@ -94,6 +94,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -200,6 +201,7 @@ where
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
+                    terminated_with_error = true;
                     yield Err(CompletionError::ProviderError(error.to_string()));
                     break;
                 }
@@ -208,8 +210,15 @@ where
 
         event_source.close();
 
-        for (_, tool_call) in tool_calls.drain() {
-            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+        if terminated_with_error {
+            return;
+        }
+
+        if !tool_calls.is_empty() {
+            tracing::debug!(
+                dropped_tool_calls = tool_calls.len(),
+                "Dropping incomplete tool calls at stream end"
+            );
         }
 
         let final_usage = final_usage.unwrap_or_default();
