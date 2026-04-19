@@ -156,11 +156,7 @@ impl ResponsesStreamOptions {
     pub(crate) const fn strict() -> Self {
         Self {
             error_on_terminal_response: true,
-            // `response.output_item.done` marks a provider-completed function
-            // call, so shared Responses streams should surface the full tool
-            // call immediately and let agent loops overlap tool execution with
-            // the rest of the model output.
-            emit_completed_tool_calls_immediately: true,
+            emit_completed_tool_calls_immediately: false,
         }
     }
 }
@@ -1267,10 +1263,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn response_failed_chunk_emits_completed_tool_call_before_error() {
+    async fn response_failed_chunk_terminates_stream_without_followup_items() {
         let tool_call_done = json!({
             "type": "response.output_item.done",
-            "output_index": 0,
             "sequence_number": 1,
             "item": {
                 "type": "function_call",
@@ -1309,25 +1304,10 @@ mod tests {
         let request = model.completion_request("hello").build();
         let mut stream = model.stream(request).await.expect("stream should start");
 
-        let first = stream
-            .next()
-            .await
-            .expect("stream should yield an item")
-            .expect("completed tool call should be surfaced before the terminal error");
-        match first {
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                assert_eq!(tool_call.id, "fc_123");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
-                assert_eq!(tool_call.function.name, "example_tool");
-                assert_eq!(tool_call.function.arguments, serde_json::json!({}));
-            }
-            other => panic!("expected completed tool call before the terminal error, got {other:?}"),
-        }
-
         let err = stream
             .next()
             .await
-            .expect("stream should yield the terminal error")
+            .expect("stream should yield an item")
             .expect_err("stream should surface a provider error");
         assert_eq!(
             err.to_string(),
