@@ -457,6 +457,7 @@ pub(crate) struct ToolCallRecord {
 
 pub(crate) struct RawStreamObservation {
     pub(crate) text: String,
+    pub(crate) tool_calls: Vec<rig::message::ToolCall>,
     pub(crate) tool_call_records: Vec<ToolCallRecord>,
     pub(crate) errors: Vec<String>,
     pub(crate) got_final: bool,
@@ -467,6 +468,7 @@ impl RawStreamObservation {
     fn new() -> Self {
         Self {
             text: String::new(),
+            tool_calls: Vec::new(),
             tool_call_records: Vec::new(),
             errors: Vec::new(),
             got_final: false,
@@ -546,6 +548,7 @@ where
                 observation.events.push("text");
             }
             Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                observation.tool_calls.push(tool_call.clone());
                 observation.tool_call_records.push(ToolCallRecord {
                     name: tool_call.function.name,
                     signature: tool_call.signature,
@@ -580,6 +583,29 @@ fn first_event_index(events: &[&'static str], expected: &'static str) -> Option<
     events.iter().position(|event| *event == expected)
 }
 
+fn event_count_before(events: &[&'static str], expected: &'static str, end_index: usize) -> usize {
+    events
+        .iter()
+        .take(end_index)
+        .filter(|event| **event == expected)
+        .count()
+}
+
+fn first_unique_tool_calls(tool_calls: &[String]) -> Vec<&str> {
+    let mut unique = Vec::new();
+
+    for name in tool_calls {
+        if !unique
+            .iter()
+            .any(|existing: &&str| *existing == name.as_str())
+        {
+            unique.push(name.as_str());
+        }
+    }
+
+    unique
+}
+
 pub(crate) fn assert_two_tool_roundtrip_contract(
     observation: &StreamObservation,
     expected_tools: &[&str],
@@ -606,6 +632,27 @@ pub(crate) fn assert_two_tool_roundtrip_contract(
         observation.tool_results
     );
 
+    let first_text = first_event_index(&observation.events, "text")
+        .expect("stream should emit final text after the tool roundtrip");
+    let tool_calls_before_text = event_count_before(&observation.events, "tool_call", first_text);
+    let tool_results_before_text =
+        event_count_before(&observation.events, "tool_result", first_text);
+
+    assert!(
+        tool_calls_before_text >= expected_tools.len(),
+        "expected at least {} tool-call events before the first text chunk, got {}. Events: {:?}",
+        expected_tools.len(),
+        tool_calls_before_text,
+        observation.events
+    );
+    assert!(
+        tool_results_before_text >= expected_tools.len(),
+        "expected at least {} tool-result events before the first text chunk, got {}. Events: {:?}",
+        expected_tools.len(),
+        tool_results_before_text,
+        observation.events
+    );
+
     for expected_tool in expected_tools {
         assert!(
             observation
@@ -614,6 +661,25 @@ pub(crate) fn assert_two_tool_roundtrip_contract(
                 .any(|name| name == expected_tool),
             "expected tool call for {expected_tool}, saw {:?}",
             observation.tool_calls
+        );
+    }
+
+    let first_unique = first_unique_tool_calls(&observation.tool_calls);
+    assert!(
+        first_unique.len() >= expected_tools.len(),
+        "expected at least {} unique tool calls, saw {:?}",
+        expected_tools.len(),
+        observation.tool_calls
+    );
+
+    for expected_tool in expected_tools {
+        assert!(
+            first_unique
+                .iter()
+                .take(expected_tools.len())
+                .any(|name| name == expected_tool),
+            "expected the initial unique tool-call phase to include {expected_tool}, saw {:?}",
+            first_unique
         );
     }
 
@@ -682,7 +748,7 @@ pub(crate) fn assert_tool_call_precedes_later_text(
     assert_contains_all_case_insensitive(response, expected_markers);
 }
 
-pub(crate) fn assert_raw_stream_has_decorated_tool_call(
+pub(crate) fn assert_raw_stream_tool_call_precedes_text(
     observation: &RawStreamObservation,
     expected_tool: &str,
 ) {
@@ -690,6 +756,10 @@ pub(crate) fn assert_raw_stream_has_decorated_tool_call(
         observation.errors.is_empty(),
         "raw stream should not emit errors: {:?}",
         observation.errors
+    );
+    assert!(
+        observation.got_final,
+        "raw stream should emit a final response"
     );
 
     let record = observation
@@ -708,11 +778,38 @@ pub(crate) fn assert_raw_stream_has_decorated_tool_call(
         });
 
     assert!(
-        record.signature.is_some() || record.additional_params.is_some(),
-        "expected decorated tool call metadata for {expected_tool}, got signature={:?} additional_params={:?}",
-        record.signature,
-        record.additional_params
+        first_event_index(&observation.events, "tool_call").is_some(),
+        "expected a tool_call event for {expected_tool}, saw {:?}",
+        observation.events
     );
+
+    if let Some(first_text) = first_event_index(&observation.events, "text") {
+        let first_tool_call = first_event_index(&observation.events, "tool_call")
+            .expect("raw stream should emit a tool_call event");
+        assert!(
+            first_tool_call < first_text,
+            "expected the raw stream to emit a tool call before any text, saw events {:?}",
+            observation.events
+        );
+    }
+
+    let _ = record;
+}
+
+pub(crate) fn assert_raw_stream_text_contains(
+    observation: &RawStreamObservation,
+    expected: &[&str],
+) {
+    assert!(
+        observation.errors.is_empty(),
+        "raw stream should not emit errors: {:?}",
+        observation.errors
+    );
+    assert!(
+        observation.got_final,
+        "raw stream should emit a final response"
+    );
+    assert_contains_all_case_insensitive(&observation.text, expected);
 }
 
 pub(crate) fn assert_loader_answer_is_relevant(response: &str) {
