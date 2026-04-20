@@ -7,8 +7,11 @@ use rig::providers::deepseek::{self, DEEPSEEK_CHAT};
 use rig::streaming::StreamingChat;
 
 use crate::support::{
-    Adder, REQUIRED_ZERO_ARG_TOOL_PROMPT, Subtract, assert_mentions_expected_number,
-    assert_stream_contains_zero_arg_tool_call_named, collect_stream_final_response,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
+    ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT,
+    Subtract, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
+    assert_stream_contains_zero_arg_tool_call_named, assert_tool_call_precedes_later_text,
+    assert_two_tool_roundtrip_contract, collect_stream_final_response, collect_stream_observation,
     zero_arg_tool_definition,
 };
 
@@ -46,4 +49,51 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     let stream = model.stream(request).await.expect("stream should start");
 
     assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEEPSEEK_API_KEY"]
+async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
+    let client = deepseek::Client::from_env();
+    let agent = client
+        .agent(DEEPSEEK_CHAT)
+        .preamble(TWO_TOOL_STREAM_PREAMBLE)
+        .tool_choice(ToolChoice::Required)
+        .tool(AlphaSignal)
+        .tool(BetaSignal)
+        .build();
+
+    let history: &[Message] = &[];
+    let mut stream = agent
+        .stream_chat(TWO_TOOL_STREAM_PROMPT, history)
+        .multi_turn(8)
+        .await;
+    let observation = collect_stream_observation(&mut stream).await;
+
+    assert_two_tool_roundtrip_contract(
+        &observation,
+        &["alpha_signal", "beta_signal"],
+        &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires DEEPSEEK_API_KEY"]
+async fn streaming_chat_emits_tool_call_before_later_text() {
+    let client = deepseek::Client::from_env();
+    let agent = client
+        .agent(DEEPSEEK_CHAT)
+        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+        .tool_choice(ToolChoice::Required)
+        .tool(AlphaSignal)
+        .build();
+
+    let history: &[Message] = &[];
+    let mut stream = agent
+        .stream_chat(ORDERED_TOOL_STREAM_PROMPT, history)
+        .multi_turn(5)
+        .await;
+    let observation = collect_stream_observation(&mut stream).await;
+
+    assert_tool_call_precedes_later_text(&observation, "alpha_signal", &[ALPHA_SIGNAL_OUTPUT]);
 }

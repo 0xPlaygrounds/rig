@@ -7,9 +7,11 @@ use rig::streaming::StreamingPrompt;
 
 use crate::copilot::{LIVE_MODEL, live_client};
 use crate::support::{
-    Adder, REQUIRED_ZERO_ARG_TOOL_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
-    Subtract, assert_mentions_expected_number, assert_stream_contains_zero_arg_tool_call_named,
-    collect_stream_final_response, zero_arg_tool_definition,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
+    REQUIRED_ZERO_ARG_TOOL_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
+    TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
+    assert_stream_contains_zero_arg_tool_call_named, assert_two_tool_roundtrip_contract,
+    collect_stream_final_response, collect_stream_observation, zero_arg_tool_definition,
 };
 
 #[tokio::test]
@@ -64,4 +66,28 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     let stream = model.stream(request).await.expect("stream should start");
 
     assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
+}
+
+#[tokio::test]
+#[ignore = "requires Copilot credentials or existing OAuth cache"]
+async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
+    let agent = live_client()
+        .agent(LIVE_MODEL)
+        .preamble(TWO_TOOL_STREAM_PREAMBLE)
+        .tool_choice(ToolChoice::Required)
+        .tool(AlphaSignal)
+        .tool(BetaSignal)
+        .build();
+
+    let mut stream = agent
+        .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+        .multi_turn(8)
+        .await;
+    let observation = collect_stream_observation(&mut stream).await;
+
+    assert_two_tool_roundtrip_contract(
+        &observation,
+        &["alpha_signal", "beta_signal"],
+        &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
+    );
 }

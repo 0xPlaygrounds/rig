@@ -38,11 +38,25 @@ pub(crate) const STREAMING_PROMPT: &str =
 pub(crate) const STREAMING_TOOLS_PREAMBLE: &str =
     "You are a calculator. Use the provided tools before answering arithmetic questions.";
 pub(crate) const STREAMING_TOOLS_PROMPT: &str = "Calculate 2 - 5.";
+pub(crate) const TWO_TOOL_STREAM_PREAMBLE: &str = "\
+You are a precise assistant. When tools are available, you must use them instead of guessing. \
+Call both `alpha_signal` and `beta_signal` before writing any normal text.";
+pub(crate) const TWO_TOOL_STREAM_PROMPT: &str = "\
+Call `alpha_signal` and `beta_signal` exactly once each before answering. \
+After both tool results are available, respond in one short sentence that includes both exact tool outputs.";
+pub(crate) const ORDERED_TOOL_STREAM_PREAMBLE: &str = "\
+You must call the requested tool before writing any normal text. \
+After the tool result is available, answer in one short sentence that includes the exact tool output.";
+pub(crate) const ORDERED_TOOL_STREAM_PROMPT: &str = "\
+Call `alpha_signal` exactly once before answering. \
+After the tool result is available, answer in one short sentence that includes the exact tool output.";
 pub(crate) const REQUIRED_ZERO_ARG_TOOL_PROMPT: &str =
     "Call the ping tool with no arguments. Do not answer with normal text before the tool call.";
 pub(crate) const MULTI_TURN_STREAMING_PROMPT: &str =
     "Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.";
 pub(crate) const MULTI_TURN_STREAMING_EXPECTED_RESULT: i32 = 16;
+pub(crate) const ALPHA_SIGNAL_OUTPUT: &str = "crimson-harbor";
+pub(crate) const BETA_SIGNAL_OUTPUT: &str = "silver-orchard";
 
 pub(crate) const STRUCTURED_OUTPUT_PROMPT: &str =
     "Return a concise event object for a local Rust meetup in Seattle.";
@@ -93,6 +107,9 @@ pub(crate) struct OperationArgs {
     pub(crate) x: i32,
     pub(crate) y: i32,
 }
+
+#[derive(Deserialize)]
+pub(crate) struct EmptyArgs {}
 
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
@@ -168,6 +185,58 @@ impl Tool for Subtract {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+pub(crate) struct AlphaSignal;
+
+impl Tool for AlphaSignal {
+    const NAME: &'static str = "alpha_signal";
+    type Error = MathError;
+    type Args = EmptyArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Return the alpha signal marker.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {},
+                "required": [],
+            }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok(ALPHA_SIGNAL_OUTPUT.to_string())
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct BetaSignal;
+
+impl Tool for BetaSignal {
+    const NAME: &'static str = "beta_signal";
+    type Error = MathError;
+    type Args = EmptyArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description: "Return the beta signal marker.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {},
+                "required": [],
+            }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Ok(BETA_SIGNAL_OUTPUT.to_string())
+    }
+}
+
 pub(crate) fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
     ToolDefinition {
         name: name.to_owned(),
@@ -201,6 +270,25 @@ pub(crate) fn assert_contains_any_case_insensitive(response: &str, expected: &[&
         matched,
         "Response {:?} did not contain any of {:?}.",
         response, expected
+    );
+}
+
+pub(crate) fn assert_contains_all_case_insensitive(response: &str, expected: &[&str]) {
+    assert_nonempty_response(response);
+
+    let response_lower = response.to_ascii_lowercase();
+    let missing: Vec<&str> = expected
+        .iter()
+        .copied()
+        .filter(|needle| !response_lower.contains(&needle.to_ascii_lowercase()))
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "Response {:?} did not contain all of {:?}; missing {:?}.",
+        response,
+        expected,
+        missing
     );
 }
 
@@ -337,9 +425,11 @@ pub(crate) struct StreamObservation {
     pub(crate) final_turn_text: String,
     pub(crate) final_response_text: Option<String>,
     pub(crate) tool_calls: Vec<String>,
+    pub(crate) tool_call_records: Vec<ToolCallRecord>,
     pub(crate) tool_results: usize,
     pub(crate) errors: Vec<String>,
     pub(crate) got_final_response: bool,
+    pub(crate) events: Vec<&'static str>,
 }
 
 impl StreamObservation {
@@ -349,9 +439,37 @@ impl StreamObservation {
             final_turn_text: String::new(),
             final_response_text: None,
             tool_calls: Vec::new(),
+            tool_call_records: Vec::new(),
             tool_results: 0,
             errors: Vec::new(),
             got_final_response: false,
+            events: Vec::new(),
+        }
+    }
+}
+
+pub(crate) struct ToolCallRecord {
+    pub(crate) name: String,
+    pub(crate) signature: Option<String>,
+    pub(crate) additional_params: Option<serde_json::Value>,
+}
+
+pub(crate) struct RawStreamObservation {
+    pub(crate) text: String,
+    pub(crate) tool_call_records: Vec<ToolCallRecord>,
+    pub(crate) errors: Vec<String>,
+    pub(crate) got_final: bool,
+    pub(crate) events: Vec<&'static str>,
+}
+
+impl RawStreamObservation {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            tool_call_records: Vec::new(),
+            errors: Vec::new(),
+            got_final: false,
+            events: Vec::new(),
         }
     }
 }
@@ -367,26 +485,233 @@ pub(crate) async fn collect_stream_observation<R>(
                 StreamedAssistantContent::Text(text) => {
                     observation.all_streamed_text.push_str(&text.text);
                     observation.final_turn_text.push_str(&text.text);
+                    observation.events.push("text");
                 }
                 StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    observation.tool_calls.push(tool_call.function.name);
+                    observation.tool_calls.push(tool_call.function.name.clone());
+                    observation.tool_call_records.push(ToolCallRecord {
+                        name: tool_call.function.name,
+                        signature: tool_call.signature,
+                        additional_params: tool_call.additional_params,
+                    });
+                    observation.events.push("tool_call");
                 }
-                _ => {}
+                StreamedAssistantContent::ToolCallDelta { .. } => {
+                    observation.events.push("tool_call_delta");
+                }
+                StreamedAssistantContent::Reasoning(_) => {
+                    observation.events.push("reasoning");
+                }
+                StreamedAssistantContent::ReasoningDelta { .. } => {
+                    observation.events.push("reasoning_delta");
+                }
+                StreamedAssistantContent::Final(_) => {
+                    observation.events.push("stream_final");
+                }
             },
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
+                observation.events.push("tool_result");
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 observation.final_response_text = Some(response.response().to_owned());
                 observation.got_final_response = true;
+                observation.events.push("final_response");
             }
             Ok(_) => {}
-            Err(error) => observation.errors.push(error.to_string()),
+            Err(error) => {
+                observation.errors.push(error.to_string());
+                observation.events.push("error");
+            }
         }
     }
 
     observation
+}
+
+pub(crate) async fn collect_raw_stream_observation<R>(
+    mut stream: StreamingCompletionResponse<R>,
+) -> RawStreamObservation
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
+    let mut observation = RawStreamObservation::new();
+
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(StreamedAssistantContent::Text(text)) => {
+                observation.text.push_str(&text.text);
+                observation.events.push("text");
+            }
+            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                observation.tool_call_records.push(ToolCallRecord {
+                    name: tool_call.function.name,
+                    signature: tool_call.signature,
+                    additional_params: tool_call.additional_params,
+                });
+                observation.events.push("tool_call");
+            }
+            Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {
+                observation.events.push("tool_call_delta");
+            }
+            Ok(StreamedAssistantContent::Reasoning(_)) => {
+                observation.events.push("reasoning");
+            }
+            Ok(StreamedAssistantContent::ReasoningDelta { .. }) => {
+                observation.events.push("reasoning_delta");
+            }
+            Ok(StreamedAssistantContent::Final(_)) => {
+                observation.got_final = true;
+                observation.events.push("final");
+            }
+            Err(error) => {
+                observation.errors.push(error.to_string());
+                observation.events.push("error");
+            }
+        }
+    }
+
+    observation
+}
+
+fn first_event_index(events: &[&'static str], expected: &'static str) -> Option<usize> {
+    events.iter().position(|event| *event == expected)
+}
+
+pub(crate) fn assert_two_tool_roundtrip_contract(
+    observation: &StreamObservation,
+    expected_tools: &[&str],
+    expected_markers: &[&str],
+) {
+    assert!(
+        observation.errors.is_empty(),
+        "stream should not emit errors: {:?}",
+        observation.errors
+    );
+    assert!(
+        observation.got_final_response,
+        "stream should emit a final response"
+    );
+    assert_eq!(
+        observation.final_response_text.as_deref(),
+        Some(observation.final_turn_text.as_str()),
+        "FinalResponse.response() should match the final turn's streamed text"
+    );
+    assert!(
+        observation.tool_results >= expected_tools.len(),
+        "expected at least {} tool-result events, got {}",
+        expected_tools.len(),
+        observation.tool_results
+    );
+
+    for expected_tool in expected_tools {
+        assert!(
+            observation
+                .tool_calls
+                .iter()
+                .any(|name| name == expected_tool),
+            "expected tool call for {expected_tool}, saw {:?}",
+            observation.tool_calls
+        );
+    }
+
+    let response = observation
+        .final_response_text
+        .as_deref()
+        .expect("stream should produce a final response string");
+    assert_contains_all_case_insensitive(response, expected_markers);
+}
+
+pub(crate) fn assert_tool_call_precedes_later_text(
+    observation: &StreamObservation,
+    expected_tool: &str,
+    expected_markers: &[&str],
+) {
+    assert!(
+        observation.errors.is_empty(),
+        "stream should not emit errors: {:?}",
+        observation.errors
+    );
+    assert!(
+        observation.got_final_response,
+        "stream should emit a final response"
+    );
+    assert_eq!(
+        observation.final_response_text.as_deref(),
+        Some(observation.final_turn_text.as_str()),
+        "FinalResponse.response() should match the final turn's streamed text"
+    );
+    assert!(
+        observation
+            .tool_calls
+            .iter()
+            .any(|name| name == expected_tool),
+        "expected tool call for {expected_tool}, saw {:?}",
+        observation.tool_calls
+    );
+    assert!(
+        observation.tool_results >= 1,
+        "expected at least one tool-result event, got {}",
+        observation.tool_results
+    );
+
+    let first_tool_call = first_event_index(&observation.events, "tool_call")
+        .expect("stream should emit a tool call event");
+    let first_tool_result = first_event_index(&observation.events, "tool_result")
+        .expect("stream should emit a tool result event");
+    let first_text = first_event_index(&observation.events, "text")
+        .expect("stream should emit text after tools");
+
+    assert!(
+        first_tool_call < first_text,
+        "expected a tool call before later text, saw events {:?}",
+        observation.events
+    );
+    assert!(
+        first_tool_result < first_text,
+        "expected a tool result before later text, saw events {:?}",
+        observation.events
+    );
+
+    let response = observation
+        .final_response_text
+        .as_deref()
+        .expect("stream should produce a final response string");
+    assert_contains_all_case_insensitive(response, expected_markers);
+}
+
+pub(crate) fn assert_raw_stream_has_decorated_tool_call(
+    observation: &RawStreamObservation,
+    expected_tool: &str,
+) {
+    assert!(
+        observation.errors.is_empty(),
+        "raw stream should not emit errors: {:?}",
+        observation.errors
+    );
+
+    let record = observation
+        .tool_call_records
+        .iter()
+        .find(|record| record.name == expected_tool)
+        .unwrap_or_else(|| {
+            panic!(
+                "expected raw stream tool call for {expected_tool}, saw {:?}",
+                observation
+                    .tool_call_records
+                    .iter()
+                    .map(|record| record.name.as_str())
+                    .collect::<Vec<_>>()
+            )
+        });
+
+    assert!(
+        record.signature.is_some() || record.additional_params.is_some(),
+        "expected decorated tool call metadata for {expected_tool}, got signature={:?} additional_params={:?}",
+        record.signature,
+        record.additional_params
+    );
 }
 
 pub(crate) fn assert_loader_answer_is_relevant(response: &str) {
