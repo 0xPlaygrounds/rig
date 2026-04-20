@@ -39,6 +39,7 @@ use crate::{
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use tracing::{Level, info_span};
 use tracing_futures::Instrument;
 
@@ -144,10 +145,10 @@ enum ApiResponse<T> {
 
 /// Llamafile uses the OpenAI chat completions format.
 /// We reuse the OpenAI `Message` type for maximum compatibility.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 struct LlamafileCompletionRequest {
     model: String,
-    messages: Vec<openai::Message>,
+    messages: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,6 +157,133 @@ struct LlamafileCompletionRequest {
     tools: Vec<openai::ToolDefinition>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
+}
+
+fn join_text_segments<I>(segments: I) -> String
+where
+    I: IntoIterator<Item = String>,
+{
+    let segments = segments
+        .into_iter()
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+
+    if segments.is_empty() {
+        String::new()
+    } else {
+        segments.join("\n\n")
+    }
+}
+
+fn flatten_system_content(content: &crate::OneOrMany<openai::SystemContent>) -> String {
+    join_text_segments(content.iter().map(|item| item.text.clone()))
+}
+
+fn flatten_user_content(content: &crate::OneOrMany<openai::UserContent>) -> Option<String> {
+    content
+        .iter()
+        .map(|item| match item {
+            openai::UserContent::Text { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(join_text_segments)
+}
+
+fn flatten_assistant_content(content: &[openai::AssistantContent]) -> String {
+    join_text_segments(content.iter().map(|item| match item {
+        openai::AssistantContent::Text { text } => text.clone(),
+        openai::AssistantContent::Refusal { refusal } => refusal.clone(),
+    }))
+}
+
+fn optional_value<T>(value: Option<T>) -> Result<Option<Value>, CompletionError>
+where
+    T: Serialize,
+{
+    value
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(Into::into)
+}
+
+fn message_content_value<T>(
+    flattened: Option<String>,
+    original: &T,
+) -> Result<Value, CompletionError>
+where
+    T: Serialize,
+{
+    match flattened {
+        Some(text) => Ok(Value::String(text)),
+        None => Ok(serde_json::to_value(original)?),
+    }
+}
+
+fn llamafile_message_value(message: openai::Message) -> Result<Value, CompletionError> {
+    match message {
+        openai::Message::System { content, name } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("system".into()));
+            object.insert(
+                "content".into(),
+                Value::String(flatten_system_content(&content)),
+            );
+            if let Some(name) = name {
+                object.insert("name".into(), Value::String(name));
+            }
+            Ok(Value::Object(object))
+        }
+        openai::Message::User { content, name } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("user".into()));
+            object.insert(
+                "content".into(),
+                message_content_value(flatten_user_content(&content), &content)?,
+            );
+            if let Some(name) = name {
+                object.insert("name".into(), Value::String(name));
+            }
+            Ok(Value::Object(object))
+        }
+        openai::Message::Assistant {
+            content,
+            refusal,
+            audio,
+            name,
+            tool_calls,
+        } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("assistant".into()));
+            object.insert(
+                "content".into(),
+                Value::String(flatten_assistant_content(&content)),
+            );
+            if let Some(refusal) = refusal {
+                object.insert("refusal".into(), Value::String(refusal));
+            }
+            if let Some(audio) = optional_value(audio)? {
+                object.insert("audio".into(), audio);
+            }
+            if let Some(name) = name {
+                object.insert("name".into(), Value::String(name));
+            }
+            if !tool_calls.is_empty() {
+                object.insert("tool_calls".into(), serde_json::to_value(tool_calls)?);
+            }
+            Ok(Value::Object(object))
+        }
+        openai::Message::ToolResult {
+            tool_call_id,
+            content,
+        } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("tool".into()));
+            object.insert("tool_call_id".into(), Value::String(tool_call_id));
+            object.insert("content".into(), Value::String(content.as_text()));
+            Ok(Value::Object(object))
+        }
+    }
 }
 
 impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
@@ -192,7 +320,10 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
 
         Ok(Self {
             model,
-            messages: full_history,
+            messages: full_history
+                .into_iter()
+                .map(llamafile_message_value)
+                .collect::<Result<Vec<_>, _>>()?,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
             tools: req
@@ -604,6 +735,8 @@ where
 mod tests {
     use super::*;
     use crate::client::Nothing;
+    use crate::completion::Document;
+    use std::collections::HashMap;
 
     #[test]
     fn test_client_initialization() {
@@ -648,7 +781,84 @@ mod tests {
 
         assert_eq!(request.model, LLAMA_CPP);
         assert_eq!(request.messages.len(), 2); // system + user
+        assert_eq!(
+            request.messages[0]["content"],
+            "You are a helpful assistant."
+        );
+        assert_eq!(request.messages[1]["content"], "Hello!");
         assert_eq!(request.temperature, Some(0.7));
         assert_eq!(request.max_tokens, Some(256));
+    }
+
+    #[test]
+    fn test_completion_request_flattens_text_only_document_arrays() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "What does glarb-glarb mean?".to_string(),
+                })),
+            }),
+            documents: vec![
+                Document {
+                    id: "doc-1".into(),
+                    text: "Definition of flurbo: a green alien.".into(),
+                    additional_props: HashMap::new(),
+                },
+                Document {
+                    id: "doc-2".into(),
+                    text: "Definition of glarb-glarb: an ancient farming tool.".into(),
+                    additional_props: HashMap::new(),
+                },
+            ],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request = LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
+            .expect("Failed to create request");
+
+        assert_eq!(request.messages.len(), 2);
+        assert!(request.messages[0]["content"].is_string());
+        let documents = request.messages[0]["content"]
+            .as_str()
+            .expect("documents should serialize as a string");
+        assert!(documents.contains("Definition of flurbo"));
+        assert!(documents.contains("Definition of glarb-glarb"));
+    }
+
+    #[test]
+    fn test_llamafile_message_value_flattens_assistant_text_content() {
+        let message = openai::Message::Assistant {
+            content: vec![openai::AssistantContent::Text {
+                text: "Tool returned the answer.".into(),
+            }],
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: vec![openai::ToolCall {
+                id: "call_1".into(),
+                r#type: openai::ToolType::Function,
+                function: openai::Function {
+                    name: "weather".into(),
+                    arguments: serde_json::json!({"city": "London"}),
+                },
+            }],
+        };
+
+        let value = llamafile_message_value(message).expect("message conversion should succeed");
+
+        assert_eq!(value["role"], "assistant");
+        assert_eq!(value["content"], "Tool returned the answer.");
+        assert!(value["tool_calls"].is_array());
     }
 }
