@@ -23,7 +23,7 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::providers::internal::chat_compatible::{
+use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
 
@@ -657,31 +657,35 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
             }
         };
 
-        Ok(Some(chat_compatible::normalize_first_choice_chunk(
-            data.id,
-            data.model,
-            data.usage,
-            &data.choices,
-            |choice| match &choice.delta {
-                StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: None,
-                    reasoning: Some(reasoning.clone()),
-                    tool_calls: Vec::new(),
-                    details: Vec::new(),
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| match &choice.delta {
+                    StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
+                        finish_reason: CompatibleFinishReason::Other,
+                        text: None,
+                        reasoning: Some(reasoning.clone()),
+                        tool_calls: Vec::new(),
+                        details: Vec::new(),
+                    },
+                    StreamingDelta::MessageContent {
+                        content,
+                        tool_calls,
+                    } => CompatibleChoiceData {
+                        finish_reason: CompatibleFinishReason::Other,
+                        text: content.clone(),
+                        reasoning: None,
+                        tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                            tool_calls,
+                        ),
+                        details: Vec::new(),
+                    },
                 },
-                StreamingDelta::MessageContent {
-                    content,
-                    tool_calls,
-                } => CompatibleChoiceData {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: content.clone(),
-                    reasoning: None,
-                    tool_calls: chat_compatible::tool_call_chunks(tool_calls),
-                    details: Vec::new(),
-                },
-            },
-        )))
+            ),
+        ))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -707,7 +711,12 @@ pub async fn send_compatible_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    chat_compatible::send_compatible_streaming_request(client, req, GroqCompatibleProfile).await
+    openai_chat_completions_compatible::send_compatible_streaming_request(
+        client,
+        req,
+        GroqCompatibleProfile,
+    )
+    .await
 }
 
 #[cfg(test)]

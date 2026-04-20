@@ -28,7 +28,7 @@ use crate::client::{
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::internal::chat_compatible::{
+use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
 use crate::providers::openai::{self, StreamingToolCall};
@@ -434,25 +434,29 @@ impl CompatibleStreamProfile for LlamafileCompatibleProfile {
             }
         };
 
-        Ok(Some(chat_compatible::normalize_first_choice_chunk(
-            data.id,
-            data.model,
-            data.usage,
-            &data.choices,
-            |choice| CompatibleChoiceData {
-                finish_reason: if choice.finish_reason
-                    == Some(openai::completion::streaming::FinishReason::ToolCalls)
-                {
-                    CompatibleFinishReason::ToolCalls
-                } else {
-                    CompatibleFinishReason::Other
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| CompatibleChoiceData {
+                    finish_reason: if choice.finish_reason
+                        == Some(openai::completion::streaming::FinishReason::ToolCalls)
+                    {
+                        CompatibleFinishReason::ToolCalls
+                    } else {
+                        CompatibleFinishReason::Other
+                    },
+                    text: choice.delta.content.clone(),
+                    reasoning: None,
+                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                        &choice.delta.tool_calls,
+                    ),
+                    details: Vec::new(),
                 },
-                text: choice.delta.content.clone(),
-                reasoning: None,
-                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
-                details: Vec::new(),
-            },
-        )))
+            ),
+        ))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -480,7 +484,11 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     tracing::Instrument::instrument(
-        chat_compatible::send_compatible_streaming_request(client, req, LlamafileCompatibleProfile),
+        openai_chat_completions_compatible::send_compatible_streaming_request(
+            client,
+            req,
+            LlamafileCompatibleProfile,
+        ),
         span,
     )
     .await

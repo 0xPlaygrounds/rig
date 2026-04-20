@@ -97,7 +97,7 @@ where
 mod tests {
     use super::send_xai_streaming_request;
     use crate::message::ReasoningContent;
-    use crate::providers::internal::chat_compatible::test_support::sse_bytes_from_json_events;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::ReasoningSummary;
     use crate::providers::openai::responses_api::streaming::reasoning_choices_from_done_item;
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};

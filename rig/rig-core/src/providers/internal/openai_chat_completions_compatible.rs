@@ -1,4 +1,4 @@
-//! Shared helpers for chat-compatible streaming providers.
+//! Shared helpers for OpenAI Chat Completions-compatible streaming providers.
 //!
 //! Several providers expose an SSE stream that looks like OpenAI Chat
 //! Completions: text arrives in deltas, tool calls are streamed piecemeal, and
@@ -443,7 +443,7 @@ pub(crate) fn finalize_completed_streaming_tool_call(
 }
 
 fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStreamingToolCall> {
-    // Canonical cleanup for chat-compatible providers:
+    // Canonical cleanup for OpenAI Chat Completions-compatible providers:
     // a pending tool call with an established name but no streamed arguments is
     // treated as a valid parameterless invocation and normalized to `{}`.
     // Only nameless entries or syntactically partial argument payloads are dropped.
@@ -538,13 +538,13 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
+    use super::test_support::sse_bytes_from_data_lines;
     use super::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleToolCallChunk, finalize_pending_tool_call, send_compatible_streaming_request,
     };
     use crate::completion::{CompletionError, GetTokenUsage};
     use crate::http_client::mock::MockStreamingClient;
-    use crate::providers::internal::chat_compatible::test_support::sse_bytes_from_data_lines;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
     use futures::StreamExt;

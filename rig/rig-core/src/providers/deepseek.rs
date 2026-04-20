@@ -20,7 +20,7 @@ use crate::client::{
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
-use crate::providers::internal::chat_compatible::{
+use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
 use crate::{
@@ -740,19 +740,23 @@ impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
             }
         };
 
-        Ok(Some(chat_compatible::normalize_first_choice_chunk(
-            data.id,
-            data.model,
-            data.usage,
-            &data.choices,
-            |choice| CompatibleChoiceData {
-                finish_reason: CompatibleFinishReason::Other,
-                text: choice.delta.content.clone(),
-                reasoning: choice.delta.reasoning_content.clone(),
-                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
-                details: Vec::new(),
-            },
-        )))
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| CompatibleChoiceData {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: choice.delta.content.clone(),
+                    reasoning: choice.delta.reasoning_content.clone(),
+                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                        &choice.delta.tool_calls,
+                    ),
+                    details: Vec::new(),
+                },
+            ),
+        ))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -778,8 +782,12 @@ pub async fn send_compatible_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    chat_compatible::send_compatible_streaming_request(http_client, req, DeepSeekCompatibleProfile)
-        .await
+    openai_chat_completions_compatible::send_compatible_streaming_request(
+        http_client,
+        req,
+        DeepSeekCompatibleProfile,
+    )
+    .await
 }
 
 // ================================================================

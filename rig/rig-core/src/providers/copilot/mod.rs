@@ -25,7 +25,7 @@ use crate::client::{
 use crate::completion::{self, CompletionError, GetTokenUsage};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::internal::chat_compatible::{
+use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
@@ -1308,23 +1308,27 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
             }
         };
 
-        Ok(Some(chat_compatible::normalize_first_choice_chunk(
-            data.id,
-            data.model,
-            data.usage,
-            &data.choices,
-            |choice| CompatibleChoiceData {
-                finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
-                    CompatibleFinishReason::ToolCalls
-                } else {
-                    CompatibleFinishReason::Other
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| CompatibleChoiceData {
+                    finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
+                        CompatibleFinishReason::ToolCalls
+                    } else {
+                        CompatibleFinishReason::Other
+                    },
+                    text: choice.delta.content.clone(),
+                    reasoning: choice.delta.reasoning_content.clone(),
+                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                        &choice.delta.tool_calls,
+                    ),
+                    details: Vec::new(),
                 },
-                text: choice.delta.content.clone(),
-                reasoning: choice.delta.reasoning_content.clone(),
-                tool_calls: chat_compatible::tool_call_chunks(&choice.delta.tool_calls),
-                details: Vec::new(),
-            },
-        )))
+            ),
+        ))
     }
 
     fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
@@ -1345,7 +1349,7 @@ async fn send_copilot_chat_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    chat_compatible::send_compatible_streaming_request(
+    openai_chat_completions_compatible::send_compatible_streaming_request(
         http_client,
         req,
         CopilotChatCompatibleProfile,
@@ -1382,7 +1386,7 @@ mod tests {
     use crate::completion::CompletionModel;
     use crate::http_client::mock::MockStreamingClient;
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
-    use crate::providers::internal::chat_compatible::test_support::{
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
     use crate::streaming::StreamedAssistantContent;
