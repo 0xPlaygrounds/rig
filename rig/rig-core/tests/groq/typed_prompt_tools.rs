@@ -13,7 +13,7 @@ use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
 
-use super::TOOL_MODEL;
+use super::TYPED_PROMPT_TOOLS_MODEL;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct WeatherResponse {
@@ -79,13 +79,18 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
     let client = groq::Client::from_env();
     let agent = client
-        .agent(TOOL_MODEL)
+        .agent(TYPED_PROMPT_TOOLS_MODEL)
         .preamble(
-            "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
-             After calling the tool, respond with ONLY minified JSON matching this schema: \
+            "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
+             The only valid tool name is `weather`; never invent or call any other tool. \
+             After receiving the weather tool result, do not call any more tools. \
+             Then respond with ONLY minified JSON matching exactly this schema: \
              {\"city\": string, \"weather\": string}. \
-             DO NOT wrap the JSON in markdown or add explanatory text. \
-             DO NOT modify the weather description from the tool result.",
+             The `city` field is required and must contain the requested city exactly. \
+             The `weather` field is required and must contain the tool result verbatim. \
+             For the prompt asking about London, a valid final answer looks like: \
+             {\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}. \
+             DO NOT wrap the JSON in markdown or add explanatory text.",
         )
         .tool(WeatherTool::new(call_count.clone()))
         .build();

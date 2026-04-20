@@ -12,7 +12,7 @@ use rig::providers::groq;
 
 use crate::support::assert_nonempty_response;
 
-use super::DEFAULT_MODEL;
+use super::REQUEST_HOOK_MODEL;
 
 #[derive(Clone)]
 struct SessionIdHook<'a> {
@@ -71,7 +71,7 @@ where
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = groq::Client::from_env()
-        .agent(DEFAULT_MODEL)
+        .agent(REQUEST_HOOK_MODEL)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

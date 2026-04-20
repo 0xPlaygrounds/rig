@@ -7,7 +7,7 @@ use rig::providers::groq;
 
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
-use super::DEFAULT_MODEL;
+use super::LOADERS_MODEL;
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
@@ -20,7 +20,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(client.agent(DEFAULT_MODEL), |builder, (path, content)| {
+        .fold(client.agent(LOADERS_MODEL), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

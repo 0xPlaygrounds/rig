@@ -8,14 +8,14 @@ use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
-use super::DEFAULT_MODEL;
+use super::STREAMING_MODEL;
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_smoke() {
     let client = groq::Client::from_env();
     let agent = client
-        .agent(DEFAULT_MODEL)
+        .agent(STREAMING_MODEL)
         .preamble(STREAMING_PREAMBLE)
         .build();
 

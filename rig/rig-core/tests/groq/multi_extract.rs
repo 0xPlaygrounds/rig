@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::support::assert_nonempty_response;
 
-use super::TOOL_MODEL;
+use super::{MULTI_EXTRACT_NAMES_MODEL, MULTI_EXTRACT_SENTIMENT_MODEL, MULTI_EXTRACT_TOPICS_MODEL};
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -33,17 +33,17 @@ struct Sentiment {
 async fn batch_multi_extract_chain() -> Result<()> {
     let client = groq::Client::from_env();
     let names_extractor = client
-        .extractor::<Names>(TOOL_MODEL)
+        .extractor::<Names>(MULTI_EXTRACT_NAMES_MODEL)
         .preamble("Extract names from the given text.")
         .retries(2)
         .build();
     let topics_extractor = client
-        .extractor::<Topics>(TOOL_MODEL)
+        .extractor::<Topics>(MULTI_EXTRACT_TOPICS_MODEL)
         .preamble("Extract topics from the given text.")
         .retries(2)
         .build();
     let sentiment_extractor = client
-        .extractor::<Sentiment>(TOOL_MODEL)
+        .extractor::<Sentiment>(MULTI_EXTRACT_SENTIMENT_MODEL)
         .preamble("Extract sentiment and confidence from the given text.")
         .retries(2)
         .build();

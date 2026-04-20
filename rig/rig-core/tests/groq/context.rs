@@ -6,7 +6,7 @@ use rig::providers::groq;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
 
-use super::DEFAULT_MODEL;
+use super::CONTEXT_MODEL;
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
@@ -15,7 +15,7 @@ async fn context_smoke() {
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(client.agent(DEFAULT_MODEL), |builder, doc| {
+        .fold(client.agent(CONTEXT_MODEL), |builder, doc| {
             builder.context(doc)
         })
         .build();

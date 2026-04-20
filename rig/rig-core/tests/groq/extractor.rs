@@ -5,13 +5,13 @@ use rig::providers::groq;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
-use super::TOOL_MODEL;
+use super::EXTRACTOR_MODEL;
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extractor_smoke() {
     let client = groq::Client::from_env();
-    let extractor = client.extractor::<SmokePerson>(TOOL_MODEL).build();
+    let extractor = client.extractor::<SmokePerson>(EXTRACTOR_MODEL).build();
 
     let response = extractor
         .extract_with_usage(EXTRACTOR_TEXT)

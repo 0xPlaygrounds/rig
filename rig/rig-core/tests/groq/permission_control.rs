@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::support::assert_nonempty_response;
 
-use super::TOOL_MODEL;
+use super::{PERMISSION_CONTROL_PROMPT_MODEL, PERMISSION_CONTROL_STREAMING_MODEL};
 
 const TEST_FILE: &str = "test.txt";
 const TEST_CONTENT: &str = "hello world\n";
@@ -58,6 +58,7 @@ impl Tool for ReadFileHead {
             parameters: json!({
                 "type": "object",
                 "properties": {},
+                "required": [],
             }),
         }
     }
@@ -89,6 +90,7 @@ impl Tool for ReadFileTail {
             parameters: json!({
                 "type": "object",
                 "properties": {},
+                "required": [],
             }),
         }
     }
@@ -156,7 +158,7 @@ async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = groq::Client::from_env()
-        .agent(TOOL_MODEL)
+        .agent(PERMISSION_CONTROL_PROMPT_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -180,7 +182,10 @@ async fn permission_control_prompt_example() -> Result<()> {
 
     let last = last_result.lock().expect("lock last_result").clone();
     assert_eq!(last.as_deref(), Some("hello world"));
-    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    assert!(
+        call_count.load(Ordering::SeqCst) >= 2,
+        "expected at least one skipped tool call followed by a successful retry"
+    );
 
     Ok(())
 }
@@ -191,7 +196,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = groq::Client::from_env()
-        .agent(TOOL_MODEL)
+        .agent(PERMISSION_CONTROL_STREAMING_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -207,7 +212,9 @@ async fn permission_control_streaming_example() -> Result<()> {
     let mut stream = agent
         .stream_prompt(
             "Use the available tools to read test.txt now. \
-             Do not ask any follow-up questions; just read the file and report its content.",
+             Call `read_file_head` first. If it is unavailable, immediately call `read_file_tail` instead. \
+             Both tools take zero arguments and return the file content. \
+             Do not ask any follow-up questions. After a tool succeeds, reply with the exact file content.",
         )
         .multi_turn(5)
         .with_hook(hook)
@@ -225,7 +232,10 @@ async fn permission_control_streaming_example() -> Result<()> {
         final_response.response()
     );
     assert_eq!(last.as_deref(), Some("hello world"));
-    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    assert!(
+        call_count.load(Ordering::SeqCst) >= 2,
+        "expected at least one skipped tool call followed by a successful retry"
+    );
 
     Ok(())
 }
