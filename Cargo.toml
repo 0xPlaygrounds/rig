@@ -90,7 +90,7 @@ prost = "0.13"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
-zerocopy = "0.8.26"
+zerocopy = "0.8.48"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
