@@ -4,23 +4,36 @@ use anyhow::Result;
 use rig::extractor::ExtractionResponse;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use super::support;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 struct Person {
+    #[schemars(required)]
     name: Option<String>,
+    #[schemars(required)]
     age: Option<u8>,
+    #[schemars(required)]
     profession: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 struct Address {
+    #[schemars(required)]
     street: Option<String>,
+    #[schemars(required)]
     city: Option<String>,
+    #[schemars(required)]
     state: Option<String>,
+    #[schemars(required)]
     zip_code: Option<String>,
 }
+
+const EXTRACTOR_PREAMBLE: &str = "\
+Extract every field explicitly stated in the input text.
+Do not omit keys when the value is present in the text.
+Return the exact stated values through the submit tool.";
 
 fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) {
     let left = left
@@ -43,7 +56,11 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) {
 async fn extract_backward_compatibility() -> Result<()> {
     let model = support::model_name();
     let client = support::completions_client();
-    let extractor = client.extractor::<Person>(model).build();
+    let extractor = client
+        .extractor::<Person>(model)
+        .preamble(EXTRACTOR_PREAMBLE)
+        .additional_params(json!({ "temperature": 0.0 }))
+        .build();
 
     let person = extractor
         .extract("John Doe is a 30 year old software engineer.")
@@ -61,7 +78,11 @@ async fn extract_backward_compatibility() -> Result<()> {
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     let model = support::model_name();
     let client = support::completions_client();
-    let extractor = client.extractor::<Person>(model).build();
+    let extractor = client
+        .extractor::<Person>(model)
+        .preamble(EXTRACTOR_PREAMBLE)
+        .additional_params(json!({ "temperature": 0.0 }))
+        .build();
 
     let response: ExtractionResponse<Person> = extractor
         .extract_with_usage("Jane Smith is a 45 year old data scientist.")
@@ -84,7 +105,11 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 
     let model = support::model_name();
     let client = support::completions_client();
-    let extractor = client.extractor::<Address>(model).build();
+    let extractor = client
+        .extractor::<Address>(model)
+        .preamble(EXTRACTOR_PREAMBLE)
+        .additional_params(json!({ "temperature": 0.0 }))
+        .build();
 
     let chat_history = vec![Message::user(
         "I'm looking at a property that might be interesting.",
@@ -112,7 +137,11 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     let model = support::model_name();
     let client = support::completions_client();
-    let extractor = client.extractor::<Person>(model).build();
+    let extractor = client
+        .extractor::<Person>(model)
+        .preamble(EXTRACTOR_PREAMBLE)
+        .additional_params(json!({ "temperature": 0.0 }))
+        .build();
 
     let text = "Bob Johnson is a 55 year old retired teacher.";
     let person = extractor.extract(text).await?;
@@ -137,14 +166,22 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     let model = support::model_name();
     let client = support::completions_client();
 
-    let person_extractor = client.extractor::<Person>(model.clone()).build();
+    let person_extractor = client
+        .extractor::<Person>(model.clone())
+        .preamble(EXTRACTOR_PREAMBLE)
+        .additional_params(json!({ "temperature": 0.0 }))
+        .build();
     let person_response = person_extractor
         .extract_with_usage("Alice is a 25 year old developer.")
         .await?;
 
     assert!(person_response.usage.total_tokens > 0);
 
-    let address_extractor = client.extractor::<Address>(model).build();
+    let address_extractor = client
+        .extractor::<Address>(model)
+        .preamble(EXTRACTOR_PREAMBLE)
+        .additional_params(json!({ "temperature": 0.0 }))
+        .build();
     let address_response = address_extractor
         .extract_with_usage("456 Oak Avenue, Cambridge, MA 02139")
         .await?;
