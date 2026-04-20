@@ -3,23 +3,79 @@
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
-use rig::providers::llamafile;
 use rig::streaming::StreamingPrompt;
-use std::net::TcpStream;
 
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
-    ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
-    TWO_TOOL_STREAM_PROMPT, assert_stream_contains_zero_arg_tool_call_named,
-    assert_tool_call_precedes_later_text, assert_two_tool_roundtrip_contract,
-    collect_stream_observation, zero_arg_tool_definition,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
+    ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT,
+    STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract, TWO_TOOL_STREAM_PREAMBLE,
+    TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
+    assert_stream_contains_zero_arg_tool_call_named, assert_tool_call_precedes_later_text,
+    assert_two_tool_roundtrip_contract, collect_stream_final_response, collect_stream_observation,
+    zero_arg_tool_definition,
 };
+
+use super::support;
+
+#[tokio::test]
+#[ignore = "requires a local llamafile server at http://localhost:8080"]
+async fn streaming_tools_smoke() {
+    if support::skip_if_server_unavailable() {
+        return;
+    }
+
+    let client = support::client();
+    let agent = client
+        .agent(support::model_name())
+        .preamble(STREAMING_TOOLS_PREAMBLE)
+        .tool(Adder)
+        .tool(Subtract)
+        .build();
+
+    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let response = collect_stream_final_response(&mut stream)
+        .await
+        .expect("streaming tool prompt should succeed");
+
+    assert_mentions_expected_number(&response, -3);
+}
+
+#[tokio::test]
+#[ignore = "requires a local llamafile server at http://localhost:8080"]
+async fn example_streaming_with_tools() {
+    if support::skip_if_server_unavailable() {
+        return;
+    }
+
+    let client = support::client();
+    let agent = client
+        .agent(support::model_name())
+        .preamble(
+            "You are a calculator here to help the user perform arithmetic operations. \
+             Use the tools provided to answer the user's question and answer in a full sentence.",
+        )
+        .max_tokens(1024)
+        .tool(Adder)
+        .tool(Subtract)
+        .build();
+
+    let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+    let response = collect_stream_final_response(&mut stream)
+        .await
+        .expect("streaming tools prompt should succeed");
+
+    assert_mentions_expected_number(&response, -3);
+}
 
 #[tokio::test]
 #[ignore = "requires a local llamafile server at http://localhost:8080"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = llamafile::Client::from_url("http://localhost:8080");
-    let model = client.completion_model(llamafile::LLAMA_CPP);
+    if support::skip_if_server_unavailable() {
+        return;
+    }
+
+    let client = support::client();
+    let model = client.completion_model(support::model_name());
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .tool(zero_arg_tool_definition("ping"))
@@ -33,14 +89,13 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires a local llamafile server at http://localhost:8080"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    if TcpStream::connect("127.0.0.1:8080").is_err() {
-        eprintln!("skipping llamafile live test: no server listening on 127.0.0.1:8080");
+    if support::skip_if_server_unavailable() {
         return;
     }
 
-    let client = llamafile::Client::from_url("http://localhost:8080");
+    let client = support::client();
     let agent = client
-        .agent(llamafile::LLAMA_CPP)
+        .agent(support::model_name())
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal)
@@ -62,14 +117,13 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires a local llamafile server at http://localhost:8080"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    if TcpStream::connect("127.0.0.1:8080").is_err() {
-        eprintln!("skipping llamafile live test: no server listening on 127.0.0.1:8080");
+    if support::skip_if_server_unavailable() {
         return;
     }
 
-    let client = llamafile::Client::from_url("http://localhost:8080");
+    let client = support::client();
     let agent = client
-        .agent(llamafile::LLAMA_CPP)
+        .agent(support::model_name())
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .build();

@@ -1,2 +1,15 @@
 mod agent;
+mod context;
+mod embeddings;
+mod extractor;
+mod extractor_usage;
+mod loaders;
+mod multi_extract;
+mod permission_control;
+mod request_hook;
+mod streaming;
 mod streaming_tools;
+mod structured_output;
+mod support;
+mod tools;
+mod typed_prompt_tools;
