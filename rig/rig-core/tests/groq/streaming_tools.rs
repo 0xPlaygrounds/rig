@@ -36,7 +36,6 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     let agent = client
         .agent(groq::DEEPSEEK_R1_DISTILL_LLAMA_70B)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .tool(BetaSignal)
         .build();
@@ -49,7 +48,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 
     assert_two_tool_roundtrip_contract(
         &observation,
-        &["alpha_signal", "beta_signal"],
+        &["lookup_harbor_label", "lookup_orchard_label"],
         &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
     );
 }
@@ -61,7 +60,6 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
     let agent = client
         .agent(groq::DEEPSEEK_R1_DISTILL_LLAMA_70B)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .build();
 
@@ -71,5 +69,9 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
-    assert_tool_call_precedes_later_text(&observation, "alpha_signal", &[ALPHA_SIGNAL_OUTPUT]);
+    assert_tool_call_precedes_later_text(
+        &observation,
+        "lookup_harbor_label",
+        &[ALPHA_SIGNAL_OUTPUT],
+    );
 }

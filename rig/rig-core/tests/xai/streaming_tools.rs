@@ -34,7 +34,6 @@ async fn responses_stream_preserves_tool_result_flow() {
     let agent = client
         .agent(xai::completion::GROK_4)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .build();
 
@@ -44,5 +43,9 @@ async fn responses_stream_preserves_tool_result_flow() {
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
-    assert_tool_call_precedes_later_text(&observation, "alpha_signal", &[ALPHA_SIGNAL_OUTPUT]);
+    assert_tool_call_precedes_later_text(
+        &observation,
+        "lookup_harbor_label",
+        &[ALPHA_SIGNAL_OUTPUT],
+    );
 }

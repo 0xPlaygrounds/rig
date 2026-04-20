@@ -2,7 +2,6 @@
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Message;
-use rig::message::ToolChoice;
 use rig::providers::mistral;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 
@@ -66,7 +65,6 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
         .agent(TOOL_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .build();
 
@@ -76,7 +74,11 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
-    assert_tool_call_precedes_later_text(&observation, "alpha_signal", &[ALPHA_SIGNAL_OUTPUT]);
+    assert_tool_call_precedes_later_text(
+        &observation,
+        "lookup_harbor_label",
+        &[ALPHA_SIGNAL_OUTPUT],
+    );
 }
 
 #[tokio::test]
@@ -87,7 +89,6 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
         .agent(TOOL_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .build();
 
@@ -97,5 +98,9 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
-    assert_tool_call_precedes_later_text(&observation, "alpha_signal", &[ALPHA_SIGNAL_OUTPUT]);
+    assert_tool_call_precedes_later_text(
+        &observation,
+        "lookup_harbor_label",
+        &[ALPHA_SIGNAL_OUTPUT],
+    );
 }

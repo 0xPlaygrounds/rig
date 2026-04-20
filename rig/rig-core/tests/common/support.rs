@@ -40,15 +40,16 @@ pub(crate) const STREAMING_TOOLS_PREAMBLE: &str =
 pub(crate) const STREAMING_TOOLS_PROMPT: &str = "Calculate 2 - 5.";
 pub(crate) const TWO_TOOL_STREAM_PREAMBLE: &str = "\
 You are a precise assistant. When tools are available, you must use them instead of guessing. \
-Call both `alpha_signal` and `beta_signal` before writing any normal text.";
+Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. \
+Never call the same tool twice once you already have its result.";
 pub(crate) const TWO_TOOL_STREAM_PROMPT: &str = "\
-Call `alpha_signal` and `beta_signal` exactly once each before answering. \
-After both tool results are available, respond in one short sentence that includes both exact tool outputs.";
+Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. \
+After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.";
 pub(crate) const ORDERED_TOOL_STREAM_PREAMBLE: &str = "\
 You must call the requested tool before writing any normal text. \
-After the tool result is available, answer in one short sentence that includes the exact tool output.";
+After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.";
 pub(crate) const ORDERED_TOOL_STREAM_PROMPT: &str = "\
-Call `alpha_signal` exactly once before answering. \
+Call `lookup_harbor_label` exactly once before answering. \
 After the tool result is available, answer in one short sentence that includes the exact tool output.";
 pub(crate) const REQUIRED_ZERO_ARG_TOOL_PROMPT: &str =
     "Call the ping tool with no arguments. Do not answer with normal text before the tool call.";
@@ -189,7 +190,7 @@ impl Tool for Subtract {
 pub(crate) struct AlphaSignal;
 
 impl Tool for AlphaSignal {
-    const NAME: &'static str = "alpha_signal";
+    const NAME: &'static str = "lookup_harbor_label";
     type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;
@@ -215,7 +216,7 @@ impl Tool for AlphaSignal {
 pub(crate) struct BetaSignal;
 
 impl Tool for BetaSignal {
-    const NAME: &'static str = "beta_signal";
+    const NAME: &'static str = "lookup_orchard_label";
     type Error = MathError;
     type Args = EmptyArgs;
     type Output = String;

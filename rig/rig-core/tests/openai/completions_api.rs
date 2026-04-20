@@ -2,7 +2,6 @@
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
-use rig::message::ToolChoice;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 
@@ -37,7 +36,6 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .tool(BetaSignal)
         .build();
@@ -50,7 +48,7 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
 
     assert_two_tool_roundtrip_contract(
         &observation,
-        &["alpha_signal", "beta_signal"],
+        &["lookup_harbor_label", "lookup_orchard_label"],
         &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
     );
 }

@@ -74,7 +74,6 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     let agent = live_client()
         .agent(LIVE_MODEL)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
-        .tool_choice(ToolChoice::Required)
         .tool(AlphaSignal)
         .tool(BetaSignal)
         .build();
@@ -87,7 +86,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 
     assert_two_tool_roundtrip_contract(
         &observation,
-        &["alpha_signal", "beta_signal"],
+        &["lookup_harbor_label", "lookup_orchard_label"],
         &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
     );
 }
