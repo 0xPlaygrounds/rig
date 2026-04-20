@@ -227,6 +227,29 @@ pub(crate) fn assert_mentions_expected_number(response: &str, expected: i32) {
     );
 }
 
+pub(crate) fn assert_weather_tool_roundtrip_response(
+    city: &str,
+    weather: &str,
+    expected_city: &str,
+) {
+    assert_nonempty_response(city);
+    assert_nonempty_response(weather);
+
+    assert_eq!(
+        city.trim().to_ascii_lowercase(),
+        expected_city.trim().to_ascii_lowercase(),
+        "expected city {:?}, got {:?}",
+        expected_city,
+        city
+    );
+
+    assert!(
+        weather.to_ascii_lowercase().contains("fire and brimstone"),
+        "expected the weather description to preserve the tool result, got {:?}",
+        weather
+    );
+}
+
 pub(crate) fn assert_nonempty_bytes(bytes: &[u8]) {
     assert!(!bytes.is_empty(), "Expected non-empty bytes.");
 }

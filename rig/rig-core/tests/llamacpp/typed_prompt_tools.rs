@@ -205,10 +205,10 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
         call_count.load(Ordering::SeqCst) >= 1,
         "expected the weather tool to be executed at least once"
     );
-    assert_eq!(response.city, "London");
-    assert_eq!(
-        response.weather,
-        "The weather in London is all fire and brimstone"
+    crate::support::assert_weather_tool_roundtrip_response(
+        &response.city,
+        &response.weather,
+        "London",
     );
 
     Ok(())

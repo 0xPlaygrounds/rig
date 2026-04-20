@@ -1,4 +1,4 @@
-//! Live OpenAI coverage for combining `prompt_typed()` with tool calling.
+//! xAI live coverage for combining `prompt_typed()` with tool calling.
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::client::CompletionClient;
+use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{ToolDefinition, TypedPrompt};
-use rig::providers::openai;
+use rig::providers::xai;
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -72,35 +72,25 @@ impl Tool for WeatherTool {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
+#[ignore = "requires XAI_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let api_key = std::env::var("OPENAI_API_KEY")?;
-    let mut builder = openai::Client::builder().api_key(&api_key);
-
-    if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
-        builder = builder.base_url(&base_url);
-    }
-
-    let client = builder.build()?.completions_api();
+    let client = xai::Client::from_env();
     let agent = client
-        .agent(openai::GPT_4O)
+        .agent(xai::GROK_4)
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
-             After calling the tool, return a JSON response with the city name and the weather description. \
-             DO NOT modify the description from the tool result.",
+             After calling the tool, respond with ONLY minified JSON matching this schema: \
+             {\"city\": string, \"weather\": string}. \
+             DO NOT wrap the JSON in markdown or add explanatory text. \
+             DO NOT modify the weather description from the tool result.",
         )
         .tool(WeatherTool::new(call_count.clone()))
         .build();
 
-    let result = agent
+    let response: WeatherResponse = agent
         .prompt_typed("Hello, whats the weather in London?")
-        .await;
-
-    println!("prompt_typed result: {result:#?}");
-
-    let response: WeatherResponse = result?;
-    println!("agent response: {response:#?}");
+        .await?;
 
     assert!(
         call_count.load(Ordering::SeqCst) >= 1,

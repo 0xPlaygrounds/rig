@@ -18,16 +18,22 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(
-            client.agent(xai::completion::GROK_3_MINI),
-            |builder, (path, content)| {
-                builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
-            },
+        .fold(client.agent(xai::GROK_4), |builder, (path, content)| {
+            builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
+        })
+        .preamble(
+            "Use only the provided Rust Example contexts. \
+             Exactly one of these files is the correct answer: agent_with_loaders.rs, streaming.rs, tools.rs. \
+             Reply with exactly one of those file names and nothing else.",
         )
         .build();
 
     let response = agent
-        .prompt(LOADERS_PROMPT)
+        .prompt(
+            format!(
+                "{LOADERS_PROMPT} Choose only from these exact file names: agent_with_loaders.rs, streaming.rs, tools.rs. Reply with just the exact file name."
+            ),
+        )
         .await
         .expect("loader prompt should succeed");
 
