@@ -320,10 +320,18 @@ where
                     }
 
                     if choice.finish_reason == CompatibleFinishReason::ToolCalls {
-                        for (_, tool_call) in tool_calls.drain() {
-                            yield Ok(RawStreamingChoice::ToolCall(
-                                finalize_completed_streaming_tool_call(tool_call),
-                            ));
+                        let (completed_tool_calls, dropped_tool_calls) =
+                            drain_finalized_tool_calls(&mut tool_calls);
+
+                        for tool_call in completed_tool_calls {
+                            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+                        }
+
+                        if dropped_tool_calls > 0 {
+                            tracing::debug!(
+                                dropped_tool_calls,
+                                "Dropping incomplete tool calls on tool_calls finish reason"
+                            );
                         }
                     }
                 }
@@ -345,13 +353,10 @@ where
             return;
         }
 
-        let mut dropped_tool_calls = 0;
-        for (_, tool_call) in tool_calls.drain() {
-            if let Some(tool_call) = finalize_pending_tool_call(tool_call) {
-                yield Ok(RawStreamingChoice::ToolCall(tool_call));
-            } else {
-                dropped_tool_calls += 1;
-            }
+        let (completed_tool_calls, dropped_tool_calls) = drain_finalized_tool_calls(&mut tool_calls);
+
+        for tool_call in completed_tool_calls {
+            yield Ok(RawStreamingChoice::ToolCall(tool_call));
         }
 
         if dropped_tool_calls > 0 {
@@ -465,6 +470,23 @@ fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<Raw
         }
         _ => Some(tool_call),
     }
+}
+
+fn drain_finalized_tool_calls(
+    tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
+) -> (Vec<RawStreamingToolCall>, usize) {
+    let mut completed_tool_calls = Vec::new();
+    let mut dropped_tool_calls = 0;
+
+    for (_, tool_call) in tool_calls.drain() {
+        if let Some(tool_call) = finalize_pending_tool_call(tool_call) {
+            completed_tool_calls.push(tool_call);
+        } else {
+            dropped_tool_calls += 1;
+        }
+    }
+
+    (completed_tool_calls, dropped_tool_calls)
 }
 
 #[cfg(test)]
@@ -697,6 +719,54 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    struct FinishReasonCleanupProfile;
+
+    impl CompatibleStreamProfile for FinishReasonCleanupProfile {
+        type Usage = TestUsage;
+        type Detail = ();
+        type FinalResponse = TestFinalResponse;
+
+        fn normalize_chunk(
+            &self,
+            data: &str,
+        ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+            let choice = match data {
+                "start" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: vec![CompatibleToolCallChunk {
+                        index: 0,
+                        id: Some("call_123".to_owned()),
+                        name: Some("ping".to_owned()),
+                        arguments: Some("{\"x\":".to_owned()),
+                    }],
+                    details: Vec::new(),
+                }),
+                "finish" => Some(CompatibleChoice {
+                    finish_reason: CompatibleFinishReason::ToolCalls,
+                    text: None,
+                    reasoning: None,
+                    tool_calls: Vec::new(),
+                    details: Vec::new(),
+                }),
+                _ => None,
+            };
+
+            Ok(choice.map(|choice| CompatibleChunk {
+                response_id: None,
+                response_model: None,
+                choice: Some(choice),
+                usage: None,
+            }))
+        }
+
+        fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+            TestFinalResponse
+        }
+    }
+
     #[test]
     fn eof_cleanup_preserves_parameterless_tool_calls() {
         let tool_call = RawStreamingToolCall::new(
@@ -835,6 +905,46 @@ mod tests {
         assert_eq!(
             collected_tool_calls[1].function.arguments,
             serde_json::json!({"query":"two"})
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_calls_finish_reason_drops_partial_argument_payloads() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["start", "finish"]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        let mut saw_final = false;
+        let mut saw_tool_call = false;
+
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be ok") {
+                StreamedAssistantContent::ToolCallDelta { .. } => {}
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                StreamedAssistantContent::ToolCall { .. } => saw_tool_call = true,
+                other => panic!(
+                    "unexpected stream item while asserting finish-reason cleanup: {other:?}"
+                ),
+            }
+        }
+
+        assert!(
+            saw_final,
+            "stream should still yield a final response after dropping the partial tool call"
+        );
+        assert!(
+            !saw_tool_call,
+            "finish_reason cleanup should drop partial tool calls instead of emitting them"
         );
     }
 }
