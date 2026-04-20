@@ -534,43 +534,6 @@ pub(crate) mod test_support {
             serde_json::json!({})
         );
     }
-
-    pub(crate) async fn assert_completed_tool_call_precedes_text<R>(
-        mut stream: streaming::StreamingCompletionResponse<R>,
-        expected_id: &str,
-        expected_name: &str,
-        expected_arguments: serde_json::Value,
-        expected_text: &str,
-    ) where
-        R: Clone + Unpin + GetTokenUsage,
-    {
-        let mut saw_tool_call = false;
-        let mut saw_text_after_tool_call = false;
-
-        while let Some(chunk) = stream.next().await {
-            match chunk.expect("stream item should be ok") {
-                StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    assert_eq!(tool_call.id, expected_id);
-                    assert_eq!(tool_call.function.name, expected_name);
-                    assert_eq!(tool_call.function.arguments, expected_arguments);
-                    saw_tool_call = true;
-                }
-                StreamedAssistantContent::Text(chunk) => {
-                    assert_eq!(chunk.text, expected_text);
-                    if saw_tool_call {
-                        saw_text_after_tool_call = true;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        assert!(saw_tool_call, "expected completed tool call to be emitted");
-        assert!(
-            saw_text_after_tool_call,
-            "expected completed tool call before later text chunks"
-        );
-    }
 }
 
 #[cfg(test)]

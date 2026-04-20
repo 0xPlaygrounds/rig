@@ -596,10 +596,6 @@ where
 mod tests {
     use super::*;
     use crate::client::Nothing;
-    use crate::http_client::mock::MockStreamingClient;
-    use crate::providers::internal::chat_compatible::test_support::{
-        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
-    };
 
     #[test]
     fn test_client_initialization() {
@@ -646,26 +642,5 @@ mod tests {
         assert_eq!(request.messages.len(), 2); // system + user
         assert_eq!(request.temperature, Some(0.7));
         assert_eq!(request.max_tokens, Some(256));
-    }
-
-    #[tokio::test]
-    async fn test_streaming_preserves_zero_arg_tool_calls_at_eof() {
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]}}],\"usage\":null}",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .expect("request should build");
-
-        let stream = send_streaming_request(client, req, tracing::Span::current())
-            .await
-            .expect("stream should start");
-
-        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 }

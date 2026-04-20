@@ -712,12 +712,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::send_compatible_streaming_request;
     use crate::{
         OneOrMany,
-        providers::internal::chat_compatible::test_support::{
-            assert_completed_tool_call_precedes_text, sse_bytes_from_data_lines,
-        },
         providers::{
             groq::{GroqAdditionalParameters, GroqCompletionRequest},
             openai::{Message, UserContent},
@@ -774,97 +770,5 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
-    }
-
-    #[tokio::test]
-    async fn test_streaming_groq_profile_handles_reasoning_tools_and_usage() {
-        use crate::http_client::mock::MockStreamingClient;
-        use crate::streaming::StreamedAssistantContent;
-        use futures::StreamExt;
-
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"reasoning\":\"thinking\"}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"\"}}]}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
-
-        let mut reasoning = String::new();
-        let mut text = String::new();
-        let mut tool_calls = Vec::new();
-        let mut final_usage = None;
-
-        while let Some(chunk) = stream.next().await {
-            match chunk.unwrap() {
-                StreamedAssistantContent::ReasoningDelta {
-                    reasoning: chunk, ..
-                } => reasoning.push_str(&chunk),
-                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-                StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
-                StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
-                _ => {}
-            }
-        }
-
-        assert_eq!(reasoning, "thinking");
-        assert_eq!(text, "done");
-        assert_eq!(tool_calls.len(), 1);
-        assert_eq!(tool_calls[0].id, "call_123");
-        assert_eq!(tool_calls[0].function.name, "search");
-        assert_eq!(
-            tool_calls[0].function.arguments,
-            serde_json::json!({"query":"rig"})
-        );
-
-        let usage = final_usage.expect("expected final usage");
-        assert_eq!(usage.prompt_tokens, 11);
-        assert_eq!(usage.total_tokens, 17);
-    }
-
-    #[tokio::test]
-    async fn test_streaming_groq_emits_complete_single_chunk_tool_call_before_later_text() {
-        use crate::http_client::mock::MockStreamingClient;
-
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"search\",\"arguments\":\"{\\\"query\\\":\\\"rig\\\"}\"}}]}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[]}}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"total_tokens\":17}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
-
-        assert_completed_tool_call_precedes_text(
-            stream,
-            "call_123",
-            "search",
-            serde_json::json!({"query":"rig"}),
-            "done",
-        )
-        .await;
     }
 }

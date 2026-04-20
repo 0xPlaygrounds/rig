@@ -1383,7 +1383,7 @@ mod tests {
     use crate::http_client::mock::MockStreamingClient;
     use crate::http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response};
     use crate::providers::internal::chat_compatible::test_support::{
-        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines, sse_bytes_from_json_events,
+        sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
     use crate::streaming::StreamedAssistantContent;
     use bytes::Bytes;
@@ -1898,25 +1898,6 @@ mod tests {
             stream.next().await.is_none(),
             "chat stream should terminate immediately after a transport error"
         );
-    }
-
-    #[tokio::test]
-    async fn chat_stream_preserves_zero_arg_tool_calls_at_eof() {
-        let chunks = vec![Ok(sse_bytes_from_data_lines([
-            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-        ]))];
-
-        let http_client = SequencedStreamingHttpClient::new(chunks);
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
-        let stream = model.stream(request).await.expect("stream should start");
-
-        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 
     #[test]

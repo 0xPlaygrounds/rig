@@ -4,9 +4,9 @@
 use futures::StreamExt;
 use rig::{
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
-    completion::ToolDefinition,
+    completion::{GetTokenUsage, ToolDefinition},
     embeddings::Embedding,
-    streaming::{StreamedAssistantContent, StreamedUserContent},
+    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
     tool::Tool,
 };
 use schemars::JsonSchema;
@@ -38,6 +38,8 @@ pub(crate) const STREAMING_PROMPT: &str =
 pub(crate) const STREAMING_TOOLS_PREAMBLE: &str =
     "You are a calculator. Use the provided tools before answering arithmetic questions.";
 pub(crate) const STREAMING_TOOLS_PROMPT: &str = "Calculate 2 - 5.";
+pub(crate) const REQUIRED_ZERO_ARG_TOOL_PROMPT: &str =
+    "Call the ping tool with no arguments. Do not answer with normal text before the tool call.";
 pub(crate) const MULTI_TURN_STREAMING_PROMPT: &str =
     "Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.";
 pub(crate) const MULTI_TURN_STREAMING_EXPECTED_RESULT: i32 = 16;
@@ -166,6 +168,18 @@ impl Tool for Subtract {
     }
 }
 
+pub(crate) fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
+    ToolDefinition {
+        name: name.to_owned(),
+        description: format!("A zero-argument tool named {name}."),
+        parameters: json!({
+            "type": "object",
+            "properties": {},
+            "required": [],
+        }),
+    }
+}
+
 pub(crate) fn assert_nonempty_response(response: &str) {
     let trimmed = response.trim();
 
@@ -260,6 +274,39 @@ pub(crate) async fn collect_stream_final_response<R>(
     }
 
     Ok(final_response.expect("stream should yield a final response"))
+}
+
+pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named<R>(
+    mut stream: StreamingCompletionResponse<R>,
+    expected_name: &str,
+    expect_final_response: bool,
+) where
+    R: Clone + Unpin + GetTokenUsage,
+{
+    let mut saw_final = false;
+    let mut saw_matching_tool_call = false;
+
+    while let Some(chunk) = stream.next().await {
+        match chunk.expect("stream item should be ok") {
+            StreamedAssistantContent::Final(_) => saw_final = true,
+            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                if tool_call.function.name == expected_name {
+                    assert_eq!(tool_call.function.arguments, json!({}));
+                    saw_matching_tool_call = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if expect_final_response {
+        assert!(saw_final, "stream should still yield a final response");
+    }
+
+    assert!(
+        saw_matching_tool_call,
+        "expected stream to emit a zero-argument tool call named {expected_name}"
+    );
 }
 
 pub(crate) struct StreamObservation {

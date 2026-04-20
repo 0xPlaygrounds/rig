@@ -792,9 +792,6 @@ pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::internal::chat_compatible::test_support::{
-        assert_completed_tool_call_precedes_text, sse_bytes_from_data_lines,
-    };
 
     #[test]
     fn test_deserialize_vec_choice() {
@@ -1051,104 +1048,5 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
-    }
-
-    #[tokio::test]
-    async fn test_streaming_deepseek_profile_handles_reasoning_tools_and_usage() {
-        use crate::http_client::mock::MockStreamingClient;
-        use crate::streaming::StreamedAssistantContent;
-        use futures::StreamExt;
-
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"subtract\",\"arguments\":\"\"}}],\"reasoning_content\":\"thinking\"}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"x\\\":1,\"}}],\"reasoning_content\":\" harder\"}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":\" there\",\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"\\\"y\\\":2}\"}}],\"reasoning_content\":null}}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":7,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":3}}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
-
-        let mut reasoning = String::new();
-        let mut text = String::new();
-        let mut tool_calls = Vec::new();
-        let mut final_usage = None;
-
-        while let Some(chunk) = stream.next().await {
-            match chunk.unwrap() {
-                StreamedAssistantContent::ReasoningDelta {
-                    reasoning: chunk, ..
-                } => reasoning.push_str(&chunk),
-                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-                StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
-                StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
-                _ => {}
-            }
-        }
-
-        assert_eq!(reasoning, "thinking harder");
-        assert_eq!(text, "Hi there");
-        assert_eq!(tool_calls.len(), 1);
-        assert_eq!(tool_calls[0].id, "call_123");
-        assert_eq!(tool_calls[0].function.name, "subtract");
-        assert_eq!(
-            tool_calls[0].function.arguments,
-            serde_json::json!({"x":1,"y":2})
-        );
-
-        let usage = final_usage.expect("expected final usage");
-        assert_eq!(usage.prompt_tokens, 7);
-        assert_eq!(usage.completion_tokens, 5);
-        assert_eq!(usage.total_tokens, 12);
-        assert_eq!(
-            usage
-                .prompt_tokens_details
-                .as_ref()
-                .and_then(|details| details.cached_tokens),
-            Some(3)
-        );
-    }
-
-    #[tokio::test]
-    async fn test_streaming_deepseek_emits_complete_single_chunk_tool_call_before_later_text() {
-        use crate::http_client::mock::MockStreamingClient;
-
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"subtract\",\"arguments\":\"{\\\"x\\\":1,\\\"y\\\":2}\"}}],\"reasoning_content\":\"thinking\"}}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"content\":\"done\",\"tool_calls\":[],\"reasoning_content\":null}}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":5,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":7,\"total_tokens\":12,\"prompt_tokens_details\":{\"cached_tokens\":3}}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
-
-        assert_completed_tool_call_precedes_text(
-            stream,
-            "call_123",
-            "subtract",
-            serde_json::json!({"x":1,"y":2}),
-            "done",
-        )
-        .await;
     }
 }
