@@ -159,7 +159,14 @@ fn tool_result_to_user_message(
     call_id: Option<String>,
     tool_result: String,
 ) -> Message {
-    let content = OneOrMany::one(ToolResultContent::text(tool_result));
+    // Use from_tool_output so the chat-history path parses hybrid
+    // {"response", "parts": [...]} / {"parts": [...]} / image JSON
+    // outputs into ToolResultContent variants the same way the
+    // immediate stream yield does (see StreamedUserContent::ToolResult
+    // above).  The old ::text(...) wrapping dumped base64 image data
+    // verbatim into the next turn's context, blowing past provider
+    // token limits on multimodal tool results.
+    let content = ToolResultContent::from_tool_output(tool_result);
     let user_content = match call_id {
         Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
         None => UserContent::tool_result(id, content),
