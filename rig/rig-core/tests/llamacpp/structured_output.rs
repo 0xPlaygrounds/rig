@@ -12,8 +12,9 @@ use crate::support::{
 
 use super::support;
 
-const WEATHER_PREAMBLE: &str =
-    "You are a helpful weather assistant. Respond with realistic weather data.";
+const WEATHER_PREAMBLE: &str = "You are a helpful weather assistant. Return ONLY JSON matching exactly this schema: \
+     {\"city\": string, \"current\": {\"temperature_f\": number, \"humidity_pct\": integer, \"description\": string}}. \
+     Every field is required. Use Fahrenheit for temperature_f. Do not omit keys. Do not wrap the JSON in markdown.";
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Conditions {
@@ -67,10 +68,16 @@ async fn structured_output_smoke() {
 async fn prompt_typed_structured_output() {
     let client = support::completions_client();
     let model = support::model_name();
-    let agent = client.agent(model).preamble(WEATHER_PREAMBLE).build();
+    let agent = client
+        .agent(model)
+        .preamble(WEATHER_PREAMBLE)
+        .temperature(0.0)
+        .build();
 
     let forecast: WeatherForecast = agent
-        .prompt_typed("What's the weather forecast for New York City today?")
+        .prompt_typed(
+            "Return JSON weather data for New York City today with fields city, current.temperature_f, current.humidity_pct, and current.description.",
+        )
         .await
         .expect("prompt_typed should succeed");
     assert_weather_forecast(&forecast, &["new york", "nyc"]);
@@ -81,10 +88,16 @@ async fn prompt_typed_structured_output() {
 async fn prompt_typed_extended_details_structured_output() {
     let client = support::completions_client();
     let model = support::model_name();
-    let agent = client.agent(model).preamble(WEATHER_PREAMBLE).build();
+    let agent = client
+        .agent(model)
+        .preamble(WEATHER_PREAMBLE)
+        .temperature(0.0)
+        .build();
 
     let extended = agent
-        .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
+        .prompt_typed::<WeatherForecast>(
+            "Return JSON weather data for Los Angeles with fields city, current.temperature_f, current.humidity_pct, and current.description.",
+        )
         .extended_details()
         .await
         .expect("extended prompt_typed should succeed");
@@ -100,10 +113,13 @@ async fn output_schema_structured_output() {
     let agent_with_schema = client
         .agent(model)
         .preamble(WEATHER_PREAMBLE)
+        .temperature(0.0)
         .output_schema::<WeatherForecast>()
         .build();
     let response = agent_with_schema
-        .prompt("What's the weather forecast for Chicago?")
+        .prompt(
+            "Return JSON weather data for Chicago with fields city, current.temperature_f, current.humidity_pct, and current.description.",
+        )
         .await
         .expect("output schema prompt should succeed");
     let parsed: WeatherForecast =

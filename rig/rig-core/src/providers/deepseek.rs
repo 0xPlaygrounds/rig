@@ -9,12 +9,8 @@
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
 //! ```
 
-use crate::json_utils::empty_or_none;
-use async_stream::stream;
 use bytes::Bytes;
-use futures::StreamExt;
 use http::Request;
-use std::collections::HashMap;
 use tracing::{Instrument, Level, enabled, info_span};
 
 use crate::client::{
@@ -22,9 +18,11 @@ use crate::client::{
     ProviderClient,
 };
 use crate::completion::GetTokenUsage;
-use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
+use crate::providers::internal::openai_chat_completions_compatible::{
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -146,17 +144,18 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl Usage {
-    fn new() -> Self {
-        Self {
-            completion_tokens: 0,
-            prompt_tokens: 0,
-            prompt_cache_hit_tokens: 0,
-            prompt_cache_miss_tokens: 0,
-            total_tokens: 0,
-            completion_tokens_details: None,
-            prompt_tokens_details: None,
-        }
+impl GetTokenUsage for Usage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        Some(crate::providers::internal::completion_usage(
+            self.prompt_tokens as u64,
+            self.completion_tokens as u64,
+            self.total_tokens as u64,
+            self.prompt_tokens_details
+                .as_ref()
+                .and_then(|details| details.cached_tokens)
+                .map(u64::from)
+                .unwrap_or(0),
+        ))
     }
 }
 
@@ -701,6 +700,8 @@ struct StreamingChoice {
 
 #[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk {
+    id: Option<String>,
+    model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<Usage>,
 }
@@ -712,19 +713,62 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.output_tokens = self.usage.completion_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-        usage.cached_input_tokens = self
-            .usage
-            .prompt_tokens_details
-            .as_ref()
-            .and_then(|d| d.cached_tokens)
-            .map(|c| c as u64)
-            .unwrap_or(0);
+        self.usage.token_usage()
+    }
+}
 
-        Some(usage)
+#[derive(Clone, Copy)]
+struct DeepSeekCompatibleProfile;
+
+impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
+    type Usage = Usage;
+    type Detail = ();
+    type FinalResponse = StreamingCompletionResponse;
+
+    fn normalize_chunk(
+        &self,
+        data: &str,
+    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
+            Ok(data) => data,
+            Err(error) => {
+                tracing::debug!(
+                    "Couldn't parse SSE payload as StreamingCompletionChunk: {:?}",
+                    error
+                );
+                return Ok(None);
+            }
+        };
+
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| CompatibleChoiceData {
+                    finish_reason: CompatibleFinishReason::Other,
+                    text: choice.delta.content.clone(),
+                    reasoning: choice.delta.reasoning_content.clone(),
+                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                        &choice.delta.tool_calls,
+                    ),
+                    details: Vec::new(),
+                },
+            ),
+        ))
+    }
+
+    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+        StreamingCompletionResponse { usage }
+    }
+
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        true
+    }
+
+    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
+        true
     }
 }
 
@@ -738,136 +782,12 @@ pub async fn send_compatible_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    let mut event_source = GenericEventSource::new(http_client, req);
-
-    let stream = stream! {
-        let mut final_usage = Usage::new();
-        let mut text_response = String::new();
-        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-                Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() || message.data == "[DONE]" {
-                        continue;
-                    }
-
-                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(&message.data);
-                    let Ok(data) = parsed else {
-                        let err = parsed.unwrap_err();
-                        tracing::debug!("Couldn't parse SSE payload as StreamingCompletionChunk: {:?}", err);
-                        continue;
-                    };
-
-                    if let Some(choice) = data.choices.first() {
-                        let delta = &choice.delta;
-
-                        if !delta.tool_calls.is_empty() {
-                            for tool_call in &delta.tool_calls {
-                                let function = &tool_call.function;
-
-                                // Start of tool call
-                                if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-                                    && empty_or_none(&function.arguments)
-                                {
-                                    let id = tool_call.id.clone().unwrap_or_default();
-                                    let name = function.name.clone().unwrap();
-                                    calls.insert(tool_call.index, (id, name, String::new()));
-                                }
-                                // Continuation of tool call
-                                else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
-                                    && let Some(arguments) = &function.arguments
-                                    && !arguments.is_empty()
-                                {
-                                    if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                        let combined = format!("{}{}", existing_args, arguments);
-                                        calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
-                                    } else {
-                                        tracing::debug!("Partial tool call received but tool call was never started.");
-                                    }
-                                }
-                                // Complete tool call
-                                else {
-                                    let id = tool_call.id.clone().unwrap_or_default();
-                                    let name = function.name.clone().unwrap_or_default();
-                                    let arguments_str = function.arguments.clone().unwrap_or_default();
-
-                                    let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments_str) else {
-                                        tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
-                                        continue;
-                                    };
-
-                                    yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                                        crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-                                    ));
-                                }
-                            }
-                        }
-
-                        // DeepSeek-specific reasoning stream
-                        if let Some(content) = &delta.reasoning_content {
-                            yield Ok(crate::streaming::RawStreamingChoice::ReasoningDelta {
-                                id: None,
-                                reasoning: content.to_string()
-                            });
-                        }
-
-                        if let Some(content) = &delta.content {
-                            text_response += content;
-                            yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
-                        }
-                    }
-
-                    if let Some(usage) = data.usage {
-                        final_usage = usage.clone();
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => {
-                    break;
-                }
-                Err(err) => {
-                    tracing::error!(?err, "SSE error");
-                    yield Err(CompletionError::ResponseError(err.to_string()));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-
-        let mut tool_calls = Vec::new();
-        // Flush accumulated tool calls
-        for (index, (id, name, arguments)) in calls {
-            let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments) else {
-                continue;
-            };
-
-            tool_calls.push(ToolCall {
-                id: id.clone(),
-                index,
-                r#type: ToolType::Function,
-                function: Function {
-                    name: name.clone(),
-                    arguments: arguments_json.clone()
-                }
-            });
-            yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-            ));
-        }
-
-        yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse { usage: final_usage.clone() }
-        ));
-    };
-
-    Ok(crate::streaming::StreamingCompletionResponse::stream(
-        Box::pin(stream),
-    ))
+    openai_chat_completions_compatible::send_compatible_streaming_request(
+        http_client,
+        req,
+        DeepSeekCompatibleProfile,
+    )
+    .await
 }
 
 // ================================================================

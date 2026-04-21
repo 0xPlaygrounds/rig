@@ -11,7 +11,7 @@ use rig::completion::{ToolDefinition, TypedPrompt};
 use rig::tool::Tool;
 
 use crate::copilot::{live_client, live_responses_model};
-use crate::support::assert_nonempty_response;
+use crate::support::assert_weather_tool_roundtrip_response;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct WeatherResponse {
@@ -87,16 +87,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         call_count.load(Ordering::SeqCst) >= 1,
         "expected the weather tool to be executed at least once"
     );
-    assert_eq!(response.city.trim().to_ascii_lowercase(), "london");
-    assert_nonempty_response(&response.weather);
-    assert!(
-        response
-            .weather
-            .to_ascii_lowercase()
-            .contains("fire and brimstone"),
-        "expected the weather description to preserve the tool result, got {:?}",
-        response.weather
-    );
+    assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");
 
     Ok(())
 }

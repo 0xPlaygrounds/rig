@@ -1,17 +1,19 @@
 //! Migrated from `examples/groq_streaming_reasoning.rs`.
 
 use rig::client::{CompletionClient, ProviderClient};
-use rig::providers::groq::{self, DEEPSEEK_R1_DISTILL_LLAMA_70B};
+use rig::providers::groq;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
+
+use super::STREAMING_REASONING_MODEL;
 
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn parsed_reasoning_stream() {
     let client = groq::Client::from_env();
     let agent = client
-        .agent(DEEPSEEK_R1_DISTILL_LLAMA_70B)
+        .agent(STREAMING_REASONING_MODEL)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
         .build();
