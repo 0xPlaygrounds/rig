@@ -13,6 +13,8 @@
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test deepseek deepseek::agent::completion_smoke -- --ignored`
 
+#[path = "common/reasoning.rs"]
+mod reasoning;
 #[path = "common/support.rs"]
 mod support;
 

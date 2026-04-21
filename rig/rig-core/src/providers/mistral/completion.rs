@@ -1,4 +1,3 @@
-use async_stream::stream;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 use tracing::{Instrument, Level, enabled, info_span};
@@ -6,6 +5,7 @@ use tracing::{Instrument, Level, enabled, info_span};
 use super::client::{Client, Usage};
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::internal::buffered;
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
 use crate::{
     OneOrMany,
@@ -550,18 +550,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
-fn assistant_content_to_streaming_choice(
+fn assistant_content_to_streaming_choices(
     content: message::AssistantContent,
-) -> Option<RawStreamingChoice<CompletionResponse>> {
+) -> Result<Vec<RawStreamingChoice<CompletionResponse>>, CompletionError> {
     match content {
-        message::AssistantContent::Text(t) => Some(RawStreamingChoice::Message(t.text)),
-        message::AssistantContent::ToolCall(tc) => Some(RawStreamingChoice::ToolCall(
+        message::AssistantContent::Text(t) => Ok(vec![RawStreamingChoice::Message(t.text)]),
+        message::AssistantContent::ToolCall(tc) => Ok(vec![RawStreamingChoice::ToolCall(
             RawStreamingToolCall::new(tc.id, tc.function.name, tc.function.arguments),
+        )]),
+        message::AssistantContent::Reasoning(_) => Ok(Vec::new()),
+        message::AssistantContent::Image(_) => Err(CompletionError::ResponseError(
+            "Image content is not supported on Mistral via Rig".into(),
         )),
-        message::AssistantContent::Reasoning(_) => None,
-        message::AssistantContent::Image(_) => {
-            panic!("Image content is not supported on Mistral via Rig")
-        }
     }
 }
 
@@ -648,18 +648,7 @@ where
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
         let resp = self.completion(request).await?;
-
-        let stream = stream! {
-            for c in resp.choice.clone() {
-                if let Some(choice) = assistant_content_to_streaming_choice(c) {
-                    yield Ok(choice);
-                }
-            }
-
-            yield Ok(RawStreamingChoice::FinalResponse(resp.raw_response.clone()));
-        };
-
-        Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
+        buffered::stream_from_completion_response(resp, assistant_content_to_streaming_choices)
     }
 }
 
@@ -784,28 +773,28 @@ mod tests {
 
     #[test]
     fn test_streaming_choice_mapping_skips_reasoning_and_preserves_other_content() {
-        assert!(
-            assistant_content_to_streaming_choice(message::AssistantContent::reasoning("hidden"))
-                .is_none()
-        );
+        let reasoning_choices =
+            assistant_content_to_streaming_choices(message::AssistantContent::reasoning("hidden"))
+                .expect("reasoning should be ignored");
+        assert!(reasoning_choices.is_empty());
 
-        let text_choice =
-            assistant_content_to_streaming_choice(message::AssistantContent::text("visible"))
+        let text_choices =
+            assistant_content_to_streaming_choices(message::AssistantContent::text("visible"))
                 .expect("text should be preserved");
-        match text_choice {
-            RawStreamingChoice::Message(text) => assert_eq!(text, "visible"),
+        match text_choices.as_slice() {
+            [RawStreamingChoice::Message(text)] => assert_eq!(text, "visible"),
             _ => panic!("expected text streaming choice"),
         }
 
-        let tool_choice =
-            assistant_content_to_streaming_choice(message::AssistantContent::tool_call(
+        let tool_choices =
+            assistant_content_to_streaming_choices(message::AssistantContent::tool_call(
                 "call_2",
                 "add",
                 serde_json::json!({"x": 2, "y": 3}),
             ))
             .expect("tool call should be preserved");
-        match tool_choice {
-            RawStreamingChoice::ToolCall(call) => {
+        match tool_choices.as_slice() {
+            [RawStreamingChoice::ToolCall(call)] => {
                 assert_eq!(call.id, "call_2");
                 assert_eq!(call.name, "add");
                 assert_eq!(call.arguments, serde_json::json!({"x": 2, "y": 3}));

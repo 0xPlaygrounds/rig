@@ -1,5 +1,11 @@
 mod agent;
 mod extractor;
+mod extractor_usage;
+mod multi_extract;
+mod permission_control;
+mod reasoning_roundtrip;
+mod reasoning_tool_roundtrip;
+mod request_hook;
 mod streaming;
 mod streaming_tools;
 mod tools;

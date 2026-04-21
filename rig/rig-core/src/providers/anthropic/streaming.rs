@@ -315,7 +315,7 @@ where
 
                                         let span = tracing::Span::current();
                                         span.record("gen_ai.response.id", &message.id);
-                                        span.record("gen_ai.response.model_name", &message.model);
+                                        span.record("gen_ai.response.model", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
                                         if delta.stop_reason.is_some() {

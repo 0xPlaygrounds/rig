@@ -542,7 +542,7 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
-                        span.record("gen_ai.response.model_name", response.model.clone());
+                        span.record("gen_ai.response.model", response.model.clone());
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(

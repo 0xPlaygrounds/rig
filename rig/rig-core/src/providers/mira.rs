@@ -419,7 +419,7 @@ where
             } = &response
             {
                 let span = tracing::Span::current();
-                span.record("gen_ai.response.model_name", model);
+                span.record("gen_ai.response.model", model);
                 span.record("gen_ai.response.id", id);
                 if let Some(usage) = usage {
                     span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);

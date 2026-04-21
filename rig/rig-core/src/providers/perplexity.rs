@@ -414,7 +414,7 @@ where
                             response.usage.completion_tokens,
                         );
                         span.record("gen_ai.response.id", response.id.to_string());
-                        span.record("gen_ai.response.model_name", response.model.to_string());
+                        span.record("gen_ai.response.model", response.model.to_string());
                         if tracing::enabled!(tracing::Level::TRACE) {
                             tracing::trace!(target: "rig::responses",
                                 "Perplexity completion response: {}",

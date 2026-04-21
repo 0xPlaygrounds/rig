@@ -114,13 +114,12 @@ impl std::fmt::Display for Usage {
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.completion_tokens as u64;
-        usage.total_tokens = self.total_tokens as u64;
-
-        Some(usage)
+        Some(crate::providers::internal::completion_usage(
+            self.prompt_tokens as u64,
+            self.completion_tokens as u64,
+            self.total_tokens as u64,
+            0,
+        ))
     }
 }
 #[cfg(test)]

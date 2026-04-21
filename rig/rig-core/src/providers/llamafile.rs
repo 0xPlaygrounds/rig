@@ -27,20 +27,19 @@ use crate::client::{
     self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
 };
 use crate::completion::GetTokenUsage;
-use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
-use crate::json_utils::empty_or_none;
+use crate::providers::internal::openai_chat_completions_compatible::{
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+};
 use crate::providers::openai::{self, StreamingToolCall};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils,
 };
-use async_stream::stream;
 use bytes::Bytes;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde_json::{Map, Value};
 use tracing::{Level, info_span};
 use tracing_futures::Instrument;
 
@@ -146,10 +145,10 @@ enum ApiResponse<T> {
 
 /// Llamafile uses the OpenAI chat completions format.
 /// We reuse the OpenAI `Message` type for maximum compatibility.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 struct LlamafileCompletionRequest {
     model: String,
-    messages: Vec<openai::Message>,
+    messages: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -158,6 +157,133 @@ struct LlamafileCompletionRequest {
     tools: Vec<openai::ToolDefinition>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
+}
+
+fn join_text_segments<I>(segments: I) -> String
+where
+    I: IntoIterator<Item = String>,
+{
+    let segments = segments
+        .into_iter()
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+
+    if segments.is_empty() {
+        String::new()
+    } else {
+        segments.join("\n\n")
+    }
+}
+
+fn flatten_system_content(content: &crate::OneOrMany<openai::SystemContent>) -> String {
+    join_text_segments(content.iter().map(|item| item.text.clone()))
+}
+
+fn flatten_user_content(content: &crate::OneOrMany<openai::UserContent>) -> Option<String> {
+    content
+        .iter()
+        .map(|item| match item {
+            openai::UserContent::Text { text } => Some(text.clone()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(join_text_segments)
+}
+
+fn flatten_assistant_content(content: &[openai::AssistantContent]) -> String {
+    join_text_segments(content.iter().map(|item| match item {
+        openai::AssistantContent::Text { text } => text.clone(),
+        openai::AssistantContent::Refusal { refusal } => refusal.clone(),
+    }))
+}
+
+fn optional_value<T>(value: Option<T>) -> Result<Option<Value>, CompletionError>
+where
+    T: Serialize,
+{
+    value
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(Into::into)
+}
+
+fn message_content_value<T>(
+    flattened: Option<String>,
+    original: &T,
+) -> Result<Value, CompletionError>
+where
+    T: Serialize,
+{
+    match flattened {
+        Some(text) => Ok(Value::String(text)),
+        None => Ok(serde_json::to_value(original)?),
+    }
+}
+
+fn llamafile_message_value(message: openai::Message) -> Result<Value, CompletionError> {
+    match message {
+        openai::Message::System { content, name } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("system".into()));
+            object.insert(
+                "content".into(),
+                Value::String(flatten_system_content(&content)),
+            );
+            if let Some(name) = name {
+                object.insert("name".into(), Value::String(name));
+            }
+            Ok(Value::Object(object))
+        }
+        openai::Message::User { content, name } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("user".into()));
+            object.insert(
+                "content".into(),
+                message_content_value(flatten_user_content(&content), &content)?,
+            );
+            if let Some(name) = name {
+                object.insert("name".into(), Value::String(name));
+            }
+            Ok(Value::Object(object))
+        }
+        openai::Message::Assistant {
+            content,
+            refusal,
+            audio,
+            name,
+            tool_calls,
+        } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("assistant".into()));
+            object.insert(
+                "content".into(),
+                Value::String(flatten_assistant_content(&content)),
+            );
+            if let Some(refusal) = refusal {
+                object.insert("refusal".into(), Value::String(refusal));
+            }
+            if let Some(audio) = optional_value(audio)? {
+                object.insert("audio".into(), audio);
+            }
+            if let Some(name) = name {
+                object.insert("name".into(), Value::String(name));
+            }
+            if !tool_calls.is_empty() {
+                object.insert("tool_calls".into(), serde_json::to_value(tool_calls)?);
+            }
+            Ok(Value::Object(object))
+        }
+        openai::Message::ToolResult {
+            tool_call_id,
+            content,
+        } => {
+            let mut object = Map::new();
+            object.insert("role".into(), Value::String("tool".into()));
+            object.insert("tool_call_id".into(), Value::String(tool_call_id));
+            object.insert("content".into(), Value::String(content.as_text()));
+            Ok(Value::Object(object))
+        }
+    }
 }
 
 impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
@@ -194,7 +320,10 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
 
         Ok(Self {
             model,
-            messages: full_history,
+            messages: full_history
+                .into_iter()
+                .map(llamafile_message_value)
+                .collect::<Result<Vec<_>, _>>()?,
             temperature: req.temperature,
             max_tokens: req.max_tokens,
             tools: req
@@ -257,6 +386,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cached_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -291,7 +421,7 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record("gen_ai.response.id", response.id.clone());
-                        span.record("gen_ai.response.model_name", response.model.clone());
+                        span.record("gen_ai.response.model", response.model.clone());
                         if let Some(ref usage) = response.usage {
                             span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
                             span.record(
@@ -387,10 +517,14 @@ struct StreamingDelta {
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
+    #[serde(default)]
+    finish_reason: Option<openai::completion::streaming::FinishReason>,
 }
 
 #[derive(Deserialize, Debug)]
 struct StreamingCompletionChunk {
+    id: Option<String>,
+    model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<openai::Usage>,
 }
@@ -404,11 +538,68 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.prompt_tokens as u64;
-        usage.total_tokens = self.usage.total_tokens as u64;
-        usage.output_tokens = self.usage.total_tokens as u64 - self.usage.prompt_tokens as u64;
-        Some(usage)
+        self.usage.token_usage()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct LlamafileCompatibleProfile;
+
+impl CompatibleStreamProfile for LlamafileCompatibleProfile {
+    type Usage = openai::Usage;
+    type Detail = ();
+    type FinalResponse = StreamingCompletionResponse;
+
+    fn normalize_chunk(
+        &self,
+        data: &str,
+    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
+            Ok(data) => data,
+            Err(error) => {
+                tracing::debug!(
+                    ?error,
+                    "Couldn't parse SSE payload as StreamingCompletionChunk"
+                );
+                return Ok(None);
+            }
+        };
+
+        Ok(Some(
+            openai_chat_completions_compatible::normalize_first_choice_chunk(
+                data.id,
+                data.model,
+                data.usage,
+                &data.choices,
+                |choice| CompatibleChoiceData {
+                    finish_reason: if choice.finish_reason
+                        == Some(openai::completion::streaming::FinishReason::ToolCalls)
+                    {
+                        CompatibleFinishReason::ToolCalls
+                    } else {
+                        CompatibleFinishReason::Other
+                    },
+                    text: choice.delta.content.clone(),
+                    reasoning: None,
+                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                        &choice.delta.tool_calls,
+                    ),
+                    details: Vec::new(),
+                },
+            ),
+        ))
+    }
+
+    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+        StreamingCompletionResponse { usage }
+    }
+
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        true
+    }
+
+    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
+        true
     }
 }
 
@@ -423,122 +614,15 @@ async fn send_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    let mut event_source = GenericEventSource::new(client, req);
-
-    let stream = stream! {
-        let span = tracing::Span::current();
-        let mut final_usage = openai::Usage {
-            prompt_tokens: 0,
-            total_tokens: 0,
-            prompt_tokens_details: None,
-        };
-        let mut text_response = String::new();
-        let mut calls: HashMap<usize, (String, String, String)> = HashMap::new();
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-                Ok(Event::Message(message)) => {
-                    let data_str = message.data.trim();
-                    if data_str.is_empty() || data_str == "[DONE]" {
-                        continue;
-                    }
-
-                    let parsed = serde_json::from_str::<StreamingCompletionChunk>(data_str);
-                    let Ok(data) = parsed else {
-                        let err = parsed.unwrap_err();
-                        tracing::debug!("Couldn't parse SSE payload: {:?}", err);
-                        continue;
-                    };
-
-                    if let Some(choice) = data.choices.first() {
-                        let delta = &choice.delta;
-
-                        // Handle tool calls
-                        for tool_call in &delta.tool_calls {
-                            let function = &tool_call.function;
-
-                            // Start of tool call
-                            if function.name.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-                                && empty_or_none(&function.arguments)
-                            {
-                                let id = tool_call.id.clone().unwrap_or_default();
-                                let name = function.name.clone().unwrap();
-                                calls.insert(tool_call.index, (id, name, String::new()));
-                            }
-                            // Continuation
-                            else if function.name.as_ref().map(|s| s.is_empty()).unwrap_or(true)
-                                && let Some(arguments) = &function.arguments
-                                && !arguments.is_empty()
-                            {
-                                if let Some((id, name, existing_args)) = calls.get(&tool_call.index) {
-                                    let combined = format!("{}{}", existing_args, arguments);
-                                    calls.insert(tool_call.index, (id.clone(), name.clone(), combined));
-                                }
-                            }
-                            // Complete tool call in a single chunk
-                            else {
-                                let id = tool_call.id.clone().unwrap_or_default();
-                                let name = function.name.clone().unwrap_or_default();
-                                let arguments_str = function.arguments.clone().unwrap_or_default();
-
-                                let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments_str) else {
-                                    tracing::debug!("Couldn't parse tool call args '{}'", arguments_str);
-                                    continue;
-                                };
-
-                                yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                                    crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-                                ));
-                            }
-                        }
-
-                        // Streamed content
-                        if let Some(content) = &delta.content {
-                            text_response += content;
-                            yield Ok(crate::streaming::RawStreamingChoice::Message(content.clone()));
-                        }
-                    }
-
-                    if let Some(usage) = data.usage {
-                        final_usage = usage;
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => break,
-                Err(err) => {
-                    tracing::error!(?err, "SSE error");
-                    yield Err(CompletionError::ResponseError(err.to_string()));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-
-        // Flush accumulated tool calls
-        for (_, (id, name, arguments)) in calls {
-            let Ok(arguments_json) = json_utils::parse_tool_arguments(&arguments) else {
-                continue;
-            };
-            yield Ok(crate::streaming::RawStreamingChoice::ToolCall(
-                crate::streaming::RawStreamingToolCall::new(id, name, arguments_json)
-            ));
-        }
-
-        span.record("gen_ai.usage.input_tokens", final_usage.prompt_tokens);
-        span.record("gen_ai.usage.output_tokens", final_usage.total_tokens - final_usage.prompt_tokens);
-
-        yield Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse { usage: final_usage }
-        ));
-    }.instrument(span);
-
-    Ok(crate::streaming::StreamingCompletionResponse::stream(
-        Box::pin(stream),
-    ))
+    tracing::Instrument::instrument(
+        openai_chat_completions_compatible::send_compatible_streaming_request(
+            client,
+            req,
+            LlamafileCompatibleProfile,
+        ),
+        span,
+    )
+    .await
 }
 
 // ================================================================
@@ -651,6 +735,8 @@ where
 mod tests {
     use super::*;
     use crate::client::Nothing;
+    use crate::completion::Document;
+    use std::collections::HashMap;
 
     #[test]
     fn test_client_initialization() {
@@ -695,7 +781,84 @@ mod tests {
 
         assert_eq!(request.model, LLAMA_CPP);
         assert_eq!(request.messages.len(), 2); // system + user
+        assert_eq!(
+            request.messages[0]["content"],
+            "You are a helpful assistant."
+        );
+        assert_eq!(request.messages[1]["content"], "Hello!");
         assert_eq!(request.temperature, Some(0.7));
         assert_eq!(request.max_tokens, Some(256));
+    }
+
+    #[test]
+    fn test_completion_request_flattens_text_only_document_arrays() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "What does glarb-glarb mean?".to_string(),
+                })),
+            }),
+            documents: vec![
+                Document {
+                    id: "doc-1".into(),
+                    text: "Definition of flurbo: a green alien.".into(),
+                    additional_props: HashMap::new(),
+                },
+                Document {
+                    id: "doc-2".into(),
+                    text: "Definition of glarb-glarb: an ancient farming tool.".into(),
+                    additional_props: HashMap::new(),
+                },
+            ],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request = LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
+            .expect("Failed to create request");
+
+        assert_eq!(request.messages.len(), 2);
+        assert!(request.messages[0]["content"].is_string());
+        let documents = request.messages[0]["content"]
+            .as_str()
+            .expect("documents should serialize as a string");
+        assert!(documents.contains("Definition of flurbo"));
+        assert!(documents.contains("Definition of glarb-glarb"));
+    }
+
+    #[test]
+    fn test_llamafile_message_value_flattens_assistant_text_content() {
+        let message = openai::Message::Assistant {
+            content: vec![openai::AssistantContent::Text {
+                text: "Tool returned the answer.".into(),
+            }],
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: vec![openai::ToolCall {
+                id: "call_1".into(),
+                r#type: openai::ToolType::Function,
+                function: openai::Function {
+                    name: "weather".into(),
+                    arguments: serde_json::json!({"city": "London"}),
+                },
+            }],
+        };
+
+        let value = llamafile_message_value(message).expect("message conversion should succeed");
+
+        assert_eq!(value["role"], "assistant");
+        assert_eq!(value["content"], "Tool returned the answer.");
+        assert!(value["tool_calls"].is_array());
     }
 }

@@ -67,17 +67,7 @@ pub(crate) fn reasoning_choices_from_done_item(
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.input_tokens;
-        usage.output_tokens = self.usage.output_tokens;
-        usage.total_tokens = self.usage.total_tokens;
-        usage.cached_input_tokens = self
-            .usage
-            .input_tokens_details
-            .as_ref()
-            .map(|d| d.cached_tokens)
-            .unwrap_or(0);
-        Some(usage)
+        self.usage.token_usage()
     }
 }
 
@@ -143,6 +133,30 @@ fn response_error_message(error: Option<&super::ResponseError>, fallback: &str) 
         }
     } else {
         fallback.to_string()
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ResponsesStreamOptions {
+    Strict,
+    StrictWithImmediateToolCalls,
+}
+
+impl ResponsesStreamOptions {
+    pub(crate) const fn strict() -> Self {
+        Self::Strict
+    }
+
+    pub(crate) const fn strict_with_immediate_tool_calls() -> Self {
+        Self::StrictWithImmediateToolCalls
+    }
+
+    const fn errors_on_terminal_response(self) -> bool {
+        true
+    }
+
+    const fn emits_completed_tool_calls_immediately(self) -> bool {
+        matches!(self, Self::StrictWithImmediateToolCalls)
     }
 }
 
@@ -254,7 +268,11 @@ impl RawChoiceAccumulator {
         }
     }
 
-    fn decode_item_chunk(&mut self, item: ItemChunkKind) -> Vec<StreamingRawChoice> {
+    fn decode_item_chunk(
+        &mut self,
+        item: ItemChunkKind,
+        options: ResponsesStreamOptions,
+    ) -> Vec<StreamingRawChoice> {
         let mut immediate = Vec::new();
 
         match item {
@@ -274,7 +292,11 @@ impl RawChoiceAccumulator {
                 });
             }
             ItemChunkKind::OutputItemDone(message) => {
-                self.push_output_item_done(message.item, &mut immediate);
+                self.push_output_item_done(
+                    message.item,
+                    &mut immediate,
+                    options.emits_completed_tool_calls_immediately(),
+                );
             }
             ItemChunkKind::OutputTextDelta(delta) => {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
@@ -311,6 +333,7 @@ impl RawChoiceAccumulator {
         kind: ResponseChunkKind,
         response: CompletionResponse,
         provider_name: &str,
+        options: ResponsesStreamOptions,
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
@@ -319,7 +342,9 @@ impl RawChoiceAccumulator {
                 }
                 Ok(())
             }
-            ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
+            ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete
+                if options.errors_on_terminal_response() =>
+            {
                 let error_message = response_chunk_error_message(&kind, &response, provider_name)
                     .expect("terminal response should have an error message");
                 Err(CompletionError::ProviderError(error_message))
@@ -328,7 +353,12 @@ impl RawChoiceAccumulator {
         }
     }
 
-    fn push_output_item_done(&mut self, item: Output, immediate: &mut Vec<StreamingRawChoice>) {
+    fn push_output_item_done(
+        &mut self,
+        item: Output,
+        immediate: &mut Vec<StreamingRawChoice>,
+        emit_completed_tool_calls_immediately: bool,
+    ) {
         match item {
             Output::FunctionCall(func) => {
                 let internal_call_id = self
@@ -336,12 +366,17 @@ impl RawChoiceAccumulator {
                     .entry(func.id.clone())
                     .or_insert_with(|| nanoid::nanoid!())
                     .clone();
-                self.tool_calls
-                    .push(streaming::RawStreamingChoice::ToolCall(
-                        streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
-                            .with_internal_call_id(internal_call_id)
-                            .with_call_id(func.call_id),
-                    ));
+                let tool_call =
+                    streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
+                        .with_internal_call_id(internal_call_id)
+                        .with_call_id(func.call_id);
+
+                if emit_completed_tool_calls_immediately {
+                    immediate.push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                } else {
+                    self.tool_calls
+                        .push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                }
             }
             Output::Reasoning {
                 id,
@@ -381,6 +416,7 @@ pub(crate) fn raw_choices_from_sse_body(
 ) -> Result<Vec<StreamingRawChoice>, CompletionError> {
     let mut raw_choices = Vec::new();
     let mut accumulator = RawChoiceAccumulator::new(initial_usage);
+    let options = ResponsesStreamOptions::strict();
 
     for line in body.lines() {
         let data = line
@@ -394,11 +430,11 @@ pub(crate) fn raw_choices_from_sse_body(
         if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
             match chunk {
                 StreamingCompletionChunk::Delta(chunk) => {
-                    raw_choices.extend(accumulator.decode_item_chunk(chunk.data));
+                    raw_choices.extend(accumulator.decode_item_chunk(chunk.data, options));
                 }
                 StreamingCompletionChunk::Response(chunk) => {
                     let ResponseChunk { kind, response, .. } = *chunk;
-                    accumulator.record_response_chunk(kind, response, provider_name)?;
+                    accumulator.record_response_chunk(kind, response, provider_name, options)?;
                 }
             }
             continue;
@@ -448,7 +484,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     .cloned()
                     .and_then(|item| serde_json::from_value::<Output>(item).ok())
                 {
-                    accumulator.push_output_item_done(item, &mut raw_choices);
+                    accumulator.push_output_item_done(item, &mut raw_choices, false);
                 }
             }
             Some("response.function_call_arguments.delta") => {
@@ -477,7 +513,7 @@ pub(crate) fn raw_choices_from_sse_body(
                         Some("response.incomplete") => ResponseChunkKind::ResponseIncomplete,
                         _ => unreachable!("filtered above"),
                     };
-                    accumulator.record_response_chunk(kind, response, provider_name)?;
+                    accumulator.record_response_chunk(kind, response, provider_name, options)?;
                 }
             }
             Some("error") => {
@@ -562,24 +598,32 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
     response
         .usage
         .as_ref()
-        .map(|usage| completion::Usage {
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
-            total_tokens: usage.total_tokens,
-            cached_input_tokens: usage
-                .input_tokens_details
-                .as_ref()
-                .map(|details| details.cached_tokens)
-                .unwrap_or(0),
-            cache_creation_input_tokens: 0,
-        })
+        .and_then(GetTokenUsage::token_usage)
         .unwrap_or_default()
 }
 
 pub(crate) fn stream_from_event_source<HttpClient, RequestBody>(
+    event_source: GenericEventSource<HttpClient, RequestBody>,
+    span: tracing::Span,
+    provider_name: &'static str,
+) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
+where
+    HttpClient: HttpClientExt + Clone + 'static,
+    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
+{
+    stream_from_event_source_with_options(
+        event_source,
+        span,
+        provider_name,
+        ResponsesStreamOptions::strict(),
+    )
+}
+
+pub(crate) fn stream_from_event_source_with_options<HttpClient, RequestBody>(
     mut event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     provider_name: &'static str,
+    options: ResponsesStreamOptions,
 ) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
 where
     HttpClient: HttpClientExt + Clone + 'static,
@@ -598,7 +642,7 @@ where
                     continue;
                 }
                 Ok(Event::Message(evt)) => {
-                    if evt.data.trim().is_empty() {
+                    if evt.data.trim().is_empty() || evt.data == "[DONE]" {
                         continue;
                     }
 
@@ -611,7 +655,7 @@ where
 
                     match data {
                         StreamingCompletionChunk::Delta(chunk) => {
-                            for choice in accumulator.decode_item_chunk(chunk.data) {
+                            for choice in accumulator.decode_item_chunk(chunk.data, options) {
                                 yield Ok(choice);
                             }
                         }
@@ -622,7 +666,7 @@ where
                                 span.record("gen_ai.response.model", response.model.as_str());
                             }
                             if let Err(error) =
-                                accumulator.record_response_chunk(kind, response, provider_name)
+                                accumulator.record_response_chunk(kind, response, provider_name, options)
                             {
                                 terminated_with_error = true;
                                 yield Err(error);
@@ -863,6 +907,7 @@ mod tests {
     use crate::completion::CompletionModel;
     use crate::http_client::mock::MockStreamingClient;
     use crate::message::ReasoningContent;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
@@ -915,19 +960,12 @@ mod tests {
         }
     }
 
-    fn sse_event_bytes(event: serde_json::Value) -> Bytes {
-        Bytes::from(format!(
-            "data: {}\n\n",
-            serde_json::to_string(&event).expect("event should serialize")
-        ))
-    }
-
     async fn first_error_from_event(
         event: serde_json::Value,
     ) -> crate::completion::CompletionError {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
+                sse_bytes: sse_bytes_from_json_events(&[event]),
             })
             .api_key("test-key")
             .build()
@@ -946,7 +984,7 @@ mod tests {
     async fn final_usage_from_event(event: serde_json::Value) -> ResponsesUsage {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
-                sse_bytes: sse_event_bytes(event),
+                sse_bytes: sse_bytes_from_json_events(&[event]),
             })
             .api_key("test-key")
             .build()
@@ -1234,14 +1272,10 @@ mod tests {
             "response": response,
         });
 
-        let sse_bytes = Bytes::from(format!(
-            "data: {}\n\ndata: {}\n\n",
-            serde_json::to_string(&tool_call_done).expect("tool_call_done should serialize"),
-            serde_json::to_string(&failed).expect("failed should serialize"),
-        ));
-
         let client = openai::Client::builder()
-            .http_client(MockStreamingClient { sse_bytes })
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
+            })
             .api_key("test-key")
             .build()
             .expect("client should build");
@@ -1287,6 +1321,96 @@ mod tests {
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn done_sentinel_is_ignored_without_debug_parse_noise() {
+        use std::io::{self, Write};
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone)]
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl Write for SharedWriter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("log buffer mutex should not be poisoned")
+                    .extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut response = sample_response(ResponseStatus::Completed);
+        response.usage = Some(ResponsesUsage {
+            input_tokens: 4,
+            input_tokens_details: None,
+            output_tokens: 2,
+            output_tokens_details: OutputTokensDetails {
+                reasoning_tokens: 0,
+            },
+            total_tokens: 6,
+        });
+
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_writer({
+                let captured = captured.clone();
+                move || SharedWriter(captured.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(format!(
+                    "data: {}\n\ndata: [DONE]\n\n",
+                    serde_json::to_string(&json!({
+                        "type": "response.completed",
+                        "sequence_number": 1,
+                        "response": response,
+                    }))
+                    .expect("response event should serialize")
+                )),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut final_usage = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream should complete successfully") {
+                StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
+                _ => {}
+            }
+        }
+
+        let usage = final_usage.expect("expected final response");
+        assert_eq!(usage.input_tokens, 4);
+        assert_eq!(usage.output_tokens, 2);
+        assert_eq!(usage.total_tokens, 6);
+
+        let logs = String::from_utf8(
+            captured
+                .lock()
+                .expect("log buffer mutex should not be poisoned")
+                .clone(),
+        )
+        .expect("captured logs should be valid UTF-8");
+        assert!(
+            !logs.contains("Couldn't deserialize SSE data as StreamingCompletionChunk"),
+            "expected [DONE] to bypass the parse-failure debug path, logs were: {logs}"
+        );
     }
 
     // requires `derive` rig-core feature due to using tool macro
