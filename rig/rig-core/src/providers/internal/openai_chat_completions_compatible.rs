@@ -414,7 +414,17 @@ fn record_response_metadata(
 fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str) {
     let current_args = match &tool_call.arguments {
         serde_json::Value::Null => String::new(),
-        serde_json::Value::String(existing) => existing.clone(),
+        serde_json::Value::String(existing) => {
+            // Some OpenAI-compatible gateways emit a literal `null` placeholder
+            // before streaming the real JSON argument fragments. Once a later
+            // fragment arrives, treat that placeholder as empty so it doesn't
+            // poison the accumulated payload.
+            if existing.trim() == "null" && !chunk.trim().is_empty() {
+                String::new()
+            } else {
+                existing.clone()
+            }
+        }
         value => value.to_string(),
     };
 
@@ -818,6 +828,23 @@ mod tests {
         );
 
         assert!(finalize_pending_tool_call(tool_call).is_none());
+    }
+
+    #[test]
+    fn null_placeholder_is_replaced_by_following_json_fragments() {
+        let mut tool_call = RawStreamingToolCall::new(
+            "call_123".to_owned(),
+            "web_search".to_owned(),
+            serde_json::Value::String("null".to_owned()),
+        );
+
+        super::append_tool_call_arguments(&mut tool_call, "{\"query\": \"META");
+        super::append_tool_call_arguments(&mut tool_call, " Platforms news\"}");
+
+        let finalized =
+            finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
+
+        assert_eq!(finalized.arguments, serde_json::json!({"query": "META Platforms news"}));
     }
 
     #[tokio::test]
