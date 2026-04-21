@@ -595,10 +595,7 @@ fn first_unique_tool_calls(tool_calls: &[String]) -> Vec<&str> {
     let mut unique = Vec::new();
 
     for name in tool_calls {
-        if !unique
-            .iter()
-            .any(|existing: &&str| *existing == name.as_str())
-        {
+        if !unique.contains(&name.as_str()) {
             unique.push(name.as_str());
         }
     }

@@ -1389,9 +1389,10 @@ mod tests {
 
         let mut final_usage = None;
         while let Some(item) = stream.next().await {
-            match item.expect("stream should complete successfully") {
-                StreamedAssistantContent::Final(response) => final_usage = Some(response.usage),
-                _ => {}
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("stream should complete successfully")
+            {
+                final_usage = Some(response.usage);
             }
         }
 
