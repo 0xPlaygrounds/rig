@@ -1803,13 +1803,17 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let response: completion::CompletionResponse<CompletionResponse> = response.try_into().unwrap();
+        let response: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
 
         assert_eq!(response.choice.len(), 1);
 
         let completion::message::AssistantContent::Text(text) = response.choice.first() else {
             panic!("expected assistant content to be text");
         };
-        assert_eq!(text.text, "Now I understand the structure better. I need to: ...");
+        assert_eq!(
+            text.text,
+            "Now I understand the structure better. I need to: ..."
+        );
     }
 }
