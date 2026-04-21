@@ -884,15 +884,20 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_text_response(&self) -> Option<String> {
-        let Message::User { ref content, .. } = self.choices.last()?.message.clone() else {
+        let Message::Assistant { ref content, .. } = self.choices.last()?.message else {
             return None;
         };
 
-        let UserContent::Text { text } = content.first() else {
-            return None;
-        };
+        let text = content
+            .iter()
+            .filter_map(|c| match c {
+                AssistantContent::Text { text } => Some(text.as_str()),
+                AssistantContent::Refusal { refusal } => Some(refusal.as_str()),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        Some(text)
+        if text.is_empty() { None } else { Some(text) }
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
@@ -1749,6 +1754,73 @@ mod tests {
         assert_eq!(
             tool_calls[0].function.arguments,
             serde_json::json!({"city": "Paris"})
+        );
+    }
+
+    #[test]
+    fn get_text_response_returns_assistant_text() {
+        let raw = r#"{
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello, world!"}]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "system_fingerprint": null,
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 5, "prompt_tokens": 10, "total_tokens": 15 },
+            "id": "chatcmpl-test"
+        }"#;
+
+        let ApiResponse::Ok(response) =
+            serde_json::from_str::<ApiResponse<CompletionResponse>>(raw).unwrap()
+        else {
+            panic!("expected successful response");
+        };
+
+        use crate::telemetry::ProviderResponseExt;
+        assert_eq!(
+            response.get_text_response(),
+            Some("Hello, world!".to_string())
+        );
+    }
+
+    #[test]
+    fn get_text_response_aggregates_multiple_text_blocks() {
+        let raw = r#"{
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "First part."},
+                        {"type": "text", "text": "Second part."}
+                    ]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "system_fingerprint": null,
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 10, "prompt_tokens": 10, "total_tokens": 20 },
+            "id": "chatcmpl-test"
+        }"#;
+
+        let ApiResponse::Ok(response) =
+            serde_json::from_str::<ApiResponse<CompletionResponse>>(raw).unwrap()
+        else {
+            panic!("expected successful response");
+        };
+
+        use crate::telemetry::ProviderResponseExt;
+        assert_eq!(
+            response.get_text_response(),
+            Some("First part.\nSecond part.".to_string())
         );
     }
 }
