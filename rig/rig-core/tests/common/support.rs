@@ -796,6 +796,71 @@ pub(crate) fn assert_raw_stream_tool_call_precedes_text(
     let _ = record;
 }
 
+pub(crate) fn assert_raw_stream_contains_distinct_tool_calls_before_text(
+    observation: &RawStreamObservation,
+    expected_tools: &[&str],
+) {
+    assert!(
+        observation.errors.is_empty(),
+        "raw stream should not emit errors: {:?}",
+        observation.errors
+    );
+    assert!(
+        observation.got_final,
+        "raw stream should emit a final response"
+    );
+    assert!(
+        !observation.tool_calls.is_empty(),
+        "raw stream should emit tool calls"
+    );
+
+    let tool_call_names = observation
+        .tool_calls
+        .iter()
+        .map(|tool_call| tool_call.function.name.clone())
+        .collect::<Vec<_>>();
+
+    for expected_tool in expected_tools {
+        assert!(
+            tool_call_names.iter().any(|name| name == expected_tool),
+            "expected raw stream tool call for {expected_tool}, saw {:?}",
+            tool_call_names
+        );
+    }
+
+    let first_unique = first_unique_tool_calls(&tool_call_names);
+    assert!(
+        first_unique.len() >= expected_tools.len(),
+        "expected at least {} unique raw stream tool calls, saw {:?}",
+        expected_tools.len(),
+        tool_call_names
+    );
+
+    for expected_tool in expected_tools {
+        assert!(
+            first_unique
+                .iter()
+                .take(expected_tools.len())
+                .any(|name| name == expected_tool),
+            "expected the initial unique raw tool-call phase to include {expected_tool}, saw {:?}",
+            first_unique
+        );
+    }
+
+    if let Some(first_text) = first_event_index(&observation.events, "text") {
+        let tool_calls_before_text =
+            event_count_before(&observation.events, "tool_call", first_text);
+
+        assert!(
+            tool_calls_before_text >= expected_tools.len(),
+            "expected at least {} raw tool-call events before the first text chunk, got {}. Events: {:?}",
+            expected_tools.len(),
+            tool_calls_before_text,
+            observation.events
+        );
+    }
+}
+
 pub(crate) fn assert_raw_stream_text_contains(
     observation: &RawStreamObservation,
     expected: &[&str],

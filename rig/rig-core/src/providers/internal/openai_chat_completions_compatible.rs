@@ -34,6 +34,31 @@ pub(crate) struct CompatibleToolCallChunk {
     pub(crate) arguments: Option<String>,
 }
 
+impl CompatibleToolCallChunk {
+    fn has_nonempty_name(&self) -> bool {
+        self.name.as_ref().is_some_and(|name| !name.is_empty())
+    }
+
+    fn has_nonempty_arguments(&self) -> bool {
+        self.arguments
+            .as_ref()
+            .is_some_and(|arguments| !arguments.is_empty())
+    }
+
+    fn starts_new_tool_call(&self) -> bool {
+        self.has_nonempty_name()
+            && self
+                .arguments
+                .as_ref()
+                .map(|arguments| arguments.is_empty())
+                .unwrap_or(true)
+    }
+
+    fn is_complete_single_chunk(&self) -> bool {
+        self.has_nonempty_name() && self.has_nonempty_arguments()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoice<D> {
     pub(crate) finish_reason: CompatibleFinishReason,
@@ -147,8 +172,7 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
         _tool_call: &RawStreamingToolCall,
         incoming: &CompatibleToolCallChunk,
     ) -> bool {
-        self.emits_complete_single_chunk_tool_calls()
-            && incoming_represents_completed_tool_call(incoming)
+        self.emits_complete_single_chunk_tool_calls() && incoming.is_complete_single_chunk()
     }
 }
 
@@ -159,32 +183,15 @@ pub(crate) fn should_evict_distinct_named_tool_call(
     if let Some(new_id) = &incoming.id
         && !new_id.is_empty()
         && let Some(new_name) = &incoming.name
-        && !new_name.is_empty()
+        && incoming.has_nonempty_name()
         && !existing.id.is_empty()
         && existing.id != *new_id
         && !existing.name.is_empty()
     {
-        return existing.name != *new_name || incoming_starts_new_tool_call(incoming);
+        return existing.name != *new_name || incoming.starts_new_tool_call();
     }
 
     false
-}
-
-fn incoming_starts_new_tool_call(incoming: &CompatibleToolCallChunk) -> bool {
-    incoming.name.as_ref().is_some_and(|name| !name.is_empty())
-        && incoming
-            .arguments
-            .as_ref()
-            .map(|arguments| arguments.is_empty())
-            .unwrap_or(true)
-}
-
-pub(crate) fn incoming_represents_completed_tool_call(incoming: &CompatibleToolCallChunk) -> bool {
-    incoming.name.as_ref().is_some_and(|name| !name.is_empty())
-        && incoming
-            .arguments
-            .as_ref()
-            .is_some_and(|arguments| !arguments.is_empty())
 }
 
 pub(crate) async fn send_compatible_streaming_request<T, P>(
@@ -320,18 +327,11 @@ where
                     }
 
                     if choice.finish_reason == CompatibleFinishReason::ToolCalls {
-                        let (completed_tool_calls, dropped_tool_calls) =
-                            drain_finalized_tool_calls(&mut tool_calls);
-
-                        for tool_call in completed_tool_calls {
+                        for tool_call in take_finalized_tool_calls(
+                            &mut tool_calls,
+                            DroppedToolCallContext::ToolCallsFinishReason,
+                        ) {
                             yield Ok(RawStreamingChoice::ToolCall(tool_call));
-                        }
-
-                        if dropped_tool_calls > 0 {
-                            tracing::debug!(
-                                dropped_tool_calls,
-                                "Dropping incomplete tool calls on tool_calls finish reason"
-                            );
                         }
                     }
                 }
@@ -353,17 +353,10 @@ where
             return;
         }
 
-        let (completed_tool_calls, dropped_tool_calls) = drain_finalized_tool_calls(&mut tool_calls);
-
-        for tool_call in completed_tool_calls {
+        for tool_call in
+            take_finalized_tool_calls(&mut tool_calls, DroppedToolCallContext::EndOfStream)
+        {
             yield Ok(RawStreamingChoice::ToolCall(tool_call));
-        }
-
-        if dropped_tool_calls > 0 {
-            tracing::debug!(
-                dropped_tool_calls,
-                "Dropping incomplete tool calls at stream end"
-            );
         }
 
         let final_usage = final_usage.unwrap_or_default();
@@ -472,6 +465,12 @@ fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<Raw
     }
 }
 
+#[derive(Clone, Copy)]
+enum DroppedToolCallContext {
+    ToolCallsFinishReason,
+    EndOfStream,
+}
+
 fn drain_finalized_tool_calls(
     tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
 ) -> (Vec<RawStreamingToolCall>, usize) {
@@ -487,6 +486,30 @@ fn drain_finalized_tool_calls(
     }
 
     (completed_tool_calls, dropped_tool_calls)
+}
+
+fn take_finalized_tool_calls(
+    tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
+    context: DroppedToolCallContext,
+) -> Vec<RawStreamingToolCall> {
+    let (completed_tool_calls, dropped_tool_calls) = drain_finalized_tool_calls(tool_calls);
+
+    if dropped_tool_calls > 0 {
+        match context {
+            DroppedToolCallContext::ToolCallsFinishReason => tracing::debug!(
+                dropped_tool_calls,
+                "Dropping incomplete tool calls on tool_calls finish reason"
+            ),
+            DroppedToolCallContext::EndOfStream => {
+                tracing::debug!(
+                    dropped_tool_calls,
+                    "Dropping incomplete tool calls at stream end"
+                )
+            }
+        }
+    }
+
+    completed_tool_calls
 }
 
 #[cfg(test)]
@@ -589,6 +612,42 @@ mod tests {
         }
     }
 
+    fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<TestUsage, ()> {
+        CompatibleChunk {
+            response_id: None,
+            response_model: None,
+            choice: Some(choice),
+            usage: None,
+        }
+    }
+
+    fn tool_call_choice(
+        finish_reason: CompatibleFinishReason,
+        tool_calls: Vec<CompatibleToolCallChunk>,
+    ) -> CompatibleChoice<()> {
+        CompatibleChoice {
+            finish_reason,
+            text: None,
+            reasoning: None,
+            tool_calls,
+            details: Vec::new(),
+        }
+    }
+
+    fn tool_call_chunk(
+        index: usize,
+        id: Option<&str>,
+        name: Option<&str>,
+        arguments: Option<&str>,
+    ) -> CompatibleToolCallChunk {
+        CompatibleToolCallChunk {
+            index,
+            id: id.map(ToOwned::to_owned),
+            name: name.map(ToOwned::to_owned),
+            arguments: arguments.map(ToOwned::to_owned),
+        }
+    }
+
     #[derive(Clone, Copy)]
     struct ErrorAfterPendingToolCallProfile;
 
@@ -602,23 +661,10 @@ mod tests {
             data: &str,
         ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
             match data {
-                "start" => Ok(Some(CompatibleChunk {
-                    response_id: None,
-                    response_model: None,
-                    choice: Some(CompatibleChoice {
-                        finish_reason: CompatibleFinishReason::Other,
-                        text: None,
-                        reasoning: None,
-                        tool_calls: vec![CompatibleToolCallChunk {
-                            index: 0,
-                            id: Some("call_123".to_owned()),
-                            name: Some("ping".to_owned()),
-                            arguments: Some(String::new()),
-                        }],
-                        details: Vec::new(),
-                    }),
-                    usage: None,
-                })),
+                "start" => Ok(Some(test_chunk(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
+                )))),
                 "bad" => Err(CompletionError::ProviderError(
                     "normalize failed".to_owned(),
                 )),
@@ -644,70 +690,40 @@ mod tests {
             data: &str,
         ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
             let choice = match data {
-                "first_start" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: vec![CompatibleToolCallChunk {
-                        index: 0,
-                        id: Some("call_aaa".to_owned()),
-                        name: Some("search".to_owned()),
-                        arguments: Some(String::new()),
-                    }],
-                    details: Vec::new(),
-                }),
-                "first_args" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: vec![CompatibleToolCallChunk {
-                        index: 0,
-                        id: None,
-                        name: None,
-                        arguments: Some("{\"query\":\"one\"}".to_owned()),
-                    }],
-                    details: Vec::new(),
-                }),
-                "second_start" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: vec![CompatibleToolCallChunk {
-                        index: 0,
-                        id: Some("call_bbb".to_owned()),
-                        name: Some("search".to_owned()),
-                        arguments: Some(String::new()),
-                    }],
-                    details: Vec::new(),
-                }),
-                "second_args" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: vec![CompatibleToolCallChunk {
-                        index: 0,
-                        id: None,
-                        name: None,
-                        arguments: Some("{\"query\":\"two\"}".to_owned()),
-                    }],
-                    details: Vec::new(),
-                }),
-                "finish" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::ToolCalls,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: Vec::new(),
-                    details: Vec::new(),
-                }),
+                "first_start" => Some(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(
+                        0,
+                        Some("call_aaa"),
+                        Some("search"),
+                        Some(""),
+                    )],
+                )),
+                "first_args" => Some(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
+                )),
+                "second_start" => Some(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(
+                        0,
+                        Some("call_bbb"),
+                        Some("search"),
+                        Some(""),
+                    )],
+                )),
+                "second_args" => Some(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(0, None, None, Some("{\"query\":\"two\"}"))],
+                )),
+                "finish" => Some(tool_call_choice(
+                    CompatibleFinishReason::ToolCalls,
+                    Vec::new(),
+                )),
                 _ => None,
             };
 
-            Ok(choice.map(|choice| CompatibleChunk {
-                response_id: None,
-                response_model: None,
-                choice: Some(choice),
-                usage: None,
-            }))
+            Ok(choice.map(test_chunk))
         }
 
         fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
@@ -732,34 +748,23 @@ mod tests {
             data: &str,
         ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
             let choice = match data {
-                "start" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: vec![CompatibleToolCallChunk {
-                        index: 0,
-                        id: Some("call_123".to_owned()),
-                        name: Some("ping".to_owned()),
-                        arguments: Some("{\"x\":".to_owned()),
-                    }],
-                    details: Vec::new(),
-                }),
-                "finish" => Some(CompatibleChoice {
-                    finish_reason: CompatibleFinishReason::ToolCalls,
-                    text: None,
-                    reasoning: None,
-                    tool_calls: Vec::new(),
-                    details: Vec::new(),
-                }),
+                "start" => Some(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(
+                        0,
+                        Some("call_123"),
+                        Some("ping"),
+                        Some("{\"x\":"),
+                    )],
+                )),
+                "finish" => Some(tool_call_choice(
+                    CompatibleFinishReason::ToolCalls,
+                    Vec::new(),
+                )),
                 _ => None,
             };
 
-            Ok(choice.map(|choice| CompatibleChunk {
-                response_id: None,
-                response_model: None,
-                choice: Some(choice),
-                usage: None,
-            }))
+            Ok(choice.map(test_chunk))
         }
 
         fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
