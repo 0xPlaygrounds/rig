@@ -1353,6 +1353,7 @@ impl From<openai::Message> for Message {
             }
             openai::Message::Assistant {
                 content,
+                reasoning,
                 refusal,
                 audio,
                 name,
@@ -1363,7 +1364,7 @@ impl From<openai::Message> for Message {
                 audio,
                 name,
                 tool_calls,
-                reasoning: None,
+                reasoning,
                 reasoning_details: Vec::new(),
             },
             openai::Message::ToolResult {
