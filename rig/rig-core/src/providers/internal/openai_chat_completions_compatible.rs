@@ -844,7 +844,10 @@ mod tests {
         let finalized =
             finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
 
-        assert_eq!(finalized.arguments, serde_json::json!({"query": "META Platforms news"}));
+        assert_eq!(
+            finalized.arguments,
+            serde_json::json!({"query": "META Platforms news"})
+        );
     }
 
     #[tokio::test]
