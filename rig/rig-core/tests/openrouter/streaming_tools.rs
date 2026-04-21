@@ -1,7 +1,9 @@
 //! OpenRouter streaming tools smoke test.
 
+use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
+use rig::message::{AssistantContent, Message};
 use rig::providers::openrouter;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
@@ -10,9 +12,15 @@ use std::sync::atomic::AtomicUsize;
 
 use crate::reasoning::WeatherTool;
 use crate::support::{
-    Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
-    assert_mentions_expected_number, collect_raw_stream_observation, collect_stream_final_response,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
+    ORDERED_TOOL_STREAM_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
+    TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
+    assert_mentions_expected_number, assert_raw_stream_contains_distinct_tool_calls_before_text,
+    assert_raw_stream_text_contains, assert_raw_stream_tool_call_precedes_text,
+    collect_raw_stream_observation, collect_stream_final_response,
 };
+
+use super::TOOL_MODEL;
 
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
@@ -79,4 +87,92 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
         record.signature,
         record.additional_params
     );
+}
+
+#[tokio::test]
+#[ignore = "requires OPENROUTER_API_KEY"]
+async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
+    let client = openrouter::Client::from_env();
+    let model = client.completion_model(TOOL_MODEL);
+    let request = model
+        .completion_request(TWO_TOOL_STREAM_PROMPT)
+        .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
+        .tool(AlphaSignal.definition(String::new()).await)
+        .tool(BetaSignal.definition(String::new()).await)
+        .build();
+
+    let observation = collect_raw_stream_observation(
+        model
+            .stream(request)
+            .await
+            .expect("raw stream should start"),
+    )
+    .await;
+
+    assert_raw_stream_contains_distinct_tool_calls_before_text(
+        &observation,
+        &["lookup_harbor_label", "lookup_orchard_label"],
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires OPENROUTER_API_KEY"]
+async fn raw_followup_uses_tool_result_without_new_tool_calls() {
+    let client = openrouter::Client::from_env();
+    let model = client.completion_model(TOOL_MODEL);
+    let request = model
+        .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+        .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+        .tool(AlphaSignal.definition(String::new()).await)
+        .build();
+
+    let first_turn = collect_raw_stream_observation(
+        model
+            .stream(request)
+            .await
+            .expect("raw stream should start"),
+    )
+    .await;
+
+    assert_raw_stream_tool_call_precedes_text(&first_turn, "lookup_harbor_label");
+
+    let tool_call = first_turn
+        .tool_calls
+        .iter()
+        .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
+        .cloned()
+        .expect("raw stream should yield lookup_harbor_label");
+    let assistant_message = Message::Assistant {
+        id: None,
+        content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+    };
+    let tool_result_message =
+        Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+    let followup_request = model
+        .completion_request(
+            "Now reply in one short sentence using the provided tool result. Do not call any tools.",
+        )
+        .preamble("Use the provided tool result and answer directly.".to_string())
+        .message(assistant_message)
+        .message(tool_result_message)
+        .build();
+
+    let second_turn = collect_raw_stream_observation(
+        model
+            .stream(followup_request)
+            .await
+            .expect("raw followup stream should start"),
+    )
+    .await;
+
+    assert!(
+        second_turn.tool_calls.is_empty(),
+        "follow-up raw stream should not emit fresh tool calls, saw {:?}",
+        second_turn
+            .tool_calls
+            .iter()
+            .map(|tool_call| tool_call.function.name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_raw_stream_text_contains(&second_turn, &[ALPHA_SIGNAL_OUTPUT]);
 }
