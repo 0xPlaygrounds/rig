@@ -249,6 +249,7 @@ fn llamafile_message_value(message: openai::Message) -> Result<Value, Completion
         openai::Message::Assistant {
             content,
             refusal,
+            reasoning: _,
             audio,
             name,
             tool_calls,
@@ -842,6 +843,7 @@ mod tests {
             content: vec![openai::AssistantContent::Text {
                 text: "Tool returned the answer.".into(),
             }],
+            reasoning: None,
             refusal: None,
             audio: None,
             name: None,

@@ -156,6 +156,9 @@ pub enum Message {
             serialize_with = "serialize_assistant_content_vec"
         )]
         content: Vec<AssistantContent>,
+        // provided by llama.cpp
+        #[serde(skip_serializing_if = "Option::is_none", rename = "reasoning_content")]
+        reasoning: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -598,6 +601,7 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                 .into_iter()
                 .map(|content| content.text.into())
                 .collect::<Vec<_>>(),
+            reasoning: None,
             refusal: None,
             audio: None,
             name: None,
@@ -800,6 +804,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning,
                 ..
             } => {
                 let mut content = content
@@ -816,6 +821,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         }
                     })
                     .collect::<Vec<_>>();
+
+                if let Some(reasoning) = reasoning {
+                    content.push(completion::AssistantContent::text(reasoning));
+                }
 
                 content.extend(
                     tool_calls
@@ -1747,6 +1756,64 @@ mod tests {
         assert_eq!(
             tool_calls[0].function.arguments,
             serde_json::json!({"city": "Paris"})
+        );
+    }
+
+    #[test]
+    fn deserialize_llama_cpp_response_with_reasoning_content() {
+        let request = r#"
+        {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "reasoning_content": "Now I understand the structure better. I need to: ..."
+                    }
+                }
+            ],
+            "created": 1776750378,
+            "model": "unsloth/Qwen3.6-35B-A3B-GGUF:Q8_0",
+            "system_fingerprint": "fp_xxx",
+            "object": "chat.completion",
+            "usage": {
+                "completion_tokens": 920,
+                "prompt_tokens": 27806,
+                "total_tokens": 28726,
+                "prompt_tokens_details": { "cached_tokens": 18698 }
+            },
+            "id": "chatcmpl-xxxx",
+            "timings": {
+                "cache_n": 18698,
+                "prompt_n": 9108,
+                "prompt_ms": 226645.81,
+                "prompt_per_token_ms": 24.884256697408873,
+                "prompt_per_second": 40.186050648807495,
+                "predicted_n": 920,
+                "predicted_ms": 177167.955,
+                "predicted_per_token_ms": 192.57386413043477,
+                "predicted_per_second": 5.192812661860888
+            }
+        }
+        "#;
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+
+        let response: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(response.choice.len(), 1);
+
+        let completion::message::AssistantContent::Text(text) = response.choice.first() else {
+            panic!("expected assistant content to be text");
+        };
+        assert_eq!(
+            text.text,
+            "Now I understand the structure better. I need to: ..."
         );
     }
 }

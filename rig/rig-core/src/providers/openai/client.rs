@@ -524,6 +524,7 @@ mod tests {
             content: vec![AssistantContent::Text {
                 text: "Hi there!".to_string(),
             }],
+            reasoning: None,
             refusal: None,
             audio: None,
             name: None,
