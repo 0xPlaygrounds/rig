@@ -820,7 +820,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .collect::<Vec<_>>();
 
                 if let Some(reasoning) = reasoning {
-                    content.push(completion::AssistantContent::text(reasoning));
+                    // llama.cpp exposes hidden reasoning on a separate non-standard field.
+                    // Keep it structured here so the non-streaming path matches streaming
+                    // behavior and does not pollute plain-text response surfaces.
+                    content.push(completion::AssistantContent::reasoning(reasoning));
                 }
 
                 content.extend(
@@ -1905,12 +1908,13 @@ mod tests {
 
         assert_eq!(response.choice.len(), 1);
 
-        let completion::message::AssistantContent::Text(text) = response.choice.first() else {
-            panic!("expected assistant content to be text");
+        let completion::message::AssistantContent::Reasoning(reasoning) = response.choice.first()
+        else {
+            panic!("expected assistant content to be reasoning");
         };
         assert_eq!(
-            text.text,
-            "Now I understand the structure better. I need to: ..."
+            reasoning.first_text(),
+            Some("Now I understand the structure better. I need to: ...")
         );
     }
 }
