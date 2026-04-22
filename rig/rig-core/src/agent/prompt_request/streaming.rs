@@ -159,7 +159,7 @@ fn tool_result_to_user_message(
     call_id: Option<String>,
     tool_result: String,
 ) -> Message {
-    let content = OneOrMany::one(ToolResultContent::text(tool_result));
+    let content = ToolResultContent::from_tool_output(tool_result);
     let user_content = match call_id {
         Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
         None => UserContent::tool_result(id, content),
@@ -794,7 +794,10 @@ mod tests {
     use crate::completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
     };
-    use crate::message::{AssistantContent, Message, ReasoningContent, UserContent};
+    use crate::message::{
+        AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
+        ToolResultContent, UserContent,
+    };
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
     use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
@@ -912,6 +915,58 @@ mod tests {
                 Some(ReasoningContent::Text { text, .. }) if text == "second"
             )
         ));
+    }
+
+    #[test]
+    fn tool_result_to_user_message_preserves_multimodal_tool_output() {
+        let message = tool_result_to_user_message(
+            "tool_call_1".to_string(),
+            Some("call_1".to_string()),
+            serde_json::json!({
+                "response": {
+                    "instruction": "Use the image part to answer."
+                },
+                "parts": [
+                    {
+                        "type": "image",
+                        "data": "base64data==",
+                        "mimeType": "image/png"
+                    }
+                ]
+            })
+            .to_string(),
+        );
+
+        let tool_result = match message {
+            Message::User { content } => match content.first() {
+                UserContent::ToolResult(tool_result) => tool_result,
+                other => panic!("expected tool result content, got {other:?}"),
+            },
+            other => panic!("expected user message, got {other:?}"),
+        };
+
+        assert_eq!(tool_result.id, "tool_call_1");
+        assert_eq!(tool_result.call_id.as_deref(), Some("call_1"));
+        assert_eq!(tool_result.content.len(), 2);
+
+        let mut items = tool_result.content.iter();
+        match items.next() {
+            Some(ToolResultContent::Text(text)) => {
+                assert!(text.text.contains("Use the image part to answer."));
+            }
+            other => panic!("expected structured text payload first, got {other:?}"),
+        }
+
+        match items.next() {
+            Some(ToolResultContent::Image(image)) => {
+                assert_eq!(image.media_type, Some(ImageMediaType::PNG));
+                assert!(matches!(
+                    image.data,
+                    DocumentSourceKind::Base64(ref data) if data == "base64data=="
+                ));
+            }
+            other => panic!("expected image payload second, got {other:?}"),
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -18,6 +18,7 @@ use serde_json::json;
 use crate::support::assert_nonempty_response;
 
 const RED_PIXEL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+const MULTIMODAL_FUNCTION_RESPONSE_MODEL: &str = gemini::completion::GEMINI_3_FLASH_PREVIEW;
 
 fn streaming_tool_params() -> serde_json::Value {
     serde_json::to_value(AdditionalParameters::default().with_config(GenerationConfig::default()))
@@ -72,7 +73,7 @@ impl Tool for HybridImageTool {
 async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     let client = gemini::Client::from_env();
     let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
+        .agent(MULTIMODAL_FUNCTION_RESPONSE_MODEL)
         .preamble(
             "You are a precise assistant. Call `render_reference_image` exactly once before \
              answering. After the tool result arrives, do not call any more tools. Answer in one \

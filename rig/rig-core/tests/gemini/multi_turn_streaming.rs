@@ -155,20 +155,14 @@ where
             }
 
             for (id, call_id, tool_result) in tool_results {
-                let content = if let Some(call_id) = call_id {
-                    UserContent::tool_result_with_call_id(
-                        id,
-                        call_id,
-                        OneOrMany::one(ToolResultContent::text(tool_result)),
-                    )
+                let tool_content = ToolResultContent::from_tool_output(tool_result);
+                let user_content = if let Some(call_id) = call_id {
+                    UserContent::tool_result_with_call_id(id, call_id, tool_content)
                 } else {
-                    UserContent::tool_result(
-                        id,
-                        OneOrMany::one(ToolResultContent::text(tool_result)),
-                    )
+                    UserContent::tool_result(id, tool_content)
                 };
                 chat_history.push(Message::User {
-                    content: OneOrMany::one(content),
+                    content: OneOrMany::one(user_content),
                 });
             }
 
