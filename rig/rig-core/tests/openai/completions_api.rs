@@ -7,16 +7,19 @@ use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
+use rig::telemetry::ProviderResponseExt;
 use rig::tool::Tool;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
-    ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
-    TWO_TOOL_STREAM_PROMPT, assert_nonempty_response,
+    ORDERED_TOOL_STREAM_PROMPT, RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT,
+    REQUIRED_ZERO_ARG_TOOL_PROMPT, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
+    assert_contains_all_case_insensitive, assert_nonempty_response,
     assert_raw_stream_contains_distinct_tool_calls_before_text, assert_raw_stream_text_contains,
     assert_raw_stream_tool_call_precedes_text, assert_stream_contains_zero_arg_tool_call_named,
     assert_tool_call_precedes_later_text, assert_two_tool_roundtrip_contract,
-    collect_raw_stream_observation, collect_stream_observation, zero_arg_tool_definition,
+    assistant_text_response, collect_raw_stream_observation, collect_stream_observation,
+    zero_arg_tool_definition,
 };
 
 #[tokio::test]
@@ -35,6 +38,31 @@ async fn completions_api_agent_prompt() {
         .expect("completions api prompt should succeed");
 
     assert_nonempty_response(&response);
+}
+
+#[tokio::test]
+#[ignore = "requires OPENAI_API_KEY"]
+async fn completions_api_raw_response_text_matches_normalized_choice_text() {
+    let client = openai::Client::from_env().completions_api();
+    let response = client
+        .completion_model(openai::GPT_4O)
+        .completion_request(RAW_TEXT_RESPONSE_PROMPT)
+        .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
+        .send()
+        .await
+        .expect("raw completions api request should succeed");
+
+    let normalized_text = assistant_text_response(&response.choice)
+        .expect("normalized completions api response should contain assistant text");
+    let raw_text = response
+        .raw_response
+        .get_text_response()
+        .expect("raw completions api response should contain assistant text");
+
+    assert_nonempty_response(&normalized_text);
+    assert_nonempty_response(&raw_text);
+    assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
+    assert_eq!(raw_text.trim(), normalized_text.trim());
 }
 
 #[tokio::test]
