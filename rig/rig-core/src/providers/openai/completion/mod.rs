@@ -670,9 +670,6 @@ impl TryFrom<Message> for message::Message {
                     .into_iter()
                     .map(|content| match content {
                         AssistantContent::Text { text } => message::AssistantContent::text(text),
-
-                        // TODO: Currently, refusals are converted into text, but should be
-                        //  investigated for generalization.
                         AssistantContent::Refusal { refusal } => {
                             message::AssistantContent::text(refusal)
                         }
@@ -893,19 +890,51 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_text_response(&self) -> Option<String> {
-        let Message::User { ref content, .. } = self.choices.last()?.message.clone() else {
-            return None;
-        };
+        let response = self
+            .choices
+            .iter()
+            .filter_map(|choice| assistant_message_text_response(&choice.message))
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        let UserContent::Text { text } = content.first() else {
-            return None;
-        };
-
-        Some(text)
+        if response.is_empty() {
+            None
+        } else {
+            Some(response)
+        }
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
         self.usage.clone()
+    }
+}
+
+fn assistant_message_text_response(message: &Message) -> Option<String> {
+    let Message::Assistant {
+        content, refusal, ..
+    } = message
+    else {
+        return None;
+    };
+
+    let mut segments = content
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text { text } => (!text.is_empty()).then(|| text.clone()),
+            AssistantContent::Refusal { refusal } => (!refusal.is_empty()).then(|| refusal.clone()),
+        })
+        .collect::<Vec<_>>();
+
+    if segments.is_empty()
+        && let Some(refusal) = refusal.as_ref().filter(|refusal| !refusal.is_empty())
+    {
+        segments.push(refusal.clone());
+    }
+
+    if segments.is_empty() {
+        None
+    } else {
+        Some(segments.join("\n"))
     }
 }
 
@@ -1364,6 +1393,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::telemetry::ProviderResponseExt;
 
     #[test]
     fn test_openai_request_uses_request_model_override() {
@@ -1472,6 +1502,73 @@ mod tests {
             }
             _ => panic!("expected assistant message"),
         }
+    }
+
+    #[test]
+    fn provider_response_text_response_reads_assistant_multipart_output() {
+        let response = CompletionResponse {
+            id: "resp_123".to_owned(),
+            object: "chat.completion".to_owned(),
+            created: 0,
+            model: GPT_4O.to_owned(),
+            system_fingerprint: None,
+            choices: vec![Choice {
+                index: 0,
+                message: Message::Assistant {
+                    content: vec![
+                        AssistantContent::Text {
+                            text: "first".to_owned(),
+                        },
+                        AssistantContent::Refusal {
+                            refusal: "second".to_owned(),
+                        },
+                        AssistantContent::Text {
+                            text: "third".to_owned(),
+                        },
+                    ],
+                    reasoning: Some("hidden".to_owned()),
+                    refusal: None,
+                    audio: None,
+                    name: None,
+                    tool_calls: vec![],
+                },
+                logprobs: None,
+                finish_reason: "stop".to_owned(),
+            }],
+            usage: None,
+        };
+
+        assert_eq!(
+            response.get_text_response(),
+            Some("first\nsecond\nthird".to_owned())
+        );
+    }
+
+    #[test]
+    fn provider_response_text_response_falls_back_to_assistant_refusal_field() {
+        let response = CompletionResponse {
+            id: "resp_123".to_owned(),
+            object: "chat.completion".to_owned(),
+            created: 0,
+            model: GPT_4O.to_owned(),
+            system_fingerprint: None,
+            choices: vec![Choice {
+                index: 0,
+                message: Message::Assistant {
+                    content: vec![],
+                    reasoning: None,
+                    refusal: Some("blocked".to_owned()),
+                    audio: None,
+                    name: None,
+                    tool_calls: vec![],
+                },
+                logprobs: None,
+                finish_reason: "stop".to_owned(),
+            }],
+            usage: None,
+        };
+
+        assert_eq!(response.get_text_response(), Some("blocked".to_owned()));
     }
 
     #[test]

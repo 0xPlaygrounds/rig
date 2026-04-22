@@ -4,7 +4,7 @@
 use futures::StreamExt;
 use rig::{
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
-    completion::{GetTokenUsage, ToolDefinition},
+    completion::{AssistantContent, GetTokenUsage, ToolDefinition},
     embeddings::Embedding,
     streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
     tool::Tool,
@@ -15,6 +15,10 @@ use serde_json::json;
 
 pub(crate) const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 pub(crate) const BASIC_PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
+pub(crate) const RAW_TEXT_RESPONSE_PREAMBLE: &str =
+    "Return exactly the requested text as plain text with no bullets, quotes, or extra commentary.";
+pub(crate) const RAW_TEXT_RESPONSE_PROMPT: &str =
+    "Reply with exactly two short lines and nothing else. First line: cedar. Second line: maple.";
 
 pub(crate) const CONTEXT_DOCS: [&str; 3] = [
     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets.",
@@ -257,6 +261,23 @@ pub(crate) fn assert_nonempty_response(response: &str) {
         !trimmed.is_empty(),
         "Response was empty or whitespace-only."
     );
+}
+
+pub(crate) fn assistant_text_response(choice: &rig::OneOrMany<AssistantContent>) -> Option<String> {
+    let response = choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if response.is_empty() {
+        None
+    } else {
+        Some(response)
+    }
 }
 
 pub(crate) fn assert_contains_any_case_insensitive(response: &str, expected: &[&str]) {
