@@ -31,6 +31,7 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
+const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 
 pub trait AnthropicCompatibleProvider: Provider {
     const PROVIDER_NAME: &'static str;
@@ -214,11 +215,21 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let choice = if content.is_empty() {
+            // Anthropic documents empty `end_turn` responses after tool-result round trips.
+            // The generic completion response still requires at least one assistant item, so
+            // normalize that terminal no-op into the same empty-text sentinel used by streaming.
+            if response.stop_reason.as_deref() == Some("end_turn") {
+                OneOrMany::one(completion::AssistantContent::text(""))
+            } else {
+                return Err(CompletionError::ResponseError(
+                    EMPTY_RESPONSE_ERROR.to_owned(),
+                ));
+            }
+        } else {
+            OneOrMany::many(content)
+                .map_err(|_| CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned()))?
+        };
 
         let usage = completion::Usage {
             input_tokens: response.usage.input_tokens,
@@ -2290,6 +2301,60 @@ mod tests {
         assert!(matches!(
             converted_content.first(),
             Some(Content::RedactedThinking { data }) if data == "ciphertext"
+        ));
+    }
+
+    #[test]
+    fn empty_end_turn_response_normalizes_to_empty_text_choice() {
+        let response = CompletionResponse {
+            content: vec![],
+            id: "msg_123".to_string(),
+            model: CLAUDE_SONNET_4_6.to_string(),
+            role: "assistant".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 7,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                output_tokens: 2,
+            },
+        };
+
+        let parsed: completion::CompletionResponse<CompletionResponse> = response
+            .try_into()
+            .expect("empty end_turn should not error");
+
+        assert_eq!(parsed.choice.len(), 1);
+        assert!(matches!(
+            parsed.choice.first(),
+            completion::AssistantContent::Text(text) if text.text.is_empty()
+        ));
+    }
+
+    #[test]
+    fn empty_non_end_turn_response_still_errors() {
+        let response = CompletionResponse {
+            content: vec![],
+            id: "msg_123".to_string(),
+            model: CLAUDE_SONNET_4_6.to_string(),
+            role: "assistant".to_string(),
+            stop_reason: Some("tool_use".to_string()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 7,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                output_tokens: 2,
+            },
+        };
+
+        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+            .expect_err("empty non-end_turn should remain an error");
+
+        assert!(matches!(
+            err,
+            CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
         ));
     }
 }

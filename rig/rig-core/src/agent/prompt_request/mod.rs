@@ -302,6 +302,14 @@ fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
+fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
+    choice.len() == 1
+        && matches!(
+            choice.first(),
+            AssistantContent::Text(text) if text.text.is_empty()
+        )
+}
+
 impl<M, P> PromptRequest<Extended, M, P>
 where
     M: CompletionModel,
@@ -452,10 +460,15 @@ where
                 .iter()
                 .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
 
-            new_messages.push(Message::Assistant {
-                id: resp.message_id.clone(),
-                content: resp.choice.clone(),
-            });
+            // Some providers normalize textless terminal turns into a single empty text item
+            // because the generic completion response cannot represent an empty choice. Treat
+            // that sentinel as "no assistant output" so it does not pollute returned history.
+            if !is_empty_assistant_turn(&resp.choice) {
+                new_messages.push(Message::Assistant {
+                    id: resp.message_id.clone(),
+                    content: resp.choice.clone(),
+                });
+            }
 
             if tool_calls.is_empty() {
                 let merged_texts = texts
@@ -829,8 +842,22 @@ where
 #[cfg(test)]
 mod tests {
     use super::TypedPromptResponse;
-    use crate::completion::Usage;
+    use crate::{
+        OneOrMany,
+        agent::AgentBuilder,
+        completion::{
+            AssistantContent, CompletionError, CompletionModel, CompletionRequest,
+            CompletionResponse, Message, Prompt, Usage,
+        },
+        message::UserContent,
+        streaming::StreamingCompletionResponse,
+    };
     use serde::{Deserialize, Serialize};
+    use serde_json::json;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     #[derive(Serialize)]
     struct SerializeOnly {
@@ -870,5 +897,170 @@ mod tests {
         assert_eq!(response.usage.input_tokens, 1);
         assert_eq!(response.usage.output_tokens, 2);
         assert_eq!(response.usage.total_tokens, 3);
+    }
+
+    fn validate_follow_up_tool_history(request: &CompletionRequest) {
+        let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
+        assert_eq!(
+            history.len(),
+            3,
+            "follow-up request should contain the prompt, assistant tool call, and user tool result: {history:?}"
+        );
+
+        assert!(matches!(
+            history.first(),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::Text(text) if text.text == "do tool work"
+                )
+        ));
+
+        assert!(matches!(
+            history.get(1),
+            Some(Message::Assistant { content, .. })
+                if matches!(
+                    content.first(),
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.id == "tool_call_1"
+                            && tool_call.call_id.as_deref() == Some("call_1")
+                )
+        ));
+
+        assert!(matches!(
+            history.get(2),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::ToolResult(tool_result)
+                        if tool_result.id == "tool_call_1"
+                            && tool_result.call_id.as_deref() == Some("call_1")
+                )
+        ));
+    }
+
+    #[derive(Clone, Default)]
+    struct EmptyFinalTurnMockModel {
+        turn_counter: Arc<AtomicUsize>,
+    }
+
+    #[allow(refining_impl_trait)]
+    impl CompletionModel for EmptyFinalTurnMockModel {
+        type Response = ();
+        type StreamingResponse = ();
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self::default()
+        }
+
+        async fn completion(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
+
+            let choice = if turn == 0 {
+                OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                    "tool_call_1",
+                    "call_1".to_string(),
+                    "missing_tool",
+                    json!({"input": "value"}),
+                ))
+            } else {
+                validate_follow_up_tool_history(&request);
+                OneOrMany::one(AssistantContent::text(""))
+            };
+
+            Ok(CompletionResponse {
+                choice,
+                usage: Usage {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    total_tokens: 2,
+                    cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                },
+                raw_response: (),
+                message_id: None,
+            })
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "stream is unused in this non-streaming test".to_string(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
+        let model = EmptyFinalTurnMockModel::default();
+        let turn_counter = model.turn_counter.clone();
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("do tool work")
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("empty terminal turn should not error");
+
+        assert!(response.output.is_empty());
+        assert_eq!(
+            response.usage,
+            Usage {
+                input_tokens: 2,
+                output_tokens: 2,
+                total_tokens: 4,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }
+        );
+
+        let history = response
+            .messages
+            .expect("extended response should include history");
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            history.first(),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::Text(text) if text.text == "do tool work"
+                )
+        ));
+        assert!(history.iter().any(|message| matches!(
+            message,
+            Message::Assistant { content, .. }
+                if matches!(
+                    content.first(),
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.id == "tool_call_1"
+                            && tool_call.call_id.as_deref() == Some("call_1")
+                )
+        )));
+        assert!(history.iter().any(|message| matches!(
+            message,
+            Message::User { content }
+                if matches!(
+                    content.first(),
+                    UserContent::ToolResult(tool_result)
+                        if tool_result.id == "tool_call_1"
+                            && tool_result.call_id.as_deref() == Some("call_1")
+                )
+        )));
+        assert!(!history.iter().any(|message| matches!(
+            message,
+            Message::Assistant { content, .. }
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text.is_empty()
+                ))
+        )));
+        assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
     }
 }
