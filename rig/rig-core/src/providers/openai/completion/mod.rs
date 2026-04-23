@@ -156,7 +156,8 @@ pub enum Message {
             serialize_with = "serialize_assistant_content_vec"
         )]
         content: Vec<AssistantContent>,
-        // provided by llama.cpp
+        // OpenAI-compatible providers expose hidden reasoning on this non-standard
+        // field, and some require it to be echoed back on assistant tool-call turns.
         #[serde(skip_serializing_if = "Option::is_none", rename = "reasoning_content")]
         reasoning: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -575,14 +576,14 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
     fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
         let mut text_content = Vec::new();
         let mut tool_calls = Vec::new();
+        let mut reasoning_text = String::new();
 
         for content in value {
             match content {
                 message::AssistantContent::Text(text) => text_content.push(text),
                 message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
-                message::AssistantContent::Reasoning(_) => {
-                    // OpenAI Chat Completions does not support assistant-history reasoning items.
-                    // Silently skip unsupported reasoning content.
+                message::AssistantContent::Reasoning(reasoning) => {
+                    reasoning_text.push_str(&reasoning.display_text());
                 }
                 message::AssistantContent::Image(_) => {
                     panic!(
@@ -601,7 +602,11 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                 .into_iter()
                 .map(|content| content.text.into())
                 .collect::<Vec<_>>(),
-            reasoning: None,
+            reasoning: if reasoning_text.is_empty() {
+                None
+            } else {
+                Some(reasoning_text)
+            },
             refusal: None,
             audio: None,
             name: None,
@@ -664,19 +669,25 @@ impl TryFrom<Message> for message::Message {
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning,
                 ..
             } => {
-                let mut content = content
-                    .into_iter()
-                    .map(|content| match content {
-                        AssistantContent::Text { text } => message::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
-                            message::AssistantContent::text(refusal)
-                        }
-                    })
-                    .collect::<Vec<_>>();
+                let mut assistant_content = Vec::new();
 
-                content.extend(
+                if let Some(reasoning) = reasoning
+                    && !reasoning.is_empty()
+                {
+                    assistant_content.push(message::AssistantContent::reasoning(reasoning));
+                }
+
+                assistant_content.extend(content.into_iter().map(|content| match content {
+                    AssistantContent::Text { text } => message::AssistantContent::text(text),
+                    AssistantContent::Refusal { refusal } => {
+                        message::AssistantContent::text(refusal)
+                    }
+                }));
+
+                assistant_content.extend(
                     tool_calls
                         .into_iter()
                         .map(|tool_call| Ok(message::AssistantContent::ToolCall(tool_call.into())))
@@ -685,7 +696,7 @@ impl TryFrom<Message> for message::Message {
 
                 message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::many(content).map_err(|_| {
+                    content: OneOrMany::many(assistant_content).map_err(|_| {
                         message::MessageError::ConversionError(
                             "Neither `content` nor `tool_calls` was provided to the Message"
                                 .to_owned(),
@@ -1455,7 +1466,7 @@ mod tests {
     }
 
     #[test]
-    fn assistant_reasoning_is_silently_skipped() {
+    fn assistant_reasoning_alone_is_dropped() {
         let assistant_content = OneOrMany::one(message::AssistantContent::reasoning("hidden"));
 
         let converted: Vec<Message> = assistant_content
@@ -1465,8 +1476,12 @@ mod tests {
         assert!(converted.is_empty());
     }
 
+    // Regression test: providers that serve thinking models over the OpenAI
+    // Chat Completions schema (DeepSeek-R1, GLM-4.6, Qwen3-Thinking) return
+    // 400 "thinking is enabled but reasoning_content is missing" on the next
+    // turn if the prior assistant tool-call message didn't echo the reasoning.
     #[test]
-    fn assistant_text_and_tool_call_are_preserved_when_reasoning_is_present() {
+    fn assistant_reasoning_is_attached_to_tool_call_message() {
         let assistant_content = OneOrMany::many(vec![
             message::AssistantContent::reasoning("hidden"),
             message::AssistantContent::text("visible"),
@@ -1487,6 +1502,7 @@ mod tests {
             Message::Assistant {
                 content,
                 tool_calls,
+                reasoning,
                 ..
             } => {
                 assert_eq!(
@@ -1502,9 +1518,38 @@ mod tests {
                     tool_calls[0].function.arguments,
                     serde_json::json!({"x": 2, "y": 1})
                 );
+                assert_eq!(reasoning.as_deref(), Some("hidden"));
             }
             _ => panic!("expected assistant message"),
         }
+
+        let json = serde_json::to_value(&converted[0]).expect("serialize");
+        assert_eq!(json["reasoning_content"], "hidden");
+    }
+
+    #[test]
+    fn assistant_reasoning_roundtrips_back_to_rig_message() {
+        let assistant = Message::Assistant {
+            content: vec![AssistantContent::Text {
+                text: "visible".to_string(),
+            }],
+            reasoning: Some("hidden".to_string()),
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: vec![],
+        };
+
+        let rig_msg: message::Message = assistant.try_into().expect("convert back");
+
+        let message::Message::Assistant { content, .. } = rig_msg else {
+            panic!("expected assistant");
+        };
+
+        let items: Vec<_> = content.into_iter().collect();
+        assert_eq!(items.len(), 2);
+        assert!(matches!(items[0], message::AssistantContent::Reasoning(_)));
+        assert!(matches!(items[1], message::AssistantContent::Text(_)));
     }
 
     #[test]
