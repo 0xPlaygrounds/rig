@@ -250,12 +250,11 @@ where
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
                             && profile.should_evict(existing, &incoming)
+                            && let Some(evicted) = tool_calls.remove(&incoming.index)
                         {
-                            if let Some(evicted) = tool_calls.remove(&incoming.index) {
-                                yield Ok(RawStreamingChoice::ToolCall(
-                                    finalize_completed_streaming_tool_call(evicted),
-                                ));
-                            }
+                            yield Ok(RawStreamingChoice::ToolCall(
+                                finalize_completed_streaming_tool_call(evicted),
+                            ));
                         }
 
                         let existing_tool_call = tool_calls

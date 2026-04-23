@@ -191,8 +191,11 @@ mod tests {
         let combined = filter1.and(filter2);
 
         let result = combined.into_inner();
-        let Value::Object(obj) = result else {
-            assert!(false, "combined filter should serialize to an object");
+        let Some(obj) = result.as_object() else {
+            assert!(
+                result.is_object(),
+                "combined filter should serialize to an object"
+            );
             return;
         };
 
@@ -216,7 +219,7 @@ mod tests {
         let err = match result {
             Err(err) => err,
             Ok(()) => {
-                assert!(false, "OR filters should fail validation");
+                assert!(result.is_err(), "OR filters should fail validation");
                 return;
             }
         };
@@ -225,7 +228,7 @@ mod tests {
                 assert!(msg.contains("OR"));
             }
             other => assert!(
-                false,
+                matches!(other, VectorizeError::UnsupportedFilterOperation(_)),
                 "expected UnsupportedFilterOperation error, got {other:?}"
             ),
         }
@@ -251,8 +254,11 @@ mod tests {
             .and(VectorizeFilter::lt("price", json!(100)));
 
         let result = filter.into_inner();
-        let Value::Object(obj) = result else {
-            assert!(false, "combined filter should serialize to an object");
+        let Some(obj) = result.as_object() else {
+            assert!(
+                result.is_object(),
+                "combined filter should serialize to an object"
+            );
             return;
         };
 

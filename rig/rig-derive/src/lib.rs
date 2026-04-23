@@ -29,7 +29,7 @@ pub fn derive_provider_client(input: TokenStream) -> TokenStream {
 /// A macro that allows you to implement the `rig::embedding::Embed` trait by deriving it.
 /// Usage can be found below:
 ///
-/// ```rust
+/// ```text
 /// use rig::Embed;
 /// use rig_derive::Embed;
 ///
@@ -328,7 +328,7 @@ fn result_type_tokens(
 /// # Examples
 ///
 /// Basic usage:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
@@ -338,7 +338,7 @@ fn result_type_tokens(
 /// ```
 ///
 /// With description:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(description = "Perform basic arithmetic operations")]
@@ -354,7 +354,7 @@ fn result_type_tokens(
 /// ```
 ///
 /// With a custom tool name:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// // Explicit names must be string literals that start with an ASCII letter
@@ -367,7 +367,7 @@ fn result_type_tokens(
 /// ```
 ///
 /// With parameter descriptions:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(
