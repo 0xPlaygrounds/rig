@@ -8,7 +8,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn extractor_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let extractor = client.extractor::<SmokePerson>(openai::GPT_4O).build();
 
     let response = extractor

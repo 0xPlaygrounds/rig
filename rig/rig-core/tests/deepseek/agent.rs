@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn completion_smoke() {
-    let client = deepseek::Client::from_env();
+    let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
         .agent(deepseek::DEEPSEEK_CHAT)
         .preamble(BASIC_PREAMBLE)

@@ -71,7 +71,7 @@ impl Tool for HybridImageTool {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent(MULTIMODAL_FUNCTION_RESPONSE_MODEL)
         .preamble(

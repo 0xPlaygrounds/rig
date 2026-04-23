@@ -47,7 +47,7 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn structured_output_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client.agent(openai::GPT_4O).build();
 
     let response: SmokeStructuredOutput = agent
@@ -61,7 +61,7 @@ async fn structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn prompt_typed_and_output_schema() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble("You are a helpful weather assistant. Respond with realistic weather data.")

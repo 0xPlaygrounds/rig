@@ -11,7 +11,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn streaming() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
         client.completion_model("gemini-2.5-flash"),
         Some(serde_json::json!({
@@ -26,7 +26,7 @@ async fn streaming() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn nonstreaming() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
         client.completion_model("gemini-2.5-flash"),
         Some(serde_json::json!({

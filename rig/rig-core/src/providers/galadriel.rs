@@ -111,31 +111,31 @@ impl<T> ClientBuilder<T> {
 
 impl ProviderClient for Client {
     type Input = (String, Option<String>);
+    type Error = crate::client::ProviderClientError;
 
     /// Create a new Galadriel client from the `GALADRIEL_API_KEY` environment variable,
     /// and optionally from the `GALADRIEL_FINE_TUNE_API_KEY` environment variable.
-    /// Panics if the `GALADRIEL_API_KEY` environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("GALADRIEL_API_KEY").expect("GALADRIEL_API_KEY not set");
-        let fine_tune_api_key = std::env::var("GALADRIEL_FINE_TUNE_API_KEY").ok();
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("GALADRIEL_API_KEY")?;
+        let fine_tune_api_key = crate::client::optional_env_var("GALADRIEL_FINE_TUNE_API_KEY")?;
 
         let mut builder = Self::builder().api_key(api_key);
 
-        if let Some(fine_tune_api_key) = fine_tune_api_key.as_deref() {
+        if let Some(fine_tune_api_key) = fine_tune_api_key {
             builder = builder.fine_tune_api_key(fine_tune_api_key);
         }
 
-        builder.build().unwrap()
+        builder.build().map_err(Into::into)
     }
 
-    fn from_val((api_key, fine_tune_api_key): Self::Input) -> Self {
+    fn from_val((api_key, fine_tune_api_key): Self::Input) -> Result<Self, Self::Error> {
         let mut builder = Self::builder().api_key(api_key);
 
         if let Some(fine_tune_key) = fine_tune_api_key {
             builder = builder.fine_tune_api_key(fine_tune_key)
         }
 
-        builder.build().unwrap()
+        builder.build().map_err(Into::into)
     }
 }
 

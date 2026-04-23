@@ -10,6 +10,7 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 #[ignore = "requires a local Ollama server"]
 async fn example_streaming_prompt() {
     let agent = ollama::Client::from_env()
+        .expect("client should build")
         .agent("llama3.2")
         .preamble("Be precise and concise.")
         .temperature(0.5)

@@ -13,15 +13,15 @@ struct Debater {
 }
 
 impl Debater {
-    fn new(position_a: &str, position_b: &str) -> Self {
+    fn new(position_a: &str, position_b: &str) -> Result<Self> {
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        let openai_client = openai::Client::from_env();
-        let cohere_client = cohere::Client::from_env();
+        let openai_client = openai::Client::from_env()?;
+        let cohere_client = cohere::Client::from_env()?;
 
-        Self {
+        Ok(Self {
             gpt_4: openai_client
                 .agent(openai::GPT_4)
                 .preamble(position_a)
@@ -30,7 +30,7 @@ impl Debater {
                 .agent(cohere::COMMAND_R)
                 .preamble(position_b)
                 .build(),
-        }
+        })
     }
 
     async fn rounds(&self, n: usize) -> Result<()> {
@@ -88,7 +88,7 @@ async fn main() -> Result<(), anyhow::Error> {
         You choose what your arguments are. \
         I will argue against you and you must rebuke me and try to convince me that I am wrong. \
         Make your statements short and concise.",
-    );
+    )?;
 
     // Run the debate for 4 rounds
     debator.rounds(4).await?;

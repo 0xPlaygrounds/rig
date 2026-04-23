@@ -66,16 +66,36 @@ pub struct AwsSdkConverseStreamError(pub SdkError<ConverseStreamError, HttpRespo
 impl From<AwsSdkConverseStreamError> for CompletionError {
     fn from(value: AwsSdkConverseStreamError) -> Self {
         let error: String = match value.0.into_service_error() {
-            ConverseStreamError::ModelTimeoutException(e) => e.message.unwrap(),
-            ConverseStreamError::AccessDeniedException(e) => e.message.unwrap(),
-            ConverseStreamError::ResourceNotFoundException(e) => e.message.unwrap(),
-            ConverseStreamError::ThrottlingException(e) => e.message.unwrap(),
-            ConverseStreamError::ServiceUnavailableException(e) => e.message.unwrap(),
-            ConverseStreamError::InternalServerException(e) => e.message.unwrap(),
-            ConverseStreamError::ModelStreamErrorException(e) => e.message.unwrap(),
-            ConverseStreamError::ValidationException(e) => e.message.unwrap(),
-            ConverseStreamError::ModelNotReadyException(e) => e.message.unwrap(),
-            ConverseStreamError::ModelErrorException(e) => e.message.unwrap(),
+            ConverseStreamError::ModelTimeoutException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock model timed out".to_string()),
+            ConverseStreamError::AccessDeniedException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock access denied".to_string()),
+            ConverseStreamError::ResourceNotFoundException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock resource not found".to_string()),
+            ConverseStreamError::ThrottlingException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock request throttled".to_string()),
+            ConverseStreamError::ServiceUnavailableException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock service unavailable".to_string()),
+            ConverseStreamError::InternalServerException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock internal server error".to_string()),
+            ConverseStreamError::ModelStreamErrorException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock streaming model error".to_string()),
+            ConverseStreamError::ValidationException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock validation error".to_string()),
+            ConverseStreamError::ModelNotReadyException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock model not ready".to_string()),
+            ConverseStreamError::ModelErrorException(e) => e
+                .message
+                .unwrap_or_else(|| "Bedrock model error".to_string()),
             _ => "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
         };
         CompletionError::ProviderError(error)

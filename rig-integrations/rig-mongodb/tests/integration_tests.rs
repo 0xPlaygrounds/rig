@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use futures::StreamExt;
 use mongodb::{
     Collection, SearchIndexModel,
@@ -35,8 +43,22 @@ const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
 
+fn skip_if_docker_unavailable(test_name: &str) -> bool {
+    let docker_socket = std::path::Path::new("/var/run/docker.sock");
+    if std::env::var_os("DOCKER_HOST").is_some() || docker_socket.exists() {
+        return false;
+    }
+
+    eprintln!("skipping {test_name}: Docker is unavailable");
+    true
+}
+
 #[tokio::test]
 async fn vector_search_test() {
+    if skip_if_docker_unavailable("vector_search_test") {
+        return;
+    }
+
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 
@@ -179,6 +201,10 @@ async fn vector_search_test() {
 
 #[tokio::test]
 async fn insert_documents_test() {
+    if skip_if_docker_unavailable("insert_documents_test") {
+        return;
+    }
+
     // Setup mock openai API
     let server = httpmock::MockServer::start();
 

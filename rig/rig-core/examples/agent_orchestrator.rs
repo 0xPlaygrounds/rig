@@ -24,7 +24,7 @@ struct TaskResults {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood
@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let specification = classify_agent.extract("
         Write a product description for a new eco-friendly water bottle.
         The target_audience is environmentally conscious millennials and key product features are: plastic-free, insulated, lifetime warranty
-        ").await.unwrap();
+        ").await?;
 
     let content_agent = openai_client
         .extractor::<TaskResults>(openai::GPT_4)
@@ -73,8 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
             ",
                 task.original_task, task.style, task.guidelines
             ))
-            .await
-            .unwrap();
+            .await?;
         vec.push(results);
     }
 
@@ -89,8 +88,8 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let task_results_raw_json = serde_json::to_string_pretty(&vec).unwrap();
-    let results = judge_agent.extract(&task_results_raw_json).await.unwrap();
+    let task_results_raw_json = serde_json::to_string_pretty(&vec)?;
+    let results = judge_agent.extract(&task_results_raw_json).await?;
 
     println!("Results: {results:?}");
 

@@ -86,16 +86,20 @@ where
             "input": documents,
         });
 
+        let body_object = body.as_object_mut().ok_or_else(|| {
+            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
+        })?;
+
         if self.ndims > 0 {
-            body["dimensions"] = json!(self.ndims);
+            body_object.insert("dimensions".to_owned(), json!(self.ndims));
         }
 
         if let Some(encoding_format) = &self.encoding_format {
-            body["encoding_format"] = json!(encoding_format);
+            body_object.insert("encoding_format".to_owned(), json!(encoding_format));
         }
 
         if let Some(user) = &self.user {
-            body["user"] = json!(user);
+            body_object.insert("user".to_owned(), json!(user));
         }
 
         let body = serde_json::to_vec(&body)?;

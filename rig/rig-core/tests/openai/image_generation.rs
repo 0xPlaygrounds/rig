@@ -10,7 +10,7 @@ use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn image_generation_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let model = client.image_generation_model(openai::DALL_E_2);
 
     let response = model

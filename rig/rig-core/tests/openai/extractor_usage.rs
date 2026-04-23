@@ -49,7 +49,7 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(providers::openai::GPT_4O_MINI)
         .build();
@@ -69,7 +69,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(providers::openai::GPT_4O_MINI)
         .build();
@@ -97,7 +97,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     use rig::message::Message;
 
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Address>(providers::openai::GPT_4O_MINI)
         .build();
@@ -131,7 +131,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(providers::openai::GPT_4O_MINI)
         .build();
@@ -161,7 +161,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
 
     // Test with simple schema
     let person_extractor = client

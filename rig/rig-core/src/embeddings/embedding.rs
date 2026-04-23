@@ -68,11 +68,12 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
         text: &str,
     ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
         async {
-            Ok(self
-                .embed_texts(vec![text.to_string()])
-                .await?
-                .pop()
-                .expect("There should be at least one embedding"))
+            let mut embeddings = self.embed_texts(vec![text.to_string()]).await?;
+            embeddings.pop().ok_or_else(|| {
+                EmbeddingError::ResponseError(
+                    "embedding provider returned an empty response for embed_text".to_string(),
+                )
+            })
         }
     }
 }
@@ -97,11 +98,12 @@ pub trait ImageEmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
         bytes: &'a [u8],
     ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
         async move {
-            Ok(self
-                .embed_images(vec![bytes.to_owned()])
-                .await?
-                .pop()
-                .expect("There should be at least one embedding"))
+            let mut embeddings = self.embed_images(vec![bytes.to_owned()]).await?;
+            embeddings.pop().ok_or_else(|| {
+                EmbeddingError::ResponseError(
+                    "embedding provider returned an empty response for embed_image".to_string(),
+                )
+            })
         }
     }
 }

@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn completion_smoke() {
-    let client = cohere::Client::from_env();
+    let client = cohere::Client::from_env().expect("client should build");
     let agent = client
         .agent(cohere::COMMAND_R)
         .preamble(BASIC_PREAMBLE)

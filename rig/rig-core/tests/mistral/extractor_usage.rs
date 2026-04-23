@@ -41,7 +41,7 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
 
     let person = extractor
@@ -58,7 +58,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
 
     let response: ExtractionResponse<Person> = extractor
@@ -78,7 +78,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let extractor = client.extractor::<Address>(DEFAULT_MODEL).build();
 
     let chat_history = vec![Message::user(
@@ -105,7 +105,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
 
     let text = "Bob Johnson is a 55 year old retired teacher.";
@@ -126,7 +126,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
 
     let person_extractor = client.extractor::<Person>(DEFAULT_MODEL).build();
     let person_response = person_extractor

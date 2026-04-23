@@ -303,11 +303,10 @@ impl Tool for GetMetricsHistory {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
-    let echochambers_api_key =
-        env::var("ECHOCHAMBERS_API_KEY").expect("ECHOCHAMBERS_API_KEY not set");
+    let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
 
     // Create OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     // Create agent with all tools
     let echochambers_agent = openai_client

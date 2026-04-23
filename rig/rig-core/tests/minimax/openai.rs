@@ -10,6 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[ignore = "requires MINIMAX_API_KEY"]
 async fn openai_compatible_completion_smoke() {
     let response = minimax::Client::from_env()
+        .expect("client should build")
         .agent(minimax::MINIMAX_M2_7)
         .preamble(BASIC_PREAMBLE)
         .build()

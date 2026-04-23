@@ -18,7 +18,7 @@ struct Greetings {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY and --features derive"]
 async fn derive_embeddings_and_vector_search() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let embedding_model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .document(Greetings {

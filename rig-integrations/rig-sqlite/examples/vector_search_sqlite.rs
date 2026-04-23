@@ -57,7 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Initialize OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html

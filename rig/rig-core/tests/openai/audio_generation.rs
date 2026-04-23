@@ -10,7 +10,7 @@ use crate::support::{AUDIO_TEXT, assert_nonempty_bytes};
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn audio_generation_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let model = client.audio_generation_model(openai::TTS_1);
 
     let response = model

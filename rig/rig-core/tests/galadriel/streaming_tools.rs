@@ -13,7 +13,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires GALADRIEL_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = galadriel::Client::from_env();
+    let client = galadriel::Client::from_env().expect("galadriel client should build");
     let model = client.completion_model(galadriel::GPT_4O);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)

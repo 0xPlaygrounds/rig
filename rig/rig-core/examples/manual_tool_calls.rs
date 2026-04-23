@@ -116,7 +116,7 @@ fn tool_result_message(tool_call: &ToolCall, output: String) -> Message {
 async fn main() -> Result<()> {
     const MAX_ROUNDS: usize = 8;
 
-    let agent = openai::Client::from_env()
+    let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O_MINI)
         .preamble(
             "You are a calculator. Never do arithmetic from memory. \

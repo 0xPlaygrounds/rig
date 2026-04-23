@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.

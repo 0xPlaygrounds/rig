@@ -26,7 +26,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create ollama client
-    let ollama_client = Client::from_val(Nothing.into());
+    let ollama_client = Client::from_val(Nothing.into())?;
     let embedding_model = ollama_client.embedding_model("nomic-embed-text");
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.

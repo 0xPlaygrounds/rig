@@ -17,7 +17,7 @@ use crate::reasoning::{self, WeatherTool};
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = anthropic::Client::from_env();
+    let client = anthropic::Client::from_env().expect("client should build");
     let agent = client
         .agent(CLAUDE_SONNET_4_6)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
@@ -54,7 +54,7 @@ async fn streaming() {
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = anthropic::Client::from_env();
+    let client = anthropic::Client::from_env().expect("client should build");
     let agent = client
         .agent(CLAUDE_SONNET_4_6)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)

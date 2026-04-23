@@ -19,15 +19,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env();
+    let client = Client::from_env()?;
     let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE).build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;
 
-    info!(
-        "AWS Bedrock: {}",
-        serde_json::to_string_pretty(&person).unwrap()
-    );
+    info!("AWS Bedrock: {}", serde_json::to_string_pretty(&person)?);
     Ok(())
 }

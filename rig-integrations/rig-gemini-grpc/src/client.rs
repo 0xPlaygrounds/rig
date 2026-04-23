@@ -90,24 +90,18 @@ impl Client {
 
 impl ProviderClient for Client {
     type Input = String;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
 
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = std::env::var("GEMINI_API_KEY")?;
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(Self::new(api_key))
-                .expect("Failed to create Gemini gRPC client")
+            tokio::runtime::Handle::current().block_on(Self::new(api_key))
         })
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(Self::new(input))
-                .expect("Failed to create Gemini gRPC client")
-        })
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(Self::new(input)))
     }
 }
 

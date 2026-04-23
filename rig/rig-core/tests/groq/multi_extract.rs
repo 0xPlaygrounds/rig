@@ -31,7 +31,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(MULTI_EXTRACT_NAMES_MODEL)
         .preamble("Extract names from the given text.")

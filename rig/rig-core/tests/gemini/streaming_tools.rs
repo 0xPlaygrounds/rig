@@ -27,7 +27,7 @@ fn streaming_tool_params() -> serde_json::Value {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn streaming_tools_smoke() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble(STREAMING_TOOLS_PREAMBLE)
@@ -47,7 +47,7 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
@@ -63,7 +63,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
@@ -88,7 +88,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
@@ -113,6 +113,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
 #[ignore = "requires GEMINI_API_KEY"]
 async fn example_streaming_with_tools() {
     let agent = gemini::Client::from_env()
+        .expect("client should build")
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \

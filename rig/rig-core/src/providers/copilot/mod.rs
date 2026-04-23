@@ -201,8 +201,9 @@ impl ProviderBuilder for CopilotBuilder {
 
 impl ProviderClient for Client {
     type Input = CopilotAuth;
+    type Error = crate::client::ProviderClientError;
 
-    fn from_env() -> Self {
+    fn from_env() -> Result<Self, Self::Error> {
         let mut builder = Self::builder();
         fn get(name: &str) -> Option<String> {
             std::env::var(name).ok()
@@ -213,16 +214,19 @@ impl ProviderClient for Client {
         }
 
         if let Some(api_key) = env_api_key(&get) {
-            builder.api_key(api_key).build().unwrap()
+            builder.api_key(api_key).build().map_err(Into::into)
         } else if let Some(access_token) = env_github_access_token(&get) {
-            builder.github_access_token(access_token).build().unwrap()
+            builder
+                .github_access_token(access_token)
+                .build()
+                .map_err(Into::into)
         } else {
-            builder.oauth().build().unwrap()
+            builder.oauth().build().map_err(Into::into)
         }
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::builder().api_key(input).build().unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::builder().api_key(input).build().map_err(Into::into)
     }
 }
 
@@ -808,8 +812,14 @@ where
         let auth = self.auth_context().await?;
         let headers = default_headers(&auth.api_key, initiator, has_vision);
         let mut request_json = serde_json::to_value(&request)?;
-        request_json["stream"] = json!(true);
-        request_json["stream_options"] = json!({ "include_usage": true });
+        let request_object = request_json.as_object_mut().ok_or_else(|| {
+            CompletionError::ResponseError("copilot request body must be a JSON object".into())
+        })?;
+        request_object.insert("stream".to_owned(), json!(true));
+        request_object.insert(
+            "stream_options".to_owned(),
+            json!({ "include_usage": true }),
+        );
 
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Sse)?,
@@ -1159,14 +1169,18 @@ where
             "input": documents,
         });
 
+        let body_object = body.as_object_mut().ok_or_else(|| {
+            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
+        })?;
+
         if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
-            body["dimensions"] = json!(self.ndims);
+            body_object.insert("dimensions".to_owned(), json!(self.ndims));
         }
         if let Some(encoding_format) = &self.encoding_format {
-            body["encoding_format"] = json!(encoding_format);
+            body_object.insert("encoding_format".to_owned(), json!(encoding_format));
         }
         if let Some(user) = &self.user {
-            body["user"] = json!(user);
+            body_object.insert("user".to_owned(), json!(user));
         }
 
         let req = apply_headers(

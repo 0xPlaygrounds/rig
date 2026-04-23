@@ -11,7 +11,7 @@ use super::STREAMING_REASONING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn parsed_reasoning_stream() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = client
         .agent(STREAMING_REASONING_MODEL)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")

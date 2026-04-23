@@ -30,10 +30,10 @@ fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolE
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let calculator_agent = providers::openai::Client::from_env()
+    let calculator_agent = providers::openai::Client::from_env()?
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
         .max_tokens(1024)
@@ -43,7 +43,7 @@ async fn main() {
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
-        serde_json::to_string_pretty(&CALCULATOR.definition(String::default()).await).unwrap()
+        serde_json::to_string_pretty(&CALCULATOR.definition(String::default()).await)?
     );
 
     for prompt in [
@@ -55,6 +55,8 @@ async fn main() {
         "What is 10 / 0?",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", calculator_agent.prompt(prompt).await.unwrap());
+        println!("Agent: {}", calculator_agent.prompt(prompt).await?);
     }
+
+    Ok(())
 }

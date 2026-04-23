@@ -485,7 +485,7 @@ where
         }
 
         // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
         candidates.truncate(req.samples() as usize);
 
         Ok(candidates)
@@ -536,7 +536,7 @@ where
         }
 
         // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
         candidates.truncate(req.samples() as usize);
 
         Ok(candidates)

@@ -28,7 +28,7 @@ fn build_adder_agent(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::from_env();
+    let client = Client::from_env()?;
     let seed = build_rng_agent(&client).prompt(INPUT_PROMPT).await?;
     let response = build_adder_agent(&client).prompt(seed.trim()).await?;
 

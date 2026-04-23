@@ -31,7 +31,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(DEFAULT_MODEL)
         .preamble("Extract names from the given text.")

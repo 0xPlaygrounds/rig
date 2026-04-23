@@ -77,7 +77,7 @@ impl CustomAttributeParser for syn::Attribute {
     fn expand_tag(&self) -> syn::Result<syn::ExprPath> {
         fn function_path(meta: &ParseNestedMeta<'_>) -> syn::Result<ExprPath> {
             // #[embed(embed_with = "...")]
-            let expr = meta.value()?.parse::<syn::Expr>().unwrap();
+            let expr = meta.value()?.parse::<syn::Expr>()?;
             let mut value = &expr;
             while let syn::Expr::Group(e) = value {
                 value = &e.expr;
@@ -117,6 +117,11 @@ impl CustomAttributeParser for syn::Attribute {
             Err(e) => Err(e),
         })?;
 
-        Ok(custom_func_path.unwrap())
+        custom_func_path.ok_or_else(|| {
+            syn::Error::new_spanned(
+                self,
+                format!("expected {EMBED_WITH} attribute: `{EMBED_WITH} = \"...\"`"),
+            )
+        })
     }
 }

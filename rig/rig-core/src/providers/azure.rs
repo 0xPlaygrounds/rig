@@ -293,26 +293,29 @@ pub struct AzureOpenAIClientParams {
 
 impl ProviderClient for Client {
     type Input = AzureOpenAIClientParams;
+    type Error = crate::client::ProviderClientError;
 
     /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    fn from_env() -> Self {
-        let auth = if let Ok(api_key) = std::env::var("AZURE_API_KEY") {
+    fn from_env() -> Result<Self, Self::Error> {
+        let auth = if let Some(api_key) = crate::client::optional_env_var("AZURE_API_KEY")? {
             AzureOpenAIAuth::ApiKey(api_key)
-        } else if let Ok(token) = std::env::var("AZURE_TOKEN") {
+        } else if let Some(token) = crate::client::optional_env_var("AZURE_TOKEN")? {
             AzureOpenAIAuth::Token(token)
         } else {
-            panic!("Neither AZURE_API_KEY nor AZURE_TOKEN is set");
+            return Err(crate::client::ProviderClientError::InvalidConfiguration(
+                "either `AZURE_API_KEY` or `AZURE_TOKEN` must be set",
+            ));
         };
 
-        let api_version = std::env::var("AZURE_API_VERSION").expect("AZURE_API_VERSION not set");
-        let azure_endpoint = std::env::var("AZURE_ENDPOINT").expect("AZURE_ENDPOINT not set");
+        let api_version = crate::client::required_env_var("AZURE_API_VERSION")?;
+        let azure_endpoint = crate::client::required_env_var("AZURE_ENDPOINT")?;
 
         Self::builder()
             .api_key(auth)
             .azure_endpoint(azure_endpoint)
             .api_version(&api_version)
             .build()
-            .unwrap()
+            .map_err(Into::into)
     }
 
     fn from_val(
@@ -321,7 +324,7 @@ impl ProviderClient for Client {
             version,
             header,
         }: Self::Input,
-    ) -> Self {
+    ) -> Result<Self, Self::Error> {
         let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
 
         Self::builder()
@@ -329,7 +332,7 @@ impl ProviderClient for Client {
             .azure_endpoint(header)
             .api_version(&version)
             .build()
-            .unwrap()
+            .map_err(Into::into)
     }
 }
 
@@ -455,8 +458,12 @@ where
             "input": documents,
         });
 
+        let body_object = body.as_object_mut().ok_or_else(|| {
+            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
+        })?;
+
         if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
-            body["dimensions"] = json!(self.ndims);
+            body_object.insert("dimensions".to_owned(), json!(self.ndims));
         }
 
         let body = serde_json::to_vec(&body)?;
@@ -868,10 +875,14 @@ where
         }
 
         if let Some(ref additional_params) = request.additional_params {
-            for (key, value) in additional_params
-                .as_object()
-                .expect("Additional Parameters to OpenAI Transcription should be a map")
-            {
+            let params = additional_params.as_object().ok_or_else(|| {
+                TranscriptionError::RequestError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "additional transcription parameters must be a JSON object",
+                )))
+            })?;
+
+            for (key, value) in params {
                 body = body.text(key.to_owned(), value.to_string());
             }
         }
@@ -1075,40 +1086,39 @@ mod azure_tests {
 
     #[tokio::test]
     #[ignore]
-    async fn test_azure_embedding() {
+    async fn test_azure_embedding() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::from_env();
+        let client = Client::from_env()?;
         let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
-        let embeddings = model
-            .embed_texts(vec!["Hello, world!".to_string()])
-            .await
-            .unwrap();
+        let embeddings = model.embed_texts(vec!["Hello, world!".to_string()]).await?;
 
         tracing::info!("Azure embedding: {:?}", embeddings);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_azure_embedding_dimensions() {
+    async fn test_azure_embedding_dimensions() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
 
         let ndims = 256;
-        let client = Client::from_env();
+        let client = Client::from_env()?;
         let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
-        let embedding = model.embed_text("Hello, world!").await.unwrap();
+        let embedding = model.embed_text("Hello, world!").await?;
 
         assert!(embedding.vec.len() == ndims);
 
         tracing::info!("Azure dimensions embedding: {:?}", embedding);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_azure_completion() {
+    async fn test_azure_completion() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::from_env();
+        let client = Client::from_env()?;
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
             .completion(CompletionRequest {
@@ -1123,15 +1133,15 @@ mod azure_tests {
                 additional_params: None,
                 output_schema: None,
             })
-            .await
-            .unwrap();
+            .await?;
 
         tracing::info!("Azure completion: {:?}", completion);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore]
-    async fn test_azure_structured_output() {
+    async fn test_azure_structured_output() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
 
         #[derive(Debug, Deserialize, JsonSchema)]
@@ -1140,7 +1150,7 @@ mod azure_tests {
             age: u32,
         }
 
-        let client = Client::from_env();
+        let client = Client::from_env()?;
         let agent = client
             .agent(GPT_5_MINI)
             .preamble("You are a helpful assistant that extracts personal details.")
@@ -1150,13 +1160,13 @@ mod azure_tests {
 
         let result: Person = agent
             .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
-            .await
-            .expect("failed to extract person");
+            .await?;
 
         assert!(result.name == "John Doe");
         assert!(result.age == 54);
 
         tracing::info!("Extracted person: {:?}", result);
+        Ok(())
     }
 
     #[tokio::test]

@@ -13,7 +13,7 @@ use super::STREAMING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_smoke() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = client
         .agent(STREAMING_MODEL)
         .preamble(STREAMING_PREAMBLE)

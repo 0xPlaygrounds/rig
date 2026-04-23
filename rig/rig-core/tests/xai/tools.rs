@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn tools_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let agent = client
         .agent(xai::completion::GROK_3_MINI)
         .preamble(TOOLS_PREAMBLE)

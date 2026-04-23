@@ -10,6 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[ignore = "requires MINIMAX_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
     let response = minimax::AnthropicClient::from_env()
+        .expect("client should build")
         .agent(minimax::MINIMAX_M2)
         .preamble(BASIC_PREAMBLE)
         .build()

@@ -131,7 +131,9 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
-    let model = anthropic::Client::from_env().completion_model(CLAUDE_SONNET_4_6);
+    let model = anthropic::Client::from_env()
+        .expect("client should build")
+        .completion_model(CLAUDE_SONNET_4_6);
 
     let first_turn = model
         .completion_request(TERMINAL_NOTIFY_PROMPT)
@@ -189,6 +191,7 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
 async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = anthropic::Client::from_env()
+        .expect("client should build")
         .agent(CLAUDE_SONNET_4_6)
         .preamble(TERMINAL_NOTIFY_PREAMBLE)
         .max_tokens(1024)
@@ -237,6 +240,7 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
 async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = anthropic::Client::from_env()
+        .expect("client should build")
         .agent(CLAUDE_SONNET_4_6)
         .preamble(TERMINAL_NOTIFY_WITH_ACK_PREAMBLE)
         .max_tokens(1024)

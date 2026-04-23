@@ -85,7 +85,7 @@ fn boxed_tools() -> Vec<Box<dyn ToolDyn>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()
+    let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \

@@ -567,9 +567,7 @@ impl CompletionRequest {
             })
             .collect::<Vec<_>>();
 
-        Some(Message::User {
-            content: OneOrMany::many(messages).expect("There will be atleast one document"),
-        })
+        OneOrMany::from_iter_optional(messages).map(|content| Message::User { content })
     }
 
     /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
@@ -863,13 +861,14 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     pub fn build(self) -> CompletionRequest {
         // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
+        let prompt = self.prompt;
         if let Some(preamble) = self.preamble {
             chat_history.insert(0, Message::system(preamble));
         }
-        chat_history.push(self.prompt);
+        chat_history.push(prompt.clone());
 
         let chat_history =
-            OneOrMany::many(chat_history).expect("There will always be at least the prompt");
+            OneOrMany::from_iter_optional(chat_history).unwrap_or_else(|| OneOrMany::one(prompt));
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,

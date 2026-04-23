@@ -15,7 +15,7 @@ pub(super) fn model_name() -> String {
 }
 
 pub(super) fn client() -> llamafile::Client {
-    llamafile::Client::from_url(&api_base_url())
+    llamafile::Client::from_url(&api_base_url()).expect("client should build")
 }
 
 fn server_addr() -> Option<String> {

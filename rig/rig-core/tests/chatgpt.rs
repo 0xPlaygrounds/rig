@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 //! ChatGPT integration tests.
 //!
 //! Run the provider target with:

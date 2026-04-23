@@ -42,7 +42,7 @@ async fn manual_multi_turn_streaming_loop() {
     let multiply_calls = Arc::new(AtomicUsize::new(0));
     let divide_calls = Arc::new(AtomicUsize::new(0));
 
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent(gemini::completion::GEMINI_2_5_FLASH)
         .preamble("You must use tools to answer arithmetic prompts.")

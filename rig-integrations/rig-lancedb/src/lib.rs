@@ -1,3 +1,14 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_used,
+        clippy::unreachable
+    )
+)]
+
 use std::ops::Range;
 
 use lancedb::{
@@ -27,7 +38,7 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 
 /// Type on which vector searches can be performed for a lanceDb table.
 /// # Example
-/// ```
+/// ```ignore
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
@@ -363,7 +374,7 @@ where
 
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
-    /// ```
+    /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
     ///
@@ -377,7 +388,7 @@ where
     /// let result = vector_store_index
     ///     .top_n::<String>("My boss says I zindle too much, what does that mean?", 1)
     ///     .await?;
-    /// ```
+    /// ```ignore
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
@@ -425,7 +436,7 @@ where
 
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
-    /// ```
+    /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
     ///

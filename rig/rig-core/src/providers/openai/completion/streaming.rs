@@ -102,9 +102,8 @@ where
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
         })?;
-        let request_messages = serde_json::to_string(&request.messages)
-            .expect("Converting to JSON from a Rust struct shouldn't fail");
-        let mut request_as_json = serde_json::to_value(request).expect("this should never fail");
+        let request_messages = serde_json::to_string(&request.messages)?;
+        let mut request_as_json = serde_json::to_value(request)?;
 
         request_as_json = merge(
             request_as_json,

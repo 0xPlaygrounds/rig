@@ -23,7 +23,7 @@ async fn extractor_smoke() {
     let additional_params =
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
         .additional_params(
@@ -56,7 +56,7 @@ async fn extractor_smoke() {
 #[ignore = "requires GEMINI_API_KEY"]
 async fn extractor_with_additional_params() {
     let params = AdditionalParameters::default().with_config(GenerationConfig::default());
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
         .additional_params(serde_json::to_value(params).expect("params should serialize"))

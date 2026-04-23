@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use serde_json::json;
 
 use arrow_array::RecordBatchIterator;

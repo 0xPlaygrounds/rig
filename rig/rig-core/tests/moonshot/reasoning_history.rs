@@ -21,7 +21,9 @@ fn response_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn assistant_reasoning_content_roundtrips_in_history() {
-    let model = moonshot::Client::from_env().completion_model(moonshot::KIMI_K2_5);
+    let model = moonshot::Client::from_env()
+        .expect("moonshot client should build")
+        .completion_model(moonshot::KIMI_K2_5);
     let assistant = Message::Assistant {
         id: None,
         content: OneOrMany::many(vec![

@@ -5,6 +5,7 @@ use crate::{
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AgentToolArgs {
@@ -35,8 +36,7 @@ impl<M: CompletionModel + 'static> Tool for Agent<M> {
         ToolDefinition {
             name: <Self as Tool>::name(self),
             description,
-            parameters: serde_json::to_value(schema_for!(AgentToolArgs))
-                .expect("converting JSON schema to JSON value should never fail"),
+            parameters: json!(schema_for!(AgentToolArgs)),
         }
     }
 

@@ -26,12 +26,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create Anthropic client
-    let anthropic_api_key = env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
+    let anthropic_api_key = env::var("ANTHROPIC_API_KEY")?;
     let anthropic_client = Client::builder().api_key(&anthropic_api_key).build()?;
 
     // Create the embedding model for our vector store
     // We'll use OpenAI's embedding model for this example
-    let openai_client = rig::providers::openai::Client::from_env();
+    let openai_client = rig::providers::openai::Client::from_env()?;
     let embedding_model =
         openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
 
@@ -183,14 +183,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 Message::User { content } => println!(
                     "\nUser [{}]: {}",
                     i,
-                    serde_json::to_string_pretty(&content)
-                        .expect("Failed to serialize user message")
+                    serde_json::to_string_pretty(&content)?
                 ),
                 Message::Assistant { content, .. } => println!(
                     "Assistant [{}]: {}",
                     i,
-                    serde_json::to_string_pretty(&content)
-                        .expect("Failed to serialize assistant message")
+                    serde_json::to_string_pretty(&content)?
                 ),
                 _ => {
                     // Ignore other message types - the only other type of message that exists is system messages

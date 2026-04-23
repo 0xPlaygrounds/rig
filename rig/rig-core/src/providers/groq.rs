@@ -91,16 +91,16 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GroqBuilder,
 
 impl ProviderClient for Client {
     type Input = String;
+    type Error = crate::client::ProviderClientError;
 
     /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY not set");
-        Self::new(&api_key).unwrap()
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("GROQ_API_KEY")?;
+        Self::new(&api_key).map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::new(&input).unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::new(&input).map_err(Into::into)
     }
 }
 
@@ -562,10 +562,14 @@ where
         }
 
         if let Some(ref additional_params) = request.additional_params {
-            for (key, value) in additional_params
-                .as_object()
-                .expect("Additional Parameters to OpenAI Transcription should be a map")
-            {
+            let params = additional_params.as_object().ok_or_else(|| {
+                TranscriptionError::RequestError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "additional transcription parameters must be a JSON object",
+                )))
+            })?;
+
+            for (key, value) in params {
                 body = body.text(key.to_owned(), value.to_string());
             }
         }
@@ -574,9 +578,9 @@ where
             .client
             .post("/audio/transcriptions")?
             .body(body)
-            .unwrap();
+            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
-        let response = self.client.send_multipart::<Bytes>(req).await.unwrap();
+        let response = self.client.send_multipart::<Bytes>(req).await?;
 
         let status = response.status();
         let response_body = response.into_body().into_future().await?.to_vec();

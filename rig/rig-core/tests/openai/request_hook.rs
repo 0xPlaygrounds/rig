@@ -69,6 +69,7 @@ where
 #[ignore = "requires OPENAI_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = openai::Client::from_env()
+        .expect("client should build")
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

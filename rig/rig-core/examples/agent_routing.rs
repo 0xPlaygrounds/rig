@@ -40,7 +40,7 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::from_env();
+    let client = Client::from_env()?;
     let category = build_router_agent(&client).prompt(INPUT_PROMPT).await?;
     let follow_up = follow_up_prompt(category.trim())?;
     let response = build_response_agent(&client).prompt(follow_up).await?;

@@ -26,6 +26,7 @@ use crate::support::{
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_agent_prompt() {
     let agent = openai::Client::from_env()
+        .expect("client should build")
         .completion_model(openai::GPT_4O)
         .completions_api()
         .into_agent_builder()
@@ -43,7 +44,9 @@ async fn completions_api_agent_prompt() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_raw_response_text_matches_normalized_choice_text() {
-    let client = openai::Client::from_env().completions_api();
+    let client = openai::Client::from_env()
+        .expect("client should build")
+        .completions_api();
     let response = client
         .completion_model(openai::GPT_4O)
         .completion_request(RAW_TEXT_RESPONSE_PROMPT)
@@ -68,7 +71,9 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_streams_two_tool_calls_before_final_answer() {
-    let client = openai::Client::from_env().completions_api();
+    let client = openai::Client::from_env()
+        .expect("client should build")
+        .completions_api();
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
@@ -92,7 +97,9 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
-    let client = openai::Client::from_env().completions_api();
+    let client = openai::Client::from_env()
+        .expect("client should build")
+        .completions_api();
     let model = client.completion_model(openai::GPT_4O);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
@@ -107,7 +114,9 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text() {
-    let client = openai::Client::from_env().completions_api();
+    let client = openai::Client::from_env()
+        .expect("client should build")
+        .completions_api();
     let model = client.completion_model(openai::GPT_4O);
     let request = model
         .completion_request(TWO_TOOL_STREAM_PROMPT)
@@ -133,7 +142,9 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_stream_emits_tool_call_before_later_text() {
-    let client = openai::Client::from_env().completions_api();
+    let client = openai::Client::from_env()
+        .expect("client should build")
+        .completions_api();
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
@@ -156,7 +167,9 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() {
-    let client = openai::Client::from_env().completions_api();
+    let client = openai::Client::from_env()
+        .expect("client should build")
+        .completions_api();
     let model = client.completion_model(openai::GPT_4O);
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)

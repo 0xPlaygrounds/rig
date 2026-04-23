@@ -51,7 +51,7 @@ where
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()
+    let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

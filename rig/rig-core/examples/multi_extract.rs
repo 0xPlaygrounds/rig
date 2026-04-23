@@ -36,7 +36,7 @@ fn sample_inputs() -> Vec<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env()?;
     let names_extractor = client
         .extractor::<Names>(openai::GPT_4O_MINI)
         .preamble("Extract names from the given text.")

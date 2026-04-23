@@ -24,7 +24,7 @@ struct DocumentSentiment {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let extractor = openai::Client::from_env()
+    let extractor = openai::Client::from_env()?
         .extractor::<DocumentSentiment>(openai::GPT_4)
         .build();
 

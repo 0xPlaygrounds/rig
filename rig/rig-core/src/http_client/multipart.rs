@@ -121,7 +121,7 @@ impl MultipartForm {
         use std::time::{SystemTime, UNIX_EPOCH};
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_nanos();
         format!("----boundary{}", timestamp)
     }
@@ -193,13 +193,16 @@ impl From<MultipartForm> for reqwest::multipart::Form {
                     form = form.text(part.name, text);
                 }
                 PartContent::Binary(bytes) => {
-                    let mut req_part = reqwest::multipart::Part::bytes(bytes.to_vec());
+                    let mut req_part = if let Some(content_type) = part.content_type.as_ref() {
+                        reqwest::multipart::Part::bytes(bytes.to_vec())
+                            .mime_str(content_type.as_ref())
+                            .unwrap_or_else(|_| reqwest::multipart::Part::bytes(bytes.to_vec()))
+                    } else {
+                        reqwest::multipart::Part::bytes(bytes.to_vec())
+                    };
 
                     if let Some(filename) = part.filename {
                         req_part = req_part.file_name(filename);
-                    }
-                    if let Some(content_type) = part.content_type {
-                        req_part = req_part.mime_str(content_type.as_ref()).unwrap();
                     }
 
                     form = form.part(part.name, req_part);

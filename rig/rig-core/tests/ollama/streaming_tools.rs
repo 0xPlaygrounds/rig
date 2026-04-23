@@ -12,6 +12,7 @@ use crate::support::{
 #[ignore = "requires a local Ollama server"]
 async fn example_streaming_with_tools() {
     let agent = ollama::Client::from_env()
+        .expect("client should build")
         .agent("llama3.2")
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \

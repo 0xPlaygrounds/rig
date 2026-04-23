@@ -34,7 +34,7 @@ fn sample_history() -> Vec<Message> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()
+    let agent = openai::Client::from_env()?
         .agent(openai::GPT_4)
         .preamble(PREAMBLE)
         .build();

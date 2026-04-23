@@ -158,7 +158,7 @@ async fn multi_turn_streaming_tools() {
     let multiply_calls = Arc::new(AtomicUsize::new(0));
     let divide_calls = Arc::new(AtomicUsize::new(0));
 
-    let client = anthropic::Client::from_env();
+    let client = anthropic::Client::from_env().expect("client should build");
     let agent = client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You must use tools for arithmetic.")

@@ -338,7 +338,8 @@ const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
 
 fn format_response_body_preview(body: &[u8]) -> String {
     let preview_len = body.len().min(RESPONSE_BODY_PREVIEW_LIMIT);
-    let mut preview = String::from_utf8_lossy(&body[..preview_len]).into_owned();
+    let preview_bytes = body.get(..preview_len).unwrap_or(body);
+    let mut preview = String::from_utf8_lossy(preview_bytes).into_owned();
 
     if body.len() > RESPONSE_BODY_PREVIEW_LIMIT {
         preview.push_str(&format!(

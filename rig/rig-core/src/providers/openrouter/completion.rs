@@ -1194,7 +1194,9 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                             .collect::<Vec<_>>()
                             .join("\n"),
                     }),
-                    _ => unreachable!(),
+                    _ => Err(message::MessageError::ConversionError(
+                        "expected tool result content while converting OpenRouter input".into(),
+                    )),
                 })
                 .collect::<Result<Vec<_>, _>>()
         } else {
@@ -1203,8 +1205,11 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                 .map(|content| content.try_into())
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let content = OneOrMany::many(user_content)
-                .expect("There must be content here if there were no tool result content");
+            let content = OneOrMany::many(user_content).map_err(|_| {
+                message::MessageError::ConversionError(
+                    "OpenRouter user message did not contain any non-tool content".into(),
+                )
+            })?;
 
             Ok(vec![Message::User {
                 content,

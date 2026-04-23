@@ -63,7 +63,7 @@ fn print_matches(matches: &[SearchMatch]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let cohere_client = Client::from_env();
+    let cohere_client = Client::from_env()?;
     let document_model = cohere_client.embedding_model(cohere::EMBED_ENGLISH_V3, "search_document");
     let search_model = cohere_client.embedding_model(cohere::EMBED_ENGLISH_V3, "search_query");
     let embeddings = EmbeddingsBuilder::new(document_model.clone())

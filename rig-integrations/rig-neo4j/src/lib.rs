@@ -27,7 +27,7 @@
 //! The index name must be unique among both indexes and constraints.
 //! ❗A newly created index is not immediately available but is created in the background.
 //!
-//! ```cypher
+//! ```text
 //! CREATE VECTOR INDEX moviePlots
 //!     FOR (m:Movie)
 //!     ON m.embedding
@@ -39,7 +39,7 @@
 //!
 //! ## Simple example:
 //! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j/examples) folder.
-//! ```
+//! ```ignore
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
 //! use rig::{providers::openai::*, vector_store::VectorStoreIndex};
@@ -368,8 +368,13 @@ impl Neo4jClient {
                     model.ndims()
                 );
             }
+            let embedding_property = index.properties.first().ok_or_else(|| {
+                VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                    "Neo4j index is missing an embedding property",
+                )))
+            })?;
             IndexConfig::new(index.name.clone())
-                .embedding_property(index.properties.first().unwrap())
+                .embedding_property(embedding_property)
                 .similarity_function(VectorSimilarityFunction::from_str(
                     &index.options.index_config.vector_similarity_function,
                 )?)

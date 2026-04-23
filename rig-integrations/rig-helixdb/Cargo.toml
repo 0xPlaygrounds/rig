@@ -17,6 +17,7 @@ serde_json.workspace = true
 rig-core = { path = "../../rig/rig-core", version = "0.35.0", default-features = false }
 
 [dev-dependencies]
+anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[example]]

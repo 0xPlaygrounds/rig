@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 //! Azure integration tests.
 //!
 //! Run the full provider target with:

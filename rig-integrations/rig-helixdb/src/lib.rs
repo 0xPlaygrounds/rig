@@ -10,12 +10,20 @@ use serde::{Deserialize, Serialize};
 /// If you are unsure what type to use for the client, `helix_rs::HelixDB` is the typical default.
 ///
 /// Usage:
-/// ```rust
-/// let openai_model =
-///     rig::providers::openai::Client::from_env().embedding_model("text-embedding-ada-002");
+/// ```no_run
+/// use helix_rs::{HelixDB, HelixDBClient};
+/// use rig::client::{EmbeddingsClient, ProviderClient};
+/// use rig_helixdb::HelixDBVectorStore;
+///
+/// # fn example() -> anyhow::Result<()> {
+/// let openai_model = rig::providers::openai::Client::from_env()?
+///     .embedding_model("text-embedding-ada-002");
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
 /// let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
+/// # let _ = vector_store;
+/// # Ok(())
+/// # }
 /// ```
 pub struct HelixDBVectorStore<C, E> {
     client: C,
@@ -88,8 +96,8 @@ where
         }
 
         for (document, embeddings) in documents {
-            let json_document = serde_json::to_value(&document).unwrap();
-            let json_document_as_string = serde_json::to_string(&json_document).unwrap();
+            let json_document = serde_json::to_value(&document)?;
+            let json_document_as_string = serde_json::to_string(&json_document)?;
 
             for embedding in embeddings {
                 let embedded_text = embedding.document;
@@ -137,7 +145,7 @@ where
             .client
             .query::<QueryInput, VecResult>("VectorSearch", &query_input)
             .await
-            .unwrap();
+            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
 
         let docs = result
             .vec_docs
@@ -189,7 +197,7 @@ where
             .client
             .query::<QueryInput, VecResult>("VectorSearch", &query_input)
             .await
-            .unwrap();
+            .map_err(|x| VectorStoreError::DatastoreError(x.to_string().into()))?;
 
         // HelixDB gives us the cosine distance, so we need to use `-(cosine_dist - 1)` to get the cosine similarity score.
         let docs = result

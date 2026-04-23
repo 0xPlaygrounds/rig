@@ -194,12 +194,10 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         _num_hyperplanes: usize,
     ) -> EmbeddingRanking<'_, D> {
         // If we don't have an LSH index yet, fall back to brute force
-        if self.lsh_index.is_none() {
+        let Some(lsh_index) = self.lsh_index.as_ref() else {
             tracing::warn!("LSH index not initialized, falling back to brute force search");
             return self.vector_search_brute_force(prompt_embedding, n);
-        }
-
-        let lsh_index = self.lsh_index.as_ref().unwrap();
+        };
         let candidates = lsh_index.query(&prompt_embedding.vec);
 
         // Sort documents by best embedding distance, but only check candidates

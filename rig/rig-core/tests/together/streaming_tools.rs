@@ -12,7 +12,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn streaming_tools_smoke() {
-    let client = together::Client::from_env();
+    let client = together::Client::from_env().expect("client should build");
     let agent = client
         .agent(together::LLAMA_2_70B_CHAT_TOGETHER)
         .preamble(STREAMING_TOOLS_PREAMBLE)

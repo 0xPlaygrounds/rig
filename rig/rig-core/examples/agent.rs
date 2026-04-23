@@ -12,7 +12,7 @@ const PROMPT: &str = "Entertain me!";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()
+    let agent = openai::Client::from_env()?
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)
         .build();

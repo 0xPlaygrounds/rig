@@ -24,7 +24,7 @@ async fn streaming_smoke() {
     };
     let additional_params = AdditionalParameters::default().with_config(thinking_config);
 
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
         .preamble(STREAMING_PREAMBLE)
@@ -55,6 +55,7 @@ async fn example_streaming_prompt() {
     };
     let params = AdditionalParameters::default().with_config(generation_config);
     let agent = gemini::Client::from_env()
+        .expect("client should build")
         .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
         .preamble("Be precise and concise.")
         .temperature(0.5)

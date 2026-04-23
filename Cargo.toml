@@ -10,8 +10,13 @@ exclude = [
 
 [workspace.lints.clippy]
 dbg_macro = "forbid"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
 todo = "forbid"
 unimplemented = "forbid"
+unreachable = "deny"
+unwrap_used = "deny"
 
 [profile.release]
 lto = true

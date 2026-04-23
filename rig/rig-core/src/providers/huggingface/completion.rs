@@ -307,13 +307,18 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     )),
                                 })?,
                             }),
-                            _ => unreachable!(),
+                            _ => Err(message::MessageError::ConversionError(
+                                "expected tool result content while converting HuggingFace input"
+                                    .into(),
+                            )),
                         })
                         .collect::<Result<Vec<_>, _>>()
                 } else {
-                    let other_content = OneOrMany::many(other_content).expect(
-                        "There must be other content here if there were no tool result content",
-                    );
+                    let other_content = OneOrMany::many(other_content).map_err(|_| {
+                        message::MessageError::ConversionError(
+                            "HuggingFace user message did not contain any non-tool content".into(),
+                        )
+                    })?;
 
                     Ok(vec![Message::User {
                         content: other_content.try_map(|content| match content {
@@ -360,7 +365,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                             // Silently skip unsupported reasoning content.
                         }
                         message::AssistantContent::Image(_) => {
-                            panic!("Image content is not supported on HuggingFace via Rig");
+                            return Err(message::MessageError::ConversionError(
+                                "HuggingFace assistant messages do not support image content"
+                                    .into(),
+                            ));
                         }
                     }
                 }

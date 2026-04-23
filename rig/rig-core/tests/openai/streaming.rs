@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn streaming_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(STREAMING_PREAMBLE)
@@ -28,7 +28,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn example_streaming_prompt() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble("Be precise and concise.")

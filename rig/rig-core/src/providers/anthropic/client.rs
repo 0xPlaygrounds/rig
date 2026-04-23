@@ -105,21 +105,22 @@ impl DebugExt for AnthropicExt {}
 
 impl ProviderClient for Client {
     type Input = String;
+    type Error = crate::client::ProviderClientError;
 
-    fn from_env() -> Self
+    fn from_env() -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        let key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY not set");
+        let key = crate::client::required_env_var("ANTHROPIC_API_KEY")?;
 
-        Self::builder().api_key(key).build().unwrap()
+        Self::builder().api_key(key).build().map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        Self::builder().api_key(input).build().unwrap()
+        Self::builder().api_key(input).build().map_err(Into::into)
     }
 }
 

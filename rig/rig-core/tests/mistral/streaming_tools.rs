@@ -17,7 +17,7 @@ use super::TOOL_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn streaming_tools_smoke() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let agent = client
         .agent(TOOL_MODEL)
         .preamble(STREAMING_TOOLS_PREAMBLE)
@@ -37,7 +37,7 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn example_streaming_with_tools() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let agent = client
         .agent(TOOL_MODEL)
         .preamble(
@@ -60,7 +60,7 @@ async fn example_streaming_with_tools() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let agent = client
         .agent(TOOL_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
@@ -84,7 +84,7 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let agent = client
         .agent(TOOL_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)

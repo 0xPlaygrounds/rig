@@ -72,7 +72,7 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(xai::GROK_3_MINI)
         .preamble("Extract names from the given text.")

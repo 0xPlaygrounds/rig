@@ -1,4 +1,14 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_used,
+        clippy::unreachable
+    )
+)]
 //! Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 //!
 //! # Table of contents

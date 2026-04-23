@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn completion_smoke() {
-    let client = anthropic::Client::from_env();
+    let client = anthropic::Client::from_env().expect("client should build");
     let agent = client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(BASIC_PREAMBLE)

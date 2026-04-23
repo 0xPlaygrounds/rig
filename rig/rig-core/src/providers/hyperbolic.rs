@@ -79,16 +79,16 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<HyperbolicBu
 
 impl ProviderClient for Client {
     type Input = HyperbolicApiKey;
+    type Error = crate::client::ProviderClientError;
 
     /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("HYPERBOLIC_API_KEY").expect("HYPERBOLIC_API_KEY not set");
-        Self::new(&api_key).unwrap()
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("HYPERBOLIC_API_KEY")?;
+        Self::new(&api_key).map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::new(input).unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::new(input).map_err(Into::into)
     }
 }
 
@@ -537,9 +537,13 @@ mod image_generation {
         type Error = ImageGenerationError;
 
         fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
+            let image = value
+                .images
+                .first()
+                .ok_or_else(|| ImageGenerationError::ResponseError("missing image data".into()))?;
             let data = BASE64_STANDARD
-                .decode(&value.images[0].image)
-                .expect("Could not decode image.");
+                .decode(&image.image)
+                .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
 
             Ok(Self {
                 image: data,
@@ -644,7 +648,7 @@ mod audio_generation {
         fn try_from(value: AudioGenerationResponse) -> Result<Self, Self::Error> {
             let data = BASE64_STANDARD
                 .decode(&value.audio)
-                .expect("Could not decode audio.");
+                .map_err(|err| AudioGenerationError::ResponseError(err.to_string()))?;
 
             Ok(Self {
                 audio: data,

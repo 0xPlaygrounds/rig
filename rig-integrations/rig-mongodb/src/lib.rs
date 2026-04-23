@@ -64,11 +64,11 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 
 /// A vector index for a MongoDB collection.
 /// # Example
-/// ```rust
+/// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 /// use rig::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::{ProviderClient, EmbeddingsClient}};
 ///
-/// # tokio_test::block_on(async {
+/// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
 /// struct WordDefinition {
 ///     #[serde(rename = "_id")]
@@ -78,7 +78,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
-/// let openai_client = openai::Client::from_env();
+/// let openai_client = openai::Client::from_env()?;
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
@@ -94,15 +94,15 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// let req = VectorSearchRequest::builder()
 ///     .query("My boss says I zindle too much, what does that mean?")
 ///     .samples(1)
-///     .build()
-///     .unwrap();
+///     .build();
 ///
 /// // Query the index
 /// let definitions = index
 ///     .top_n::<WordDefinition>(req)
 ///     .await?;
-/// # Ok::<_, anyhow::Error>(())
-/// # }).unwrap()
+/// # Ok(())
+/// # }
+/// # let _ = example();
 /// ```
 pub struct MongoDbVectorIndex<C, M>
 where
@@ -378,8 +378,20 @@ where
         let mut results = Vec::new();
         while let Some(doc) = cursor.next().await {
             let doc = doc.map_err(mongodb_to_rig_error)?;
-            let score = doc.get("score").expect("score").as_f64().expect("f64");
-            let id = doc.get("_id").expect("_id").to_string();
+            let score = doc
+                .get("score")
+                .and_then(serde_json::Value::as_f64)
+                .ok_or_else(|| {
+                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                        "MongoDB vector search result missing numeric score",
+                    )))
+                })?;
+            let id = doc.get("_id").ok_or_else(|| {
+                VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                    "MongoDB vector search result missing _id",
+                )))
+            })?;
+            let id = id.to_string();
             let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
             results.push((score, id, doc_t));
         }
@@ -423,8 +435,20 @@ where
         let mut results = Vec::new();
         while let Some(doc) = cursor.next().await {
             let doc = doc.map_err(mongodb_to_rig_error)?;
-            let score = doc.get("score").expect("score").as_f64().expect("f64");
-            let id = doc.get("_id").expect("_id").to_string();
+            let score = doc
+                .get("score")
+                .and_then(serde_json::Value::as_f64)
+                .ok_or_else(|| {
+                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                        "MongoDB vector search result missing numeric score",
+                    )))
+                })?;
+            let id = doc.get("_id").ok_or_else(|| {
+                VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                    "MongoDB vector search result missing _id",
+                )))
+            })?;
+            let id = id.to_string();
             results.push((score, id));
         }
 

@@ -23,9 +23,11 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
+type AssistantMessageParts = (Vec<AssistantContent>, Vec<Citation>, Vec<ToolCall>);
+
 impl CompletionResponse {
     /// Return that parts of the response for assistant messages w/o dealing with the other variants
-    pub fn message(&self) -> (Vec<AssistantContent>, Vec<Citation>, Vec<ToolCall>) {
+    pub fn message(&self) -> Result<AssistantMessageParts, CompletionError> {
         let Message::Assistant {
             content,
             citations,
@@ -33,10 +35,12 @@ impl CompletionResponse {
             ..
         } = self.message.clone()
         else {
-            unreachable!("Completion responses will only return an assistant message")
+            return Err(CompletionError::ResponseError(
+                "completion response did not contain an assistant message".into(),
+            ));
         };
 
-        (content, citations, tool_calls)
+        Ok((content, citations, tool_calls))
     }
 }
 
@@ -137,7 +141,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, _, tool_calls) = response.message();
+        let (content, _, tool_calls) = response.message()?;
 
         let model_response = if !tool_calls.is_empty() {
             OneOrMany::many(
@@ -151,7 +155,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     })
                     .collect::<Vec<_>>(),
             )
-            .expect("We have atleast 1 tool call in this if block")
+            .map_err(|_| {
+                CompletionError::ResponseError(
+                    "response contained tool call metadata without any callable tool content"
+                        .to_owned(),
+                )
+            })?
         } else {
             OneOrMany::many(content.into_iter().map(|content| match content {
                 AssistantContent::Text { text } => completion::AssistantContent::text(text),
@@ -185,7 +194,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
-            choice: OneOrMany::many(model_response).expect("There is atleast one content"),
+            choice: model_response,
             usage,
             raw_response: response,
             message_id: None,
@@ -649,7 +658,11 @@ where
 
         let req_body = serde_json::to_vec(&request)?;
 
-        let req = self.client.post("/v2/chat")?.body(req_body).unwrap();
+        let req = self
+            .client
+            .post("/v2/chat")?
+            .body(req_body)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async {
             let response = self
@@ -740,7 +753,7 @@ mod tests {
         let result: Result<CompletionResponse, _> = deserialize(&mut deserializer);
 
         let response = result.unwrap();
-        let (_, citations, tool_calls) = response.message();
+        let (_, citations, tool_calls) = response.message().expect("assistant message");
         let CompletionResponse {
             id,
             finish_reason,

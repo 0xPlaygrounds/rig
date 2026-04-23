@@ -156,6 +156,7 @@ async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = openrouter::Client::from_env()
+        .expect("client should build")
         .agent(TOOL_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
@@ -191,6 +192,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = openrouter::Client::from_env()
+        .expect("client should build")
         .agent(TOOL_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)

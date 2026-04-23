@@ -6,7 +6,7 @@ use rig::providers::mistral;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn list_models_smoke() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let models = match client.list_models().await {
         Ok(models) => models,
         Err(error) => {

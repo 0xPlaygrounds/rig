@@ -352,7 +352,7 @@ impl ToolSet {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
                 "Calling tool {toolname} with args:\n{}",
-                serde_json::to_string_pretty(&args).unwrap()
+                args
             );
             Ok(tool.call(args).await?)
         } else {

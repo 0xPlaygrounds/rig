@@ -29,7 +29,7 @@ impl std::fmt::Display for TopicDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_env()?;
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let surreal = Surreal::new::<Mem>(()).await?;
@@ -71,14 +71,20 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<TopicDefinition>(req).await?;
 
     assert_eq!(results.len(), 3);
-    assert_eq!(results[0].2.topic, "pasta carbonara");
+    let Some(first_result) = results.first() else {
+        return Err(anyhow::anyhow!("expected at least one result"));
+    };
+    assert_eq!(first_result.2.topic, "pasta carbonara");
 
     println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for topic: {doc}");
     }
 
-    let midpoint = (results[0].0 + results[1].0) / 2.0;
+    let Some(second_result) = results.get(1) else {
+        return Err(anyhow::anyhow!("expected at least two results"));
+    };
+    let midpoint = (first_result.0 + second_result.0) / 2.0;
 
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
@@ -93,7 +99,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("{} results for query: {}", results.len(), query);
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].2.topic, "pasta carbonara");
+    let Some(filtered_result) = results.first() else {
+        return Err(anyhow::anyhow!("expected one filtered result"));
+    };
+    assert_eq!(filtered_result.2.topic, "pasta carbonara");
 
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for topic: {doc}");

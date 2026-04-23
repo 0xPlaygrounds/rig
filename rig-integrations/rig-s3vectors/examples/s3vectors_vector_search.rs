@@ -21,10 +21,8 @@ struct Word {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let access_key_id = env::var("AWS_ACCESS_KEY_ID")
-        .expect("AWS_ACCESS_KEY_ID does not exist as an environment variable");
-    let secret_access_key = env::var("AWS_SECRET_ACCESS_KEY")
-        .expect("AWS_ACCESS_KEY_ID does not exist as an environment variable");
+    let access_key_id = env::var("AWS_ACCESS_KEY_ID")?;
+    let secret_access_key = env::var("AWS_SECRET_ACCESS_KEY")?;
 
     let credentials = Credentials::new(access_key_id, secret_access_key, None, None, "test");
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-1");
@@ -43,7 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize OpenAI client.
     // Get your API key from https://platform.openai.com/api-keys
-    let openai_client = OpenAIClient::from_env();
+    let openai_client = OpenAIClient::from_env()?;
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 

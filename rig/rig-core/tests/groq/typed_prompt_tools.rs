@@ -77,7 +77,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = client
         .agent(TYPED_PROMPT_TOOLS_MODEL)
         .preamble(

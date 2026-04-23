@@ -48,6 +48,15 @@ fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
     Error::Instance(error.into())
 }
 
+async fn non_success_status_error(response: reqwest::Response) -> Error {
+    let status = response.status();
+    let message = response
+        .text()
+        .await
+        .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
+    Error::InvalidStatusCodeWithMessage(status, message)
+}
+
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
@@ -122,7 +131,7 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
         req: Request<T>,
     ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
-        T: Into<Bytes>;
+        T: Into<Bytes> + WasmCompatSend;
 }
 
 impl HttpClientExt for reqwest::Client {
@@ -143,10 +152,7 @@ impl HttpClientExt for reqwest::Client {
         async move {
             let response = req.send().await.map_err(instance_error)?;
             if !response.status().is_success() {
-                return Err(Error::InvalidStatusCodeWithMessage(
-                    response.status(),
-                    response.text().await.unwrap(),
-                ));
+                return Err(non_success_status_error(response).await);
             }
 
             let mut res = Response::builder().status(response.status());
@@ -188,10 +194,7 @@ impl HttpClientExt for reqwest::Client {
         async move {
             let response = req.send().await.map_err(instance_error)?;
             if !response.status().is_success() {
-                return Err(Error::InvalidStatusCodeWithMessage(
-                    response.status(),
-                    response.text().await.unwrap(),
-                ));
+                return Err(non_success_status_error(response).await);
             }
 
             let mut res = Response::builder().status(response.status());
@@ -219,27 +222,22 @@ impl HttpClientExt for reqwest::Client {
         req: Request<T>,
     ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
-        T: Into<Bytes>,
+        T: Into<Bytes> + WasmCompatSend,
     {
         let (parts, body) = req.into_parts();
-
-        let req = self
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .body(body.into())
-            .build()
-            .map_err(|x| Error::Instance(x.into()))
-            .unwrap();
 
         let client = self.clone();
 
         async move {
+            let req = self
+                .request(parts.method, parts.uri.to_string())
+                .headers(parts.headers)
+                .body(body.into())
+                .build()
+                .map_err(|error| Error::Instance(error.into()))?;
             let response: reqwest::Response = client.execute(req).await.map_err(instance_error)?;
             if !response.status().is_success() {
-                return Err(Error::InvalidStatusCodeWithMessage(
-                    response.status(),
-                    response.text().await.unwrap(),
-                ));
+                return Err(non_success_status_error(response).await);
             }
 
             #[cfg(not(target_family = "wasm"))]
@@ -288,10 +286,7 @@ impl HttpClientExt for reqwest_middleware::ClientWithMiddleware {
         async move {
             let response = req.send().await.map_err(instance_error)?;
             if !response.status().is_success() {
-                return Err(Error::InvalidStatusCodeWithMessage(
-                    response.status(),
-                    response.text().await.unwrap(),
-                ));
+                return Err(non_success_status_error(response).await);
             }
 
             let mut res = Response::builder().status(response.status());
@@ -333,10 +328,7 @@ impl HttpClientExt for reqwest_middleware::ClientWithMiddleware {
         async move {
             let response = req.send().await.map_err(instance_error)?;
             if !response.status().is_success() {
-                return Err(Error::InvalidStatusCodeWithMessage(
-                    response.status(),
-                    response.text().await.unwrap(),
-                ));
+                return Err(non_success_status_error(response).await);
             }
 
             let mut res = Response::builder().status(response.status());
@@ -364,27 +356,22 @@ impl HttpClientExt for reqwest_middleware::ClientWithMiddleware {
         req: Request<T>,
     ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
-        T: Into<Bytes>,
+        T: Into<Bytes> + WasmCompatSend,
     {
         let (parts, body) = req.into_parts();
-
-        let req = self
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .body(body.into())
-            .build()
-            .map_err(|x| Error::Instance(x.into()))
-            .unwrap();
 
         let client = self.clone();
 
         async move {
+            let req = self
+                .request(parts.method, parts.uri.to_string())
+                .headers(parts.headers)
+                .body(body.into())
+                .build()
+                .map_err(|error| Error::Instance(error.into()))?;
             let response: reqwest::Response = client.execute(req).await.map_err(instance_error)?;
             if !response.status().is_success() {
-                return Err(Error::InvalidStatusCodeWithMessage(
-                    response.status(),
-                    response.text().await.unwrap(),
-                ));
+                return Err(non_success_status_error(response).await);
             }
 
             #[cfg(not(target_family = "wasm"))]
@@ -461,7 +448,7 @@ pub(crate) mod mock {
             _req: Request<T>,
         ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
         where
-            T: Into<Bytes>,
+            T: Into<Bytes> + WasmCompatSend,
         {
             let sse_bytes = self.sse_bytes.clone();
             async move {

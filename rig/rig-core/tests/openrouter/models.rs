@@ -9,7 +9,7 @@ use rig::providers::openrouter;
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn list_models_smoke() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let models = match client.list_models().await {
         Ok(models) => models,
         Err(error) => {

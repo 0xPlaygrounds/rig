@@ -10,7 +10,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn transcription_smoke() {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let model = client.transcription_model(mistral::VOXTRAL_MINI);
     let response = model
         .transcription_request()

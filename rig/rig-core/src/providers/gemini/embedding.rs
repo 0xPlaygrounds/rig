@@ -96,11 +96,12 @@ where
 
         let request_body = json!({ "requests": requests  });
 
-        tracing::trace!(
-            target: "rig::embedding",
-            "Sending embedding request to Gemini API {}",
-            serde_json::to_string_pretty(&request_body).unwrap()
-        );
+        if let Ok(pretty_body) = serde_json::to_string_pretty(&request_body) {
+            tracing::trace!(
+                target: "rig::embedding",
+                "Sending embedding request to Gemini API {pretty_body}"
+            );
+        }
 
         let request_body = serde_json::to_vec(&request_body)?;
         let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);

@@ -122,7 +122,7 @@ where
     /// See [Query vector index](https://neo4j.com/docs/cypher-manual/current/indexes/semantic-indexes/vector-indexes/#query-vector-index) for more information.
     ///
     /// Query template:
-    /// ```
+    /// ```text
     /// CALL db.index.vector.queryNodes($index_name, $num_candidates, $queryVector)
     /// YIELD node, score
     /// WHERE {where_clause}

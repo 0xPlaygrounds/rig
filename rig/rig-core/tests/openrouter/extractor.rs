@@ -10,7 +10,7 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn extractor_smoke() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let extractor = client.extractor::<SmokePerson>(DEFAULT_MODEL).build();
 
     let response = extractor

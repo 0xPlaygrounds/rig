@@ -14,7 +14,7 @@ pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{env::VarError, fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
 pub use verify::{VerifyClient, VerifyError};
 
@@ -53,16 +53,49 @@ pub enum ClientBuilderError {
     InvalidProperty(&'static str),
 }
 
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ProviderClientError {
+    #[error("environment variable `{name}` is not set or is invalid")]
+    EnvironmentVariable {
+        name: &'static str,
+        #[source]
+        source: VarError,
+    },
+    #[error(transparent)]
+    Http(#[from] http_client::Error),
+    #[error("{0}")]
+    InvalidConfiguration(&'static str),
+}
+
+pub type ProviderClientResult<T> = std::result::Result<T, ProviderClientError>;
+
+pub fn required_env_var(name: &'static str) -> ProviderClientResult<String> {
+    std::env::var(name).map_err(|source| ProviderClientError::EnvironmentVariable { name, source })
+}
+
+pub fn optional_env_var(name: &'static str) -> ProviderClientResult<Option<String>> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(VarError::NotPresent) => Ok(None),
+        Err(source) => Err(ProviderClientError::EnvironmentVariable { name, source }),
+    }
+}
+
 /// Abstracts over the ability to instantiate a client, either via environment variables or some
 /// `Self::Input`
 pub trait ProviderClient {
     type Input;
+    type Error;
 
     /// Create a client from the process's environment.
-    /// Panics if an environment is improperly configured.
-    fn from_env() -> Self;
+    fn from_env() -> Result<Self, Self::Error>
+    where
+        Self: Sized;
 
-    fn from_val(input: Self::Input) -> Self;
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
 }
 
 /// A trait for API keys. This determines whether the key is inserted into a [Client]'s default
@@ -316,7 +349,7 @@ where
         mut req: Request<T>,
     ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
     where
-        T: Into<Bytes>,
+        T: Into<Bytes> + WasmCompatSend,
     {
         req.headers_mut().insert(
             http::header::CONTENT_TYPE,
@@ -750,7 +783,7 @@ mod wasm_model_listing_compile_checks {
             _req: Request<T>,
         ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
         where
-            T: Into<Bytes>,
+            T: Into<Bytes> + WasmCompatSend,
         {
             future::ready(Err(http_client::Error::StreamEnded))
         }

@@ -11,6 +11,7 @@ use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_respo
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn think_tool_menu_planning() {
     let agent = anthropic::Client::from_env()
+        .expect("client should build")
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .name("Anthropic Thinker")
         .preamble(

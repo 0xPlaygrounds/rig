@@ -25,10 +25,10 @@ async fn async_operation(input: String, delay_ms: u64) -> Result<String, ToolErr
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let async_agent = providers::openai::Client::from_env()
+    let async_agent = providers::openai::Client::from_env()?
         .agent(providers::openai::GPT_4O)
         .preamble("You are an agent with tools access, always use the tools")
         .max_tokens(1024)
@@ -38,7 +38,7 @@ async fn main() {
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
-        serde_json::to_string_pretty(&AsyncOperation.definition(String::default()).await).unwrap()
+        serde_json::to_string_pretty(&AsyncOperation.definition(String::default()).await)?
     );
 
     for prompt in [
@@ -49,6 +49,8 @@ async fn main() {
         "Process the text 'error handling' with a delay of 'not a number'",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", async_agent.prompt(prompt).await.unwrap());
+        println!("Agent: {}", async_agent.prompt(prompt).await?);
     }
+
+    Ok(())
 }

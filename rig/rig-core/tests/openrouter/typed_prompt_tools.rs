@@ -77,7 +77,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client
         .agent(TOOL_MODEL)
         .preamble(

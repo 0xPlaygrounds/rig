@@ -70,7 +70,7 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(sample_documents())?

@@ -19,7 +19,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn streaming_tools_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(STREAMING_TOOLS_PREAMBLE)
@@ -38,7 +38,7 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn example_streaming_with_tools() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(
@@ -61,7 +61,7 @@ async fn example_streaming_with_tools() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_stream_preserves_tool_result_flow() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
@@ -84,7 +84,7 @@ async fn responses_stream_preserves_tool_result_flow() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let model = client.completion_model(openai::GPT_4O);
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)

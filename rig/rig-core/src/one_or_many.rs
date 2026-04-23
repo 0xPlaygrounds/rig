@@ -137,6 +137,19 @@ impl<T: Clone> OneOrMany<T> {
         }
     }
 
+    /// Build a `OneOrMany` from an iterator when the caller can naturally handle an empty input.
+    pub(crate) fn from_iter_optional<I>(items: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = T>,
+    {
+        let mut iter = items.into_iter();
+        let first = iter.next()?;
+        Some(OneOrMany {
+            first,
+            rest: iter.collect(),
+        })
+    }
+
     /// Specialized try map function for OneOrMany objects.
     ///
     /// Same as `OneOrMany::map` but fallible.

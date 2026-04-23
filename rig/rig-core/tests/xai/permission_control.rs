@@ -154,6 +154,7 @@ async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = xai::Client::from_env()
+        .expect("client should build")
         .agent(xai::GROK_4)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
@@ -189,6 +190,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
     let agent = xai::Client::from_env()
+        .expect("client should build")
         .agent(xai::GROK_4)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)

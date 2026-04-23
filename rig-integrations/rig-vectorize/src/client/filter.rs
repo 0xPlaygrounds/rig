@@ -191,16 +191,16 @@ mod tests {
         let combined = filter1.and(filter2);
 
         let result = combined.into_inner();
-        let obj = result.as_object().unwrap();
+        let Value::Object(obj) = result else {
+            assert!(false, "combined filter should serialize to an object");
+            return;
+        };
 
         // Both keys should be present (implicit AND)
         assert!(obj.contains_key("category"));
         assert!(obj.contains_key("score"));
-        assert_eq!(
-            obj.get("category").unwrap(),
-            &json!({ "$eq": "programming" })
-        );
-        assert_eq!(obj.get("score").unwrap(), &json!({ "$gt": 0.5 }));
+        assert_eq!(obj.get("category"), Some(&json!({ "$eq": "programming" })));
+        assert_eq!(obj.get("score"), Some(&json!({ "$gt": 0.5 })));
     }
 
     #[test]
@@ -213,12 +213,21 @@ mod tests {
         let result = combined.validate();
         assert!(result.is_err());
 
-        let err = result.unwrap_err();
+        let err = match result {
+            Err(err) => err,
+            Ok(()) => {
+                assert!(false, "OR filters should fail validation");
+                return;
+            }
+        };
         match err {
             VectorizeError::UnsupportedFilterOperation(msg) => {
                 assert!(msg.contains("OR"));
             }
-            _ => panic!("Expected UnsupportedFilterOperation error"),
+            other => assert!(
+                false,
+                "expected UnsupportedFilterOperation error, got {other:?}"
+            ),
         }
     }
 
@@ -242,7 +251,10 @@ mod tests {
             .and(VectorizeFilter::lt("price", json!(100)));
 
         let result = filter.into_inner();
-        let obj = result.as_object().unwrap();
+        let Value::Object(obj) = result else {
+            assert!(false, "combined filter should serialize to an object");
+            return;
+        };
 
         assert_eq!(obj.len(), 3);
         assert!(obj.contains_key("category"));

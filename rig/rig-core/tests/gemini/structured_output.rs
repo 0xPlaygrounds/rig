@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn structured_output_smoke() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let agent = client
         .agent("gemini-3-flash-preview")
         .output_schema::<SmokeStructuredOutput>()

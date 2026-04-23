@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn completion_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let agent = client
         .agent(xai::completion::GROK_3_MINI)
         .preamble(BASIC_PREAMBLE)

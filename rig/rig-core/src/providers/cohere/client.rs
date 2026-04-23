@@ -67,20 +67,21 @@ impl ProviderBuilder for CohereBuilder {
 
 impl ProviderClient for Client {
     type Input = CohereApiKey;
+    type Error = crate::client::ProviderClientError;
 
-    fn from_env() -> Self
+    fn from_env() -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        let key = std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY not set");
-        Self::new(key).unwrap()
+        let key = crate::client::required_env_var("COHERE_API_KEY")?;
+        Self::new(key).map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        Self::new(input).unwrap()
+        Self::new(input).map_err(Into::into)
     }
 }
 

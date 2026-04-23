@@ -86,21 +86,22 @@ pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<DeepSeekExtB
 
 impl ProviderClient for Client {
     type Input = DeepSeekApiKey;
+    type Error = crate::client::ProviderClientError;
 
     // If you prefer the environment variable approach:
-    fn from_env() -> Self {
-        let api_key = std::env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY not set");
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("DEEPSEEK_API_KEY")?;
         let mut client_builder = Self::builder();
         client_builder.headers_mut().insert(
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("application/json"),
         );
         let client_builder = client_builder.api_key(&api_key);
-        client_builder.build().unwrap()
+        client_builder.build().map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::new(input).unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::new(input).map_err(Into::into)
     }
 }
 

@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn streaming_smoke() {
-    let client = anthropic::Client::from_env();
+    let client = anthropic::Client::from_env().expect("client should build");
     let agent = client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(STREAMING_PREAMBLE)

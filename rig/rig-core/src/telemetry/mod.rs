@@ -98,10 +98,9 @@ impl SpanCombinator for tracing::Span {
             return;
         }
 
-        let input_as_json_string =
-            serde_json::to_string(input).expect("Serializing a Rust type to JSON should not break");
-
-        self.record("gen_ai.input.messages", input_as_json_string);
+        if let Ok(input_as_json_string) = serde_json::to_string(input) {
+            self.record("gen_ai.input.messages", input_as_json_string);
+        }
     }
 
     fn record_model_output<T>(&self, output: &T)
@@ -112,9 +111,8 @@ impl SpanCombinator for tracing::Span {
             return;
         }
 
-        let output_as_json_string = serde_json::to_string(output)
-            .expect("Serializing a Rust type to JSON should not break");
-
-        self.record("gen_ai.output.messages", output_as_json_string);
+        if let Ok(output_as_json_string) = serde_json::to_string(output) {
+            self.record("gen_ai.output.messages", output_as_json_string);
+        }
     }
 }

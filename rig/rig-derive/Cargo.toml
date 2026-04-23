@@ -22,6 +22,7 @@ syn = { workspace = true, features = ["full"] }
 proc-macro = true
 
 [dev-dependencies]
+anyhow = { workspace = true }
 rig-core = { path = "../rig-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }

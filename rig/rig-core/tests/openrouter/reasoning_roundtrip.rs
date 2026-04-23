@@ -11,7 +11,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn streaming() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
         client.completion_model("openai/gpt-5.2"),
         Some(serde_json::json!({
@@ -25,7 +25,7 @@ async fn streaming() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn nonstreaming() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
         client.completion_model("openai/gpt-5.2"),
         Some(serde_json::json!({

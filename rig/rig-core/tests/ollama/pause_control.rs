@@ -10,7 +10,9 @@ use tokio::time::{Duration, sleep};
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn streaming_pause_and_resume() {
-    let model = ollama::Client::from_env().completion_model("gemma3:4b");
+    let model = ollama::Client::from_env()
+        .expect("client should build")
+        .completion_model("gemma3:4b");
     let request = model
         .completion_request("Explain backpropagation in neural networks.")
         .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())
