@@ -1,9 +1,8 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig::{
-    OneOrMany,
     completion::CompletionError,
-    message::{AssistantContent, Text, ToolCall, ToolFunction},
+    message::{AssistantContent, Text},
 };
 use serde::{Deserialize, Serialize};
 
@@ -108,21 +107,6 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
         }?;
 
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
-
-        if let Some(tool_use) = choice.iter().find_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call.to_owned()),
-            _ => None,
-        }) {
-            return Ok(completion::CompletionResponse {
-                choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
-                    tool_use.id,
-                    ToolFunction::new(tool_use.function.name, tool_use.function.arguments),
-                ))),
-                usage,
-                raw_response: value,
-                message_id: None,
-            });
-        }
 
         Ok(completion::CompletionResponse {
             choice,
@@ -251,7 +235,7 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
 mod tests {
     use crate::types::{
         assistant_content::RigAssistantContent, converse_output::InternalConverseOutput,
-        errors::TypeConversionError,
+        errors::TypeConversionError, json::AwsDocument,
     };
 
     use super::AwsConverseOutput;
@@ -262,12 +246,20 @@ mod tests {
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };
+    use serde_json::json;
 
     /// Helper: build an AwsConverseOutput with text content and optional usage.
     fn make_output(text: &str, usage: Option<aws_bedrock::TokenUsage>) -> AwsConverseOutput {
+        make_output_with_content(vec![aws_bedrock::ContentBlock::Text(text.into())], usage)
+    }
+
+    fn make_output_with_content(
+        content: Vec<aws_bedrock::ContentBlock>,
+        usage: Option<aws_bedrock::TokenUsage>,
+    ) -> AwsConverseOutput {
         let message = aws_bedrock::Message::builder()
             .role(aws_bedrock::ConversationRole::Assistant)
-            .content(aws_bedrock::ContentBlock::Text(text.into()))
+            .set_content(Some(content))
             .build()
             .unwrap();
         let mut builder = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
@@ -367,6 +359,52 @@ mod tests {
             completion.choice,
             OneOrMany::one(AssistantContent::Text("txt".into()))
         );
+    }
+
+    #[test]
+    fn aws_converse_output_preserves_parallel_tool_calls_in_completion_response() {
+        let content = vec![
+            aws_bedrock::ContentBlock::Text("preface".into()),
+            aws_bedrock::ContentBlock::ToolUse(
+                aws_bedrock::ToolUseBlock::builder()
+                    .tool_use_id("call_1")
+                    .name("add")
+                    .input(AwsDocument::from(json!({"x": 1, "y": 2})).0)
+                    .build()
+                    .unwrap(),
+            ),
+            aws_bedrock::ContentBlock::ToolUse(
+                aws_bedrock::ToolUseBlock::builder()
+                    .tool_use_id("call_2")
+                    .name("subtract")
+                    .input(AwsDocument::from(json!({"x": 4, "y": 3})).0)
+                    .build()
+                    .unwrap(),
+            ),
+        ];
+
+        let completion: completion::CompletionResponse<AwsConverseOutput> =
+            make_output_with_content(content, None)
+                .try_into()
+                .expect("conversion should succeed");
+
+        let choice: Vec<_> = completion.choice.into_iter().collect();
+        assert_eq!(choice.len(), 3);
+        assert_eq!(choice[0], AssistantContent::Text("preface".into()));
+
+        let AssistantContent::ToolCall(first_tool) = &choice[1] else {
+            panic!("expected first tool call");
+        };
+        assert_eq!(first_tool.id, "call_1");
+        assert_eq!(first_tool.function.name, "add");
+        assert_eq!(first_tool.function.arguments, json!({"x": 1, "y": 2}));
+
+        let AssistantContent::ToolCall(second_tool) = &choice[2] else {
+            panic!("expected second tool call");
+        };
+        assert_eq!(second_tool.id, "call_2");
+        assert_eq!(second_tool.function.name, "subtract");
+        assert_eq!(second_tool.function.arguments, json!({"x": 4, "y": 3}));
     }
 
     #[test]
