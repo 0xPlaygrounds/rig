@@ -4,16 +4,14 @@ use rig::providers;
 use rig::tool::Tool;
 use rig_derive::rig_tool;
 
-// Example with full attributes including parameter descriptions
-#[rig_tool(
-    description = "A tool that performs string operations",
-    params(
-        text = "The input text to process",
-        operation = "The operation to perform (uppercase, lowercase, reverse)",
-    ),
-    required(text, operation)
-)]
-fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
+/// A tool that performs string operations
+#[rig_tool]
+fn string_processor(
+    /// The input text to process
+    text: String,
+    /// The operation to perform (uppercase, lowercase, reverse)
+    operation: String,
+) -> Result<String, rig::tool::ToolError> {
     let result = match operation.as_str() {
         "uppercase" => text.to_uppercase(),
         "lowercase" => text.to_lowercase(),

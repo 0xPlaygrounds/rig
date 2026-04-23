@@ -47,6 +47,11 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
         let is_object_schema = obj.get("type") == Some(&Value::String("object".to_string()))
             || obj.contains_key("properties");
 
+        // OpenAI requires "properties" on all object schemas, even empty ones.
+        if is_object_schema && !obj.contains_key("properties") {
+            obj.insert("properties".to_string(), Value::Object(Default::default()));
+        }
+
         // This is required by OpenAI's Responses API when using strict mode.
         // Source: https://platform.openai.com/docs/guides/structured-outputs#additionalproperties-false-must-always-be-set-in-objects
         if is_object_schema && !obj.contains_key("additionalProperties") {

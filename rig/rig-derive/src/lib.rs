@@ -5,7 +5,8 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::{collections::HashMap, ops::Deref};
 use syn::{
-    DeriveInput, Expr, ExprLit, Ident, Lit, Meta, PathArguments, ReturnType, Token, Type,
+    Attribute, DeriveInput, Expr, ExprLit, Ident, Lit, Meta, PathArguments, ReturnType, Token,
+    Type,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
@@ -207,47 +208,48 @@ impl Parse for MacroArgs {
     }
 }
 
-fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
-    match ty {
-        Type::Path(type_path) => {
-            let segment = &type_path.path.segments[0];
-            let type_name = segment.ident.to_string();
-
-            // Handle Vec types
-            if type_name == "Vec" {
-                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
-                    && let syn::GenericArgument::Type(inner_type) = &args.args[0]
-                {
-                    let inner_json_type = get_json_type(inner_type);
-                    return quote! {
-                        "type": "array",
-                        "items": { #inner_json_type }
-                    };
-                }
-                return quote! { "type": "array" };
+/// Extract doc comment text from `#[doc = "..."]` attributes.
+fn extract_doc_comment(attrs: &[Attribute]) -> Option<String> {
+    let lines: Vec<String> = attrs
+        .iter()
+        .filter_map(|attr| {
+            if !attr.path().is_ident("doc") {
+                return None;
             }
-
-            // Handle primitive types
-            match type_name.as_str() {
-                "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "f32" | "f64" => {
-                    quote! { "type": "number" }
-                }
-                "String" | "str" => {
-                    quote! { "type": "string" }
-                }
-                "bool" => {
-                    quote! { "type": "boolean" }
-                }
-                // Handle other types as objects
-                _ => {
-                    quote! { "type": "object" }
-                }
+            if let Meta::NameValue(nv) = &attr.meta
+                && let Expr::Lit(ExprLit {
+                    lit: Lit::Str(s), ..
+                }) = &nv.value
+            {
+                return Some(s.value());
             }
-        }
-        _ => {
-            quote! { "type": "object" }
-        }
+            None
+        })
+        .collect();
+
+    if lines.is_empty() {
+        return None;
     }
+
+    Some(
+        lines
+            .iter()
+            .map(|l| l.strip_prefix(' ').unwrap_or(l))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim()
+            .to_string(),
+    )
+}
+
+/// Check if a type is `Option<T>`.
+fn is_option_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty
+        && let Some(segment) = type_path.path.segments.last()
+    {
+        return segment.ident == "Option";
+    }
+    false
 }
 
 /// A procedural macro that transforms a function into a `rig::tool::Tool` that can be used with a `rig::agent::Agent`.
@@ -325,6 +327,18 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let vis = &input_fn.vis;
     let is_async = input_fn.sig.asyncness.is_some();
 
+    // Build a cleaned copy of the function with doc attrs stripped from parameters,
+    // since `#[doc]` on function parameters is not allowed by the compiler.
+    let cleaned_fn = {
+        let mut f = input_fn.clone();
+        for arg in f.sig.inputs.iter_mut() {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                pat_type.attrs.retain(|a| !a.path().is_ident("doc"));
+            }
+        }
+        f
+    };
+
     // Extract return type and get Output and Error types from Result<T, E>
     let return_type = &input_fn.sig.output;
     let (output_type, error_type) = match return_type {
@@ -360,19 +374,19 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     // Generate PascalCase struct name from the function name
     let struct_name = format_ident!("{}", { fn_name_str.to_case(Case::Pascal) });
 
-    // Use provided description or generate a default one
+    // Tool description: explicit attribute > doc comment > default
+    let fn_doc = extract_doc_comment(&input_fn.attrs);
     let tool_description = match args.description {
         Some(desc) => quote! { #desc.to_string() },
-        None => quote! { format!("Function to {}", Self::NAME) },
+        None => match fn_doc {
+            Some(doc) => quote! { #doc.to_string() },
+            None => quote! { format!("Function to {}", Self::NAME) },
+        },
     };
 
-    // Extract parameter names, types, and descriptions
+    // Extract parameter names, doc comments, and build struct field tokens
     let mut param_names = Vec::new();
-    let mut param_types = Vec::new();
-    let mut param_descriptions = Vec::new();
-    let mut json_types = Vec::new();
-
-    let required_args = args.required;
+    let mut field_tokens = Vec::new();
 
     for arg in input_fn.sig.inputs.iter() {
         if let syn::FnArg::Typed(pat_type) = arg
@@ -381,19 +395,45 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             let param_name = &param_ident.ident;
             let param_name_str = param_name.to_string();
             let ty = &pat_type.ty;
-            let default_parameter_description = format!("Parameter {param_name_str}");
-            let description = args
-                .param_descriptions
-                .get(&param_name_str)
-                .map(|s| s.to_owned())
-                .unwrap_or(default_parameter_description);
+
+            // Determine the description for this field:
+            // explicit params() > parameter doc comment > default
+            let field_doc_attr =
+                if let Some(explicit) = args.param_descriptions.get(&param_name_str) {
+                    // Explicit override via params() — use #[schemars(description = "...")]
+                    quote! { #[schemars(description = #explicit)] }
+                } else if let Some(doc) = extract_doc_comment(&pat_type.attrs) {
+                    // Doc comment on the parameter — propagate as #[doc = "..."]
+                    quote! { #[doc = #doc] }
+                } else {
+                    // Default fallback
+                    let default_desc = format!("Parameter {param_name_str}");
+                    quote! { #[schemars(description = #default_desc)] }
+                };
+
+            // Auto-add #[serde(default)] for Option<T> fields
+            let serde_default = if is_option_type(ty) {
+                quote! { #[serde(default)] }
+            } else {
+                quote! {}
+            };
+
+            field_tokens.push(quote! {
+                #field_doc_attr
+                #serde_default
+                #vis #param_name: #ty
+            });
 
             param_names.push(param_name);
-            param_types.push(ty);
-            param_descriptions.push(description);
-            json_types.push(get_json_type(ty));
         }
     }
+
+    // Default required to all parameters when not explicitly specified
+    let required_args: Vec<String> = if args.required.is_empty() {
+        param_names.iter().map(|n| n.to_string()).collect()
+    } else {
+        args.required
+    };
 
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
@@ -414,12 +454,13 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        #[derive(serde::Deserialize)]
+        #[derive(serde::Deserialize, rig::schemars::JsonSchema)]
+        #[schemars(crate = "rig::schemars")]
         #vis struct #params_struct_name {
-            #(#vis #param_names: #param_types,)*
+            #(#field_tokens,)*
         }
 
-        #input_fn
+        #cleaned_fn
 
         #[derive(Default)]
         #vis struct #struct_name;
@@ -436,23 +477,15 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
             }
 
             async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
-                let parameters = serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        #(
-                            stringify!(#param_names): {
-                                #json_types,
-                                "description": #param_descriptions
-                            }
-                        ),*
-                    },
-                    "required": [#(#required_args),*]
-                });
+                let mut schema = serde_json::to_value(
+                    rig::schemars::schema_for!(#params_struct_name)
+                ).expect("schema serialization");
+                schema["required"] = serde_json::json!([#(#required_args),*]);
 
                 rig::completion::ToolDefinition {
                     name: #tool_name.to_string(),
                     description: #tool_description.to_string(),
-                    parameters,
+                    parameters: schema,
                 }
             }
 
