@@ -9,11 +9,15 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::client::CompletionClient;
+//! use rig::client::{CompletionClient, ProviderClient};
 //! use rig::providers::copilot;
 //!
-//! let client = copilot::Client::from_env();
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = copilot::Client::from_env()?;
 //! let model = client.completion_model(copilot::GPT_4O);
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
 
 mod auth;

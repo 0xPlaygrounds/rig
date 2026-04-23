@@ -24,13 +24,13 @@
 //!
 //! # Simple example:
 //! ```
-//! use rig::{client::CompletionClient, completion::Prompt, providers::openai};
+//! use rig::{client::{CompletionClient, ProviderClient}, completion::Prompt, providers::openai};
 //!
 //! #[tokio::main]
-//! async fn main() {
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create OpenAI client and agent.
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
-//!     let openai_client = openai::Client::from_env();
+//!     let openai_client = openai::Client::from_env()?;
 //!
 //!     let gpt4 = openai_client.agent("gpt-4").build();
 //!
@@ -41,6 +41,8 @@
 //!         .expect("Failed to prompt GPT-4");
 //!
 //!     println!("GPT-4: {response}");
+//!
+//!     Ok(())
 //! }
 //! ```
 //! Note: using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features

@@ -40,9 +40,10 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// # Example
 /// ```ignore
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+/// use rig::client::ProviderClient;
 /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
-/// let openai_client = Client::from_env();
+/// let openai_client = Client::from_env()?;
 ///
 /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
 /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
@@ -376,9 +377,10 @@ where
     /// # Example
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::client::ProviderClient;
     /// use rig::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
     ///
-    /// let openai_client = Client::from_env();
+    /// let openai_client = Client::from_env()?;
     ///
     /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
     /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
@@ -438,9 +440,10 @@ where
     /// # Example
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::client::ProviderClient;
     /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
     ///
-    /// let openai_client = Client::from_env();
+    /// let openai_client = Client::from_env()?;
     ///
     /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
     /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.

@@ -53,27 +53,48 @@ pub enum ClientBuilderError {
     InvalidProperty(&'static str),
 }
 
+/// Errors returned while constructing provider clients from environment variables or explicit input.
+///
+/// Provider-specific client constructors use this error for configuration problems that can be
+/// detected before any model request is sent, such as missing API keys, invalid environment
+/// values, or invalid builder configuration.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ProviderClientError {
+    /// A required or optional environment variable could not be read as valid Unicode.
+    ///
+    /// For required variables, this variant is also returned when the variable is not present.
     #[error("environment variable `{name}` is not set or is invalid")]
     EnvironmentVariable {
+        /// The environment variable name.
         name: &'static str,
+        /// The underlying environment lookup error.
         #[source]
         source: VarError,
     },
+    /// The underlying provider client builder failed while constructing HTTP configuration.
     #[error(transparent)]
     Http(#[from] http_client::Error),
+    /// The provider received an unsupported or incomplete configuration.
     #[error("{0}")]
     InvalidConfiguration(&'static str),
 }
 
+/// Result type returned by provider client construction helpers.
 pub type ProviderClientResult<T> = std::result::Result<T, ProviderClientError>;
 
+/// Read a required environment variable for provider client construction.
+///
+/// Returns [`ProviderClientError::EnvironmentVariable`] when the variable is missing or contains
+/// invalid Unicode.
 pub fn required_env_var(name: &'static str) -> ProviderClientResult<String> {
     std::env::var(name).map_err(|source| ProviderClientError::EnvironmentVariable { name, source })
 }
 
+/// Read an optional environment variable for provider client construction.
+///
+/// Missing variables return `Ok(None)`. Variables containing invalid Unicode return
+/// [`ProviderClientError::EnvironmentVariable`].
 pub fn optional_env_var(name: &'static str) -> ProviderClientResult<Option<String>> {
     match std::env::var(name) {
         Ok(value) => Ok(Some(value)),
@@ -85,7 +106,9 @@ pub fn optional_env_var(name: &'static str) -> ProviderClientResult<Option<Strin
 /// Abstracts over the ability to instantiate a client, either via environment variables or some
 /// `Self::Input`
 pub trait ProviderClient {
+    /// Input accepted by [`ProviderClient::from_val`].
     type Input;
+    /// Error returned when client construction fails.
     type Error;
 
     /// Create a client from the process's environment.
@@ -93,6 +116,7 @@ pub trait ProviderClient {
     where
         Self: Sized;
 
+    /// Create a client from an explicit provider-specific input value.
     fn from_val(input: Self::Input) -> Result<Self, Self::Error>
     where
         Self: Sized;

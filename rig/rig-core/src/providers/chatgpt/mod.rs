@@ -5,11 +5,15 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::client::CompletionClient;
+//! use rig::client::{CompletionClient, ProviderClient};
 //! use rig::providers::chatgpt;
 //!
-//! let client = chatgpt::Client::from_env();
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = chatgpt::Client::from_env()?;
 //! let model = client.completion_model(chatgpt::GPT_5_3_CODEX);
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
 
 mod auth;

@@ -4,8 +4,14 @@
 //!
 //! If you'd like to switch back to the regular Completions API, you can do so by using the `.completions_api()` function - see below for an example:
 //! ```rust
-//! let openai_client = rig::providers::openai::Client::from_env();
+//! use rig::client::{CompletionClient, ProviderClient};
+//!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let openai_client = rig::providers::openai::Client::from_env()?;
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
 use super::InputAudio;
 use super::completion::ToolChoice;
