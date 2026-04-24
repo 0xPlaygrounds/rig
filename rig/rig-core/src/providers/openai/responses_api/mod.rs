@@ -1367,7 +1367,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             )
@@ -1406,14 +1406,12 @@ where
                 if let Some(ref usage) = response.usage {
                     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
                     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    span.record(
-                        "gen_ai.usage.cached_tokens",
-                        usage
-                            .input_tokens_details
-                            .as_ref()
-                            .map(|d| d.cached_tokens)
-                            .unwrap_or(0),
-                    );
+                    let cached_tokens = usage
+                        .input_tokens_details
+                        .as_ref()
+                        .map(|d| d.cached_tokens)
+                        .unwrap_or(0);
+                    span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
                 }
                 if enabled!(Level::TRACE) {
                     tracing::trace!(

@@ -384,7 +384,10 @@ where
 
     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-    span.record("gen_ai.usage.cached_tokens", usage.cached_input_tokens);
+    span.record(
+        "gen_ai.usage.cache_read.input_tokens",
+        usage.cached_input_tokens,
+    );
 }
 
 fn record_response_metadata(
