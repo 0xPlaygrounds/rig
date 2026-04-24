@@ -681,7 +681,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -705,7 +705,7 @@ where
                                 usage.total_tokens - usage.prompt_tokens,
                             );
                             span.record(
-                                "gen_ai.usage.cached_tokens",
+                                "gen_ai.usage.cache_read.input_tokens",
                                 usage
                                     .prompt_tokens_details
                                     .as_ref()
@@ -762,7 +762,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -782,7 +782,7 @@ where
                     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
                     span.record("gen_ai.usage.output_tokens", usage.output_tokens);
                     span.record(
-                        "gen_ai.usage.cached_tokens",
+                        "gen_ai.usage.cache_read.input_tokens",
                         usage
                             .input_tokens_details
                             .as_ref()
@@ -885,7 +885,7 @@ where
                 gen_ai.response.model = tracing::field::Empty,
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cached_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -1042,7 +1042,7 @@ where
                 span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
                 span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
                 span.record(
-                    "gen_ai.usage.cached_tokens",
+                    "gen_ai.usage.cache_read.input_tokens",
                     final_usage
                         .input_tokens_details
                         .as_ref()
