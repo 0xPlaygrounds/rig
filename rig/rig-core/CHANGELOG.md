@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.36.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.35.0...rig-core-v0.36.0) - 2026-04-24
+
+### Added
+
+- *(ollama)* allow setting base_url and api_key programmatically ([#1511](https://github.com/0xPlaygrounds/rig/pull/1511)) (by @majiayu000)
+- *(rig-core)* add ChatGPT Subscription, GitHub Copilot, and compatibility providers ([#1615](https://github.com/0xPlaygrounds/rig/pull/1615)) (by @wey-gu)
+- *(providers)* add GitHub Copilot provider with relaxed response parsing ([#1451](https://github.com/0xPlaygrounds/rig/pull/1451)) (by @DAMEK86)
+- *(rig-core)* Add model listing capability to OpenRouter client ([#1627](https://github.com/0xPlaygrounds/rig/pull/1627)) (by @nate-trojian)
+- *(rig-derive)* support custom tool names ([#1619](https://github.com/0xPlaygrounds/rig/pull/1619)) ([#1620](https://github.com/0xPlaygrounds/rig/pull/1620)) (by @qaqland)
+
+### Fixed
+
+- *(openai)* carry reasoning_content on assistant tool-call messages ([#1649](https://github.com/0xPlaygrounds/rig/pull/1649)) (by @indrazm)
+- preserve multimodal tool results in streaming chat history ([#1661](https://github.com/0xPlaygrounds/rig/pull/1661)) (by @gold-silver-copper) - #1661
+- OpenAI text extraction  ([#1660](https://github.com/0xPlaygrounds/rig/pull/1660)) (by @gold-silver-copper) - #1660
+- fixed n tests ([#1659](https://github.com/0xPlaygrounds/rig/pull/1659)) (by @gold-silver-copper) - #1659
+- *(rig-1283)* handle llama.cpp reasoning_content as content ([#1657](https://github.com/0xPlaygrounds/rig/pull/1657)) (by @inqode-lars)
+- *(responses_api)* add Unknown catch-all variant to Output enum ([#1552](https://github.com/0xPlaygrounds/rig/pull/1552)) (by @BillionClaw)
+
+### Other
+
+- Add clippy no panic lints ([#1663](https://github.com/0xPlaygrounds/rig/pull/1663)) (by @gold-silver-copper) - #1663
+- openai chat completions ([#1655](https://github.com/0xPlaygrounds/rig/pull/1655)) (by @gold-silver-copper) - #1655
+- manual tool call example ([#1643](https://github.com/0xPlaygrounds/rig/pull/1643)) (by @gold-silver-copper) - #1643
+- Remove `RwLock` from immutable state and execute futures concurrently ([#1641](https://github.com/0xPlaygrounds/rig/pull/1641)) (by @isSerge) - #1641
+- Add Serialize/Deserialize derives to CompletionRequest, PromptResponse, TypedPromptResponse ([#1637](https://github.com/0xPlaygrounds/rig/pull/1637)) (by @geraschenko) - #1637
+- wasm compat for model lister ([#1638](https://github.com/0xPlaygrounds/rig/pull/1638)) (by @gold-silver-copper) - #1638
+- standardize required fields handling across builders ([#1611](https://github.com/0xPlaygrounds/rig/pull/1611)) (by @isSerge) - #1611
+- remove deprecated code ([#1633](https://github.com/0xPlaygrounds/rig/pull/1633)) (by @gold-silver-copper) - #1633
+
+### Contributors
+
+* @gold-silver-copper
+* @indrazm
+* @inqode-lars
+* @majiayu000
+* @BillionClaw
+* @isSerge
+* @geraschenko
+* @wey-gu
+* @DAMEK86
+* @nate-trojian
+* @qaqland
 ## [0.35.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.34.0...rig-core-v0.35.0) - 2026-04-12
 
 ### Added
