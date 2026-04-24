@@ -17,7 +17,7 @@ use rig::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::CompletionClient,
     providers::openai,
-    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 use std::sync::Arc;
@@ -415,6 +415,131 @@ async fn agent_with_dynamic_context_test() {
 
     assert!(response.contains("zindle") || response.contains("pretend to be working"));
     assert!(response.contains("important") || response.contains("unproductive"));
+
+    db.drop_table(table_name, &[]).await.unwrap();
+}
+
+#[tokio::test]
+async fn insert_documents_round_trip() {
+    // Setup mock openai API with embeddings for both the initial seed row and
+    // the batch that will be inserted via InsertDocuments. We don't assert the
+    // specific payload here because ordering of calls depends on how the
+    // EmbeddingsBuilder chunks requests; we just return a fixed embedding.
+    let server = httpmock::MockServer::start();
+
+    server.mock(|when, then| {
+        when.method(httpmock::Method::POST)
+            .path("/embeddings")
+            .header("Authorization", "Bearer TEST");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "object": "list",
+                "data": [
+                    {
+                        "object": "embedding",
+                        "embedding": vec![0.0023064254; 1536],
+                        "index": 0
+                    }
+                ],
+                "model": "text-embedding-ada-002",
+                "usage": { "prompt_tokens": 8, "total_tokens": 8 }
+            }));
+    });
+
+    let openai_client = openai::Client::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
+    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+
+    let db = lancedb::connect("data/lancedb-insert-docs")
+        .execute()
+        .await
+        .unwrap();
+
+    // Seed the table with a single row so we have a concrete Arrow schema
+    // in place; InsertDocuments will then append against that schema.
+    let seed_embeddings = EmbeddingsBuilder::new(model.clone())
+        .documents(vec![Word {
+            id: "seed".to_string(),
+            definition: "seed row".to_string(),
+        }])
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+
+    let table_name = "insert_docs_test";
+    if db
+        .table_names()
+        .execute()
+        .await
+        .unwrap()
+        .contains(&table_name.to_string())
+    {
+        db.drop_table(table_name, &[]).await.unwrap();
+    }
+    let table = db
+        .create_table(
+            table_name,
+            RecordBatchIterator::new(
+                vec![as_record_batch(seed_embeddings, model.ndims())],
+                Arc::new(schema(model.ndims())),
+            ),
+        )
+        .execute()
+        .await
+        .unwrap();
+
+    let initial_rows = table.count_rows(None).await.unwrap();
+    assert_eq!(initial_rows, 1);
+
+    // Build an index and insert two new documents via the trait under test.
+    let vector_store_index =
+        LanceDbVectorIndex::new(table, model.clone(), "id", SearchParams::default())
+            .await
+            .unwrap();
+
+    let new_docs = EmbeddingsBuilder::new(model.clone())
+        .documents(vec![
+            Word {
+                id: "inserted-1".to_string(),
+                definition: "first inserted row".to_string(),
+            },
+            Word {
+                id: "inserted-2".to_string(),
+                definition: "second inserted row".to_string(),
+            },
+        ])
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+
+    vector_store_index.insert_documents(new_docs).await.unwrap();
+
+    // Round-trip: re-open the table and verify the row count grew by 2.
+    let table_after = db.open_table(table_name).execute().await.unwrap();
+    let after_rows = table_after.count_rows(None).await.unwrap();
+    assert_eq!(after_rows, 3, "expected 1 seed + 2 inserted rows");
+
+    // And verify the inserted ids are actually present via a filtered search.
+    let req = VectorSearchRequest::builder()
+        .query("anything")
+        .samples(5)
+        .build();
+    let results = vector_store_index
+        .top_n::<serde_json::Value>(req)
+        .await
+        .unwrap();
+    let ids: Vec<String> = results
+        .iter()
+        .map(|(_, id, _)| id.clone())
+        .collect();
+    assert!(ids.contains(&"inserted-1".to_string()), "ids = {ids:?}");
+    assert!(ids.contains(&"inserted-2".to_string()), "ids = {ids:?}");
 
     db.drop_table(table_name, &[]).await.unwrap();
 }
