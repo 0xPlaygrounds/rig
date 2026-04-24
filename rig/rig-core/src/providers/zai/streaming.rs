@@ -1,0 +1,731 @@
+//! Zai streaming implementation
+
+use async_stream::stream;
+use futures::StreamExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use tracing::{Level, enabled, info_span};
+use tracing_futures::Instrument;
+
+use super::completion::{
+    CompletionModel, Content, Message, SystemContent, ToolChoice, ToolDefinition, Usage,
+    apply_cache_control,
+};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::{self, HttpClientExt};
+use crate::json_utils::merge_inplace;
+use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, StreamingResult};
+use crate::telemetry::SpanCombinator;
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamingEvent {
+    MessageStart {
+        message: MessageStart,
+    },
+    ContentBlockStart {
+        index: usize,
+        content_block: Content,
+    },
+    ContentBlockDelta {
+        index: usize,
+        delta: ContentDelta,
+    },
+    ContentBlockStop {
+        index: usize,
+    },
+    MessageDelta {
+        delta: MessageDelta,
+        usage: PartialUsage,
+    },
+    MessageStop,
+    Ping,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MessageStart {
+    pub id: String,
+    pub role: String,
+    pub content: Vec<Content>,
+    pub model: String,
+    pub stop_reason: Option<String>,
+    pub stop_sequence: Option<String>,
+    pub usage: Usage,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContentDelta {
+    TextDelta { text: String },
+    InputJsonDelta { partial_json: String },
+    ThinkingDelta { thinking: String },
+    SignatureDelta { signature: String },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MessageDelta {
+    pub stop_reason: Option<String>,
+    pub stop_sequence: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
+pub struct PartialUsage {
+    pub output_tokens: usize,
+    #[serde(default)]
+    pub input_tokens: Option<usize>,
+}
+
+impl GetTokenUsage for PartialUsage {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+
+        usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
+        usage.output_tokens = self.output_tokens as u64;
+        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        Some(usage)
+    }
+}
+
+#[derive(Default)]
+struct ToolCallState {
+    name: String,
+    id: String,
+    input_json: String,
+}
+
+#[derive(Default)]
+struct ThinkingState {
+    thinking: String,
+    signature: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StreamingCompletionResponse {
+    pub usage: PartialUsage,
+}
+
+impl GetTokenUsage for StreamingCompletionResponse {
+    fn token_usage(&self) -> Option<crate::completion::Usage> {
+        let mut usage = crate::completion::Usage::new();
+        usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
+        usage.output_tokens = self.usage.output_tokens as u64;
+        usage.total_tokens =
+            self.usage.input_tokens.unwrap_or(0) as u64 + self.usage.output_tokens as u64;
+
+        Some(usage)
+    }
+}
+
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + 'static,
+{
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
+    {
+        let span = if tracing::Span::current().is_disabled() {
+            info_span!(
+                target: "rig::completions",
+                "chat_streaming",
+                gen_ai.operation.name = "chat_streaming",
+                gen_ai.provider.name = "anthropic",
+                gen_ai.request.model = self.model,
+                gen_ai.system_instructions = &completion_request.preamble,
+                gen_ai.response.id = tracing::field::Empty,
+                gen_ai.response.model = self.model,
+                gen_ai.usage.output_tokens = tracing::field::Empty,
+                gen_ai.usage.input_tokens = tracing::field::Empty,
+                gen_ai.input.messages = tracing::field::Empty,
+                gen_ai.output.messages = tracing::field::Empty,
+            )
+        } else {
+            tracing::Span::current()
+        };
+        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
+            tokens
+        } else if let Some(tokens) = self.default_max_tokens {
+            tokens
+        } else {
+            return Err(CompletionError::RequestError(
+                "`max_tokens` must be set for Anthropic".into(),
+            ));
+        };
+
+        let mut full_history = vec![];
+        if let Some(docs) = completion_request.normalized_documents() {
+            full_history.push(docs);
+        }
+        full_history.extend(completion_request.chat_history);
+
+        let mut messages = full_history
+            .into_iter()
+            .map(Message::try_from)
+            .collect::<Result<Vec<Message>, _>>()?;
+
+        // Convert system prompt to array format for cache_control support
+        let mut system: Vec<SystemContent> =
+            if let Some(preamble) = completion_request.preamble.as_ref() {
+                if preamble.is_empty() {
+                    vec![]
+                } else {
+                    vec![SystemContent::Text {
+                        text: preamble.clone(),
+                        cache_control: None,
+                    }]
+                }
+            } else {
+                vec![]
+            };
+
+        // Apply cache control breakpoints only if prompt_caching is enabled
+        if self.prompt_caching {
+            apply_cache_control(&mut system, &mut messages);
+        }
+
+        let mut body = json!({
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "stream": true,
+        });
+
+        // Add system prompt if non-empty
+        if !system.is_empty() {
+            merge_inplace(&mut body, json!({ "system": system }));
+        }
+
+        if let Some(temperature) = completion_request.temperature {
+            merge_inplace(&mut body, json!({ "temperature": temperature }));
+        }
+
+        if !completion_request.tools.is_empty() {
+            merge_inplace(
+                &mut body,
+                json!({
+                    "tools": completion_request
+                        .tools
+                        .into_iter()
+                        .map(|tool| ToolDefinition {
+                            name: tool.name,
+                            description: Some(tool.description),
+                            input_schema: tool.parameters,
+                        })
+                        .collect::<Vec<_>>(),
+                    "tool_choice": ToolChoice::Auto,
+                }),
+            );
+        }
+
+        if let Some(ref params) = completion_request.additional_params {
+            merge_inplace(&mut body, params.clone())
+        }
+
+        if enabled!(Level::TRACE) {
+            tracing::trace!(
+                target: "rig::completions",
+                "Anthropic completion request: {}",
+                serde_json::to_string_pretty(&body)?
+            );
+        }
+
+        let body: Vec<u8> = serde_json::to_vec(&body)?;
+
+        let req = self
+            .client
+            .post("/v1/messages")?
+            .body(body)
+            .map_err(http_client::Error::Protocol)?;
+
+        let stream = GenericEventSource::new(self.client.clone(), req);
+
+        // Use our SSE decoder to directly handle Server-Sent Events format
+        let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
+            let mut current_tool_call: Option<ToolCallState> = None;
+            let mut current_thinking: Option<ThinkingState> = None;
+            let mut sse_stream = Box::pin(stream);
+            let mut input_tokens = 0;
+            let mut final_usage = None;
+
+            let mut text_content = String::new();
+
+            while let Some(sse_result) = sse_stream.next().await {
+                match sse_result {
+                    Ok(Event::Open) => {}
+                    Ok(Event::Message(sse)) => {
+                        // Parse the SSE data as a StreamingEvent
+                        match serde_json::from_str::<StreamingEvent>(&sse.data) {
+                            Ok(event) => {
+                                match &event {
+                                    StreamingEvent::MessageStart { message } => {
+                                        input_tokens = message.usage.input_tokens;
+
+                                        let span = tracing::Span::current();
+                                        span.record("gen_ai.response.id", &message.id);
+                                        span.record("gen_ai.response.model_name", &message.model);
+                                    },
+                                    StreamingEvent::MessageDelta { delta, usage } => {
+                                        if delta.stop_reason.is_some() {
+                                            let usage = PartialUsage {
+                                                 output_tokens: usage.output_tokens,
+                                                 input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
+                                            };
+
+                                            let span = tracing::Span::current();
+                                            span.record_token_usage(&usage);
+                                            final_usage = Some(usage);
+                                            break;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+
+                                if let Some(result) = handle_event(&event, &mut current_tool_call, &mut current_thinking) {
+                                    if let Ok(RawStreamingChoice::Message(ref text)) = result {
+                                        text_content += text;
+                                    }
+                                    yield result;
+                                }
+                            },
+                            Err(e) => {
+                                if !sse.data.trim().is_empty() {
+                                    yield Err(CompletionError::ResponseError(
+                                        format!("Failed to parse JSON: {} (Data: {})", e, sse.data)
+                                    ));
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        yield Err(CompletionError::ProviderError(format!("SSE Error: {e}")));
+                        break;
+                    }
+                }
+            }
+
+            // Ensure event source is closed when stream ends
+            sse_stream.close();
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage.unwrap_or_default()
+            }))
+        }.instrument(span));
+
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
+    }
+}
+
+fn handle_event(
+    event: &StreamingEvent,
+    current_tool_call: &mut Option<ToolCallState>,
+    current_thinking: &mut Option<ThinkingState>,
+) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
+    match event {
+        StreamingEvent::ContentBlockDelta { delta, .. } => match delta {
+            ContentDelta::TextDelta { text } => {
+                if current_tool_call.is_none() {
+                    return Some(Ok(RawStreamingChoice::Message(text.clone())));
+                }
+                None
+            }
+            ContentDelta::InputJsonDelta { partial_json } => {
+                if let Some(tool_call) = current_tool_call {
+                    tool_call.input_json.push_str(partial_json);
+                    // Emit the delta so UI can show progress
+                    return Some(Ok(RawStreamingChoice::ToolCallDelta {
+                        id: tool_call.id.clone(),
+                        delta: partial_json.clone(),
+                    }));
+                }
+                None
+            }
+            ContentDelta::ThinkingDelta { thinking } => {
+                if current_thinking.is_none() {
+                    *current_thinking = Some(ThinkingState::default());
+                }
+
+                if let Some(state) = current_thinking {
+                    state.thinking.push_str(thinking);
+                }
+
+                Some(Ok(RawStreamingChoice::ReasoningDelta {
+                    id: None,
+                    reasoning: thinking.clone(),
+                }))
+            }
+            ContentDelta::SignatureDelta { signature } => {
+                if current_thinking.is_none() {
+                    *current_thinking = Some(ThinkingState::default());
+                }
+
+                if let Some(state) = current_thinking {
+                    state.signature.push_str(signature);
+                }
+
+                // Don't yield signature chunks, they will be included in the final Reasoning
+                None
+            }
+        },
+        StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
+            Content::ToolUse { id, name, .. } => {
+                *current_tool_call = Some(ToolCallState {
+                    name: name.clone(),
+                    id: id.clone(),
+                    input_json: String::new(),
+                });
+                None
+            }
+            Content::Thinking { .. } => {
+                *current_thinking = Some(ThinkingState::default());
+                None
+            }
+            // Handle other content types - they don't need special handling
+            _ => None,
+        },
+        StreamingEvent::ContentBlockStop { .. } => {
+            if let Some(thinking_state) = Option::take(current_thinking)
+                && !thinking_state.thinking.is_empty()
+            {
+                let signature = if thinking_state.signature.is_empty() {
+                    None
+                } else {
+                    Some(thinking_state.signature)
+                };
+
+                return Some(Ok(RawStreamingChoice::Reasoning {
+                    id: None,
+                    reasoning: thinking_state.thinking,
+                    signature,
+                }));
+            }
+
+            if let Some(tool_call) = Option::take(current_tool_call) {
+                let json_str = if tool_call.input_json.is_empty() {
+                    "{}"
+                } else {
+                    &tool_call.input_json
+                };
+                match serde_json::from_str(json_str) {
+                    Ok(json_value) => Some(Ok(RawStreamingChoice::ToolCall(
+                        RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value),
+                    ))),
+                    Err(e) => Some(Err(CompletionError::from(e))),
+                }
+            } else {
+                None
+            }
+        }
+        // Ignore other event types or handle as needed
+        StreamingEvent::MessageStart { .. }
+        | StreamingEvent::MessageDelta { .. }
+        | StreamingEvent::MessageStop
+        | StreamingEvent::Ping
+        | StreamingEvent::Unknown => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_thinking_delta_deserialization() {
+        let json = r#"{"type": "thinking_delta", "thinking": "Let me think about this..."}"#;
+        let delta: ContentDelta = serde_json::from_str(json).unwrap();
+
+        match delta {
+            ContentDelta::ThinkingDelta { thinking } => {
+                assert_eq!(thinking, "Let me think about this...");
+            }
+            _ => panic!("Expected ThinkingDelta variant"),
+        }
+    }
+
+    #[test]
+    fn test_signature_delta_deserialization() {
+        let json = r#"{"type": "signature_delta", "signature": "abc123def456"}"#;
+        let delta: ContentDelta = serde_json::from_str(json).unwrap();
+
+        match delta {
+            ContentDelta::SignatureDelta { signature } => {
+                assert_eq!(signature, "abc123def456");
+            }
+            _ => panic!("Expected SignatureDelta variant"),
+        }
+    }
+
+    #[test]
+    fn test_thinking_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "thinking_delta",
+                "thinking": "First, I need to understand the problem."
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+
+        match event {
+            StreamingEvent::ContentBlockDelta { index, delta } => {
+                assert_eq!(index, 0);
+                match delta {
+                    ContentDelta::ThinkingDelta { thinking } => {
+                        assert_eq!(thinking, "First, I need to understand the problem.");
+                    }
+                    _ => panic!("Expected ThinkingDelta"),
+                }
+            }
+            _ => panic!("Expected ContentBlockDelta event"),
+        }
+    }
+
+    #[test]
+    fn test_signature_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "signature_delta",
+                "signature": "ErUBCkYICBgCIkCaGbqC85F4"
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+
+        match event {
+            StreamingEvent::ContentBlockDelta { index, delta } => {
+                assert_eq!(index, 0);
+                match delta {
+                    ContentDelta::SignatureDelta { signature } => {
+                        assert_eq!(signature, "ErUBCkYICBgCIkCaGbqC85F4");
+                    }
+                    _ => panic!("Expected SignatureDelta"),
+                }
+            }
+            _ => panic!("Expected ContentBlockDelta event"),
+        }
+    }
+
+    #[test]
+    fn test_handle_thinking_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::ThinkingDelta {
+                thinking: "Analyzing the request...".to_string(),
+            },
+        };
+
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
+                assert_eq!(id, None);
+                assert_eq!(reasoning, "Analyzing the request...");
+            }
+            _ => panic!("Expected ReasoningDelta choice"),
+        }
+
+        // Verify thinking state was updated
+        assert!(thinking_state.is_some());
+        assert_eq!(thinking_state.unwrap().thinking, "Analyzing the request...");
+    }
+
+    #[test]
+    fn test_handle_signature_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::SignatureDelta {
+                signature: "test_signature".to_string(),
+            },
+        };
+
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        // SignatureDelta should not yield anything (returns None)
+        assert!(result.is_none());
+
+        // But signature should be captured in thinking state
+        assert!(thinking_state.is_some());
+        assert_eq!(thinking_state.unwrap().signature, "test_signature");
+    }
+
+    #[test]
+    fn test_handle_text_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::TextDelta {
+                text: "Hello, world!".to_string(),
+            },
+        };
+
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::Message(text) => {
+                assert_eq!(text, "Hello, world!");
+            }
+            _ => panic!("Expected Message choice"),
+        }
+    }
+
+    #[test]
+    fn test_thinking_delta_does_not_interfere_with_tool_calls() {
+        // Thinking deltas should still be processed even if a tool call is in progress
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::ThinkingDelta {
+                thinking: "Thinking while tool is active...".to_string(),
+            },
+        };
+
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::ReasoningDelta { reasoning, .. } => {
+                assert_eq!(reasoning, "Thinking while tool is active...");
+            }
+            _ => panic!("Expected ReasoningDelta choice"),
+        }
+
+        // Tool call state should remain unchanged
+        assert!(tool_call_state.is_some());
+    }
+
+    #[test]
+    fn test_handle_input_json_delta_event() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "{\"arg\":\"value".to_string(),
+            },
+        };
+
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        // Should emit a ToolCallDelta
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+
+        match choice {
+            RawStreamingChoice::ToolCallDelta { id, delta } => {
+                assert_eq!(id, "tool_123");
+                assert_eq!(delta, "{\"arg\":\"value");
+            }
+            _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
+        }
+
+        // Verify the input_json was accumulated
+        assert!(tool_call_state.is_some());
+        let state = tool_call_state.unwrap();
+        assert_eq!(state.input_json, "{\"arg\":\"value");
+    }
+
+    #[test]
+    fn test_tool_call_accumulation_with_multiple_deltas() {
+        let mut tool_call_state = Some(ToolCallState {
+            name: "test_tool".to_string(),
+            id: "tool_123".to_string(),
+            input_json: String::new(),
+        });
+        let mut thinking_state = None;
+
+        // First delta
+        let event1 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "{\"location\":".to_string(),
+            },
+        };
+        let result1 = handle_event(&event1, &mut tool_call_state, &mut thinking_state);
+        assert!(result1.is_some());
+
+        // Second delta
+        let event2 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "\"Paris\",".to_string(),
+            },
+        };
+        let result2 = handle_event(&event2, &mut tool_call_state, &mut thinking_state);
+        assert!(result2.is_some());
+
+        // Third delta
+        let event3 = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: "\"temp\":\"20C\"}".to_string(),
+            },
+        };
+        let result3 = handle_event(&event3, &mut tool_call_state, &mut thinking_state);
+        assert!(result3.is_some());
+
+        // Verify accumulated JSON
+        assert!(tool_call_state.is_some());
+        let state = tool_call_state.as_ref().unwrap();
+        assert_eq!(
+            state.input_json,
+            "{\"location\":\"Paris\",\"temp\":\"20C\"}"
+        );
+
+        // Final ContentBlockStop should emit complete tool call
+        let stop_event = StreamingEvent::ContentBlockStop { index: 0 };
+        let final_result = handle_event(&stop_event, &mut tool_call_state, &mut thinking_state);
+        assert!(final_result.is_some());
+
+        match final_result.unwrap().unwrap() {
+            RawStreamingChoice::ToolCall(RawStreamingToolCall {
+                id,
+                name,
+                arguments,
+                ..
+            }) => {
+                assert_eq!(id, "tool_123");
+                assert_eq!(name, "test_tool");
+                assert_eq!(
+                    arguments.get("location").unwrap().as_str().unwrap(),
+                    "Paris"
+                );
+                assert_eq!(arguments.get("temp").unwrap().as_str().unwrap(), "20C");
+            }
+            other => panic!("Expected ToolCall, got {:?}", other),
+        }
+
+        // Tool call state should be taken
+        assert!(tool_call_state.is_none());
+    }
+}
