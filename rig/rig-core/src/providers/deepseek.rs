@@ -794,6 +794,8 @@ where
 // ================================================================
 // DeepSeek Completion API
 // ================================================================
+pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
+pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
 pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 
