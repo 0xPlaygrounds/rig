@@ -390,7 +390,7 @@ where
     /// let result = vector_store_index
     ///     .top_n::<String>("My boss says I zindle too much, what does that mean?", 1)
     ///     .await?;
-    /// ```ignore
+    /// ```
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
