@@ -14,7 +14,7 @@ use crate::reasoning::{self, WeatherTool};
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = deepseek::Client::from_env();
+    let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
         .agent(deepseek::DEEPSEEK_REASONER)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
@@ -43,7 +43,7 @@ async fn streaming() {
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = deepseek::Client::from_env();
+    let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
         .agent(deepseek::DEEPSEEK_REASONER)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)

@@ -324,7 +324,7 @@ where
                                             // Anthropic streaming API spec — use them directly.
                                             let usage = PartialUsage {
                                                  output_tokens: usage.output_tokens,
-                                                 input_tokens: Some(input_tokens.try_into().expect("Failed to convert input_tokens to usize")),
+                                                 input_tokens: usize::try_from(input_tokens).ok(),
                                                  cache_creation_input_tokens: usage.cache_creation_input_tokens,
                                                  cache_read_input_tokens: usage.cache_read_input_tokens
                                             };

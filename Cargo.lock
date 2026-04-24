@@ -9446,6 +9446,7 @@ dependencies = [
 name = "rig-derive"
 version = "0.1.12"
 dependencies = [
+ "anyhow",
  "convert_case",
  "deluxe",
  "indoc",
@@ -9499,6 +9500,7 @@ dependencies = [
 name = "rig-helixdb"
 version = "0.2.4"
 dependencies = [
+ "anyhow",
  "helix-rs",
  "rig-core",
  "serde",

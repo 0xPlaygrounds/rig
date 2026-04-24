@@ -11,7 +11,7 @@ use crate::support::{AUDIO_TEXT, assert_nonempty_bytes};
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn audio_generation_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let model = client.audio_generation_model(xai::TTS_1);
 
     let response = model

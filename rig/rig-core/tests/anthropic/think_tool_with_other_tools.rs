@@ -311,8 +311,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
         )
         .max_turns(10)
         .extended_details()
-        .await
-        .expect("prompt should succeed");
+        .await?;
 
     assert_mentions_expected_number(&response.output, 25);
     assert_contains_any_case_insensitive(
@@ -320,22 +319,22 @@ async fn think_tool_with_other_tools() -> Result<()> {
         &["out of stock", "express shipping", "110.99", "$110.99"],
     );
 
-    assert!(
+    anyhow::ensure!(
         calculator_calls.load(Ordering::SeqCst) >= 1,
         "calculator should be invoked at least once"
     );
-    assert!(
+    anyhow::ensure!(
         database_lookup_calls.load(Ordering::SeqCst) >= 2,
         "database lookup should be invoked for both shipping and inventory"
     );
 
     let messages = response
         .messages
-        .expect("extended details should include messages");
+        .ok_or_else(|| anyhow::anyhow!("extended details should include messages"))?;
     let tool_calls = collect_assistant_tool_calls(&messages);
 
     for tool_name in ["think", "calculator", "database_lookup"] {
-        assert!(
+        anyhow::ensure!(
             tool_calls.iter().any(|(name, _)| name == tool_name),
             "expected a {tool_name} tool call, saw {:?}",
             tool_calls
@@ -350,11 +349,11 @@ async fn think_tool_with_other_tools() -> Result<()> {
         .filter(|(name, _)| name == "database_lookup")
         .filter_map(|(_, args)| args.get("query").and_then(|value| value.as_str()))
         .collect::<Vec<_>>();
-    assert!(
+    anyhow::ensure!(
         queries.contains(&"product_inventory"),
         "expected product_inventory lookup, saw {queries:?}"
     );
-    assert!(
+    anyhow::ensure!(
         queries.contains(&"shipping_rates"),
         "expected shipping_rates lookup, saw {queries:?}"
     );

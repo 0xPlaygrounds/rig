@@ -71,6 +71,7 @@ where
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = groq::Client::from_env()
+        .expect("client should build")
         .agent(REQUEST_HOOK_MODEL)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
@@ -89,8 +90,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         .await?;
 
     assert_nonempty_response(&response);
-    assert_eq!(hook.prompt_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(hook.response_calls.load(Ordering::SeqCst), 1);
+    anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);
+    anyhow::ensure!(hook.response_calls.load(Ordering::SeqCst) == 1);
 
     let seen_prompt = hook
         .seen_prompt
@@ -103,12 +104,12 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         .map_err(|_| anyhow!("response hook state unavailable"))?
         .clone();
 
-    assert!(
+    anyhow::ensure!(
         seen_prompt
             .as_deref()
             .is_some_and(|prompt| prompt.contains("Entertain me!"))
     );
-    assert!(
+    anyhow::ensure!(
         seen_response
             .as_deref()
             .is_some_and(|captured| !captured.is_empty())

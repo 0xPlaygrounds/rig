@@ -13,7 +13,10 @@ struct ClientAttr {
 pub fn provider_client(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let ident = &input.ident;
-    let attrs = ClientAttr::parse_attributes(&input.attrs).unwrap();
+    let attrs = match ClientAttr::parse_attributes(&input.attrs) {
+        Ok(attrs) => attrs,
+        Err(error) => return error.into_compile_error().into(),
+    };
     let features: Vec<String> = attrs.features.unwrap_or_default();
 
     struct FeatureInfo {

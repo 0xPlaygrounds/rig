@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use serde_json::json;
 use testcontainers::{
     GenericImage,
@@ -22,6 +30,16 @@ const QDRANT_PORT: u16 = 6333;
 const QDRANT_PORT_SECONDARY: u16 = 6334;
 const COLLECTION_NAME: &str = "rig-collection";
 
+fn skip_if_docker_unavailable(test_name: &str) -> bool {
+    let docker_socket = std::path::Path::new("/var/run/docker.sock");
+    if std::env::var_os("DOCKER_HOST").is_some() || docker_socket.exists() {
+        return false;
+    }
+
+    eprintln!("skipping {test_name}: Docker is unavailable");
+    true
+}
+
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {
     id: String,
@@ -31,6 +49,10 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
+    if skip_if_docker_unavailable("vector_search_test") {
+        return;
+    }
+
     // Setup a local qdrant container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("qdrant/qdrant", "latest")
         .with_wait_for(WaitFor::Duration {

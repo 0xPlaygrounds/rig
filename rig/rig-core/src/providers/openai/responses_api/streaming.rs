@@ -346,7 +346,12 @@ impl RawChoiceAccumulator {
                 if options.errors_on_terminal_response() =>
             {
                 let error_message = response_chunk_error_message(&kind, &response, provider_name)
-                    .expect("terminal response should have an error message");
+                    .unwrap_or_else(|| {
+                        format!(
+                            "{provider_name} returned terminal response {:?} without an error message",
+                            kind
+                        )
+                    });
                 Err(CompletionError::ProviderError(error_message))
             }
             _ => Ok(()),
@@ -507,11 +512,13 @@ pub(crate) fn raw_choices_from_sse_body(
             Some("response.completed") | Some("response.failed") | Some("response.incomplete") => {
                 if let Some(response) = value.get("response").cloned() {
                     let response = serde_json::from_value::<CompletionResponse>(response)?;
-                    let kind = match value.get("type").and_then(serde_json::Value::as_str) {
-                        Some("response.completed") => ResponseChunkKind::ResponseCompleted,
-                        Some("response.failed") => ResponseChunkKind::ResponseFailed,
-                        Some("response.incomplete") => ResponseChunkKind::ResponseIncomplete,
-                        _ => unreachable!("filtered above"),
+                    let Some(kind) = (match value.get("type").and_then(serde_json::Value::as_str) {
+                        Some("response.completed") => Some(ResponseChunkKind::ResponseCompleted),
+                        Some("response.failed") => Some(ResponseChunkKind::ResponseFailed),
+                        Some("response.incomplete") => Some(ResponseChunkKind::ResponseIncomplete),
+                        _ => None,
+                    }) else {
+                        continue;
                     };
                     accumulator.record_response_chunk(kind, response, provider_name, options)?;
                 }
@@ -649,7 +656,13 @@ where
                     let data = serde_json::from_str::<StreamingCompletionChunk>(&evt.data);
 
                     let Ok(data) = data else {
-                        debug!("Couldn't deserialize SSE data as StreamingCompletionChunk: {:?}", data.unwrap_err());
+                        let Err(err) = data else {
+                            continue;
+                        };
+                        debug!(
+                            "Couldn't deserialize SSE data as StreamingCompletionChunk: {:?}",
+                            err
+                        );
                         continue;
                     };
 

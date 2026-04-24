@@ -96,21 +96,22 @@ impl Client {
 
 impl ProviderClient for Client {
     type Input = Nothing;
+    type Error = rig::client::ProviderClientError;
 
-    fn from_env() -> Self
+    fn from_env() -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        Client::new()
+        Ok(Client::new())
     }
 
-    fn from_val(_: Nothing) -> Self
+    fn from_val(_: Nothing) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        panic!(
-            "Please use `Client::from_env` or `Client::with_profile_name(\"aws_profile\")` instead"
-        );
+        Err(rig::client::ProviderClientError::InvalidConfiguration(
+            "use `Client::from_env()` or `Client::with_profile_name(\"aws_profile\")` instead",
+        ))
     }
 }
 

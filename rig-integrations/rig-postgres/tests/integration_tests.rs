@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use rig::client::EmbeddingsClient;
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
@@ -18,6 +26,16 @@ use testcontainers::{
 
 const POSTGRES_PORT: u16 = 5432;
 
+fn skip_if_docker_unavailable(test_name: &str) -> bool {
+    let docker_socket = std::path::Path::new("/var/run/docker.sock");
+    if std::env::var_os("DOCKER_HOST").is_some() || docker_socket.exists() {
+        return false;
+    }
+
+    eprintln!("skipping {test_name}: Docker is unavailable");
+    true
+}
+
 #[derive(Embed, Clone, Serialize, Deserialize, Debug, PartialEq)]
 struct Word {
     id: String,
@@ -28,6 +46,10 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
+    if skip_if_docker_unavailable("vector_search_test") {
+        return;
+    }
+
     let container = start_container().await;
 
     let host = container.get_host().await.unwrap().to_string();

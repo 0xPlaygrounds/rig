@@ -59,8 +59,7 @@ async fn main() -> Result<()> {
     let client = ollama::Client::builder()
         .api_key(Nothing)
         .base_url("http://localhost:11434/v1")
-        .build()
-        .unwrap();
+        .build()?;
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("rig-core/examples/documents");

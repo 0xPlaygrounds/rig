@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env();
+    let client = Client::from_env()?;
     let agent = client
         .agent(AMAZON_NOVA_LITE)
         .preamble("Describe this document")

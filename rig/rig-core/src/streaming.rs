@@ -45,11 +45,11 @@ impl PauseControl {
     }
 
     pub fn pause(&self) {
-        self.paused_tx.send(true).unwrap();
+        let _ = self.paused_tx.send(true);
     }
 
     pub fn resume(&self) {
-        self.paused_tx.send(false).unwrap();
+        let _ = self.paused_tx.send(false);
     }
 
     pub fn is_paused(&self) -> bool {
@@ -331,8 +331,11 @@ where
                     stream.assistant_items.push(AssistantContent::text(""));
                 }
 
-                stream.choice = OneOrMany::many(std::mem::take(&mut stream.assistant_items))
-                    .expect("There should be at least one assistant message");
+                if let Some(choice) =
+                    OneOrMany::from_iter_optional(std::mem::take(&mut stream.assistant_items))
+                {
+                    stream.choice = choice;
+                }
 
                 Poll::Ready(None)
             }
@@ -571,9 +574,10 @@ where
                 println!("\nResult: {res}");
             }
             Ok(StreamedAssistantContent::Final(res)) => {
-                let json_res = serde_json::to_string_pretty(&res).unwrap();
-                println!();
-                tracing::info!("Final result: {json_res}");
+                if let Ok(json_res) = serde_json::to_string_pretty(&res) {
+                    println!();
+                    tracing::info!("Final result: {json_res}");
+                }
             }
             Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                 if !is_reasoning {

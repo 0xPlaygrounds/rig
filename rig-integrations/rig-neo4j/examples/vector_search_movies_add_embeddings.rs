@@ -36,12 +36,12 @@ const INDEX_NAME: &str = "moviePlots";
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-    let openai_client: Client = Client::new(&openai_api_key).unwrap();
+    let openai_api_key = env::var("OPENAI_API_KEY")?;
+    let openai_client: Client = Client::new(&openai_api_key)?;
 
-    let neo4j_uri = env::var("NEO4J_URI").expect("NEO4J_URI not set");
-    let neo4j_username = env::var("NEO4J_USERNAME").expect("NEO4J_USERNAME not set");
-    let neo4j_password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD not set");
+    let neo4j_uri = env::var("NEO4J_URI")?;
+    let neo4j_username = env::var("NEO4J_USERNAME")?;
+    let neo4j_password = env::var("NEO4J_PASSWORD")?;
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
@@ -147,11 +147,15 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 async fn import_batch(graph: &Graph, nodes: &[Movie], batch_n: i32) -> Result<(), anyhow::Error> {
-    let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
+    let openai_api_key = env::var("OPENAI_API_KEY")?;
     let to_encode_list: Vec<String> = nodes
         .iter()
-        .map(|node| node.to_encode.clone().unwrap())
-        .collect();
+        .map(|node| {
+            node.to_encode
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("movie payload missing text to encode"))
+        })
+        .collect::<Result<_, _>>()?;
 
     graph.run(
         Query::new(format!(

@@ -35,10 +35,10 @@ impl Tool for Add {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "add",
-            "description": "Add x and y together",
-            "parameters": {
+        ToolDefinition {
+            name: "add".to_string(),
+            description: "Add x and y together".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -50,9 +50,8 @@ impl Tool for Add {
                         "description": "The second number to add"
                     }
                 }
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -88,10 +87,10 @@ impl Tool for Subtract {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "subtract",
-            "description": "Subtract y from x (i.e.: x - y)",
-            "parameters": {
+        ToolDefinition {
+            name: "subtract".to_string(),
+            description: "Subtract y from x (i.e.: x - y)".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -103,9 +102,8 @@ impl Tool for Subtract {
                         "description": "The number to subtract"
                     }
                 }
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -140,7 +138,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 

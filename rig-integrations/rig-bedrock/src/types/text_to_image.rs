@@ -112,9 +112,12 @@ impl TryFrom<TextToImageResponse>
         }
 
         if let Some(images) = value.to_owned().images {
+            let image = images.first().ok_or_else(|| {
+                ImageGenerationError::ResponseError("Bedrock image response was empty".into())
+            })?;
             let data = BASE64_STANDARD
-                .decode(&images[0])
-                .expect("Could not decode image.");
+                .decode(image)
+                .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
 
             return Ok(Self {
                 image: data,

@@ -17,7 +17,7 @@ use crate::reasoning::{self, WeatherTool};
 #[ignore = "requires XAI_API_KEY - validate with grok-4-0725 once key is available"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let agent = client
         .agent(xai::GROK_3_MINI)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
@@ -38,7 +38,7 @@ async fn streaming() {
 #[ignore = "requires XAI_API_KEY - validate with grok-4-0725 once key is available"]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let agent = client
         .agent(xai::GROK_3_MINI)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)

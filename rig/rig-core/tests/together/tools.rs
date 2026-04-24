@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn tools_smoke() {
-    let client = together::Client::from_env();
+    let client = together::Client::from_env().expect("client should build");
     let agent = client
         .agent(together::MIXTRAL_8X7B_INSTRUCT_V0_1)
         .preamble(TOOLS_PREAMBLE)

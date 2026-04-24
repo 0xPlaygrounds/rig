@@ -22,12 +22,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create ScyllaDB session
     // In production, you would use your ScyllaDB cluster endpoints
-    let session = create_session("127.0.0.1:9042")
-        .await
-        .expect("Failed to create ScyllaDB session");
+    let session = create_session("127.0.0.1:9042").await?;
 
     // Create OpenAI client and embedding model
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create ScyllaDB vector store
@@ -38,8 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "words",            // table
         1536,               // dimensions for text-embedding-ada-002
     )
-    .await
-    .expect("Failed to create ScyllaDB vector store");
+    .await?;
 
     // Create sample word definitions
     let words = vec![
@@ -86,8 +83,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     vector_store
         .insert_documents(documents_with_embeddings)
-        .await
-        .expect("Failed to insert documents");
+        .await?;
 
     tracing::info!("Documents inserted successfully!");
 
@@ -99,10 +95,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
     tracing::info!("Searching for: '{}'", query);
 
-    let results = vector_store
-        .top_n::<Word>(req.clone())
-        .await
-        .expect("Failed to search vectors");
+    let results = vector_store.top_n::<Word>(req.clone()).await?;
 
     tracing::info!("Top 3 similar definitions:");
     for (i, (score, id, word)) in results.iter().enumerate() {
@@ -117,10 +110,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Test ID-only search
     tracing::info!("Searching for IDs only...");
-    let id_results = vector_store
-        .top_n_ids(req)
-        .await
-        .expect("Failed to search vector IDs");
+    let id_results = vector_store.top_n_ids(req).await?;
 
     tracing::info!("Top 2 similar document IDs:");
     for (i, (score, id)) in id_results.iter().enumerate() {
@@ -135,10 +125,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .samples(2)
         .build();
 
-    let db_results = vector_store
-        .top_n::<Word>(req)
-        .await
-        .expect("Failed to search vectors");
+    let db_results = vector_store.top_n::<Word>(req).await?;
 
     tracing::info!("Top 2 similar definitions:");
     for (i, (score, id, word)) in db_results.iter().enumerate() {

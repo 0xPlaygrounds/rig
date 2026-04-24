@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires GALADRIEL_API_KEY"]
 async fn completion_smoke() {
-    let client = galadriel::Client::from_env();
+    let client = galadriel::Client::from_env().expect("galadriel client should build");
     let agent = client
         .agent(galadriel::GPT_4O)
         .preamble(BASIC_PREAMBLE)

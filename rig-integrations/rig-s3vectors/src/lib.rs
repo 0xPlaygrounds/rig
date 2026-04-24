@@ -220,21 +220,17 @@ fn document_to_json_value(value: &Document) -> Value {
     match value {
         Document::Null => Value::Null,
         Document::Bool(b) => Value::Bool(*b),
-        Document::Number(n) => {
-            let res = match n {
-                aws_smithy_types::Number::Float(f) => {
-                    serde_json::Number::from_f64(f.to_owned()).unwrap()
-                }
-                aws_smithy_types::Number::NegInt(i) => {
-                    serde_json::Number::from_i128(*i as i128).unwrap()
-                }
-                aws_smithy_types::Number::PosInt(u) => {
-                    serde_json::Number::from_u128(*u as u128).unwrap()
-                }
-            };
-
-            serde_json::Value::Number(res)
-        }
+        Document::Number(n) => match n {
+            aws_smithy_types::Number::Float(f) => serde_json::Number::from_f64(*f)
+                .map(Value::Number)
+                .unwrap_or_else(|| Value::String(f.to_string())),
+            aws_smithy_types::Number::NegInt(i) => {
+                serde_json::Value::Number(serde_json::Number::from(*i))
+            }
+            aws_smithy_types::Number::PosInt(u) => {
+                serde_json::Value::Number(serde_json::Number::from(*u))
+            }
+        },
         Document::String(s) => Value::String(s.clone()),
         Document::Array(arr) => Value::Array(arr.iter().map(document_to_json_value).collect()),
         Document::Object(obj) => {
@@ -285,29 +281,41 @@ where
             query_builder = query_builder.filter(filter.inner().clone())
         }
 
-        let query = query_builder.send().await.unwrap();
+        let query = query_builder
+            .send()
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let res: Vec<(f64, String, T)> = query
             .vectors
             .into_iter()
-            .filter(|vector| {
-                req.threshold().is_none_or(|threshold| {
-                    (vector
-                        .distance()
-                        .expect("vector distance should always exist") as f64)
-                        >= threshold
-                })
-            })
             .map(|x| {
-                let distance = x.distance.expect("vector distance should always exist") as f64;
-                let val =
-                    document_to_json_value(&x.metadata.expect("metadata should always exist"));
+                let distance = x.distance.ok_or_else(|| {
+                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                        "S3Vectors response missing distance",
+                    )))
+                })? as f64;
 
-                let metadata: T = serde_json::from_value(val)
-                    .expect("converting JSON from S3Vectors to valid T should always work");
+                if req
+                    .threshold()
+                    .is_some_and(|threshold| distance < threshold)
+                {
+                    return Ok(None);
+                }
 
-                (distance, x.key, metadata)
+                let metadata_document = x.metadata.ok_or_else(|| {
+                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                        "S3Vectors response missing metadata",
+                    )))
+                })?;
+                let val = document_to_json_value(&metadata_document);
+                let metadata: T = serde_json::from_value(val)?;
+
+                Ok(Some((distance, x.key, metadata)))
             })
+            .collect::<Result<Vec<_>, VectorStoreError>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         Ok(res)
@@ -343,24 +351,33 @@ where
             query_builder = query_builder.filter(filter.inner().clone())
         }
 
-        let query = query_builder.send().await.unwrap();
+        let query = query_builder
+            .send()
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         let res: Vec<(f64, String)> = query
             .vectors
             .into_iter()
-            .filter(|vector| {
-                req.threshold().is_none_or(|threshold| {
-                    (vector
-                        .distance()
-                        .expect("vector distance should always exist") as f64)
-                        >= threshold
-                })
-            })
             .map(|x| {
-                let distance = x.distance.expect("vector distance should always exist") as f64;
+                let distance = x.distance.ok_or_else(|| {
+                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
+                        "S3Vectors response missing distance",
+                    )))
+                })? as f64;
 
-                (distance, x.key)
+                if req
+                    .threshold()
+                    .is_some_and(|threshold| distance < threshold)
+                {
+                    return Ok(None);
+                }
+
+                Ok(Some((distance, x.key)))
             })
+            .collect::<Result<Vec<_>, VectorStoreError>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         Ok(res)

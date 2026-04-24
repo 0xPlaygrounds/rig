@@ -130,7 +130,8 @@ impl<E: EmbeddingModel + Send + Sync> VectorStoreIndex for RedisVectorStore<E> {
                 .map(serde_json::from_str)
                 .transpose()
                 .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-                .unwrap_or_else(|| serde_json::from_str("{}").unwrap());
+                .map_or_else(|| serde_json::from_str("{}"), Ok)
+                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
             output.push((score, id, metadata));
         }
@@ -180,7 +181,7 @@ struct Document {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client from environment
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_env()?;
     // Convert it to an EmbeddingModel
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 

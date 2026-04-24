@@ -48,7 +48,9 @@ impl LineDecoder {
             if let Some(cr_index) = self.carriage_return_index {
                 if pattern_index.index != cr_index + 1 || pattern_index.carriage {
                     if cr_index > 0 {
-                        let line = decode_text(&self.buffer[0..cr_index - 1]);
+                        let line = decode_text(
+                            self.buffer.get(..cr_index.saturating_sub(1)).unwrap_or(&[]),
+                        );
                         lines.push(line);
                     } else {
                         // Handle edge case for carriage return at beginning
@@ -56,7 +58,7 @@ impl LineDecoder {
                     }
 
                     if cr_index < self.buffer.len() {
-                        self.buffer = self.buffer[cr_index..].to_vec();
+                        self.buffer = self.buffer.get(cr_index..).unwrap_or(&[]).to_vec();
                     } else {
                         self.buffer.clear();
                     }
@@ -72,14 +74,18 @@ impl LineDecoder {
             };
 
             if end_index > 0 {
-                let line = decode_text(&self.buffer[0..end_index]);
+                let line = decode_text(self.buffer.get(..end_index).unwrap_or(&[]));
                 lines.push(line);
             } else {
                 lines.push(String::new());
             }
 
             if pattern_index.index < self.buffer.len() {
-                self.buffer = self.buffer[pattern_index.index..].to_vec();
+                self.buffer = self
+                    .buffer
+                    .get(pattern_index.index..)
+                    .unwrap_or(&[])
+                    .to_vec();
             } else {
                 self.buffer.clear();
             }
@@ -138,24 +144,18 @@ pub fn find_double_newline_index(buffer: &[u8]) -> isize {
     const NEWLINE: u8 = 0x0a; // \n
     const CARRIAGE: u8 = 0x0d; // \r
 
-    for i in 0..buffer.len().saturating_sub(1) {
-        // Check for \n\n pattern
-        if buffer[i] == NEWLINE && buffer[i + 1] == NEWLINE {
+    for (i, window) in buffer.windows(2).enumerate() {
+        if window == [NEWLINE, NEWLINE] {
             return (i + 2) as isize;
         }
 
-        // Check for \r\r pattern
-        if buffer[i] == CARRIAGE && buffer[i + 1] == CARRIAGE {
+        if window == [CARRIAGE, CARRIAGE] {
             return (i + 2) as isize;
         }
+    }
 
-        // Check for \r\n\r\n pattern
-        if i + 3 < buffer.len()
-            && buffer[i] == CARRIAGE
-            && buffer[i + 1] == NEWLINE
-            && buffer[i + 2] == CARRIAGE
-            && buffer[i + 3] == NEWLINE
-        {
+    for (i, window) in buffer.windows(4).enumerate() {
+        if window == [CARRIAGE, NEWLINE, CARRIAGE, NEWLINE] {
             return (i + 4) as isize;
         }
     }

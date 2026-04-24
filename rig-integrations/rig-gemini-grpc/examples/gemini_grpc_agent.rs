@@ -11,7 +11,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Initialize the Google Gemini gRPC client
-    let client = Client::from_env();
+    let client = Client::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
 
     // Create agent with a single context prompt
     let agent = client

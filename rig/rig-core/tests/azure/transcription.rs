@@ -10,7 +10,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires AZURE_OPENAI_API_KEY and related Azure env vars"]
 async fn transcription_smoke() {
-    let client = azure::Client::from_env();
+    let client = azure::Client::from_env().expect("client should build");
     let model = client.transcription_model("whisper");
     let response = model
         .transcription_request()

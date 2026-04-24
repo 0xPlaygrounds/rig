@@ -70,10 +70,10 @@ impl Tool for Subtract {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "subtract",
-            "description": "Subtract y from x (i.e.: x - y)",
-            "parameters": {
+        ToolDefinition {
+            name: "subtract".to_string(),
+            description: "Subtract y from x (i.e.: x - y)".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -86,9 +86,8 @@ impl Tool for Subtract {
                     }
                 },
                 "required": ["x", "y"],
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -127,7 +126,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::openai::Client::from_env()
+    let calculator_agent = providers::openai::Client::from_env()?
         .agent(providers::openai::GPT_4O)
         .preamble(
             "You are a calculator here to help the user perform arithmetic

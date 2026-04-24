@@ -29,7 +29,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(openai::GPT_4O_MINI)
         .preamble("Extract names from the given text.")
@@ -73,7 +73,7 @@ async fn batch_multi_extract_chain() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(responses.len(), 3);
+    anyhow::ensure!(responses.len() == 3);
     for response in responses {
         assert_nonempty_response(&response);
     }

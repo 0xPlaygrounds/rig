@@ -184,15 +184,17 @@ fn bind_value<S>(
     value: Value,
 ) -> QueryAs<'_, Postgres, S, PgArguments> {
     match value {
-        Value::Null => unreachable!(),
+        Value::Null => builder.bind(Option::<String>::None),
         Value::Bool(b) => builder.bind(b),
         Value::Number(num) => {
             if let Some(n) = num.as_f64() {
                 builder.bind(n)
             } else if let Some(n) = num.as_i64() {
                 builder.bind(n)
+            } else if let Some(n) = num.as_u64() {
+                builder.bind(n as i64)
             } else {
-                unreachable!()
+                builder.bind(num.to_string())
             }
         }
         Value::String(s) => builder.bind(s),
@@ -341,7 +343,7 @@ where
     ) -> Result<(), VectorStoreError> {
         for (document, embeddings) in documents {
             let id = Uuid::new_v4();
-            let json_document = serde_json::to_value(&document).unwrap();
+            let json_document = serde_json::to_value(&document)?;
 
             for embedding in embeddings {
                 let embedding_text = embedding.document;

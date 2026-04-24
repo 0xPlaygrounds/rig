@@ -35,7 +35,7 @@ fn pdf_document() -> Document {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn image_analysis_prompt() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client
         .agent(VISION_MODEL)
         .preamble("You are a helpful assistant that describes images in detail.")
@@ -58,7 +58,7 @@ async fn image_analysis_prompt() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn pdf_analysis_prompt() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client
         .agent(VISION_MODEL)
         .preamble("You are a helpful assistant that summarizes documents.")
@@ -81,7 +81,7 @@ async fn pdf_analysis_prompt() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn mixed_multimodal_prompt() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client
         .agent(VISION_MODEL)
         .preamble("You are a helpful assistant.")

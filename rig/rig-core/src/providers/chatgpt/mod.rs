@@ -5,11 +5,15 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::client::CompletionClient;
+//! use rig::client::{CompletionClient, ProviderClient};
 //! use rig::providers::chatgpt;
 //!
-//! let client = chatgpt::Client::from_env();
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = chatgpt::Client::from_env()?;
 //! let model = client.completion_model(chatgpt::GPT_5_3_CODEX);
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
 
 mod auth;
@@ -209,32 +213,33 @@ impl ProviderBuilder for ChatGPTBuilder {
 
 impl ProviderClient for Client {
     type Input = ChatGPTAuth;
+    type Error = crate::client::ProviderClientError;
 
-    fn from_env() -> Self {
+    fn from_env() -> Result<Self, Self::Error> {
         let mut builder = Self::builder();
 
-        if let Ok(base_url) =
-            std::env::var("CHATGPT_API_BASE").or_else(|_| std::env::var("OPENAI_CHATGPT_API_BASE"))
+        if let Some(base_url) = crate::client::optional_env_var("CHATGPT_API_BASE")?
+            .or(crate::client::optional_env_var("OPENAI_CHATGPT_API_BASE")?)
         {
             builder = builder.base_url(base_url);
         }
 
-        if let Ok(access_token) = std::env::var("CHATGPT_ACCESS_TOKEN") {
-            let account_id = std::env::var("CHATGPT_ACCOUNT_ID").ok();
+        if let Some(access_token) = crate::client::optional_env_var("CHATGPT_ACCESS_TOKEN")? {
+            let account_id = crate::client::optional_env_var("CHATGPT_ACCOUNT_ID")?;
             builder
                 .api_key(ChatGPTAuth::AccessToken {
                     access_token,
                     account_id,
                 })
                 .build()
-                .unwrap()
+                .map_err(Into::into)
         } else {
-            builder.oauth().build().unwrap()
+            builder.oauth().build().map_err(Into::into)
         }
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::builder().api_key(input).build().unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::builder().api_key(input).build().map_err(Into::into)
     }
 }
 

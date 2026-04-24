@@ -9,8 +9,18 @@ use serenity::all::{
     GatewayIntents, Interaction, Message, Ready, async_trait,
 };
 use std::collections::HashMap;
+use std::env;
 use std::sync::Arc;
+use thiserror::Error;
 use tokio::sync::RwLock;
+
+#[derive(Debug, Error)]
+pub enum DiscordBotError {
+    #[error("Discord bot token missing from environment: {0}")]
+    MissingToken(#[from] env::VarError),
+    #[error("Failed to build Discord client: {0}")]
+    ClientBuild(#[from] serenity::Error),
+}
 
 // Bot state containing the agent and conversation histories
 struct BotState<M: CompletionModel> {
@@ -223,15 +233,15 @@ where
     fn into_discord_bot(
         self,
         token: &str,
-    ) -> impl std::future::Future<Output = serenity::Client> + Send;
+    ) -> impl std::future::Future<Output = Result<serenity::Client, DiscordBotError>> + Send;
 
     fn into_discord_bot_from_env(
         self,
-    ) -> impl std::future::Future<Output = serenity::Client> + Send {
-        let token = std::env::var("DISCORD_BOT_TOKEN")
-            .expect("DISCORD_BOT_TOKEN should exist as an env var");
-
-        async move { DiscordExt::into_discord_bot(self, &token).await }
+    ) -> impl std::future::Future<Output = Result<serenity::Client, DiscordBotError>> + Send {
+        async move {
+            let token = std::env::var("DISCORD_BOT_TOKEN")?;
+            DiscordExt::into_discord_bot(self, &token).await
+        }
     }
 }
 
@@ -239,7 +249,7 @@ impl<M> DiscordExt for Agent<M>
 where
     M: CompletionModel + Send + Sync + 'static,
 {
-    async fn into_discord_bot(self, token: &str) -> serenity::Client {
+    async fn into_discord_bot(self, token: &str) -> Result<serenity::Client, DiscordBotError> {
         let intents = GatewayIntents::GUILDS
             | GatewayIntents::GUILD_MESSAGES
             | GatewayIntents::MESSAGE_CONTENT;
@@ -252,6 +262,6 @@ where
         serenity::Client::builder(token, intents)
             .event_handler(handler)
             .await
-            .expect("Failed to create Discord client")
+            .map_err(DiscordBotError::from)
     }
 }

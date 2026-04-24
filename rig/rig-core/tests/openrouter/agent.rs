@@ -11,7 +11,7 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn completion_smoke() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client.agent(DEFAULT_MODEL).preamble(BASIC_PREAMBLE).build();
 
     let response = agent

@@ -11,7 +11,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY - validate with grok-4-0725 once key is available"]
 async fn streaming() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
         client.completion_model(xai::GROK_3_MINI),
         None,
@@ -22,7 +22,7 @@ async fn streaming() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY - validate with grok-4-0725 once key is available"]
 async fn nonstreaming() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
         client.completion_model(xai::GROK_3_MINI),
         None,

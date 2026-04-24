@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
         .init();
 
     let use_streaming = std::env::args().any(|arg| arg == "--stream");
-    let client = gemini::Client::from_env().interactions_api();
+    let client = gemini::Client::from_env()?.interactions_api();
     let model = client.completion_model("gemini-3-pro-preview");
     let prompt = "Research the history of Google TPUs.";
 

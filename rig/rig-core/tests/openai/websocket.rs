@@ -24,7 +24,7 @@ fn extract_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let model_name = openai::GPT_4O_MINI;
     let model = client.completion_model(model_name);
     let mut session = client.responses_websocket(model_name).await?;
@@ -34,7 +34,7 @@ async fn websocket_session_roundtrip() -> Result<()> {
         .preamble("Be precise and concise.".to_string())
         .build();
     let warmup_id = session.warmup(warmup_request).await?;
-    assert!(!warmup_id.is_empty(), "warmup should return a response id");
+    anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
 
     let request = model
         .completion_request("Explain the benefit of websocket mode in one sentence.")

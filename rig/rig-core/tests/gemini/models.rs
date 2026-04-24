@@ -6,13 +6,11 @@ use rig::providers::gemini;
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn list_models_smoke() {
-    let client = gemini::Client::from_env();
-    let models = match client.list_models().await {
-        Ok(models) => models,
-        Err(error) => {
-            panic!("listing Gemini models should succeed\nDisplay: {error}\nDebug: {error:#?}")
-        }
-    };
+    let client = gemini::Client::from_env().expect("client should build");
+    let models = client
+        .list_models()
+        .await
+        .expect("listing Gemini models should succeed");
 
     println!("Gemini returned {} models", models.len());
 

@@ -61,7 +61,7 @@ impl Tool for StatusWordTool {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let model = client.completion_model(xai::completion::GROK_4);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
@@ -76,7 +76,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn responses_stream_preserves_tool_result_flow() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let agent = client
         .agent(xai::completion::GROK_4)
         .preamble(XAI_STATUS_TOOL_PREAMBLE)
@@ -99,7 +99,7 @@ async fn responses_stream_preserves_tool_result_flow() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let model = client.completion_model(xai::completion::GROK_4);
     let request = model
         .completion_request(XAI_STATUS_TOOL_PROMPT)

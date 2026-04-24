@@ -43,14 +43,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create OpenAI client
-    let agent = providers::openai::Client::from_env()
+    let agent = providers::openai::Client::from_env()?
         .completion_model(openai::GPT_4O)
         .completions_api()
         .into_agent_builder()
         .preamble("You are a helpful assistant")
         .build();
 
-    let res = agent.prompt("Hello world!").await.unwrap();
+    let res = agent.prompt("Hello world!").await?;
 
     println!("GPT-4o: {res}");
 

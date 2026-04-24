@@ -35,17 +35,16 @@ async fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
 
     // Create OpenAI client
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_env()?;
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 
     // setup Postgres
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+    let database_url = std::env::var("DATABASE_URL")?;
     let pool = PgPoolOptions::new()
         .max_connections(50)
         .idle_timeout(std::time::Duration::from_secs(5))
         .connect(&database_url)
-        .await
-        .expect("Failed to create postgres pool");
+        .await?;
 
     // make sure database is setup
     sqlx::migrate!("./examples/migrations").run(&pool).await?;
@@ -78,11 +77,9 @@ async fn main() -> Result<(), anyhow::Error> {
         }];
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
+        .documents(words)?
         .build()
-        .await
-        .expect("Failed to create embeddings");
+        .await?;
 
     // delete documents from table to have a clean start (optional, not recommended for production)
     sqlx::query("TRUNCATE documents").execute(&pool).await?;

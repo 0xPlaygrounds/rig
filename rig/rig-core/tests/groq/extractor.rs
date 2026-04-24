@@ -10,7 +10,7 @@ use super::EXTRACTOR_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn extractor_smoke() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let extractor = client.extractor::<SmokePerson>(EXTRACTOR_MODEL).build();
 
     let response = extractor

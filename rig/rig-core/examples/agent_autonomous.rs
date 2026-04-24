@@ -34,7 +34,7 @@ fn build_counter_extractor(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::from_env();
+    let client = Client::from_env()?;
     let extractor = build_counter_extractor(&client);
     let mut current_number = 0;
     let mut step = 1;

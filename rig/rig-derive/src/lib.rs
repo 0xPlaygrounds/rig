@@ -29,7 +29,10 @@ pub fn derive_provider_client(input: TokenStream) -> TokenStream {
 /// A macro that allows you to implement the `rig::embedding::Embed` trait by deriving it.
 /// Usage can be found below:
 ///
-/// ```rust
+/// ```text
+/// use rig::Embed;
+/// use rig_derive::Embed;
+///
 /// #[derive(Embed)]
 /// struct Foo {
 ///     id: String,
@@ -165,7 +168,13 @@ impl Parse for MacroArgs {
                                         ..
                                     }) = nv.value
                                 {
-                                    let param_name = nv.path.get_ident().unwrap().to_string();
+                                    let Some(param_ident) = nv.path.get_ident() else {
+                                        return Err(syn::Error::new_spanned(
+                                            &nv.path,
+                                            "parameter descriptions must use identifier keys",
+                                        ));
+                                    };
+                                    let param_name = param_ident.to_string();
                                     param_descriptions.insert(param_name, lit_str.value());
                                 }
                             }
@@ -210,13 +219,15 @@ impl Parse for MacroArgs {
 fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
         Type::Path(type_path) => {
-            let segment = &type_path.path.segments[0];
+            let Some(segment) = type_path.path.segments.first() else {
+                return quote! { "type": "object" };
+            };
             let type_name = segment.ident.to_string();
 
             // Handle Vec types
             if type_name == "Vec" {
                 if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
-                    && let syn::GenericArgument::Type(inner_type) = &args.args[0]
+                    && let Some(syn::GenericArgument::Type(inner_type)) = args.args.first()
                 {
                     let inner_json_type = get_json_type(inner_type);
                     return quote! {
@@ -250,12 +261,74 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
     }
 }
 
+fn result_type_tokens(
+    return_type: &ReturnType,
+) -> syn::Result<(proc_macro2::TokenStream, proc_macro2::TokenStream)> {
+    let ReturnType::Type(_, ty) = return_type else {
+        return Err(syn::Error::new_spanned(
+            return_type,
+            "function must have a return type of Result<T, E>",
+        ));
+    };
+
+    let Type::Path(type_path) = ty.deref() else {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "return type must be Result<T, E>",
+        ));
+    };
+
+    let Some(last_segment) = type_path.path.segments.last() else {
+        return Err(syn::Error::new_spanned(
+            &type_path.path,
+            "return type must be Result<T, E>",
+        ));
+    };
+
+    if last_segment.ident != "Result" {
+        return Err(syn::Error::new_spanned(
+            &last_segment.ident,
+            "return type must be Result<T, E>",
+        ));
+    }
+
+    let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
+        return Err(syn::Error::new_spanned(
+            &last_segment.arguments,
+            "expected angle-bracketed type parameters for Result<T, E>",
+        ));
+    };
+
+    let mut generic_args = args.args.iter();
+    let Some(output) = generic_args.next() else {
+        return Err(syn::Error::new_spanned(
+            &args.args,
+            "expected Result<T, E> with exactly two type parameters",
+        ));
+    };
+    let Some(error) = generic_args.next() else {
+        return Err(syn::Error::new_spanned(
+            &args.args,
+            "expected Result<T, E> with exactly two type parameters",
+        ));
+    };
+
+    if generic_args.next().is_some() {
+        return Err(syn::Error::new_spanned(
+            &args.args,
+            "expected Result<T, E> with exactly two type parameters",
+        ));
+    }
+
+    Ok((quote!(#output), quote!(#error)))
+}
+
 /// A procedural macro that transforms a function into a `rig::tool::Tool` that can be used with a `rig::agent::Agent`.
 ///
 /// # Examples
 ///
 /// Basic usage:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool]
@@ -265,7 +338,7 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
 /// ```
 ///
 /// With description:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(description = "Perform basic arithmetic operations")]
@@ -281,7 +354,7 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
 /// ```
 ///
 /// With a custom tool name:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// // Explicit names must be string literals that start with an ASCII letter
@@ -294,7 +367,7 @@ fn get_json_type(ty: &Type) -> proc_macro2::TokenStream {
 /// ```
 ///
 /// With parameter descriptions:
-/// ```rust
+/// ```text
 /// use rig_derive::rig_tool;
 ///
 /// #[rig_tool(
@@ -327,34 +400,9 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // Extract return type and get Output and Error types from Result<T, E>
     let return_type = &input_fn.sig.output;
-    let (output_type, error_type) = match return_type {
-        ReturnType::Type(_, ty) => {
-            if let Type::Path(type_path) = ty.deref() {
-                if let Some(last_segment) = type_path.path.segments.last() {
-                    if last_segment.ident == "Result" {
-                        if let PathArguments::AngleBracketed(args) = &last_segment.arguments {
-                            if args.args.len() == 2 {
-                                let output = args.args.first().unwrap();
-                                let error = args.args.last().unwrap();
-
-                                (quote!(#output), quote!(#error))
-                            } else {
-                                panic!("Expected Result with two type parameters");
-                            }
-                        } else {
-                            panic!("Expected angle bracketed type parameters for Result");
-                        }
-                    } else {
-                        panic!("Return type must be a Result");
-                    }
-                } else {
-                    panic!("Invalid return type");
-                }
-            } else {
-                panic!("Invalid return type");
-            }
-        }
-        _ => panic!("Function must have a return type"),
+    let (output_type, error_type) = match result_type_tokens(return_type) {
+        Ok(types) => types,
+        Err(error) => return error.into_compile_error().into(),
     };
 
     // Generate PascalCase struct name from the function name

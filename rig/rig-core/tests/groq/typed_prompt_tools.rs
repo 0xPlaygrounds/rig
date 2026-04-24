@@ -77,7 +77,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = client
         .agent(TYPED_PROMPT_TOOLS_MODEL)
         .preamble(
@@ -99,7 +99,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         .prompt_typed("Hello, whats the weather in London?")
         .await?;
 
-    assert!(
+    anyhow::ensure!(
         call_count.load(Ordering::SeqCst) >= 1,
         "expected the weather tool to be executed at least once"
     );

@@ -65,7 +65,10 @@ impl RecordBatchDeserializer for RecordBatch {
                     .iter()
                     .enumerate()
                     .fold(serde_json::Map::new(), |mut acc, (col_i, col)| {
-                        acc.insert(column_names[col_i].to_string(), col[row_i].clone());
+                        if let (Some(name), Some(value)) = (column_names.get(col_i), col.get(row_i))
+                        {
+                            acc.insert((*name).to_string(), value.clone());
+                        }
                         acc
                     })
             })
@@ -576,7 +579,9 @@ impl RebuildObject for Vec<Vec<Value>> {
                 self.iter()
                     .enumerate()
                     .fold(serde_json::Map::new(), |mut acc, (col_i, col)| {
-                        acc.insert(col_names[col_i].to_string(), col[row_i].clone());
+                        if let (Some(name), Some(value)) = (col_names.get(col_i), col.get(row_i)) {
+                            acc.insert((*name).to_string(), value.clone());
+                        }
                         acc
                     })
             })
@@ -585,8 +590,12 @@ impl RebuildObject for Vec<Vec<Value>> {
     }
 
     fn build_map(&self) -> Vec<Value> {
-        let keys = &self[0];
-        let values = &self[1];
+        let Some(keys) = self.first() else {
+            return Vec::new();
+        };
+        let Some(values) = self.get(1) else {
+            return Vec::new();
+        };
 
         keys.iter()
             .zip(values)

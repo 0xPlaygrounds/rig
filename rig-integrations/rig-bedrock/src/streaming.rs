@@ -80,7 +80,7 @@ impl CompletionModel {
             .set_additional_model_request_fields(request.additional_params())
             .set_inference_config(request.inference_config())
             .set_tool_config(tool_config)
-            .set_system(request.system_prompt())
+            .set_system(request.system_prompt()?)
             .set_messages(Some(prompt_with_history));
 
         let response = converse_builder.send().await.map_err(|sdk_error| {

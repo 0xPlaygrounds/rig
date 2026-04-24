@@ -9,7 +9,7 @@ use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn embeddings_smoke() {
-    let client = together::Client::from_env();
+    let client = together::Client::from_env().expect("client should build");
     let model = client.embedding_model(together::embedding::M2_BERT_80M_8K_RETRIEVAL);
 
     let embeddings = model

@@ -11,7 +11,7 @@ use super::CONTEXT_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn context_smoke() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = CONTEXT_DOCS
         .iter()
         .copied()

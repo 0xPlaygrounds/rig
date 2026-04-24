@@ -182,7 +182,11 @@ where
 
         loop {
             print!("> ");
-            stdout.flush().unwrap();
+            stdout.flush().map_err(|e| {
+                PromptError::CompletionError(CompletionError::ResponseError(format!(
+                    "failed to flush stdout: {e}"
+                )))
+            })?;
 
             let mut input = String::new();
             match stdin.read_line(&mut input) {
@@ -204,12 +208,13 @@ where
                     println!("================================================================");
                     println!();
 
-                    if self.0.show_usage() {
-                        let Usage {
+                    if self.0.show_usage()
+                        && let Some(Usage {
                             input_tokens,
                             output_tokens,
                             ..
-                        } = self.0.usage().unwrap();
+                        }) = self.0.usage()
+                    {
                         println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
                     }
                 }

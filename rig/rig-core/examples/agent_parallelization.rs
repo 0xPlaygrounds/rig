@@ -12,7 +12,7 @@ use rig::{
 
 use schemars::JsonSchema;
 
-#[derive(serde::Deserialize, JsonSchema, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, JsonSchema, serde::Serialize)]
 struct DocumentScore {
     /// The score of the document
     score: f32,
@@ -20,7 +20,7 @@ struct DocumentScore {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     let manipulation_agent = openai_client
         .extractor::<DocumentScore>(openai::GPT_4)
@@ -57,17 +57,25 @@ async fn main() -> Result<(), anyhow::Error> {
             extract(intelligent_agent)
         ))
         .map(|(statement, manip_score, dep_score, int_score)| {
-            format!(
-                "
-                Original statement: {statement}
-                Manipulation sentiment score: {}
-                Depression sentiment score: {}
-                Intelligence sentiment score: {}
-                ",
-                manip_score.unwrap().score,
-                dep_score.unwrap().score,
-                int_score.unwrap().score
-            )
+            match (manip_score, dep_score, int_score) {
+                (Ok(manip_score), Ok(dep_score), Ok(int_score)) => format!(
+                    "
+                    Original statement: {statement}
+                    Manipulation sentiment score: {}
+                    Depression sentiment score: {}
+                    Intelligence sentiment score: {}
+                    ",
+                    manip_score.score, dep_score.score, int_score.score
+                ),
+                (manip_score, dep_score, int_score) => format!(
+                    "
+                    Original statement: {statement}
+                    Manipulation sentiment score: {manip_score:?}
+                    Depression sentiment score: {dep_score:?}
+                    Intelligence sentiment score: {int_score:?}
+                    "
+                ),
+            }
         });
 
     // Prompt the agent and print the response

@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 //! Integration tests for rig-vectorize.
 //!
 //! These tests require a real Cloudflare Vectorize index and valid credentials.

@@ -25,7 +25,7 @@ use super::{
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
@@ -40,7 +40,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
     let request = model
         .completion_request(TWO_TOOL_STREAM_PROMPT)
@@ -66,7 +66,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = client
         .agent(STREAMING_TOOLS_MULTI_MODEL)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
@@ -90,7 +90,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let agent = client
         .agent(STREAMING_TOOLS_ORDERED_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
@@ -113,7 +113,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)

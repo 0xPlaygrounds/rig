@@ -18,7 +18,7 @@ struct Greetings {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn embeddings_smoke() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let model = client.embedding_model(gemini::embedding::EMBEDDING_001);
 
     let embeddings = model
@@ -33,7 +33,7 @@ async fn embeddings_smoke() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY and --features derive"]
 async fn derive_document_embeddings() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let embeddings = client
         .embeddings(gemini::embedding::EMBEDDING_001)
         .document(Greetings {

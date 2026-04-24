@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use rig::client::EmbeddingsClient;
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;

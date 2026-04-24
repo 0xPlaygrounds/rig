@@ -21,7 +21,7 @@ fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, S
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env()?;
     let model = client.completion_model(openai::GPT_4O);
     let files = load_example_contexts()?;
 

@@ -10,7 +10,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn transcription_smoke() {
-    let client = groq::Client::from_env();
+    let client = groq::Client::from_env().expect("client should build");
     let model = client.transcription_model(groq::WHISPER_LARGE_V3);
     let response = model
         .transcription_request()

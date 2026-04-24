@@ -11,7 +11,7 @@ const DEEPSEEK_V3_2: &str = "deepseek/deepseek-v3.2";
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn provider_selection_scenarios() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let scenarios = [
         (
             "hello",

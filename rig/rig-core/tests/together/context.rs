@@ -9,7 +9,7 @@ use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_inse
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn context_smoke() {
-    let client = together::Client::from_env();
+    let client = together::Client::from_env().expect("client should build");
     let agent = CONTEXT_DOCS
         .iter()
         .copied()

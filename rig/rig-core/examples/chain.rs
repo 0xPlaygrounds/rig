@@ -49,7 +49,7 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
-    let client = Client::from_env();
+    let client = Client::from_env()?;
     let embedding_model = client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());

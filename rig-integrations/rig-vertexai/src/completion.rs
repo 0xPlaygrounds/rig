@@ -100,6 +100,7 @@ impl CompletionModelTrait for CompletionModel {
             .client
             .get_inner()
             .await
+            .map_err(|error| CompletionError::ProviderError(error.to_string()))?
             .generate_content()
             .set_model(&model_path)
             .set_contents(contents);

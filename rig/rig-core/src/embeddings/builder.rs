@@ -142,15 +142,16 @@ where
             .await?;
 
         // Merge the embeddings with their respective documents
-        Ok(docs
-            .into_iter()
+        docs.into_iter()
             .map(|(i, doc)| {
-                (
-                    doc,
-                    embeddings.remove(&i).expect("Document should be present"),
-                )
+                let embedding = embeddings.remove(&i).ok_or_else(|| {
+                    crate::embeddings::EmbeddingError::ResponseError(
+                        "missing embedding for document after batch merge".to_string(),
+                    )
+                })?;
+                Ok::<_, crate::embeddings::EmbeddingError>((doc, embedding))
             })
-            .collect())
+            .collect::<Result<Vec<_>, crate::embeddings::EmbeddingError>>()
     }
 }
 

@@ -13,7 +13,7 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn streaming_smoke() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client
         .agent(DEFAULT_MODEL)
         .preamble(STREAMING_PREAMBLE)
@@ -30,7 +30,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
 async fn example_streaming_prompt() {
-    let client = openrouter::Client::from_env();
+    let client = openrouter::Client::from_env().expect("client should build");
     let agent = client
         .agent(DEFAULT_MODEL)
         .preamble("Be precise and concise.")

@@ -352,10 +352,13 @@ where
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
         let last_prompt = loop {
             // Get the last message (the current prompt)
-            let prompt = new_messages
-                .last()
-                .expect("there should always be at least one message")
-                .clone();
+            let Some((prompt_ref, history_for_current_turn)) = new_messages.split_last() else {
+                return Err(PromptError::prompt_cancelled(
+                    build_full_history(chat_history.as_deref(), new_messages),
+                    "prompt loop lost its pending prompt",
+                ));
+            };
+            let prompt = prompt_ref.clone();
 
             if current_max_turns > self.max_turns + 1 {
                 break prompt;
@@ -372,10 +375,8 @@ where
             }
 
             // Build history for hook callback (input + new messages except last)
-            let history_for_hook = build_history_for_request(
-                chat_history.as_deref(),
-                &new_messages[..new_messages.len().saturating_sub(1)],
-            );
+            let history_for_hook =
+                build_history_for_request(chat_history.as_deref(), history_for_current_turn);
 
             if let Some(ref hook) = self.hook
                 && let HookAction::Terminate { reason } =
@@ -419,10 +420,8 @@ where
             };
 
             // Build history for completion request (input + new messages except last)
-            let history_for_request = build_history_for_request(
-                chat_history.as_deref(),
-                &new_messages[..new_messages.len().saturating_sub(1)],
-            );
+            let history_for_request =
+                build_history_for_request(chat_history.as_deref(), history_for_current_turn);
 
             let resp = build_completion_request(
                 &self.model,
@@ -630,9 +629,10 @@ where
                                 ))
                             }
                         } else {
-                            unreachable!(
-                                "This should never happen as we already filtered for `ToolCall`"
-                            )
+                            Err(PromptError::prompt_cancelled(
+                                Vec::new(),
+                                "tool execution received non-tool assistant content",
+                            ))
                         }
                     }
                     .instrument(tool_span)
@@ -643,9 +643,14 @@ where
                 .into_iter()
                 .collect::<Result<Vec<_>, _>>()?;
 
-            new_messages.push(Message::User {
-                content: OneOrMany::many(tool_content).expect("There is at least one tool call"),
-            });
+            let Some(content) = OneOrMany::from_iter_optional(tool_content) else {
+                return Err(PromptError::prompt_cancelled(
+                    build_full_history(chat_history.as_deref(), new_messages),
+                    "tool execution produced no tool results",
+                ));
+            };
+
+            new_messages.push(Message::User { content });
         };
 
         // If we reach here, we exceeded max turns without a final response

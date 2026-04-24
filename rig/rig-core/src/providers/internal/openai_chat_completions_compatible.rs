@@ -250,10 +250,8 @@ where
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
                             && profile.should_evict(existing, &incoming)
+                            && let Some(evicted) = tool_calls.remove(&incoming.index)
                         {
-                            let evicted = tool_calls
-                                .remove(&incoming.index)
-                                .expect("checked above");
                             yield Ok(RawStreamingChoice::ToolCall(
                                 finalize_completed_streaming_tool_call(evicted),
                             ));

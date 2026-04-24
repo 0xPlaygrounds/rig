@@ -63,7 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create Gemini client
-    let gemini_client = Client::from_env();
+    let gemini_client = Client::from_env()?;
     let embedding_model = gemini_client.embedding_model(gemini::EMBEDDING_001);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.

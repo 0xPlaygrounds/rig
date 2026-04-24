@@ -56,9 +56,9 @@ pub struct WithBuilderTools {
 ///
 /// # Example
 /// ```
-/// use rig::{providers::openai, agent::AgentBuilder};
+/// use rig::{client::ProviderClient, providers::openai, agent::AgentBuilder};
 ///
-/// let openai = openai::Client::from_env();
+/// let openai = openai::Client::from_env()?;
 ///
 /// let gpt4o = openai.completion_model("gpt-4o");
 ///

@@ -11,7 +11,7 @@ use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn image_generation_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let model = client.image_generation_model(xai::image_generation::GROK_IMAGINE_IMAGE_PRO);
 
     let response = model

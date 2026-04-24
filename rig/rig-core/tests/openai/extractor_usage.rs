@@ -28,20 +28,21 @@ struct Address {
     zip_code: Option<String>,
 }
 
-fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) {
+fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Result<()> {
     let left = left
-        .expect("profession should be present")
+        .ok_or_else(|| anyhow::anyhow!("profession should be present"))?
         .trim()
         .to_ascii_lowercase();
     let right = right
-        .expect("profession should be present")
+        .ok_or_else(|| anyhow::anyhow!("profession should be present"))?
         .trim()
         .to_ascii_lowercase();
 
-    assert!(
+    anyhow::ensure!(
         left == right || left.contains(&right) || right.contains(&left),
         "expected compatible professions, got {left:?} and {right:?}"
     );
+    Ok(())
 }
 
 /// Test backward compatibility: the original `extract()` method should still work
@@ -49,7 +50,7 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(providers::openai::GPT_4O_MINI)
         .build();
@@ -58,9 +59,9 @@ async fn extract_backward_compatibility() -> Result<()> {
         .extract("John Doe is a 30 year old software engineer.")
         .await?;
 
-    assert_eq!(person.name, Some("John Doe".to_string()));
-    assert_eq!(person.age, Some(30));
-    assert_eq!(person.profession, Some("software engineer".to_string()));
+    anyhow::ensure!(person.name.as_deref() == Some("John Doe"));
+    anyhow::ensure!(person.age == Some(30));
+    anyhow::ensure!(person.profession.as_deref() == Some("software engineer"));
 
     Ok(())
 }
@@ -69,7 +70,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(providers::openai::GPT_4O_MINI)
         .build();
@@ -79,14 +80,14 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         .await?;
 
     // Verify extracted data
-    assert_eq!(response.data.name, Some("Jane Smith".to_string()));
-    assert_eq!(response.data.age, Some(45));
-    assert_eq!(response.data.profession, Some("data scientist".to_string()));
+    anyhow::ensure!(response.data.name.as_deref() == Some("Jane Smith"));
+    anyhow::ensure!(response.data.age == Some(45));
+    anyhow::ensure!(response.data.profession.as_deref() == Some("data scientist"));
 
     // Verify usage is non-zero (we made at least one API call)
-    assert!(response.usage.input_tokens > 0);
-    assert!(response.usage.output_tokens > 0);
-    assert!(response.usage.total_tokens > 0);
+    anyhow::ensure!(response.usage.input_tokens > 0);
+    anyhow::ensure!(response.usage.output_tokens > 0);
+    anyhow::ensure!(response.usage.total_tokens > 0);
 
     Ok(())
 }
@@ -97,7 +98,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     use rig::message::Message;
 
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Address>(providers::openai::GPT_4O_MINI)
         .build();
@@ -114,14 +115,14 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
         .await?;
 
     // Verify extracted data
-    assert_eq!(response.data.street, Some("123 Main St".to_string()));
-    assert_eq!(response.data.city, Some("Springfield".to_string()));
-    assert_eq!(response.data.state, Some("IL".to_string()));
-    assert_eq!(response.data.zip_code, Some("62701".to_string()));
+    anyhow::ensure!(response.data.street.as_deref() == Some("123 Main St"));
+    anyhow::ensure!(response.data.city.as_deref() == Some("Springfield"));
+    anyhow::ensure!(response.data.state.as_deref() == Some("IL"));
+    anyhow::ensure!(response.data.zip_code.as_deref() == Some("62701"));
 
     // Verify usage is non-zero
-    assert!(response.usage.input_tokens > 0);
-    assert!(response.usage.total_tokens > 0);
+    anyhow::ensure!(response.usage.input_tokens > 0);
+    anyhow::ensure!(response.usage.total_tokens > 0);
 
     Ok(())
 }
@@ -131,7 +132,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
     let extractor = client
         .extractor::<Person>(providers::openai::GPT_4O_MINI)
         .build();
@@ -144,15 +145,15 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     // Extract with usage
     let response = extractor.extract_with_usage(text).await?;
 
-    assert_eq!(person.name, Some("Bob Johnson".to_string()));
-    assert_eq!(response.data.name, Some("Bob Johnson".to_string()));
-    assert_eq!(person.age, Some(55));
-    assert_eq!(response.data.age, Some(55));
+    anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
+    anyhow::ensure!(response.data.name.as_deref() == Some("Bob Johnson"));
+    anyhow::ensure!(person.age == Some(55));
+    anyhow::ensure!(response.data.age == Some(55));
     assert_compatible_professions(
         person.profession.as_deref(),
         response.data.profession.as_deref(),
-    );
-    assert!(response.usage.total_tokens > 0, "usage should be populated");
+    )?;
+    anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
 
     Ok(())
 }
@@ -161,7 +162,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "This requires an API key"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let client = providers::openai::Client::from_env();
+    let client = providers::openai::Client::from_env().expect("client should build");
 
     // Test with simple schema
     let person_extractor = client
@@ -172,7 +173,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         .extract_with_usage("Alice is a 25 year old developer.")
         .await?;
 
-    assert!(person_response.usage.total_tokens > 0);
+    anyhow::ensure!(person_response.usage.total_tokens > 0);
 
     // Test with more complex schema
     let address_extractor = client
@@ -183,7 +184,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         .extract_with_usage("456 Oak Avenue, Cambridge, MA 02139")
         .await?;
 
-    assert!(address_response.usage.total_tokens > 0);
+    anyhow::ensure!(address_response.usage.total_tokens > 0);
 
     Ok(())
 }

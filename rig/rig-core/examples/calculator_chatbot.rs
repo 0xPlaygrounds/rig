@@ -37,10 +37,10 @@ impl Tool for Add {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "add",
-            "description": "Add x and y together",
-            "parameters": {
+        ToolDefinition {
+            name: "add".to_string(),
+            description: "Add x and y together".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -53,9 +53,8 @@ impl Tool for Add {
                     }
                 },
                 "required": [ "x", "y" ]
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -90,10 +89,10 @@ impl Tool for Subtract {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "subtract",
-            "description": "Subtract y from x (i.e.: x - y)",
-            "parameters": {
+        ToolDefinition {
+            name: "subtract".to_string(),
+            description: "Subtract y from x (i.e.: x - y)".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -106,9 +105,8 @@ impl Tool for Subtract {
                     }
                 },
                 "required": [ "x", "y" ]
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -142,10 +140,10 @@ impl Tool for Multiply {
     type Output = i32;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "multiply",
-            "description": "Compute the product of x and y (i.e.: x * y)",
-            "parameters": {
+        ToolDefinition {
+            name: "multiply".to_string(),
+            description: "Compute the product of x and y (i.e.: x * y)".to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -158,9 +156,8 @@ impl Tool for Multiply {
                     }
                 },
                 "required": [ "x", "y" ]
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -190,10 +187,11 @@ impl Tool for Divide {
     type Args = OperationArgs;
     type Output = i32;
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": "divide",
-            "description": "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.",
-            "parameters": {
+        ToolDefinition {
+            name: "divide".to_string(),
+            description: "Compute the Quotient of x and y (i.e.: x / y). Useful for ratios."
+                .to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "x": {
@@ -206,9 +204,8 @@ impl Tool for Divide {
                     }
                 },
                 "required": [ "x", "y" ]
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
@@ -235,7 +232,7 @@ impl ToolEmbedding for Divide {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     // Create dynamic tools embeddings
     let toolset = ToolSet::builder()

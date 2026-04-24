@@ -14,11 +14,11 @@ pub struct AwsCompletionRequest {
     pub prompt_caching: bool,
 }
 
-fn cache_point_block() -> CachePointBlock {
+fn cache_point_block() -> Result<CachePointBlock, CompletionError> {
     CachePointBlock::builder()
         .r#type(CachePointType::Default)
         .build()
-        .expect("CachePointBlock type is set")
+        .map_err(|e| CompletionError::RequestError(e.into()))
 }
 
 impl AwsCompletionRequest {
@@ -65,31 +65,33 @@ impl AwsCompletionRequest {
         if !tools.is_empty() {
             // Convert rig's ToolChoice to AWS Bedrock ToolChoice
             use aws_sdk_bedrockruntime::types as aws_bedrock;
-            let tool_choice = self.inner.tool_choice.as_ref().and_then(|choice| {
-                match choice {
-                    rig::message::ToolChoice::Auto => Some(aws_bedrock::ToolChoice::Auto(
+            let tool_choice = self
+                .inner
+                .tool_choice
+                .as_ref()
+                .map(|choice| match choice {
+                    rig::message::ToolChoice::Auto => Ok(Some(aws_bedrock::ToolChoice::Auto(
                         aws_bedrock::AutoToolChoice::builder().build(),
-                    )),
-                    rig::message::ToolChoice::Required => Some(aws_bedrock::ToolChoice::Any(
+                    ))),
+                    rig::message::ToolChoice::Required => Ok(Some(aws_bedrock::ToolChoice::Any(
                         aws_bedrock::AnyToolChoice::builder().build(),
-                    )),
-                    rig::message::ToolChoice::None => {
-                        // Bedrock doesn't have a "None" option - just omit tool_choice
-                        None
-                    }
-                    rig::message::ToolChoice::Specific { function_names } => {
-                        // Use the first function name for Bedrock's specific tool choice
-                        function_names.first().map(|name| {
-                            aws_bedrock::ToolChoice::Tool(
-                                aws_bedrock::SpecificToolChoice::builder()
-                                    .name(name.clone())
-                                    .build()
-                                    .expect("Failed to build SpecificToolChoice"),
-                            )
+                    ))),
+                    rig::message::ToolChoice::None => Ok(None),
+                    rig::message::ToolChoice::Specific { function_names } => function_names
+                        .first()
+                        .map(|name| {
+                            aws_bedrock::SpecificToolChoice::builder()
+                                .name(name.clone())
+                                .build()
+                                .map(aws_bedrock::ToolChoice::Tool)
+                                .map(Some)
+                                .map_err(|e| CompletionError::RequestError(e.into()))
                         })
-                    }
-                }
-            });
+                        .transpose()
+                        .map(Option::flatten),
+                })
+                .transpose()?
+                .flatten();
 
             let config = ToolConfiguration::builder()
                 .set_tools(Some(tools))
@@ -103,7 +105,7 @@ impl AwsCompletionRequest {
         }
     }
 
-    pub fn system_prompt(&self) -> Option<Vec<SystemContentBlock>> {
+    pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
         if let Some(system_prompt) = self.inner.preamble.to_owned()
@@ -121,12 +123,12 @@ impl AwsCompletionRequest {
         }
 
         if system_blocks.is_empty() {
-            None
+            Ok(None)
         } else {
             if self.prompt_caching {
-                system_blocks.push(SystemContentBlock::CachePoint(cache_point_block()));
+                system_blocks.push(SystemContentBlock::CachePoint(cache_point_block()?));
             }
-            Some(system_blocks)
+            Ok(Some(system_blocks))
         }
     }
 
@@ -165,7 +167,7 @@ impl AwsCompletionRequest {
             && let Some(last_msg) = messages.last_mut()
         {
             let mut content = last_msg.content.clone();
-            content.push(aws_bedrock::ContentBlock::CachePoint(cache_point_block()));
+            content.push(aws_bedrock::ContentBlock::CachePoint(cache_point_block()?));
             *last_msg = aws_bedrock::Message::builder()
                 .role(last_msg.role.clone())
                 .set_content(Some(content))
@@ -465,14 +467,17 @@ mod tests {
         };
 
         let aws_request = aws_request(request, false);
-        let system_prompt = aws_request.system_prompt();
+        let system_prompt = aws_request
+            .system_prompt()
+            .expect("system prompt should build")
+            .expect("system prompt should exist");
 
-        assert!(system_prompt.is_some());
-        let system_prompt = system_prompt.unwrap();
         assert_eq!(system_prompt.len(), 1);
         assert_eq!(
-            system_prompt[0],
-            aws_bedrock::SystemContentBlock::Text("History system instruction".to_string())
+            system_prompt.first(),
+            Some(&aws_bedrock::SystemContentBlock::Text(
+                "History system instruction".to_string()
+            ))
         );
     }
 
@@ -486,12 +491,15 @@ mod tests {
         let aws_request = aws_request(request, true);
         let system_prompt = aws_request
             .system_prompt()
+            .expect("system prompt should build")
             .expect("system prompt should exist");
 
         assert_eq!(system_prompt.len(), 2);
         assert_eq!(
-            system_prompt[0],
-            aws_bedrock::SystemContentBlock::Text("System prompt".to_string())
+            system_prompt.first(),
+            Some(&aws_bedrock::SystemContentBlock::Text(
+                "System prompt".to_string()
+            ))
         );
         assert!(matches!(
             system_prompt.last(),

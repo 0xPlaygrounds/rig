@@ -157,39 +157,40 @@ pub type AnthropicClientBuilder<H = reqwest::Client> =
 
 impl ProviderClient for Client {
     type Input = String;
+    type Error = crate::client::ProviderClientError;
 
     /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
         let mut builder = Self::builder().api_key(&api_key);
-        if let Ok(base_url) = std::env::var("MOONSHOT_API_BASE") {
+        if let Some(base_url) = crate::client::optional_env_var("MOONSHOT_API_BASE")? {
             builder = builder.base_url(base_url);
         }
-        builder.build().unwrap()
+        builder.build().map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::new(&input).unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::new(&input).map_err(Into::into)
     }
 }
 
 impl ProviderClient for AnthropicClient {
     type Input = String;
+    type Error = crate::client::ProviderClientError;
 
-    fn from_env() -> Self {
-        let api_key = std::env::var("MOONSHOT_API_KEY").expect("MOONSHOT_API_KEY not set");
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
         let mut builder = Self::builder().api_key(api_key);
         if let Some(base_url) =
-            anthropic_base_override("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")
+            anthropic_base_override("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?
         {
             builder = builder.base_url(base_url);
         }
-        builder.build().unwrap()
+        builder.build().map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::builder().api_key(input).build().unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::builder().api_key(input).build().map_err(Into::into)
     }
 }
 
@@ -240,11 +241,17 @@ impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthr
     }
 }
 
-fn anthropic_base_override(primary_env: &str, fallback_env: &str) -> Option<String> {
-    let primary = std::env::var(primary_env).ok();
-    let fallback = std::env::var(fallback_env).ok();
+fn anthropic_base_override(
+    primary_env: &'static str,
+    fallback_env: &'static str,
+) -> crate::client::ProviderClientResult<Option<String>> {
+    let primary = crate::client::optional_env_var(primary_env)?;
+    let fallback = crate::client::optional_env_var(fallback_env)?;
 
-    resolve_anthropic_base_override(primary.as_deref(), fallback.as_deref())
+    Ok(resolve_anthropic_base_override(
+        primary.as_deref(),
+        fallback.as_deref(),
+    ))
 }
 
 fn resolve_anthropic_base_override(

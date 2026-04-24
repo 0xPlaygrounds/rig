@@ -9,7 +9,7 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn streaming_prompt_smoke() {
-    let client = deepseek::Client::from_env();
+    let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
         .agent(DEEPSEEK_CHAT)
         .preamble("You are a helpful assistant.")

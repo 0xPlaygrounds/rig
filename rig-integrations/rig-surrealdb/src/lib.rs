@@ -459,6 +459,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::panic)]
     #[test]
     fn filter_from_json_preserves_nested_values() {
         let filter = match SurrealSearchFilter::try_from(Filter::Eq(
@@ -481,6 +482,7 @@ mod tests {
         assert!(sql.contains("tags: ['surreal', 'json']"));
     }
 
+    #[allow(clippy::panic)]
     #[tokio::test]
     async fn surreal_vector_store_supports_dynamic_context_filters() {
         fn assert_dyn<T: VectorStoreIndexDyn + Send + Sync + 'static>(_: T) {}

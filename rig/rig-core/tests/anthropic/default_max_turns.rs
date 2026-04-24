@@ -82,6 +82,7 @@ impl Tool for Divide {
 #[ignore = "requires ANTHROPIC_API_KEY"]
 async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
     let agent = anthropic::Client::from_env()
+        .expect("client should build")
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an assistant that must use the available tools for arithmetic. \

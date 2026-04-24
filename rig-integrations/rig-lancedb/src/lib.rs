@@ -1,3 +1,14 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_used,
+        clippy::unreachable
+    )
+)]
+
 use std::ops::Range;
 
 use lancedb::{
@@ -27,11 +38,12 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 
 /// Type on which vector searches can be performed for a lanceDb table.
 /// # Example
-/// ```
+/// ```ignore
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+/// use rig::client::ProviderClient;
 /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
-/// let openai_client = Client::from_env();
+/// let openai_client = Client::from_env()?;
 ///
 /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
 /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
@@ -363,11 +375,12 @@ where
 
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
-    /// ```
+    /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::client::ProviderClient;
     /// use rig::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
     ///
-    /// let openai_client = Client::from_env();
+    /// let openai_client = Client::from_env()?;
     ///
     /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
     /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
@@ -425,11 +438,12 @@ where
 
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
-    /// ```
+    /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+    /// use rig::client::ProviderClient;
     /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
     ///
-    /// let openai_client = Client::from_env();
+    /// let openai_client = Client::from_env()?;
     ///
     /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
     /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.

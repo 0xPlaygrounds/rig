@@ -15,7 +15,7 @@ const XAI_CONTEXT_DOCS: [&str; 3] = [
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn context_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let agent = XAI_CONTEXT_DOCS
         .iter()
         .copied()

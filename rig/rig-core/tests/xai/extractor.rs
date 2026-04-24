@@ -8,7 +8,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn extractor_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let extractor = client.extractor::<SmokePerson>(xai::GROK_3_MINI).build();
 
     let response = extractor

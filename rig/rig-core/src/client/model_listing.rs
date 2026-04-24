@@ -55,10 +55,10 @@ pub trait ModelListingClient {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use rig::client::ModelListingClient;
+    /// use rig::client::{ModelListingClient, ProviderClient};
     /// use rig::providers::openai::Client;
     ///
-    /// let openai = Client::from_env();
+    /// let openai = Client::from_env()?;
     /// let models = openai.list_models().await?;
     ///
     /// println!("Found {} models", models.len());

@@ -19,11 +19,12 @@
 //! # Example
 //! ```rust
 //! use rig::{
+//!     client::ProviderClient,
 //!     completion::{Chat, Completion, Prompt},
 //!     providers::openai,
 //! };
 //!
-//! let openai = openai::Client::from_env();
+//! let openai = openai::Client::from_env()?;
 //!
 //! // Configure the agent
 //! let agent = openai.agent("gpt-4o")
@@ -64,6 +65,7 @@
 //! RAG Agent example
 //! ```rust
 //! use rig::{
+//!     client::ProviderClient,
 //!     completion::Prompt,
 //!     embeddings::EmbeddingsBuilder,
 //!     providers::openai,
@@ -71,7 +73,7 @@
 //! };
 //!
 //! // Initialize OpenAI client
-//! let openai = openai::Client::from_env();
+//! let openai = openai::Client::from_env()?;
 //!
 //! // Initialize OpenAI embedding model
 //! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_ADA_002);

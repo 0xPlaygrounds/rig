@@ -66,17 +66,17 @@ impl ProviderBuilder for OpenRouterExtBuilder {
 
 impl ProviderClient for Client {
     type Input = OpenRouterApiKey;
+    type Error = crate::client::ProviderClientError;
 
     /// Create a new openrouter client from the `OPENROUTER_API_KEY` environment variable.
-    /// Panics if the environment variable is not set.
-    fn from_env() -> Self {
-        let api_key = std::env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY not set");
+    fn from_env() -> Result<Self, Self::Error> {
+        let api_key = crate::client::required_env_var("OPENROUTER_API_KEY")?;
 
-        Self::new(&api_key).unwrap()
+        Self::new(&api_key).map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Self {
-        Self::new(input).unwrap()
+    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+        Self::new(input).map_err(Into::into)
     }
 }
 

@@ -550,7 +550,9 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                 .into_iter()
                 .map(|content| match content {
                     message::UserContent::ToolResult(tool_result) => tool_result.try_into(),
-                    _ => unreachable!(),
+                    _ => Err(message::MessageError::ConversionError(
+                        "expected tool result content while converting OpenAI input".into(),
+                    )),
                 })
                 .collect::<Result<Vec<_>, _>>()
         } else {
@@ -559,8 +561,11 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                 .map(|content| content.try_into())
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let other_content = OneOrMany::many(other_content)
-                .expect("There must be other content here if there were no tool result content");
+            let other_content = OneOrMany::many(other_content).map_err(|_| {
+                message::MessageError::ConversionError(
+                    "OpenAI user message did not contain any non-tool content".into(),
+                )
+            })?;
 
             Ok(vec![Message::User {
                 content: other_content,
@@ -586,9 +591,10 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                     reasoning_text.push_str(&reasoning.display_text());
                 }
                 message::AssistantContent::Image(_) => {
-                    panic!(
-                        "The OpenAI Completions API doesn't support image content in assistant messages!"
-                    );
+                    return Err(message::MessageError::ConversionError(
+                        "OpenAI assistant messages do not support image content in chat completions"
+                            .into(),
+                    ));
                 }
             }
         }

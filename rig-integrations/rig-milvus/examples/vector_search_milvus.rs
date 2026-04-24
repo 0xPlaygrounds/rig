@@ -26,18 +26,14 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = rig::providers::openai::Client::from_env();
+    let openai_client = rig::providers::openai::Client::from_env()?;
     let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
 
-    let base_url = std::env::var("MILVUS_BASE_URL").expect("the MILVUS_BASE_URL env var to exist");
-    let collection_name = std::env::var("MILVUS_COLLECTION_NAME")
-        .expect("the MILVUS_COLLECTION_NAME env var to exist");
-    let database_name =
-        std::env::var("MILVUS_DATABASE_NAME").expect("the MILVUS_DATABASE_NAME env var to exist");
-    let milvus_user =
-        std::env::var("MILVUS_USERNAME").expect("the MILVUS_USERNAME env var to exist");
-    let milvus_password =
-        std::env::var("MILVUS_PASSWORD").expect("the MILVUS_PASSWORD env var to exist");
+    let base_url = std::env::var("MILVUS_BASE_URL")?;
+    let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;
+    let database_name = std::env::var("MILVUS_DATABASE_NAME")?;
+    let milvus_user = std::env::var("MILVUS_USERNAME")?;
+    let milvus_password = std::env::var("MILVUS_PASSWORD")?;
 
     let vector_store =
         rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)
@@ -59,11 +55,9 @@ async fn main() -> Result<(), anyhow::Error> {
         }];
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
+        .documents(words)?
         .build()
-        .await
-        .expect("Failed to create embeddings");
+        .await?;
 
     vector_store.insert_documents(documents).await?;
 

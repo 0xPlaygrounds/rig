@@ -6,7 +6,7 @@ use rig::providers::mira;
 #[tokio::test]
 #[ignore = "requires MIRA_API_KEY"]
 async fn list_models_smoke() {
-    let client = mira::Client::from_env();
+    let client = mira::Client::from_env().expect("client should build");
     let models = client
         .list_models()
         .await

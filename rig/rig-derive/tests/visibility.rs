@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 //! Test that `#[rig_tool]` propagates the function's visibility to the generated
 //! structs and static. A `pub` function should produce a `pub` tool struct that
 //! is accessible from outside the defining module.

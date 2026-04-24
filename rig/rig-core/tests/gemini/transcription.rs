@@ -10,7 +10,7 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY"]
 async fn transcription_smoke() {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env().expect("client should build");
     let model = client.transcription_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
     let response = model
         .transcription_request()

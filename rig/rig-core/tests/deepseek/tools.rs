@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn tools_smoke() {
-    let client = deepseek::Client::from_env();
+    let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
         .agent(deepseek::DEEPSEEK_CHAT)
         .preamble(TOOLS_PREAMBLE)

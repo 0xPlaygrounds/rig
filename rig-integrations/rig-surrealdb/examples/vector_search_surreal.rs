@@ -30,7 +30,7 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_env()?;
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     let surreal = Surreal::new::<Mem>(()).await?;
@@ -53,11 +53,9 @@ async fn main() -> Result<(), anyhow::Error> {
         }];
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
+        .documents(words)?
         .build()
-        .await
-        .expect("Failed to create embeddings");
+        .await?;
 
     // init vector store
     let vector_store = SurrealVectorStore::with_defaults(model, surreal);
@@ -81,7 +79,13 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     // Use the midpoint as similarity threshold to guarantee exactly one result is returned.
-    let midpoint = (results[0].0 + results[1].0) / 2.0;
+    let Some(first_result) = results.first() else {
+        return Err(anyhow::anyhow!("expected at least one result"));
+    };
+    let Some(second_result) = results.get(1) else {
+        return Err(anyhow::anyhow!("expected at least two results"));
+    };
+    let midpoint = (first_result.0 + second_result.0) / 2.0;
 
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
@@ -95,7 +99,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
-    assert_eq!(results.len(), 1);
+    anyhow::ensure!(
+        results.len() == 1,
+        "expected one result after threshold filtering, got {}",
+        results.len()
+    );
 
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for word: {doc}");

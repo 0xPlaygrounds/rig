@@ -1051,7 +1051,8 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAs
         Ok(GuardrailContextualGroundingPolicyAssessment {
             filters: value
                 .filters
-                .map(|x| x.into_iter().map(|x| x.try_into().unwrap()).collect()),
+                .map(|x| x.into_iter().map(TryInto::try_into).collect())
+                .transpose()?,
         })
     }
 }
@@ -1067,7 +1068,8 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyA
             filters: value
                 .filters
                 .clone()
-                .map(|x| x.into_iter().map(|x| x.try_into().unwrap()).collect()),
+                .map(|x| x.into_iter().map(TryInto::try_into).collect())
+                .transpose()?,
         })
     }
 }
@@ -1858,8 +1860,8 @@ impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailCoverage> for GuardrailCove
         value: aws_sdk_bedrockruntime::types::GuardrailCoverage,
     ) -> Result<Self, Self::Error> {
         Ok(GuardrailCoverage {
-            text_characters: value.text_characters().map(|x| x.try_into().unwrap()),
-            images: value.images().map(|x| x.try_into().unwrap()),
+            text_characters: value.text_characters().map(TryInto::try_into).transpose()?,
+            images: value.images().map(TryInto::try_into).transpose()?,
         })
     }
 }
@@ -1870,8 +1872,8 @@ impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailCoverage> for GuardrailCov
         value: &aws_sdk_bedrockruntime::types::GuardrailCoverage,
     ) -> Result<Self, Self::Error> {
         Ok(GuardrailCoverage {
-            text_characters: value.text_characters().map(|x| x.try_into().unwrap()),
-            images: value.images().map(|x| x.try_into().unwrap()),
+            text_characters: value.text_characters().map(TryInto::try_into).transpose()?,
+            images: value.images().map(TryInto::try_into).transpose()?,
         })
     }
 }
@@ -2022,7 +2024,7 @@ impl TryFrom<Message> for aws_sdk_bedrockruntime::types::Message {
             .set_role(role)
             .set_content(content)
             .build()
-            .expect("AWS SDK message conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -2619,7 +2621,7 @@ impl TryFrom<DocumentBlock> for aws_sdk_bedrockruntime::types::DocumentBlock {
             .set_context(context)
             .set_citations(citations)
             .build()
-            .expect("aws document block conversion should not fail");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -2820,7 +2822,7 @@ impl TryFrom<S3Location> for aws_sdk_bedrockruntime::types::S3Location {
             .set_uri(Some(value.uri))
             .set_bucket_owner(value.bucket_owner)
             .build()
-            .expect("converting S3 bucket location should never fail");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -2890,7 +2892,7 @@ impl TryFrom<CitationsConfig> for aws_sdk_bedrockruntime::types::CitationsConfig
         let res = aws_sdk_bedrockruntime::types::CitationsConfig::builder()
             .set_enabled(Some(value.enabled))
             .build()
-            .expect("Citation config conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -2965,7 +2967,7 @@ impl TryFrom<GuardrailConverseImageBlock>
             .set_format(format)
             .set_source(source)
             .build()
-            .expect("GuardrailConverseImageBlock conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
         Ok(res)
     }
 }
@@ -3119,7 +3121,7 @@ impl TryFrom<GuardrailConverseTextBlock>
             .set_text(text)
             .set_qualifiers(qualifiers)
             .build()
-            .expect("GuardrailConversionTextBlock conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -3214,7 +3216,7 @@ impl TryFrom<ImageBlock> for aws_sdk_bedrockruntime::types::ImageBlock {
             .set_format(format)
             .set_source(source)
             .build()
-            .expect("ImageBlock conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
         Ok(res)
     }
 }
@@ -3376,7 +3378,7 @@ impl TryFrom<ReasoningTextBlock> for aws_sdk_bedrockruntime::types::ReasoningTex
             .set_text(text)
             .set_signature(signature)
             .build()
-            .expect("ReasoningTextBlock conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -3416,7 +3418,7 @@ impl TryFrom<ToolResultBlock> for aws_sdk_bedrockruntime::types::ToolResultBlock
             .set_content(content)
             .set_status(status)
             .build()
-            .expect("ToolResultBlock conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
         Ok(res)
     }
 }
@@ -3495,7 +3497,7 @@ impl TryFrom<VideoBlock> for aws_sdk_bedrockruntime::types::VideoBlock {
             .set_format(format)
             .set_source(source)
             .build()
-            .expect("VideoBlock conversion should never fail!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }
@@ -3635,7 +3637,7 @@ impl TryFrom<ToolUseBlock> for aws_sdk_bedrockruntime::types::ToolUseBlock {
             .set_name(name)
             .set_input(input)
             .build()
-            .expect("ToolUseBlock shouldn't panic!");
+            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
 
         Ok(res)
     }

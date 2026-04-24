@@ -29,21 +29,22 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
-        serde_json::from_value(json!({
-            "name": Self::NAME,
-            "description": "Translate any text to English. If already in English, fix grammar and syntax issues.",
-            "parameters": {
+        ToolDefinition {
+            name: Self::NAME.to_string(),
+            description:
+                "Translate any text to English. If already in English, fix grammar and syntax issues."
+                    .to_string(),
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
                         "description": "The text to translate to English"
-                    },
+                    }
                 },
                 "required": ["prompt"]
-            }
-        }))
-        .expect("Tool Definition")
+            }),
+        }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
@@ -66,7 +67,7 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = OpenAIClient::from_env();
+    let openai_client = OpenAIClient::from_env()?;
     let model = openai_client.completion_model(openai::GPT_4O);
 
     let translator_agent = AgentBuilder::new(model.clone())

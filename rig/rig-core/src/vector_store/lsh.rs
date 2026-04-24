@@ -1,6 +1,16 @@
 use fastrand::Rng;
 use std::collections::HashMap;
 
+#[cfg(test)]
+fn lsh_rng() -> Rng {
+    Rng::with_seed(0x5eed_fade_cafe_beef)
+}
+
+#[cfg(not(test))]
+fn lsh_rng() -> Rng {
+    Rng::new()
+}
+
 /// Locality Sensitive Hashing (LSH) with random projection.
 /// Uses random hyperplanes to hash similar vectors into the same buckets for efficient
 /// approximate nearest neighbor search. See <https://www.pinecone.io/learn/series/faiss/locality-sensitive-hashing-random-projection/>
@@ -15,7 +25,7 @@ pub struct LSH {
 impl LSH {
     /// Create a new LSH instance.
     pub fn new(dim: usize, num_tables: usize, num_hyperplanes: usize) -> Self {
-        let mut rng = Rng::new();
+        let mut rng = lsh_rng();
         let mut hyperplanes = Vec::new();
 
         for _ in 0..(num_tables * num_hyperplanes) {
@@ -53,7 +63,10 @@ impl LSH {
         let mut hash = 0u64;
         let start = table_idx * self.num_hyperplanes;
 
-        for (i, hyperplane) in self.hyperplanes[start..start + self.num_hyperplanes]
+        for (i, hyperplane) in self
+            .hyperplanes
+            .get(start..start + self.num_hyperplanes)
+            .unwrap_or(&[])
             .iter()
             .enumerate()
         {
@@ -96,10 +109,9 @@ impl LSHIndex {
     pub fn insert(&mut self, id: String, embedding: &[f64]) {
         for table_idx in 0..self.lsh.num_tables {
             let hash = self.lsh.hash(embedding, table_idx);
-            self.tables[table_idx]
-                .entry(hash)
-                .or_default()
-                .push(id.clone());
+            if let Some(table) = self.tables.get_mut(table_idx) {
+                table.entry(hash).or_default().push(id.clone());
+            }
         }
     }
 
@@ -113,7 +125,11 @@ impl LSHIndex {
         for table_idx in 0..self.lsh.num_tables {
             let hash = self.lsh.hash(embedding, table_idx);
 
-            if let Some(ids) = self.tables[table_idx].get(&hash) {
+            if let Some(ids) = self
+                .tables
+                .get(table_idx)
+                .and_then(|table| table.get(&hash))
+            {
                 candidates.extend(ids.iter().cloned());
             }
         }

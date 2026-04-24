@@ -11,7 +11,7 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn streaming_smoke() {
-    let client = huggingface::Client::from_env();
+    let client = huggingface::Client::from_env().expect("client should build");
     let agent = client
         .agent("meta-llama/Meta-Llama-3.1-8B-Instruct")
         .preamble(STREAMING_PREAMBLE)

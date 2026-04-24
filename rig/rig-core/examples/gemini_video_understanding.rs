@@ -47,7 +47,7 @@ fn build_additional_params() -> Result<serde_json::Value> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = gemini::Client::from_env();
+    let client = gemini::Client::from_env()?;
     let additional_params = build_additional_params()?;
     let agent = client
         .agent(MODEL)

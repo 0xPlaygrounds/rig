@@ -403,8 +403,10 @@ impl SqliteSearchFilter {
                     Value::Real(float)
                 } else if let Some(int) = n.as_i64() {
                     Value::Integer(int)
+                } else if let Some(int) = n.as_u64() {
+                    Value::Integer(int as i64)
                 } else {
-                    unreachable!()
+                    Value::Text(n.to_string())
                 }),
                 Array(arr) => {
                     let blob = serde_json::to_vec(&arr)
@@ -435,8 +437,9 @@ impl SqliteSearchFilter {
 /// It uses the `sqlite-vec` extension to enable vector similarity search capabilities.
 ///
 /// # Example
-/// ```rust
+/// ```no_run
 /// use rig::{
+///     client::EmbeddingsClient,
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
 ///     vector_store::{InsertDocuments, VectorStoreIndex},
@@ -447,6 +450,7 @@ impl SqliteSearchFilter {
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
 ///
+/// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
 /// struct Document {
 ///     id: String,
@@ -479,11 +483,11 @@ impl SqliteSearchFilter {
 /// }
 ///
 /// let conn = Connection::open("vector_store.db").await?;
-/// let openai_client = Client::new("YOUR_API_KEY");
+/// let openai_client = Client::new("YOUR_API_KEY")?;
 /// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 ///
 /// // Initialize vector store
-/// let vector_store = SqliteVectorStore::new(conn, &model).await?;
+/// let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::new(conn, &model).await?;
 ///
 /// // Create documents
 /// let documents = vec![
@@ -511,8 +515,12 @@ impl SqliteSearchFilter {
 /// let req = VectorSearchRequest::builder()
 ///     .query("Example query")
 ///     .samples(2)
-///     .build()?;
+///     .build();
 /// let results = index.top_n::<Document>(req).await?;
+/// # let _ = results;
+/// # Ok(())
+/// # }
+/// # let _ = example();
 /// ```
 pub struct SqliteVectorIndex<E, T>
 where

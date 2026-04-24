@@ -6,7 +6,7 @@ use rig::providers::openai;
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn list_models_smoke() {
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env().expect("client should build");
     let models = match client.list_models().await {
         Ok(models) => models,
         Err(error) => {

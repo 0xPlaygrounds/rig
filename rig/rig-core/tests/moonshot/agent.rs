@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn completion_smoke() {
-    let client = moonshot::Client::from_env();
+    let client = moonshot::Client::from_env().expect("moonshot client should build");
     let agent = client
         .agent(moonshot::MOONSHOT_CHAT)
         .preamble(BASIC_PREAMBLE)

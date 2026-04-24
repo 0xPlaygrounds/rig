@@ -4,8 +4,14 @@
 //!
 //! If you'd like to switch back to the regular Completions API, you can do so by using the `.completions_api()` function - see below for an example:
 //! ```rust
-//! let openai_client = rig::providers::openai::Client::from_env();
+//! use rig::client::{CompletionClient, ProviderClient};
+//!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let openai_client = rig::providers::openai::Client::from_env()?;
 //! let model = openai_client.completion_model("gpt-4o").completions_api();
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
 use super::InputAudio;
 use super::completion::ToolChoice;
@@ -1666,7 +1672,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     }
                                 },
                             }),
-                            _ => unreachable!(),
+                            _ => Err(MessageError::ConversionError(
+                                "expected tool result content while converting Responses API input"
+                                    .into(),
+                            )),
                         })
                         .collect::<Result<Vec<_>, _>>()
                 } else {
@@ -1761,7 +1770,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             message::UserContent::Audio(_) => Err(MessageError::ConversionError(
                                 "Audio must be base64 encoded data".into(),
                             )),
-                            _ => unreachable!(),
+                            _ => Err(MessageError::ConversionError(
+                                "Unsupported user content for OpenAI Responses API".into(),
+                            )),
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 

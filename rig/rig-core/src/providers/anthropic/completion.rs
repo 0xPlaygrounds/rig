@@ -1030,9 +1030,13 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
                     ));
                 }
 
-                Self::Tool {
-                    name: function_names.first().unwrap().to_string(),
-                }
+                let Some(name) = function_names.into_iter().next() else {
+                    return Err(CompletionError::ProviderError(
+                        "Only one tool may be specified to be used by Claude".into(),
+                    ));
+                };
+
+                Self::Tool { name }
             }
         };
 

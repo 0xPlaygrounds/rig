@@ -33,11 +33,16 @@ impl TryFrom<ImageGenerationResponse>
     type Error = ImageGenerationError;
 
     fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        let b64_json = value.data[0].b64_json.clone();
+        let b64_json = value
+            .data
+            .first()
+            .ok_or_else(|| ImageGenerationError::ResponseError("missing image data".into()))?
+            .b64_json
+            .clone();
 
         let bytes = BASE64_STANDARD
             .decode(&b64_json)
-            .expect("Failed to decode b64");
+            .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
 
         Ok(image_generation::ImageGenerationResponse {
             image: bytes,

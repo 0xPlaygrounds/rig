@@ -28,12 +28,12 @@ pub struct Word {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client
-    let openai_client = Client::from_env();
+    let openai_client = Client::from_env()?;
 
     // Initialize Neo4j client
-    let neo4j_uri = env::var("NEO4J_URI").expect("NEO4J_URI not set");
-    let neo4j_username = env::var("NEO4J_USERNAME").expect("NEO4J_USERNAME not set");
-    let neo4j_password = env::var("NEO4J_PASSWORD").expect("NEO4J_PASSWORD not set");
+    let neo4j_uri = env::var("NEO4J_URI")?;
+    let neo4j_username = env::var("NEO4J_USERNAME")?;
+    let neo4j_password = env::var("NEO4J_PASSWORD")?;
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
@@ -77,8 +77,7 @@ async fn main() -> Result<(), anyhow::Error> {
         })
         .buffer_unordered(3)
         .try_collect::<Vec<_>>()
-        .await
-        .unwrap();
+        .await?;
 
     // Create a vector index on our vector store
     println!("Creating vector index...");

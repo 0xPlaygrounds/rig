@@ -1,3 +1,11 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use serde_json::json;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -18,6 +26,16 @@ use rig_neo4j::{Neo4jClient, ToBoltType};
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
 
+fn skip_if_docker_unavailable(test_name: &str) -> bool {
+    let docker_socket = std::path::Path::new("/var/run/docker.sock");
+    if std::env::var_os("DOCKER_HOST").is_some() || docker_socket.exists() {
+        return false;
+    }
+
+    eprintln!("skipping {test_name}: Docker is unavailable");
+    true
+}
+
 #[derive(Embed, Clone, serde::Deserialize, Debug)]
 struct Word {
     id: String,
@@ -27,6 +45,10 @@ struct Word {
 
 #[tokio::test]
 async fn vector_search_test() {
+    if skip_if_docker_unavailable("vector_search_test") {
+        return;
+    }
+
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("neo4j", "latest")
         .with_wait_for(WaitFor::Duration {

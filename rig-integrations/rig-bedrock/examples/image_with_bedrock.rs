@@ -19,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = rig_bedrock::client::Client::from_env();
+    let client = rig_bedrock::client::Client::from_env()?;
     let agent = client
         .agent(AMAZON_NOVA_LITE)
         .preamble("You are an image describer.")

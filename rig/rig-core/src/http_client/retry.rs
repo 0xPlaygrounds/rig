@@ -45,7 +45,10 @@ impl ExponentialBackoff {
 impl RetryPolicy for ExponentialBackoff {
     fn retry(&self, _error: &Error, last_retry: Option<(usize, Duration)>) -> Option<Duration> {
         if let Some((retry_num, last_duration)) = last_retry {
-            if self.max_retries.is_none() || retry_num < self.max_retries.unwrap() {
+            if self
+                .max_retries
+                .is_none_or(|max_retries| retry_num < max_retries)
+            {
                 let duration = last_duration.mul_f64(self.factor);
                 if let Some(max_duration) = self.max_duration {
                     Some(duration.min(max_duration))
@@ -86,7 +89,10 @@ impl Constant {
 impl RetryPolicy for Constant {
     fn retry(&self, _error: &Error, last_retry: Option<(usize, Duration)>) -> Option<Duration> {
         if let Some((retry_num, _)) = last_retry {
-            if self.max_retries.is_none() || retry_num < self.max_retries.unwrap() {
+            if self
+                .max_retries
+                .is_none_or(|max_retries| retry_num < max_retries)
+            {
                 Some(self.delay)
             } else {
                 None

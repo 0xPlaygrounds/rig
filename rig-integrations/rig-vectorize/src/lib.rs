@@ -6,10 +6,11 @@
 //! # Example
 //!
 //! ```ignore
+//! use rig::client::ProviderClient;
 //! use rig::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
-//! let openai = openai::Client::from_env();
+//! let openai = openai::Client::from_env()?;
 //! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 //!
 //! let vector_store = VectorizeVectorStore::new(

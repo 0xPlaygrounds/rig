@@ -74,7 +74,7 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = mistral::Client::from_env();
+    let client = mistral::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(DEFAULT_MODEL)
         .preamble("Extract names from the given text.")
@@ -118,7 +118,7 @@ async fn batch_multi_extract_chain() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(responses.len(), 3);
+    anyhow::ensure!(responses.len() == 3);
 
     assert_contains_any(
         &responses[0].names,

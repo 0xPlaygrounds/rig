@@ -10,7 +10,7 @@ use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relev
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY"]
 async fn loaders_smoke() {
-    let client = xai::Client::from_env();
+    let client = xai::Client::from_env().expect("client should build");
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")
         .read_with_path()
