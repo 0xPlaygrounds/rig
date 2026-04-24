@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.4.5](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.4...rig-bedrock-v0.4.5) - 2026-04-24
+
+### Fixed
+
+- *(bedrock)* preserve all parallel tool calls in completion response ([#1626](https://github.com/0xPlaygrounds/rig/pull/1626)) (by @aleksmeshr)
+
+### Other
+
+- Add clippy no panic lints ([#1663](https://github.com/0xPlaygrounds/rig/pull/1663)) (by @gold-silver-copper) - #1663
+- remove deprecated code ([#1633](https://github.com/0xPlaygrounds/rig/pull/1633)) (by @gold-silver-copper) - #1633
+
+### Contributors
+
+* @gold-silver-copper
+* @aleksmeshr
 ## [0.4.4](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.3...rig-bedrock-v0.4.4) - 2026-04-12
 
 ### Added
