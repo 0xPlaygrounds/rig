@@ -237,6 +237,8 @@ where
     output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
+    /// How many tools should be executed at the same time (1 by default).
+    concurrency: usize,
 }
 
 impl<M, P> StreamingPromptRequest<M, P>
@@ -264,6 +266,7 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: None,
+            concurrency: 1,
         }
     }
 
@@ -291,6 +294,7 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: agent.hook.clone(),
+            concurrency: 1,
         }
     }
 
@@ -302,6 +306,24 @@ where
     /// If the maximum turn number is exceeded, it will return a [`crate::completion::request::PromptError::MaxTurnsError`].
     pub fn multi_turn(mut self, turns: usize) -> Self {
         self.max_turns = turns;
+        self
+    }
+
+    /// Add concurrency to the streaming prompt request.
+    ///
+    /// When set to a value greater than 1, all tool calls from a single model
+    /// response are collected and executed concurrently (up to `concurrency`
+    /// at a time), rather than one-by-one as they arrive in the stream.
+    ///
+    /// Pre-execution hooks ([`PromptHook::on_tool_call`]) still run
+    /// sequentially before any tool is dispatched, so a
+    /// [`ToolCallHookAction::Terminate`] prevents all subsequent execution.
+    /// Post-execution hooks ([`PromptHook::on_tool_result`]) run sequentially
+    /// after all tools complete.
+    ///
+    /// Defaults to 1 (sequential execution, matching the previous behaviour).
+    pub fn with_tool_concurrency(mut self, concurrency: usize) -> Self {
+        self.concurrency = concurrency;
         self
     }
 
@@ -348,6 +370,7 @@ where
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
             hook: Some(hook),
+            concurrency: self.concurrency,
         }
     }
 
@@ -387,6 +410,7 @@ where
         let agent_name = self.agent_name.clone();
         let has_history = self.chat_history.is_some();
         let chat_history = self.chat_history;
+        let concurrency = self.concurrency;
         let mut new_messages: Vec<Message> = vec![prompt.clone()];
 
         let mut current_max_turns = 0;
@@ -497,6 +521,9 @@ where
                 let mut pending_reasoning_delta_text = String::new();
                 let mut pending_reasoning_delta_id: Option<String> = None;
                 let mut saw_tool_call_this_turn = false;
+                // When concurrency > 1, tool calls are buffered here during
+                // streaming and executed in parallel after the stream ends.
+                let mut deferred_tool_calls: Vec<(crate::message::ToolCall, String)> = vec![];
 
                 while let Some(content) = stream.next().await {
                     match content {
@@ -515,90 +542,95 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
-                            let tool_span = info_span!(
-                                parent: tracing::Span::current(),
-                                "execute_tool",
-                                gen_ai.operation.name = "execute_tool",
-                                gen_ai.tool.type = "function",
-                                gen_ai.tool.name = tracing::field::Empty,
-                                gen_ai.tool.call.id = tracing::field::Empty,
-                                gen_ai.tool.call.arguments = tracing::field::Empty,
-                                gen_ai.tool.call.result = tracing::field::Empty
-                            );
-
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall { tool_call: tool_call.clone(), internal_call_id: internal_call_id.clone() }));
 
-                            let tc_result = async {
-                                let tool_span = tracing::Span::current();
-                                let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
-                                if let Some(ref hook) = self.hook {
-                                    let action = hook
-                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
-                                        .await;
+                            if concurrency > 1 {
+                                // Buffer for parallel execution after stream completes.
+                                deferred_tool_calls.push((tool_call, internal_call_id));
+                            } else {
+                                // Sequential (default): execute inline, matching prior behaviour.
+                                let tool_span = info_span!(
+                                    parent: tracing::Span::current(),
+                                    "execute_tool",
+                                    gen_ai.operation.name = "execute_tool",
+                                    gen_ai.tool.type = "function",
+                                    gen_ai.tool.name = tracing::field::Empty,
+                                    gen_ai.tool.call.id = tracing::field::Empty,
+                                    gen_ai.tool.call.arguments = tracing::field::Empty,
+                                    gen_ai.tool.call.result = tracing::field::Empty
+                                );
 
-                                    if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                let tc_result = async {
+                                    let tool_span = tracing::Span::current();
+                                    let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
+                                    if let Some(ref hook) = self.hook {
+                                        let action = hook
+                                            .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
+                                            .await;
+
+                                        if let ToolCallHookAction::Terminate { reason } = action {
+                                            return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                        }
+
+                                        if let ToolCallHookAction::Skip { reason } = action {
+                                            tracing::info!(
+                                                tool_name = tool_call.function.name.as_str(),
+                                                reason = reason,
+                                                "Tool call rejected"
+                                            );
+                                            let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
+                                            tool_calls.push(tool_call_msg);
+                                            tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
+                                            saw_tool_call_this_turn = true;
+                                            return Ok(reason);
+                                        }
                                     }
 
-                                    if let ToolCallHookAction::Skip { reason } = action {
-                                        // Tool execution rejected, return rejection message as tool result
-                                        tracing::info!(
-                                            tool_name = tool_call.function.name.as_str(),
-                                            reason = reason,
-                                            "Tool call rejected"
-                                        );
-                                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-                                        tool_calls.push(tool_call_msg);
-                                        tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
-                                        saw_tool_call_this_turn = true;
-                                        return Ok(reason);
+                                    tool_span.record("gen_ai.tool.name", &tool_call.function.name);
+                                    tool_span.record("gen_ai.tool.call.arguments", &tool_args);
+
+                                    let tool_result = match
+                                    tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
+                                        Ok(thing) => thing,
+                                        Err(e) => {
+                                            tracing::warn!("Error while calling tool: {e}");
+                                            e.to_string()
+                                        }
+                                    };
+
+                                    tool_span.record("gen_ai.tool.call.result", &tool_result);
+
+                                    if let Some(ref hook) = self.hook &&
+                                        let HookAction::Terminate { reason } =
+                                        hook.on_tool_result(
+                                            &tool_call.function.name,
+                                            tool_call.call_id.clone(),
+                                            &internal_call_id,
+                                            &tool_args,
+                                            &tool_result.to_string()
+                                        )
+                                        .await {
+                                            return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                        }
+
+                                    let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
+
+                                    tool_calls.push(tool_call_msg);
+                                    tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
+
+                                    saw_tool_call_this_turn = true;
+                                    Ok(tool_result)
+                                }.instrument(tool_span).await;
+
+                                match tc_result {
+                                    Ok(text) => {
+                                        let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
+                                        yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult{ tool_result: tr, internal_call_id }));
                                     }
-                                }
-
-                                tool_span.record("gen_ai.tool.name", &tool_call.function.name);
-                                tool_span.record("gen_ai.tool.call.arguments", &tool_args);
-
-                                let tool_result = match
-                                tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
-                                    Ok(thing) => thing,
                                     Err(e) => {
-                                        tracing::warn!("Error while calling tool: {e}");
-                                        e.to_string()
+                                        yield Err(e);
+                                        break 'outer;
                                     }
-                                };
-
-                                tool_span.record("gen_ai.tool.call.result", &tool_result);
-
-                                if let Some(ref hook) = self.hook &&
-                                    let HookAction::Terminate { reason } =
-                                    hook.on_tool_result(
-                                        &tool_call.function.name,
-                                        tool_call.call_id.clone(),
-                                        &internal_call_id,
-                                        &tool_args,
-                                        &tool_result.to_string()
-                                    )
-                                    .await {
-                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                    }
-
-                                let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-
-                                tool_calls.push(tool_call_msg);
-                                tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
-
-                                saw_tool_call_this_turn = true;
-                                Ok(tool_result)
-                            }.instrument(tool_span).await;
-
-                            match tc_result {
-                                Ok(text) => {
-                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
-                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult{ tool_result: tr, internal_call_id }));
-                                }
-                                Err(e) => {
-                                    yield Err(e);
-                                    break 'outer;
                                 }
                             }
                         },
@@ -650,6 +682,99 @@ where
                             yield Err(e.into());
                             break 'outer;
                         }
+                    }
+                }
+
+                // ── Parallel tool execution (concurrency > 1) ──
+                // Tool calls were buffered during the stream above.
+                // Execute them concurrently, honouring hooks and cancellation.
+                if !deferred_tool_calls.is_empty() {
+                    saw_tool_call_this_turn = true;
+
+                    // Phase 1 – pre-execution hooks (sequential).
+                    // A Terminate stops everything; a Skip returns the
+                    // reason as the tool result without executing.
+                    let mut approved: Vec<(crate::message::ToolCall, String, String)> = vec![];
+                    for (tc, internal_id) in deferred_tool_calls.drain(..) {
+                        let tool_args = json_utils::value_to_json_string(&tc.function.arguments);
+                        if let Some(ref hook) = self.hook {
+                            let action = hook
+                                .on_tool_call(&tc.function.name, tc.call_id.clone(), &internal_id, &tool_args)
+                                .await;
+                            match action {
+                                ToolCallHookAction::Terminate { reason } => {
+                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                    break 'outer;
+                                }
+                                ToolCallHookAction::Skip { reason } => {
+                                    tracing::info!(
+                                        tool_name = tc.function.name.as_str(),
+                                        reason = reason,
+                                        "Tool call rejected"
+                                    );
+                                    tool_calls.push(AssistantContent::ToolCall(tc.clone()));
+                                    tool_results.push((tc.id.clone(), tc.call_id.clone(), reason.clone()));
+                                    let tr = ToolResult { id: tc.id, call_id: tc.call_id, content: ToolResultContent::from_tool_output(reason) };
+                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { tool_result: tr, internal_call_id: internal_id }));
+                                    continue;
+                                }
+                                ToolCallHookAction::Continue => {}
+                            }
+                        }
+                        approved.push((tc, internal_id, tool_args));
+                    }
+
+                    // Phase 2 – execute approved tools concurrently.
+                    let execution_futures: Vec<_> = approved.iter().map(|(tc, _internal_id, tool_args)| {
+                        let tool_span = info_span!(
+                            parent: tracing::Span::current(),
+                            "execute_tool",
+                            gen_ai.operation.name = "execute_tool",
+                            gen_ai.tool.r#type = "function",
+                            gen_ai.tool.name = tc.function.name.as_str(),
+                            gen_ai.tool.call.id = tc.id.as_str(),
+                            gen_ai.tool.call.arguments = tool_args.as_str(),
+                            gen_ai.tool.call.result = tracing::field::Empty
+                        );
+                        let name = tc.function.name.clone();
+                        let args = tool_args.clone();
+                        let handle = tool_server_handle.clone();
+                        async move {
+                            let result = match handle.call_tool(&name, &args).await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    tracing::warn!("Error while calling tool: {e}");
+                                    e.to_string()
+                                }
+                            };
+                            tracing::Span::current().record("gen_ai.tool.call.result", &result);
+                            result
+                        }.instrument(tool_span)
+                    }).collect();
+
+                    let results = futures::future::join_all(execution_futures).await;
+
+                    // Phase 3 – post-execution hooks (sequential) & yield results.
+                    for ((tc, internal_id, tool_args), result) in approved.into_iter().zip(results) {
+                        if let Some(ref hook) = self.hook &&
+                            let HookAction::Terminate { reason } =
+                            hook.on_tool_result(
+                                &tc.function.name,
+                                tc.call_id.clone(),
+                                &internal_id,
+                                &tool_args,
+                                &result,
+                            ).await
+                        {
+                            yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                            break 'outer;
+                        }
+
+                        tool_calls.push(AssistantContent::ToolCall(tc.clone()));
+                        tool_results.push((tc.id.clone(), tc.call_id.clone(), result.clone()));
+
+                        let tr = ToolResult { id: tc.id, call_id: tc.call_id, content: ToolResultContent::from_tool_output(result) };
+                        yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { tool_result: tr, internal_call_id: internal_id }));
                     }
                 }
 
