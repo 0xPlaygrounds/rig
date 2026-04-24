@@ -92,7 +92,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         .prompt_typed("Hello, whats the weather in London?")
         .await?;
 
-    assert!(
+    anyhow::ensure!(
         call_count.load(Ordering::SeqCst) >= 1,
         "expected the weather tool to be executed at least once"
     );

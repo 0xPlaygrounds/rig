@@ -1374,8 +1374,8 @@ mod tests {
         bg_handle.await?;
 
         let leaks = leak_count.load(Ordering::Relaxed);
-        assert_eq!(
-            leaks, 0,
+        anyhow::ensure!(
+            leaks == 0,
             "SPAN LEAK DETECTED: Background logger was inside unexpected spans {leaks} times. \
              This indicates that span.enter() is being used inside async_stream instead of .instrument()"
         );
@@ -1433,13 +1433,13 @@ mod tests {
             .ok_or_else(|| anyhow::anyhow!("final response should include history"))?;
 
         // Should contain at least the user message
-        assert!(
+        anyhow::ensure!(
             history.iter().any(|m| matches!(m, Message::User { .. })),
             "History should contain the user message"
         );
 
         // Should contain the assistant response
-        assert!(
+        anyhow::ensure!(
             history
                 .iter()
                 .any(|m| matches!(m, Message::Assistant { .. })),

@@ -70,11 +70,19 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let results = vector_store.top_n::<TopicDefinition>(req).await?;
 
-    assert_eq!(results.len(), 3);
+    anyhow::ensure!(
+        results.len() == 3,
+        "expected three unfiltered results, got {}",
+        results.len()
+    );
     let Some(first_result) = results.first() else {
         return Err(anyhow::anyhow!("expected at least one result"));
     };
-    assert_eq!(first_result.2.topic, "pasta carbonara");
+    anyhow::ensure!(
+        first_result.2.topic == "pasta carbonara",
+        "expected first result to be pasta carbonara, got {}",
+        first_result.2.topic
+    );
 
     println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
@@ -98,11 +106,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<TopicDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
-    assert_eq!(results.len(), 1);
+    anyhow::ensure!(
+        results.len() == 1,
+        "expected one filtered result, got {}",
+        results.len()
+    );
     let Some(filtered_result) = results.first() else {
         return Err(anyhow::anyhow!("expected one filtered result"));
     };
-    assert_eq!(filtered_result.2.topic, "pasta carbonara");
+    anyhow::ensure!(
+        filtered_result.2.topic == "pasta carbonara",
+        "expected filtered result to be pasta carbonara, got {}",
+        filtered_result.2.topic
+    );
 
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for topic: {doc}");

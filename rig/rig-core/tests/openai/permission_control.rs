@@ -176,8 +176,8 @@ async fn permission_control_prompt_example() -> Result<()> {
         .await?;
 
     let last = last_result.lock().expect("lock last_result").clone();
-    assert_eq!(last.as_deref(), Some("hello world"));
-    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    anyhow::ensure!(last.as_deref() == Some("hello world"));
+    anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
     Ok(())
 }
 
@@ -213,7 +213,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     let final_response = stream_to_stdout(&mut stream).await?;
     let last = last_result.lock().expect("lock last_result").clone();
     assert_nonempty_response(final_response.response());
-    assert!(
+    anyhow::ensure!(
         final_response
             .response()
             .to_ascii_lowercase()
@@ -221,8 +221,8 @@ async fn permission_control_streaming_example() -> Result<()> {
         "expected the streamed final response to mention the file content, got {:?}",
         final_response.response()
     );
-    assert_eq!(last.as_deref(), Some("hello world"));
-    assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    anyhow::ensure!(last.as_deref() == Some("hello world"));
+    anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
 
     Ok(())
 }

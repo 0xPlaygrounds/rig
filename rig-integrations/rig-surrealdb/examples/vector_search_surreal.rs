@@ -99,7 +99,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
-    assert_eq!(results.len(), 1);
+    anyhow::ensure!(
+        results.len() == 1,
+        "expected one result after threshold filtering, got {}",
+        results.len()
+    );
 
     for (distance, _id, doc) in results.iter() {
         println!("Result distance {distance} for word: {doc}");

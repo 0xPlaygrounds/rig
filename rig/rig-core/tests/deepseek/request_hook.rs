@@ -88,8 +88,14 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         .await?;
 
     assert_nonempty_response(&response);
-    assert_eq!(hook.prompt_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(hook.response_calls.load(Ordering::SeqCst), 1);
+    anyhow::ensure!(
+        hook.prompt_calls.load(Ordering::SeqCst) == 1,
+        "expected one prompt hook call"
+    );
+    anyhow::ensure!(
+        hook.response_calls.load(Ordering::SeqCst) == 1,
+        "expected one response hook call"
+    );
 
     let seen_prompt = hook
         .seen_prompt
@@ -102,15 +108,17 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         .map_err(|_| anyhow!("response hook state unavailable"))?
         .clone();
 
-    assert!(
+    anyhow::ensure!(
         seen_prompt
             .as_deref()
-            .is_some_and(|prompt| prompt.contains("Entertain me!"))
+            .is_some_and(|prompt| prompt.contains("Entertain me!")),
+        "expected hook to capture prompt text"
     );
-    assert!(
+    anyhow::ensure!(
         seen_response
             .as_deref()
-            .is_some_and(|captured| !captured.is_empty())
+            .is_some_and(|captured| !captured.is_empty()),
+        "expected hook to capture response text"
     );
 
     Ok(())

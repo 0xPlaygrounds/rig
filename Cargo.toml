@@ -10,9 +10,13 @@ exclude = [
 
 [workspace.lints.clippy]
 dbg_macro = "forbid"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
 expect_used = "deny"
+expect_fun_call = "deny"
 indexing_slicing = "deny"
 panic = "deny"
+panic_in_result_fn = "deny"
 todo = "forbid"
 unimplemented = "forbid"
 unreachable = "deny"

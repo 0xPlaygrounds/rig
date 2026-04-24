@@ -73,7 +73,7 @@ async fn batch_multi_extract_chain() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(responses.len(), 3);
+    anyhow::ensure!(responses.len() == 3);
     for response in responses {
         assert_nonempty_response(&response);
     }

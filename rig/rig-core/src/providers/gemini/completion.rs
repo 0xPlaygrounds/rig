@@ -2951,7 +2951,7 @@ mod tests {
             .await?;
         println!("Response: {response_text}");
         // Gemini should have been able to see the image and potentially describe its color
-        assert!(!response_text.is_empty(), "Response should not be empty");
+        anyhow::ensure!(!response_text.is_empty(), "Response should not be empty");
 
         Ok(())
     }

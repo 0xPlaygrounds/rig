@@ -34,7 +34,7 @@ async fn websocket_session_roundtrip() -> Result<()> {
         .preamble("Be precise and concise.".to_string())
         .build();
     let warmup_id = session.warmup(warmup_request).await?;
-    assert!(!warmup_id.is_empty(), "warmup should return a response id");
+    anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
 
     let request = model
         .completion_request("Explain the benefit of websocket mode in one sentence.")

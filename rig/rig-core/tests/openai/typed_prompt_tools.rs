@@ -102,7 +102,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let response: WeatherResponse = result?;
     println!("agent response: {response:#?}");
 
-    assert!(
+    anyhow::ensure!(
         call_count.load(Ordering::SeqCst) >= 1,
         "expected the weather tool to be executed at least once"
     );

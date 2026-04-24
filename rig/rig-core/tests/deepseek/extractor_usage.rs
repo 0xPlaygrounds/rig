@@ -1,6 +1,6 @@
 //! Integration tests for DeepSeek extractor usage tracking.
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use rig::client::{CompletionClient, ProviderClient};
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
@@ -23,17 +23,18 @@ struct Address {
     zip_code: Option<String>,
 }
 
-fn assert_compatible_professions(left: Option<&str>, right: &str) {
+fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> {
     let left = left
-        .expect("profession should be present")
+        .ok_or_else(|| anyhow!("profession should be present"))?
         .trim()
         .to_ascii_lowercase();
     let right = right.trim().to_ascii_lowercase();
 
-    assert!(
+    anyhow::ensure!(
         left == right || left.contains(&right) || right.contains(&left),
         "expected compatible professions, got {left:?} and {right:?}"
     );
+    Ok(())
 }
 
 #[tokio::test]
@@ -46,9 +47,17 @@ async fn extract_backward_compatibility() -> Result<()> {
         .extract("John Doe is a 30 year old software engineer.")
         .await?;
 
-    assert_eq!(person.name, Some("John Doe".to_string()));
-    assert_eq!(person.age, Some(30));
-    assert_compatible_professions(person.profession.as_deref(), "software engineer");
+    anyhow::ensure!(
+        person.name == Some("John Doe".to_string()),
+        "expected name John Doe, got {:?}",
+        person.name
+    );
+    anyhow::ensure!(
+        person.age == Some(30),
+        "expected age 30, got {:?}",
+        person.age
+    );
+    assert_compatible_professions(person.profession.as_deref(), "software engineer")?;
 
     Ok(())
 }
@@ -63,12 +72,20 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         .extract_with_usage("Jane Smith is a 45 year old data scientist.")
         .await?;
 
-    assert_eq!(response.data.name, Some("Jane Smith".to_string()));
-    assert_eq!(response.data.age, Some(45));
-    assert_compatible_professions(response.data.profession.as_deref(), "data scientist");
-    assert!(response.usage.input_tokens > 0);
-    assert!(response.usage.output_tokens > 0);
-    assert!(response.usage.total_tokens > 0);
+    anyhow::ensure!(
+        response.data.name == Some("Jane Smith".to_string()),
+        "expected name Jane Smith, got {:?}",
+        response.data.name
+    );
+    anyhow::ensure!(
+        response.data.age == Some(45),
+        "expected age 45, got {:?}",
+        response.data.age
+    );
+    assert_compatible_professions(response.data.profession.as_deref(), "data scientist")?;
+    anyhow::ensure!(response.usage.input_tokens > 0, "expected input tokens");
+    anyhow::ensure!(response.usage.output_tokens > 0, "expected output tokens");
+    anyhow::ensure!(response.usage.total_tokens > 0, "expected total tokens");
 
     Ok(())
 }
@@ -90,12 +107,28 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
         )
         .await?;
 
-    assert_eq!(response.data.street, Some("123 Main St".to_string()));
-    assert_eq!(response.data.city, Some("Springfield".to_string()));
-    assert_eq!(response.data.state, Some("IL".to_string()));
-    assert_eq!(response.data.zip_code, Some("62701".to_string()));
-    assert!(response.usage.input_tokens > 0);
-    assert!(response.usage.total_tokens > 0);
+    anyhow::ensure!(
+        response.data.street == Some("123 Main St".to_string()),
+        "expected street 123 Main St, got {:?}",
+        response.data.street
+    );
+    anyhow::ensure!(
+        response.data.city == Some("Springfield".to_string()),
+        "expected city Springfield, got {:?}",
+        response.data.city
+    );
+    anyhow::ensure!(
+        response.data.state == Some("IL".to_string()),
+        "expected state IL, got {:?}",
+        response.data.state
+    );
+    anyhow::ensure!(
+        response.data.zip_code == Some("62701".to_string()),
+        "expected zip code 62701, got {:?}",
+        response.data.zip_code
+    );
+    anyhow::ensure!(response.usage.input_tokens > 0, "expected input tokens");
+    anyhow::ensure!(response.usage.total_tokens > 0, "expected total tokens");
 
     Ok(())
 }
@@ -110,13 +143,29 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     let person = extractor.extract(text).await?;
     let response = extractor.extract_with_usage(text).await?;
 
-    assert_eq!(person.name, Some("Bob Johnson".to_string()));
-    assert_eq!(response.data.name, Some("Bob Johnson".to_string()));
-    assert_eq!(person.age, Some(55));
-    assert_eq!(response.data.age, Some(55));
-    assert_compatible_professions(person.profession.as_deref(), "retired teacher");
-    assert_compatible_professions(response.data.profession.as_deref(), "retired teacher");
-    assert!(response.usage.total_tokens > 0, "usage should be populated");
+    anyhow::ensure!(
+        person.name == Some("Bob Johnson".to_string()),
+        "expected extracted name Bob Johnson, got {:?}",
+        person.name
+    );
+    anyhow::ensure!(
+        response.data.name == Some("Bob Johnson".to_string()),
+        "expected usage response name Bob Johnson, got {:?}",
+        response.data.name
+    );
+    anyhow::ensure!(
+        person.age == Some(55),
+        "expected extracted age 55, got {:?}",
+        person.age
+    );
+    anyhow::ensure!(
+        response.data.age == Some(55),
+        "expected usage response age 55, got {:?}",
+        response.data.age
+    );
+    assert_compatible_professions(person.profession.as_deref(), "retired teacher")?;
+    assert_compatible_professions(response.data.profession.as_deref(), "retired teacher")?;
+    anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
 
     Ok(())
 }
@@ -130,13 +179,19 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     let person_response = person_extractor
         .extract_with_usage("Alice is a 25 year old developer.")
         .await?;
-    assert!(person_response.usage.total_tokens > 0);
+    anyhow::ensure!(
+        person_response.usage.total_tokens > 0,
+        "expected person usage tokens"
+    );
 
     let address_extractor = client.extractor::<Address>(deepseek::DEEPSEEK_CHAT).build();
     let address_response = address_extractor
         .extract_with_usage("456 Oak Avenue, Cambridge, MA 02139")
         .await?;
-    assert!(address_response.usage.total_tokens > 0);
+    anyhow::ensure!(
+        address_response.usage.total_tokens > 0,
+        "expected address usage tokens"
+    );
 
     Ok(())
 }

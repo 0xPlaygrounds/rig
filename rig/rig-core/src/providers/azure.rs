@@ -1107,7 +1107,11 @@ mod azure_tests {
         let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
         let embedding = model.embed_text("Hello, world!").await?;
 
-        assert!(embedding.vec.len() == ndims);
+        anyhow::ensure!(
+            embedding.vec.len() == ndims,
+            "expected embedding dimensions {ndims}, got {}",
+            embedding.vec.len()
+        );
 
         tracing::info!("Azure dimensions embedding: {:?}", embedding);
         Ok(())
@@ -1162,8 +1166,12 @@ mod azure_tests {
             .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
             .await?;
 
-        assert!(result.name == "John Doe");
-        assert!(result.age == 54);
+        anyhow::ensure!(
+            result.name == "John Doe",
+            "expected name John Doe, got {}",
+            result.name
+        );
+        anyhow::ensure!(result.age == 54, "expected age 54, got {}", result.age);
 
         tracing::info!("Extracted person: {:?}", result);
         Ok(())
