@@ -263,7 +263,8 @@ impl completion::CompletionModel for CompletionModel {
             .set_inference_config(request.inference_config())
             .set_tool_config(tool_config)
             .set_system(request.system_prompt()?)
-            .set_messages(Some(messages));
+            .set_messages(Some(messages))
+            .set_output_config(request.output_config());
 
         async move {
             let response = converse_builder.send().await.map_err(|sdk_error| {
