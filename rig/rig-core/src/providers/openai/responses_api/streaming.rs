@@ -659,10 +659,23 @@ where
                         let Err(err) = data else {
                             continue;
                         };
-                        debug!(
-                            "Couldn't deserialize SSE data as StreamingCompletionChunk: {:?}",
-                            err
-                        );
+                        // Check if this looks like a Chat Completions-format response
+                        // (e.g., from llama.cpp or other OpenAI-compatible servers that
+                        // don't support the Responses API format).
+                        if evt.data.contains("\"choices\"") {
+                            debug!(
+                                "Received Chat Completions-format data on the Responses API \
+                                 stream. If you are using an OpenAI-compatible server \
+                                 (e.g., llama.cpp), call `.completions_api()` on the client \
+                                 to use the Chat Completions endpoint instead: {:?}",
+                                err
+                            );
+                        } else {
+                            debug!(
+                                "Couldn't deserialize SSE data as StreamingCompletionChunk: {:?}",
+                                err
+                            );
+                        }
                         continue;
                     };
 
