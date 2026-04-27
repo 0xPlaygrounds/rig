@@ -23,6 +23,8 @@ use tracing::{Instrument, Level, enabled, info_span};
 
 /// `claude-opus-4-6` completion model
 pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
+/// `claude-opus-4-7` completion model
+pub const CLAUDE_OPUS_4_7: &str = "claude-opus-4-7";
 /// `claude-sonnet-4-6` completion model
 pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 /// `claude-haiku-4-5` completion model
@@ -945,7 +947,7 @@ where
     ///
     /// | Model | Minimum tokens |
     /// |-------|---------------|
-    /// | `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
+    /// | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
     /// | `claude-sonnet-4-6` | 2 048 |
     /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
     /// | `claude-haiku-4-5` | 4 096 |
@@ -983,7 +985,9 @@ where
 /// set or if set too high, the request will fail. The following values are based on the models
 /// available at the time of writing.
 fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4-6") {
+    if model.starts_with("claude-opus-4-7") {
+        Some(128_000)
+    } else if model.starts_with("claude-opus-4-6") {
         Some(128_000)
     } else if model.starts_with("claude-opus-4")
         || model.starts_with("claude-sonnet-4")

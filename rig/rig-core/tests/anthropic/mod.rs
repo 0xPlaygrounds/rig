@@ -4,6 +4,7 @@ mod empty_end_turn;
 mod image;
 mod models;
 mod multi_turn_streaming;
+mod opus_4_7;
 mod plaintext_document;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;
