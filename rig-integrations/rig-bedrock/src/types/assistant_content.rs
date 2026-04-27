@@ -199,7 +199,13 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                 }
 
                 let flattened_text = reasoning.display_text();
-                if flattened_text.is_empty() {
+                let has_signature = reasoning.first_signature().is_some();
+                // Adaptive thinking on Bedrock can emit a reasoning block whose
+                // plaintext body is empty but with a real cryptographic
+                // signature attached. The signature is what Anthropic uses to
+                // verify tool_use round-trips, so we must preserve it. Only
+                // reject when there's neither text nor signature to send.
+                if flattened_text.is_empty() && !has_signature {
                     return Err(CompletionError::ProviderError(
                         "AWS Bedrock reasoning conversion requires at least one text or summary block"
                             .to_owned(),
@@ -544,6 +550,43 @@ mod tests {
             }
             _ => panic!("Expected ContentBlock::ReasoningContent"),
         }
+    }
+
+    #[test]
+    fn rig_reasoning_with_empty_text_and_signature_is_converted() {
+        // Adaptive thinking on Bedrock can emit a reasoning block whose
+        // plaintext body is empty but with a real cryptographic signature
+        // attached. Verify we forward this as a `ReasoningTextBlock` with
+        // empty text + signature instead of rejecting it.
+        let reasoning =
+            rig::message::Reasoning::new_with_signature("", Some("sig_empty_text".to_string()));
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(aws_content_block.is_ok());
+
+        match aws_content_block.unwrap() {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
+            ) => {
+                assert_eq!(reasoning_text.text, "");
+                assert_eq!(reasoning_text.signature, Some("sig_empty_text".to_string()));
+            }
+            _ => panic!("Expected ContentBlock::ReasoningContent"),
+        }
+    }
+
+    #[test]
+    fn rig_reasoning_with_empty_text_and_no_signature_returns_error() {
+        let reasoning = rig::message::Reasoning::new_with_signature("", None);
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(matches!(
+            aws_content_block,
+            Err(completion::CompletionError::ProviderError(message))
+                if message.contains("at least one text or summary block")
+        ));
     }
 
     #[test]
