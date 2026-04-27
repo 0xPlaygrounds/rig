@@ -1,7 +1,7 @@
 //! DeepSeek streaming smoke test.
 
 use rig::client::{CompletionClient, ProviderClient};
-use rig::providers::deepseek::{self, DEEPSEEK_CHAT};
+use rig::providers::deepseek::{self, DEEPSEEK_V4_FLASH};
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -11,7 +11,7 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 async fn streaming_prompt_smoke() {
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(DEEPSEEK_CHAT)
+        .agent(DEEPSEEK_V4_FLASH)
         .preamble("You are a helpful assistant.")
         .build();
 

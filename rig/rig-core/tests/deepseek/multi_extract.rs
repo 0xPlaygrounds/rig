@@ -31,17 +31,17 @@ struct Sentiment {
 async fn batch_multi_extract_chain() -> Result<()> {
     let client = deepseek::Client::from_env().expect("client should build");
     let names_extractor = client
-        .extractor::<Names>(deepseek::DEEPSEEK_CHAT)
+        .extractor::<Names>(deepseek::DEEPSEEK_V4_FLASH)
         .preamble("Extract names from the given text.")
         .retries(2)
         .build();
     let topics_extractor = client
-        .extractor::<Topics>(deepseek::DEEPSEEK_CHAT)
+        .extractor::<Topics>(deepseek::DEEPSEEK_V4_FLASH)
         .preamble("Extract topics from the given text.")
         .retries(2)
         .build();
     let sentiment_extractor = client
-        .extractor::<Sentiment>(deepseek::DEEPSEEK_CHAT)
+        .extractor::<Sentiment>(deepseek::DEEPSEEK_V4_FLASH)
         .preamble("Extract sentiment and confidence from the given text.")
         .retries(2)
         .build();

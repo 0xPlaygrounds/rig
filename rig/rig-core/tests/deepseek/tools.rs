@@ -13,7 +13,7 @@ use crate::support::{
 async fn tools_smoke() {
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(deepseek::DEEPSEEK_CHAT)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
