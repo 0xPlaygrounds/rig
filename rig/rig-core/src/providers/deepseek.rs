@@ -14,12 +14,13 @@ use http::Request;
 use tracing::{Instrument, Level, enabled, info_span};
 
 use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
+    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
+    ProviderBuilder, ProviderClient,
 };
 use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
+use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
 };
@@ -27,6 +28,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils, message,
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +55,7 @@ impl<H> Capabilities<H> for DeepSeekExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<DeepSeekModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -791,6 +793,82 @@ where
     .await
 }
 
+#[derive(Debug, Deserialize)]
+struct ListModelsResponse {
+    data: Vec<ListModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListModelEntry {
+    id: String,
+    owned_by: String,
+}
+
+impl From<ListModelEntry> for Model {
+    fn from(value: ListModelEntry) -> Self {
+        let mut model = Model::from_id(value.id);
+        model.owned_by = Some(value.owned_by);
+        model
+    }
+}
+
+/// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
+#[derive(Clone)]
+pub struct DeepSeekModelLister<H = reqwest::Client> {
+    client: Client<H>,
+}
+
+impl<H> ModelLister<H> for DeepSeekModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+{
+    type Client = Client<H>;
+
+    fn new(client: Self::Client) -> Self {
+        Self { client }
+    }
+
+    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
+        let path = "/models";
+        let req = self.client.get(path)?.body(http_client::NoBody)?;
+        let response = self
+            .client
+            .send::<_, Vec<u8>>(req)
+            .await
+            .map_err(|error| match error {
+                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
+                    ModelListingError::api_error_with_context(
+                        "DeepSeek",
+                        path,
+                        status.as_u16(),
+                        message.as_bytes(),
+                    )
+                }
+                other => ModelListingError::from(other),
+            })?;
+
+        if !response.status().is_success() {
+            let status_code = response.status().as_u16();
+            let body = response.into_body().await?;
+            return Err(ModelListingError::api_error_with_context(
+                "DeepSeek",
+                path,
+                status_code,
+                &body,
+            ));
+        }
+
+        let body = response.into_body().await?;
+        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
+            ModelListingError::parse_error_with_context("DeepSeek", path, &error, &body)
+        })?;
+
+        let models = api_resp.data.into_iter().map(Model::from).collect();
+
+        Ok(ModelList::new(models))
+    }
+}
+
 // ================================================================
 // DeepSeek Completion API
 // ================================================================
@@ -813,6 +891,11 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::ModelListingClient;
+    use crate::http_client::{LazyBody, MultipartForm, Request as HttpRequest, Response};
+    use bytes::Bytes;
+    use std::future::{self, Future};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_deserialize_vec_choice() {
@@ -1069,5 +1152,208 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn test_deserialize_list_models_response() {
+        let data = r#"{
+            "object": "list",
+            "data": [
+                {
+                    "id": "deepseek-v4-flash",
+                    "object": "model",
+                    "owned_by": "deepseek"
+                },
+                {
+                    "id": "deepseek-v4-pro",
+                    "object": "model",
+                    "owned_by": "deepseek"
+                }
+            ]
+        }"#;
+
+        let response: ListModelsResponse = serde_json::from_str(data).unwrap();
+
+        assert_eq!(response.data.len(), 2);
+        assert_eq!(response.data[0].id, "deepseek-v4-flash");
+        assert_eq!(response.data[0].owned_by, "deepseek");
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct CapturedRequest {
+        uri: String,
+    }
+
+    #[derive(Clone)]
+    enum MockResponse {
+        Success(Bytes),
+        Error(http::StatusCode, String),
+    }
+
+    impl Default for MockResponse {
+        fn default() -> Self {
+            Self::Success(Bytes::new())
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingHttpClient {
+        requests: Arc<Mutex<Vec<CapturedRequest>>>,
+        response: Arc<Mutex<MockResponse>>,
+    }
+
+    impl RecordingHttpClient {
+        fn new(response_body: impl Into<Bytes>) -> Self {
+            Self {
+                requests: Arc::new(Mutex::new(Vec::new())),
+                response: Arc::new(Mutex::new(MockResponse::Success(response_body.into()))),
+            }
+        }
+
+        fn with_error(status: http::StatusCode, message: impl Into<String>) -> Self {
+            Self {
+                requests: Arc::new(Mutex::new(Vec::new())),
+                response: Arc::new(Mutex::new(MockResponse::Error(status, message.into()))),
+            }
+        }
+
+        fn requests(&self) -> Vec<CapturedRequest> {
+            self.requests.lock().expect("requests lock").clone()
+        }
+    }
+
+    impl HttpClientExt for RecordingHttpClient {
+        fn send<T, U>(
+            &self,
+            req: HttpRequest<T>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            T: Into<Bytes> + WasmCompatSend,
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            let requests = Arc::clone(&self.requests);
+            let response = self.response.lock().expect("response lock").clone();
+            let (parts, _body) = req.into_parts();
+
+            requests
+                .lock()
+                .expect("requests lock")
+                .push(CapturedRequest {
+                    uri: parts.uri.to_string(),
+                });
+
+            async move {
+                let response_body = match response {
+                    MockResponse::Success(response_body) => response_body,
+                    MockResponse::Error(status, message) => {
+                        return Err(http_client::Error::InvalidStatusCodeWithMessage(
+                            status, message,
+                        ));
+                    }
+                };
+                let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
+                Response::builder()
+                    .status(http::StatusCode::OK)
+                    .body(body)
+                    .map_err(http_client::Error::Protocol)
+            }
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: HttpRequest<MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        where
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: HttpRequest<T>,
+        ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes> + WasmCompatSend,
+        {
+            future::ready(Err(http_client::Error::InvalidStatusCode(
+                http::StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_models_uses_models_endpoint() {
+        let response_body = r#"{
+            "object": "list",
+            "data": [
+                {
+                    "id": "deepseek-v4-flash",
+                    "object": "model",
+                    "owned_by": "deepseek"
+                },
+                {
+                    "id": "deepseek-v4-pro",
+                    "object": "model",
+                    "owned_by": "deepseek"
+                }
+            ]
+        }"#;
+
+        let http_client = RecordingHttpClient::new(response_body);
+        let client = Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+
+        let models = client
+            .list_models()
+            .await
+            .expect("list_models should succeed");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models.data[0].id, "deepseek-v4-flash");
+        assert_eq!(models.data[0].r#type, None);
+        assert_eq!(models.data[0].owned_by.as_deref(), Some("deepseek"));
+        assert_eq!(
+            http_client.requests(),
+            vec![CapturedRequest {
+                uri: "https://api.deepseek.com/models".to_string()
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_list_models_preserves_api_error_context() {
+        let http_client = RecordingHttpClient::with_error(
+            http::StatusCode::UNAUTHORIZED,
+            r#"{"error":{"message":"invalid api key"}}"#,
+        );
+        let client = Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+
+        let error = client
+            .list_models()
+            .await
+            .expect_err("list_models should fail");
+
+        match error {
+            ModelListingError::ApiError {
+                status_code,
+                message,
+            } => {
+                assert_eq!(status_code, 401);
+                assert!(message.contains("provider=DeepSeek"));
+                assert!(message.contains("path=/models"));
+                assert!(message.contains("invalid api key"));
+            }
+            other => panic!("expected api error, got {other:?}"),
+        }
     }
 }

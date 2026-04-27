@@ -765,7 +765,7 @@ mod wasm_model_listing_compile_checks {
     use super::{ModelListingClient, Nothing};
     use crate::{
         http_client::{self, HttpClientExt, LazyBody, MultipartForm, Request, Response},
-        providers::{anthropic, mistral, ollama, openai, openrouter},
+        providers::{anthropic, deepseek, mistral, ollama, openai, openrouter},
         wasm_compat::WasmCompatSend,
     };
     use bytes::Bytes;
@@ -847,6 +847,12 @@ mod wasm_model_listing_compile_checks {
 
         let _ = ollama::Client::builder()
             .api_key(Nothing)
+            .http_client(WasmOnlyHttpClient::default())
+            .build()
+            .map(assert_model_listing_client);
+
+        let _ = deepseek::Client::builder()
+            .api_key("dummy-key")
             .http_client(WasmOnlyHttpClient::default())
             .build()
             .map(assert_model_listing_client);
