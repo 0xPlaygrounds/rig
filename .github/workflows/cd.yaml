@@ -34,7 +34,7 @@ jobs:
 
       # Required to compile rig-lancedb
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5

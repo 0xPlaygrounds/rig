@@ -79,9 +79,7 @@ jobs:
 
       # Required to compile rig-lancedb
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
@@ -107,9 +105,7 @@ jobs:
 
       # Required to compile rig-lancedb
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
@@ -138,9 +134,7 @@ jobs:
 
       # Required to compile rig-lancedb
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Run cargo doc
         run: cargo doc --no-deps --all-features
