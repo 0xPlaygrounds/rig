@@ -5,7 +5,7 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::message::Image;
 use rig::completion::{Chat, Message};
 use rig::completion::{Prompt, TypedPrompt};
-use rig::message::{DocumentSourceKind, ImageMediaType};
+use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
 use rig::providers::openai;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 use schemars::JsonSchema;
@@ -181,6 +181,7 @@ async fn responses_image_input_smoke() {
     let image = Image {
         data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
+        detail: Some(ImageDetail::Auto),
         ..Default::default()
     };
 
@@ -403,6 +404,7 @@ async fn chat_completions_image_input_smoke() {
     let image = Image {
         data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
         media_type: Some(ImageMediaType::JPEG),
+        detail: Some(ImageDetail::Auto),
         ..Default::default()
     };
 
