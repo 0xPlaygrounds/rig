@@ -982,17 +982,14 @@ where
 }
 
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
-/// set or if set too high, the request will fail. The following values are based on the models
-/// available at the time of writing.
+/// set or if set too high, the request will fail. The following values are based on Anthropic's
+/// published synchronous Messages API output limits for current models.
 fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4-7") {
+    if model.starts_with("claude-opus-4-7") || model.starts_with("claude-opus-4-6") {
         Some(128_000)
-    } else if model.starts_with("claude-opus-4-6") {
-        Some(128_000)
-    } else if model.starts_with("claude-opus-4")
-        || model.starts_with("claude-sonnet-4")
-        || model.starts_with("claude-haiku-4-5")
-    {
+    } else if model.starts_with("claude-sonnet-4-6") || model.starts_with("claude-haiku-4-5") {
+        Some(64_000)
+    } else if model.starts_with("claude-opus-4") || model.starts_with("claude-sonnet-4") {
         Some(64_000)
     } else {
         None
@@ -1514,6 +1511,23 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn current_model_default_max_tokens_match_anthropic_limits() {
+        assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_7), Some(128_000));
+        assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_6), Some(128_000));
+        assert_eq!(
+            default_max_tokens_for_model(CLAUDE_SONNET_4_6),
+            Some(64_000)
+        );
+        assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
+    }
+
+    #[test]
+    fn unknown_model_uses_conservative_default_max_tokens_fallback() {
+        assert_eq!(default_max_tokens_for_model("claude-unknown"), None);
+        assert_eq!(default_max_tokens_with_fallback("claude-unknown"), 2_048);
+    }
 
     #[test]
     fn test_deserialize_message() {
