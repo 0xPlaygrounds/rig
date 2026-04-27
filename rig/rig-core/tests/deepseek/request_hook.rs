@@ -70,7 +70,7 @@ where
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     let agent = deepseek::Client::from_env()
         .expect("client should build")
-        .agent(deepseek::DEEPSEEK_CHAT)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

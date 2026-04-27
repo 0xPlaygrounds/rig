@@ -155,7 +155,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 
     let agent = deepseek::Client::from_env()
         .expect("client should build")
-        .agent(deepseek::DEEPSEEK_CHAT)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -197,7 +197,7 @@ async fn permission_control_streaming_example() -> Result<()> {
 
     let agent = deepseek::Client::from_env()
         .expect("client should build")
-        .agent(deepseek::DEEPSEEK_CHAT)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)

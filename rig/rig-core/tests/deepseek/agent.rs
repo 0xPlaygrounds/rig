@@ -11,7 +11,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(deepseek::DEEPSEEK_CHAT)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble(BASIC_PREAMBLE)
         .build();
 

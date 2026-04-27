@@ -4,7 +4,7 @@ use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice};
-use rig::providers::deepseek::{self, DEEPSEEK_CHAT};
+use rig::providers::deepseek::{self, DEEPSEEK_V4_FLASH};
 use rig::streaming::StreamingChat;
 use rig::tool::Tool;
 
@@ -19,16 +19,23 @@ use crate::support::{
     zero_arg_tool_definition,
 };
 
+fn non_thinking_params() -> serde_json::Value {
+    serde_json::json!({
+        "thinking": { "type": "disabled" }
+    })
+}
+
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn streaming_chat_with_tools() {
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(DEEPSEEK_CHAT)
+        .agent(DEEPSEEK_V4_FLASH)
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
+        .additional_params(non_thinking_params())
         .build();
 
     let history: &[Message] = &[];
@@ -44,11 +51,12 @@ async fn streaming_chat_with_tools() {
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     let client = deepseek::Client::from_env().expect("client should build");
-    let model = client.completion_model(DEEPSEEK_CHAT);
+    let model = client.completion_model(DEEPSEEK_V4_FLASH);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .tool(zero_arg_tool_definition("ping"))
         .tool_choice(ToolChoice::Required)
+        .additional_params(non_thinking_params())
         .build();
     let stream = model.stream(request).await.expect("stream should start");
 
@@ -59,12 +67,13 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     let client = deepseek::Client::from_env().expect("client should build");
-    let model = client.completion_model(DEEPSEEK_CHAT);
+    let model = client.completion_model(DEEPSEEK_V4_FLASH);
     let request = model
         .completion_request(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
         .tool(AlphaSignal.definition(String::new()).await)
         .tool(BetaSignal.definition(String::new()).await)
+        .additional_params(non_thinking_params())
         .build();
 
     let observation = collect_raw_stream_observation(
@@ -86,10 +95,11 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(DEEPSEEK_CHAT)
+        .agent(DEEPSEEK_V4_FLASH)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal)
+        .additional_params(non_thinking_params())
         .build();
 
     let history: &[Message] = &[];
@@ -111,9 +121,10 @@ async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
 async fn streaming_chat_emits_tool_call_before_later_text() {
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(DEEPSEEK_CHAT)
+        .agent(DEEPSEEK_V4_FLASH)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
+        .additional_params(non_thinking_params())
         .build();
 
     let history: &[Message] = &[];
@@ -134,11 +145,12 @@ async fn streaming_chat_emits_tool_call_before_later_text() {
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     let client = deepseek::Client::from_env().expect("client should build");
-    let model = client.completion_model(DEEPSEEK_CHAT);
+    let model = client.completion_model(DEEPSEEK_V4_FLASH);
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
         .tool(AlphaSignal.definition(String::new()).await)
+        .additional_params(non_thinking_params())
         .build();
 
     let first_turn = collect_raw_stream_observation(
@@ -170,6 +182,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         .preamble("Use the provided tool result and answer directly.".to_string())
         .message(assistant_message)
         .message(tool_result_message)
+        .additional_params(non_thinking_params())
         .build();
 
     let second_turn = collect_raw_stream_observation(

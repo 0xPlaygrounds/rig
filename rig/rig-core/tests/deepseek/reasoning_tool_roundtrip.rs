@@ -10,16 +10,23 @@ use rig::streaming::StreamingChat;
 
 use crate::reasoning::{self, WeatherTool};
 
+fn thinking_params() -> serde_json::Value {
+    serde_json::json!({
+        "thinking": { "type": "enabled" }
+    })
+}
+
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(deepseek::DEEPSEEK_REASONER)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
+        .additional_params(thinking_params())
         .build();
 
     let stream = agent
@@ -45,10 +52,11 @@ async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let client = deepseek::Client::from_env().expect("client should build");
     let agent = client
-        .agent(deepseek::DEEPSEEK_REASONER)
+        .agent(deepseek::DEEPSEEK_V4_FLASH)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
+        .additional_params(thinking_params())
         .build();
 
     let result = agent
