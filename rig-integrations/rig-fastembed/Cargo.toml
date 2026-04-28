@@ -28,6 +28,7 @@ default = ["hf-hub", "ort-download-binaries", "hf-hub-rustls-tls"]
 hf-hub = ["fastembed/hf-hub"]
 ort-download-binaries = ["fastembed/ort-download-binaries"]
 hf-hub-rustls-tls = ["fastembed/hf-hub-rustls-tls"]
+hf-hub-native-tls = ["fastembed/hf-hub-native-tls"]
 
 [[example]]
 name = "vector_search_fastembed"

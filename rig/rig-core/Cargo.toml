@@ -127,10 +127,12 @@ reqwest = [
   "reqwest/http2",
   "reqwest/system-proxy",
 ]
-websocket = ["dep:tokio-tungstenite", "rustls", "tokio-tungstenite/connect"]
+websocket = ["dep:tokio-tungstenite", "tokio-tungstenite/connect"]
 rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
-reqwest-middleware = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
+native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
+reqwest-middleware = ["dep:reqwest-middleware"]
 reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
+reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]
 
 [[example]]
 name = "rag"

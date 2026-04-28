@@ -29,6 +29,7 @@ httpmock = { workspace = true }
 [features]
 default = []
 rig-rustls = ["rig-core/rustls"]
+rig-native-tls = ["rig-core/native-tls"]
 
 [[example]]
 name = "vector_search_local_ann"
