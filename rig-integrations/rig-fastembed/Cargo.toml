@@ -23,10 +23,11 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [features]
-default = ["hf-hub", "ort-download-binaries", "hf-hub-native-tls"]
+default = ["hf-hub", "ort-download-binaries", "hf-hub-rustls-tls"]
 
 hf-hub = ["fastembed/hf-hub"]
 ort-download-binaries = ["fastembed/ort-download-binaries"]
+hf-hub-rustls-tls = ["fastembed/hf-hub-rustls-tls"]
 hf-hub-native-tls = ["fastembed/hf-hub-native-tls"]
 
 [[example]]

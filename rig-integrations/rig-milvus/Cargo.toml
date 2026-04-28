@@ -20,6 +20,11 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
+[features]
+default = ["rustls"]
+rustls = ["reqwest/rustls", "rig-core/rustls"]
+native-tls = ["reqwest/native-tls", "rig-core/native-tls"]
+
 [[example]]
 name = "vector_search_milvus"
 required-features = ["rig-core/derive"]

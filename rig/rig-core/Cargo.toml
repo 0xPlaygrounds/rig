@@ -53,7 +53,7 @@ pin-project-lite = "0.2.16"
 futures-timer = "3.0.3"
 wasm-bindgen-futures = { version = "0.4.54", optional = true }
 mime = "0.3.17"
-reqwest-middleware = { version = "0.5.1", optional = true, features = [
+reqwest-middleware = { version = "0.5.1", default-features = false, optional = true, features = [
   "json",
   "multipart",
   "charset",
@@ -63,7 +63,7 @@ reqwest-middleware = { version = "0.5.1", optional = true, features = [
 # Native-only dependency for OpenAI Responses websocket mode.
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio-tungstenite = { version = "0.23.1", optional = true }
+tokio-tungstenite = { version = "0.23.1", default-features = false, optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -75,11 +75,12 @@ redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 reqwest-retry = { version = "0.9" }
-reqwest-middleware = { version = "0.5", features = [
+reqwest-middleware = { version = "0.5", default-features = false, features = [
   "json",
   "multipart",
   "charset",
   "http2",
+  "rustls",
 ] }
 
 # Required for `rmcp` example
@@ -126,12 +127,22 @@ reqwest = [
   "reqwest/http2",
   "reqwest/system-proxy",
 ]
-websocket = ["dep:tokio-tungstenite"]
+websocket = ["websocket-rustls"]
+websocket-rustls = [
+  "dep:tokio-tungstenite",
+  "tokio-tungstenite/connect",
+  "rustls",
+]
+websocket-native-tls = [
+  "dep:tokio-tungstenite",
+  "tokio-tungstenite/connect",
+  "native-tls",
+]
 rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
 native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
-reqwest-middleware = ["dep:reqwest-middleware"]
+reqwest-middleware = ["reqwest-middleware-rustls"]
 reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
-reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls", "reqwest/native-tls"]
+reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]
 
 [[example]]
 name = "rag"

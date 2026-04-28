@@ -27,10 +27,9 @@ anyhow = { workspace = true }
 httpmock = { workspace = true }
 
 [features]
-# No TLS by default - rustls is now the default in reqwest 0.13
 default = []
-rig-native-tls = ["rig-core/native-tls"]
 rig-rustls = ["rig-core/rustls"]
+rig-native-tls = ["rig-core/native-tls"]
 
 [[example]]
 name = "vector_search_local_ann"

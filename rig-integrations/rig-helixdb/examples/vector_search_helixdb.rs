@@ -1,4 +1,3 @@
-use helix_rs::{HelixDB, HelixDBClient};
 use rig::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
@@ -6,7 +5,7 @@ use rig::{
     providers::openai,
     vector_store::{InsertDocuments, VectorSearchRequest, VectorStoreIndex},
 };
-use rig_helixdb::HelixDBVectorStore;
+use rig_helixdb::{HelixDB, HelixDBVectorStore};
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`

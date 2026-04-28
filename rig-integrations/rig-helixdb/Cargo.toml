@@ -11,14 +11,20 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-helix-rs = "0.1.9"
+reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+thiserror = { workspace = true }
 rig-core = { path = "../../rig/rig-core", version = "0.35.0", default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = ["rustls"]
+rustls = ["reqwest/rustls", "rig-core/rustls"]
+native-tls = ["reqwest/native-tls", "rig-core/native-tls"]
 
 [[example]]
 name = "vector_search_helixdb"
