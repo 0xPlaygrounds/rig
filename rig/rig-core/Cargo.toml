@@ -101,7 +101,7 @@ axum = "0.8.4"
 opentelemetry = "0.30.0"
 opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
 opentelemetry-otlp = "0.30.0"
-tracing-opentelemetry = "0.31.0"
+tracing-opentelemetry = "0.32.1"
 
 
 [features]
