@@ -335,10 +335,9 @@ where
         }
 
         let body = response.into_body().await?;
-        let api_resp: ListModelsResponse =
-            serde_json::from_slice(&body).map_err(|error| {
-                ModelListingError::parse_error_with_context("Xiaomi MiMo", path, &error, &body)
-            })?;
+        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
+            ModelListingError::parse_error_with_context("Xiaomi MiMo", path, &error, &body)
+        })?;
 
         let models = api_resp.data.into_iter().map(Model::from).collect();
 
