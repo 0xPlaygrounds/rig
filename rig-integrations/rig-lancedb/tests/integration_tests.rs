@@ -305,7 +305,7 @@ async fn agent_with_dynamic_context_test() {
     // Mock completions API for agent response
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
-            .path_contains("/chat/completions");
+            .path_includes("/chat/completions");
         then.status(200)
             .header("content-type", "application/json")
             .json_body(json!({
