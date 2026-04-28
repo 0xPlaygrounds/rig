@@ -23,8 +23,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = ["rustls"]
-rustls = ["reqwest/rustls"]
-native-tls = ["reqwest/native-tls"]
+rustls = ["reqwest/rustls", "rig-core/rustls"]
+native-tls = ["reqwest/native-tls", "rig-core/native-tls"]
 
 [[example]]
 name = "vector_search_helixdb"

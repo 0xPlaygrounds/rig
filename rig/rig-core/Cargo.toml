@@ -140,7 +140,7 @@ websocket-native-tls = [
 ]
 rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
 native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
-reqwest-middleware = ["dep:reqwest-middleware"]
+reqwest-middleware = ["reqwest-middleware-rustls"]
 reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
 reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]
 
