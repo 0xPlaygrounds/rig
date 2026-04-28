@@ -22,13 +22,15 @@
 //! ```
 
 use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
+    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
+    ProviderBuilder, ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
+use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
 };
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// OpenAI-compatible base URL.
 pub const API_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
@@ -86,7 +88,7 @@ impl<H> Capabilities<H> for XiaomiMimoExt {
     type Completion = Capable<super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>>;
     type Embeddings = Nothing;
     type Transcription = Nothing;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<XiaomiMimoModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -264,6 +266,83 @@ impl<H> AnthropicClientBuilder<H> {
             ext.anthropic.anthropic_betas.push(anthropic_beta.into());
             ext
         })
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ListModelsResponse {
+    data: Vec<ListModelEntry>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ListModelEntry {
+    id: String,
+    owned_by: String,
+}
+
+impl From<ListModelEntry> for Model {
+    fn from(value: ListModelEntry) -> Self {
+        let mut model = Model::from_id(value.id);
+        model.owned_by = Some(value.owned_by);
+        model
+    }
+}
+
+/// [`ModelLister`] implementation for the Xiaomi MiMo API (`GET /models`).
+#[derive(Clone)]
+pub struct XiaomiMimoModelLister<H = reqwest::Client> {
+    client: Client<H>,
+}
+
+impl<H> ModelLister<H> for XiaomiMimoModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+{
+    type Client = Client<H>;
+
+    fn new(client: Self::Client) -> Self {
+        Self { client }
+    }
+
+    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
+        let path = "/models";
+        let req = self.client.get(path)?.body(http_client::NoBody)?;
+        let response = self
+            .client
+            .send::<_, Vec<u8>>(req)
+            .await
+            .map_err(|error| match error {
+                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
+                    ModelListingError::api_error_with_context(
+                        "Xiaomi MiMo",
+                        path,
+                        status.as_u16(),
+                        message.as_bytes(),
+                    )
+                }
+                other => ModelListingError::from(other),
+            })?;
+
+        if !response.status().is_success() {
+            let status_code = response.status().as_u16();
+            let body = response.into_body().await?;
+            return Err(ModelListingError::api_error_with_context(
+                "Xiaomi MiMo",
+                path,
+                status_code,
+                &body,
+            ));
+        }
+
+        let body = response.into_body().await?;
+        let api_resp: ListModelsResponse =
+            serde_json::from_slice(&body).map_err(|error| {
+                ModelListingError::parse_error_with_context("Xiaomi MiMo", path, &error, &body)
+            })?;
+
+        let models = api_resp.data.into_iter().map(Model::from).collect();
+
+        Ok(ModelList::new(models))
     }
 }
 
