@@ -127,7 +127,17 @@ reqwest = [
   "reqwest/http2",
   "reqwest/system-proxy",
 ]
-websocket = ["dep:tokio-tungstenite", "tokio-tungstenite/connect"]
+websocket = ["websocket-rustls"]
+websocket-rustls = [
+  "dep:tokio-tungstenite",
+  "tokio-tungstenite/connect",
+  "rustls",
+]
+websocket-native-tls = [
+  "dep:tokio-tungstenite",
+  "tokio-tungstenite/connect",
+  "native-tls",
+]
 rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
 native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
 reqwest-middleware = ["dep:reqwest-middleware"]
