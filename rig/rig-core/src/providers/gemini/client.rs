@@ -112,9 +112,9 @@ impl Provider for GeminiInteractionsExt {
 }
 
 impl<H> Capabilities<H> for GeminiExt {
-    type Completion = Capable<super::completion::CompletionModel>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel>;
-    type Transcription = Capable<super::transcription::TranscriptionModel>;
+    type Completion = Capable<super::completion::CompletionModel<H>>;
+    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
+    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
     type ModelListing = Capable<GeminiModelLister<H>>;
 
     #[cfg(feature = "image")]
@@ -125,8 +125,8 @@ impl<H> Capabilities<H> for GeminiExt {
 
 impl<H> Capabilities<H> for GeminiInteractionsExt {
     type Completion = Capable<super::interactions_api::InteractionsCompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel>;
-    type Transcription = Capable<super::transcription::TranscriptionModel>;
+    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
+    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
     type ModelListing = Capable<GeminiInteractionsModelLister<H>>;
 
     #[cfg(feature = "image")]
