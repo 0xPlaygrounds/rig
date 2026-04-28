@@ -987,9 +987,10 @@ where
 fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-opus-4-7") || model.starts_with("claude-opus-4-6") {
         Some(128_000)
-    } else if model.starts_with("claude-sonnet-4-6") || model.starts_with("claude-haiku-4-5") {
-        Some(64_000)
-    } else if model.starts_with("claude-opus-4") || model.starts_with("claude-sonnet-4") {
+    } else if model.starts_with("claude-opus-4")
+        || model.starts_with("claude-sonnet-4")
+        || model.starts_with("claude-haiku-4-5")
+    {
         Some(64_000)
     } else {
         None
