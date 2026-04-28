@@ -1,7 +1,9 @@
 //! Xiaomi MiMo model listing smoke test.
 
 use rig::client::{ModelListingClient, ProviderClient};
-use rig::providers::xiaomimimo;
+use rig::providers::xiaomimimo::{
+    self, MIMO_V2_5, MIMO_V2_5_PRO, MIMO_V2_FLASH, MIMO_V2_OMNI, MIMO_V2_PRO,
+};
 
 #[tokio::test]
 #[ignore = "requires XIAOMI_MIMO_API_KEY"]
@@ -27,4 +29,13 @@ async fn list_models_smoke() {
             .any(|model| model.owned_by.as_deref() == Some("xiaomi")),
         "expected at least one Xiaomi-owned model\nModel list: {models:#?}"
     );
+
+    let model_ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+
+    for expected_id in [MIMO_V2_FLASH, MIMO_V2_OMNI, MIMO_V2_PRO, MIMO_V2_5, MIMO_V2_5_PRO] {
+        assert!(
+            model_ids.contains(&expected_id),
+            "expected model {expected_id:?} in response\nReturned model IDs: {model_ids:#?}"
+        );
+    }
 }
