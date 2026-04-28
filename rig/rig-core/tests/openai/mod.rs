@@ -4,6 +4,7 @@ mod audio_generation;
 mod completions_api;
 mod extractor;
 mod extractor_usage;
+mod gpt_5_5;
 #[cfg(feature = "image")]
 mod image_generation;
 mod models;
