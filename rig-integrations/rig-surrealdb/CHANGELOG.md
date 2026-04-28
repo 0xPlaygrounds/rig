@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.2.5](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.2.4...rig-surrealdb-v0.2.5) - 2026-04-28
+
+### Fixed
+
+- fix and example ([#1646](https://github.com/0xPlaygrounds/rig/pull/1646)) (by @gold-silver-copper) - #1646
+
+### Other
+
+- Add clippy no panic lints ([#1663](https://github.com/0xPlaygrounds/rig/pull/1663)) (by @gold-silver-copper) - #1663
+- standardize required fields handling across builders ([#1611](https://github.com/0xPlaygrounds/rig/pull/1611)) (by @isSerge) - #1611
+
+### Contributors
+
+* @gold-silver-copper
+* @isSerge
 ## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.2.3...rig-surrealdb-v0.2.4) - 2026-04-12
 
 ### Other
