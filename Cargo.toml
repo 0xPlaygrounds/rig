@@ -55,7 +55,7 @@ google-cloud-auth = "1.0"
 google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
     "prediction-service",
 ] }
-httpmock = "0.7.0"
+httpmock = "0.8.3"
 indoc = "2.0.6"
 lancedb = { version = "0.23", default-features = false }
 log = "0.4.27"
