@@ -1,5 +1,6 @@
 #[cfg(feature = "derive")]
 mod embed_macro;
+mod hook_continue_with;
 mod loaders;
 mod prompt_response_messages;
 mod provider_layout;

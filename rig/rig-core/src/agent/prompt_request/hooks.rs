@@ -35,7 +35,9 @@ where
     ///
     /// # Returns
     /// - `ToolCallHookAction::Continue` - Allow tool execution to proceed
+    /// - `ToolCallHookAction::ContinueWith { args }` - Allow tool execution with replacement arguments
     /// - `ToolCallHookAction::Skip { reason }` - Reject tool execution; `reason` will be returned to the LLM as the tool result
+    /// - `ToolCallHookAction::Terminate { reason }` - Terminate the agent loop early
     fn on_tool_call(
         &self,
         _tool_name: &str,
@@ -93,9 +95,16 @@ impl<M> PromptHook<M> for () where M: CompletionModel {}
 
 /// Control flow action for tool call hooks. This is different from the regular [`HookAction`] in that tool call executions may be skipped for one or more reasons.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ToolCallHookAction {
     /// Continue tool execution as normal.
     Continue,
+    /// Continue tool execution with replacement arguments.
+    ///
+    /// The tool will be invoked with the provided `args` instead of the
+    /// original arguments from the LLM. Downstream hooks (`on_tool_result`)
+    /// and tracing spans will also see the replacement arguments.
+    ContinueWith { args: String },
     /// Skip tool execution and return the provided reason as the tool result.
     Skip { reason: String },
     /// Terminate agent loop early
@@ -106,6 +115,11 @@ impl ToolCallHookAction {
     /// Continue the agentic loop as normal
     pub fn cont() -> Self {
         Self::Continue
+    }
+
+    /// Continue tool execution with replacement arguments.
+    pub fn continue_with(args: impl Into<String>) -> Self {
+        Self::ContinueWith { args: args.into() }
     }
 
     /// Skip a given tool call (with a provided reason).
@@ -125,6 +139,7 @@ impl ToolCallHookAction {
 
 /// Control flow action for hooks.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HookAction {
     /// Continue agentic loop execution as normal.
     Continue,
@@ -143,5 +158,40 @@ impl HookAction {
         Self::Terminate {
             reason: reason.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_call_hook_action_continue_with() {
+        let action = ToolCallHookAction::continue_with(r#"{"x": 10}"#);
+        assert_eq!(
+            action,
+            ToolCallHookAction::ContinueWith {
+                args: r#"{"x": 10}"#.to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn tool_call_hook_action_continue_with_from_string() {
+        let args = String::from(r#"{"path": "/sandbox/file.txt"}"#);
+        let action = ToolCallHookAction::continue_with(args.clone());
+        assert_eq!(action, ToolCallHookAction::ContinueWith { args });
+    }
+
+    #[test]
+    fn tool_call_hook_action_variants_are_distinct() {
+        assert_ne!(
+            ToolCallHookAction::cont(),
+            ToolCallHookAction::continue_with("{}")
+        );
+        assert_ne!(
+            ToolCallHookAction::continue_with("{}"),
+            ToolCallHookAction::skip("{}")
+        );
     }
 }
