@@ -69,4 +69,5 @@ pub mod perplexity;
 pub mod together;
 pub mod voyageai;
 pub mod xai;
+pub mod xiaomimimo;
 pub mod zai;
