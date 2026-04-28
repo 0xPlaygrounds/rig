@@ -18,6 +18,8 @@
 //! backends, and running them concurrently creates avoidable rate-limit,
 //! quota, and load-related flakiness.
 //!
+//! Use XIAOMI_MIMO_API_KEY to set the api key
+//!
 //! Run a single ignored smoke test with:
 //! `cargo test -p rig-core --test xiaomimimo xiaomimimo::anthropic::anthropic_compatible_completion_smoke -- --ignored`
 
