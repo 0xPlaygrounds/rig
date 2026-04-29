@@ -74,7 +74,8 @@ impl ProviderBuilder for MiraBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
 
 #[derive(Debug, Error)]
 pub enum MiraError {

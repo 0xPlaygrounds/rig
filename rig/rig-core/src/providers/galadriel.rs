@@ -93,7 +93,7 @@ impl ProviderBuilder for GaladrielBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<GaladrielExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GaladrielBuilder, GaladrielApiKey, H>;
 
 impl<T> ClientBuilder<T> {

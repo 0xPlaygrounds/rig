@@ -25,7 +25,8 @@ pub struct CohereBuilder;
 type CohereApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<CohereExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
 
 impl Provider for CohereExt {
     type Builder = CohereBuilder;

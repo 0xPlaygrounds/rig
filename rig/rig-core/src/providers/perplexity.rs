@@ -79,7 +79,7 @@ impl ProviderBuilder for PerplexityBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
 impl ProviderClient for Client {

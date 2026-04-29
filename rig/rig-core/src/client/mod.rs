@@ -300,6 +300,9 @@ pub trait ProviderBuilder: Sized + Default + Clone {
     }
 }
 
+/// `new` is pinned to `H = reqwest::Client` so the call site infers without an explicit `H`
+/// annotation. Callers who want a different backend should go through [`Client::builder`] and
+/// chain [`ClientBuilder::http_client`] before [`ClientBuilder::build`].
 impl<Ext> Client<Ext, reqwest::Client>
 where
     Ext: Provider,
@@ -384,19 +387,18 @@ where
     }
 }
 
+/// `builder()` is anchored on `Client<Ext, reqwest::Client>` purely as an inference hook so that
+/// `provider::Client::builder()` resolves without a `H` annotation. The returned builder itself
+/// has `H = Missing`, accurately reflecting that no backend has been chosen yet; the eventual
+/// `Client` produced by `build()` may end up with any HTTP backend depending on whether
+/// [`ClientBuilder::http_client`] was called.
 impl<Ext> Client<Ext, reqwest::Client>
 where
     Ext: Provider,
-    Ext::Builder: ProviderBuilder<Extension<reqwest::Client> = Ext> + Default,
+    Ext::Builder: ProviderBuilder + Default,
 {
-    pub fn builder() -> ClientBuilder<Ext::Builder, Missing, reqwest::Client> {
-        ClientBuilder {
-            api_key: Missing,
-            headers: Default::default(),
-            base_url: <Ext::Builder as ProviderBuilder>::BASE_URL.into(),
-            http_client: None,
-            ext: Default::default(),
-        }
+    pub fn builder() -> ClientBuilder<Ext::Builder, Missing, Missing> {
+        ClientBuilder::default()
     }
 }
 
@@ -517,19 +519,32 @@ where
     }
 }
 
-// ApiKey is generic because Anthropic uses custom auth header, local models like Ollama use none
+/// Type-state builder for [`Client`].
+///
+/// Each generic slot encodes a separate "has the user supplied this yet?" question:
+///
+/// - `ApiKey = Missing` means the caller has not yet called [`Self::api_key`]; transitioning to a
+///   concrete `ApiKey` type is required before [`Self::build`] is reachable.
+/// - `H = Missing` means the caller has not yet called [`Self::http_client`]; in that state
+///   `build()` substitutes the canonical `reqwest::Client` backend at construction time. Once a
+///   backend has been supplied, `H` is the concrete HTTP client type and `build()` uses it
+///   directly.
+///
+/// Keeping `Missing` as the *type-level* placeholder (rather than reusing `reqwest::Client`)
+/// means the builder's generics describe what the caller has actually provided, instead of
+/// pretending a default value is already present. It also avoids carrying an `Option<H>` whose
+/// `None` branch existed only to model the same "user hasn't picked a backend" state.
 #[derive(Clone)]
-pub struct ClientBuilder<Ext, ApiKey = Missing, H = reqwest::Client> {
+pub struct ClientBuilder<Ext, ApiKey = Missing, H = Missing> {
     base_url: String,
     api_key: ApiKey,
     headers: HeaderMap,
-    http_client: Option<H>,
+    http_client: H,
     ext: Ext,
 }
 
-impl<ExtBuilder, H> Default for ClientBuilder<ExtBuilder, Missing, H>
+impl<ExtBuilder> Default for ClientBuilder<ExtBuilder, Missing, Missing>
 where
-    H: Default,
     ExtBuilder: ProviderBuilder + Default,
 {
     fn default() -> Self {
@@ -537,7 +552,7 @@ where
             api_key: Missing,
             headers: Default::default(),
             base_url: ExtBuilder::BASE_URL.into(),
-            http_client: None,
+            http_client: Missing,
             ext: Default::default(),
         }
     }
@@ -596,10 +611,13 @@ where
         }
     }
 
-    /// Set the HTTP backend used in this client
+    /// Set the HTTP backend used in this client.
+    ///
+    /// Calling this advances the builder's `H` slot from whatever it was (typically `Missing`)
+    /// to the supplied client's type, which selects the H-generic [`Self::build`] impl below.
     pub fn http_client<U>(self, http_client: U) -> ClientBuilder<Ext, ApiKey, U> {
         ClientBuilder {
-            http_client: Some(http_client),
+            http_client,
             base_url: self.base_url,
             api_key: self.api_key,
             headers: self.headers,
@@ -637,11 +655,30 @@ impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
     }
 }
 
+/// Default-backend `build`: when the caller never called [`ClientBuilder::http_client`], the
+/// builder's `H` slot is still `Missing`, and we substitute the canonical `reqwest::Client` at
+/// build time. This is the only place in the crate that knows about that default, and it is
+/// disjoint by trait bound from the H-generic `build` below (`Missing` does not implement
+/// [`HttpClientExt`]).
+impl<ExtBuilder, Key> ClientBuilder<ExtBuilder, Key, Missing>
+where
+    ExtBuilder: ProviderBuilder<ApiKey = Key>,
+    Key: ApiKey,
+{
+    pub fn build(
+        self,
+    ) -> http_client::Result<Client<ExtBuilder::Extension<reqwest::Client>, reqwest::Client>> {
+        self.http_client(reqwest::Client::default()).build()
+    }
+}
+
+/// Concrete-backend `build`: the caller supplied an HTTP client via
+/// [`ClientBuilder::http_client`], so `H` is a real `HttpClientExt` type and we use it directly.
 impl<ExtBuilder, Key, H> ClientBuilder<ExtBuilder, Key, H>
 where
     ExtBuilder: ProviderBuilder<ApiKey = Key>,
     Key: ApiKey,
-    H: Default + HttpClientExt,
+    H: HttpClientExt,
 {
     pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Extension<H>, H>> {
         let ext_builder = self.ext.clone();
@@ -662,8 +699,6 @@ where
         {
             headers.insert(k, v);
         }
-
-        let http_client = http_client.unwrap_or_default();
 
         Ok(Client {
             http_client,

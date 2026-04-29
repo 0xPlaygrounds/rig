@@ -136,7 +136,8 @@ impl Debug for CopilotExt {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<CopilotExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<CopilotBuilder, CopilotAuth, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<CopilotBuilder, CopilotAuth, H>;
 
 impl Default for CopilotBuilder {
     fn default() -> Self {

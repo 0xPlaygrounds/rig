@@ -75,7 +75,8 @@ impl ProviderBuilder for HyperbolicBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<HyperbolicBuilder, String, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<HyperbolicBuilder, String, H>;
 
 impl ProviderClient for Client {
     type Input = HyperbolicApiKey;

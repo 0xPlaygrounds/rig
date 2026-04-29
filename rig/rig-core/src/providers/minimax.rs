@@ -71,7 +71,7 @@ pub struct MiniMaxAnthropicExt;
 type MiniMaxApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<MiniMaxExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<MiniMaxBuilder, MiniMaxApiKey, H>;
 
 pub type AnthropicClient<H = reqwest::Client> = client::Client<MiniMaxAnthropicExt, H>;

@@ -21,7 +21,8 @@ pub struct MistralBuilder;
 type MistralApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<MistralExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<MistralBuilder, String, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<MistralBuilder, String, H>;
 
 impl Provider for MistralExt {
     type Builder = MistralBuilder;

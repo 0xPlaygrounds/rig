@@ -110,7 +110,7 @@ pub struct HuggingFaceBuilder {
 type HuggingFaceApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<HuggingFaceExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
 
 impl Provider for HuggingFaceExt {

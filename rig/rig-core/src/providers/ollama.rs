@@ -151,7 +151,8 @@ impl ProviderBuilder for OllamaBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<OllamaBuilder, OllamaApiKey, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<OllamaBuilder, OllamaApiKey, H>;
 
 impl ProviderClient for Client {
     type Input = OllamaApiKey;
