@@ -69,7 +69,7 @@ pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<XiaomiMimoBuilder, XiaomiMimoApiKey, H>;
 
 pub type AnthropicClient<H = reqwest::Client> = client::Client<XiaomiMimoAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = reqwest::Client> =
+pub type AnthropicClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<XiaomiMimoAnthropicBuilder, AnthropicKey, H>;
 
 impl Provider for XiaomiMimoExt {
