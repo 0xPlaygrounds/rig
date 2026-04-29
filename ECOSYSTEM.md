@@ -14,6 +14,7 @@ Interested in having your project added here? Feel free to open an issue or PR.
 - [rv](https://github.com/gi-dellav/rv) - a non-invasive AI code review tool
 - [Cortex Memory](https://github.com/sopaco/cortex-mem) - The production-ready memory system for intelligent agents. A complete solution for memory management, from extraction and vector search to automated optimization, with a REST API, MCP, CLI, and insights dashboard out-of-the-box.
 - [ChatShell](https://github.com/chatshellapp/chatshell-desktop) - an open-source agentic desktop AI client built on rig-core and Tauri 2. 9 built-in tools (web search, bash, file ops, grep), 40+ AI providers, MCP integration, and a composable skills system — all zero-config out of the box.
+- [nitpicker](https://github.com/arsenyinfo/nitpicker) - CLI tool for multi-reviewer code review using parallel rig-core agents and an actor/critic debate loop
 
 ## Tutorials
 Nothing here yet. Maybe you'd like to be the first person to add something here?
