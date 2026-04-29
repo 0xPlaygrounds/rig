@@ -2,7 +2,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
     Transport,
 };
-use crate::http_client;
+use crate::http_client::{self};
 use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
 use std::fmt::Debug;
@@ -50,7 +50,8 @@ where
 /// Gemini GenerateContent client.
 pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
 /// Builder for the Gemini GenerateContent client.
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
 /// Gemini Interactions API client.
 pub type InteractionsClient<H = reqwest::Client> = client::Client<GeminiInteractionsExt, H>;
 

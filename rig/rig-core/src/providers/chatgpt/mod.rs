@@ -112,7 +112,8 @@ impl Debug for ChatGPTExt {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<ChatGPTExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H>;
 
 impl Default for ChatGPTBuilder {
     fn default() -> Self {

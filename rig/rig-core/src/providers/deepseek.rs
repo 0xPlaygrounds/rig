@@ -84,7 +84,8 @@ impl ProviderBuilder for DeepSeekExtBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<DeepSeekExtBuilder, String, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<DeepSeekExtBuilder, String, H>;
 
 impl ProviderClient for Client {
     type Input = DeepSeekApiKey;

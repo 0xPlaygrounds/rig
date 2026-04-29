@@ -95,7 +95,8 @@ impl ProviderBuilder for LlamafileBuilder {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<LlamafileExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<LlamafileBuilder, Nothing, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<LlamafileBuilder, Nothing, H>;
 
 impl Client {
     /// Create a client pointing at the given llamafile base URL

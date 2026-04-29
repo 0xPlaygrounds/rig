@@ -18,7 +18,7 @@ pub struct TogetherExtBuilder;
 type TogetherApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<TogetherExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<TogetherExtBuilder, TogetherApiKey, H>;
 
 impl Provider for TogetherExt {

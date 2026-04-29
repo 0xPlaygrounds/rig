@@ -63,7 +63,7 @@ impl ApiKey for AnthropicKey {
 }
 
 pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 
 impl Default for AnthropicBuilder {

@@ -14,7 +14,8 @@ pub struct XAiExtBuilder;
 type XAiApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<XAiExt, H>;
-pub type ClientBuilder<H = reqwest::Client> = client::ClientBuilder<XAiExtBuilder, XAiApiKey, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<XAiExtBuilder, XAiApiKey, H>;
 
 const XAI_BASE_URL: &str = "https://api.x.ai";
 

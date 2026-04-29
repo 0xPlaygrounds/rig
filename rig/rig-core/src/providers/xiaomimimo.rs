@@ -65,7 +65,7 @@ pub struct XiaomiMimoAnthropicExt;
 type XiaomiMimoApiKey = BearerAuth;
 
 pub type Client<H = reqwest::Client> = client::Client<XiaomiMimoExt, H>;
-pub type ClientBuilder<H = reqwest::Client> =
+pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<XiaomiMimoBuilder, XiaomiMimoApiKey, H>;
 
 pub type AnthropicClient<H = reqwest::Client> = client::Client<XiaomiMimoAnthropicExt, H>;
