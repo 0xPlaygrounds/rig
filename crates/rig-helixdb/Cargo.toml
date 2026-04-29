@@ -1,0 +1,31 @@
+[package]
+name = "rig-helixdb"
+version = "0.2.5"
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Rig vector store index integration for HelixDB."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror = { workspace = true }
+rig = { package = "rig-core", path = "../rig-core", version = "0.36.0", default-features = false }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = ["rustls"]
+rustls = ["reqwest/rustls", "rig/rustls"]
+native-tls = ["reqwest/native-tls", "rig/native-tls"]
+
+[[example]]
+name = "vector_search_helixdb"
+required-features = ["rig/derive"]

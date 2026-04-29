@@ -191,4 +191,4 @@ Detailed API documentation (available when installed via Claude Code skills):
 - **providers** — Provider-specific initialization, model constants, env vars
 - **patterns** — Multi-agent, hooks, streaming details, chaining, extraction
 
-For the full reference, see the Rig examples at `rig-core/examples/` or https://docs.rig.rs
+For the full reference, see the Rig examples at `examples/` or https://docs.rig.rs

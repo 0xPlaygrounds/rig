@@ -9055,6 +9055,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
+name = "rig"
+version = "0.36.0"
+dependencies = [
+ "anyhow",
+ "assert_fs",
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "futures",
+ "hyper-util",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "redis",
+ "reqwest 0.13.3",
+ "reqwest-middleware",
+ "reqwest-retry",
+ "rig-core",
+ "rmcp",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rig-bedrock"
 version = "0.4.5"
 dependencies = [

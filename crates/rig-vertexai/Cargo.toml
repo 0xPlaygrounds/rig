@@ -1,0 +1,25 @@
+[package]
+name = "rig-vertexai"
+version = "0.3.5"
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "VertexAI model provider for Rig integration."
+
+[lints]
+workspace = true
+
+[dependencies]
+google-cloud-aiplatform-v1 = { workspace = true }
+google-cloud-auth = { workspace = true }
+rig = { package = "rig-core", path = "../rig-core", version = "0.36.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+schemars = { workspace = true }
+tracing-subscriber = { workspace = true }
