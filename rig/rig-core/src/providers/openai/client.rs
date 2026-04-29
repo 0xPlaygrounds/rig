@@ -44,7 +44,7 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 
 // Completions API client
 pub type CompletionsClient<H = reqwest::Client> = client::Client<OpenAICompletionsExt, H>;
-pub type CompletionsClientBuilder<H = reqwest::Client> =
+pub type CompletionsClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
 
 impl Provider for OpenAIResponsesExt {
