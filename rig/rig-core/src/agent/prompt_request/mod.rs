@@ -548,8 +548,7 @@ where
                             let tool_span = tracing::Span::current();
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
-                            tool_span.record("gen_ai.tool.call.arguments", &args);
-                            if let Some(hook) = hook1 {
+                            let args = if let Some(hook) = hook1 {
                                 let action = hook
                                     .on_tool_call(
                                         tool_name,
@@ -559,34 +558,41 @@ where
                                     )
                                     .await;
 
-                                if let ToolCallHookAction::Terminate { reason } = action {
-                                    return Err(PromptError::prompt_cancelled(
-                                        cloned_history_for_error,
-                                        reason,
-                                    ));
-                                }
-
-                                if let ToolCallHookAction::Skip { reason } = action {
-                                    // Tool execution rejected, return rejection message as tool result
-                                    tracing::info!(
-                                        tool_name = tool_name,
-                                        reason = reason,
-                                        "Tool call rejected"
-                                    );
-                                    if let Some(call_id) = tool_call.call_id.clone() {
-                                        return Ok(UserContent::tool_result_with_call_id(
-                                            tool_call.id.clone(),
-                                            call_id,
-                                            OneOrMany::one(reason.into()),
-                                        ));
-                                    } else {
-                                        return Ok(UserContent::tool_result(
-                                            tool_call.id.clone(),
-                                            OneOrMany::one(reason.into()),
+                                match action {
+                                    ToolCallHookAction::Terminate { reason } => {
+                                        return Err(PromptError::prompt_cancelled(
+                                            cloned_history_for_error,
+                                            reason,
                                         ));
                                     }
+                                    ToolCallHookAction::Skip { reason } => {
+                                        tracing::info!(
+                                            tool_name = tool_name,
+                                            reason = reason,
+                                            "Tool call rejected"
+                                        );
+                                        if let Some(call_id) = tool_call.call_id.clone() {
+                                            return Ok(UserContent::tool_result_with_call_id(
+                                                tool_call.id.clone(),
+                                                call_id,
+                                                OneOrMany::one(reason.into()),
+                                            ));
+                                        } else {
+                                            return Ok(UserContent::tool_result(
+                                                tool_call.id.clone(),
+                                                OneOrMany::one(reason.into()),
+                                            ));
+                                        }
+                                    }
+                                    ToolCallHookAction::ContinueWith {
+                                        args: replacement_args,
+                                    } => replacement_args,
+                                    ToolCallHookAction::Continue => args,
                                 }
-                            }
+                            } else {
+                                args
+                            };
+                            tool_span.record("gen_ai.tool.call.arguments", &args);
                             let output = match tool_server_handle.call_tool(tool_name, &args).await
                             {
                                 Ok(res) => res,

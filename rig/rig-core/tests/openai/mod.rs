@@ -1,4 +1,5 @@
 mod agent;
+mod arg_rewrite_hook;
 #[cfg(feature = "audio")]
 mod audio_generation;
 mod completions_api;
