@@ -9,6 +9,7 @@ use crate::{
     OneOrMany,
     completion::{CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
+    memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
     tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
@@ -85,6 +86,10 @@ where
     concurrency: usize,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    /// Optional conversation memory backend cloned from the agent.
+    memory: Option<Arc<dyn ConversationMemory>>,
+    /// Optional conversation id used for loading and saving memory.
+    conversation_id: Option<String>,
 }
 
 impl<M, P> PromptRequest<Standard, M, P>
@@ -112,6 +117,8 @@ where
             hook: agent.hook.clone(),
             concurrency: 1,
             output_schema: agent.output_schema.clone(),
+            memory: agent.memory.clone(),
+            conversation_id: agent.default_conversation_id.clone(),
         }
     }
 }
@@ -147,6 +154,8 @@ where
             hook: self.hook,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            memory: self.memory,
+            conversation_id: self.conversation_id,
         }
     }
 
@@ -174,6 +183,24 @@ where
         self
     }
 
+    /// Set the conversation id used to load and persist memory for this request.
+    ///
+    /// Overrides any default conversation id set on the agent. If memory is not
+    /// configured on the agent, this has no effect.
+    pub fn conversation(mut self, id: impl Into<String>) -> Self {
+        self.conversation_id = Some(id.into());
+        self
+    }
+
+    /// Disable conversation memory for this request.
+    ///
+    /// History will neither be loaded from nor saved to the agent's memory backend.
+    pub fn without_memory(mut self) -> Self {
+        self.memory = None;
+        self.conversation_id = None;
+        self
+    }
+
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
     pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2>
@@ -198,6 +225,8 @@ where
             hook: Some(hook),
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            memory: self.memory,
+            conversation_id: self.conversation_id,
         }
     }
 }
@@ -342,7 +371,20 @@ where
         }
 
         let agent_name_for_span = self.agent_name.clone();
-        let chat_history = self.chat_history;
+        // When the caller passes explicit history, memory is fully bypassed for this
+        // request (no load AND no save). Otherwise, if a memory backend and
+        // conversation id are both configured, load prior history; if either is
+        // missing, behave as if no memory is configured.
+        let (chat_history, memory_handle) = match self.chat_history {
+            Some(history) => (Some(history), None),
+            None => match (self.memory, self.conversation_id) {
+                (Some(memory), Some(id)) => {
+                    let loaded = memory.load(&id).await?;
+                    (Some(loaded), Some((memory, id)))
+                }
+                _ => (None, None),
+            },
+        };
         let mut new_messages: Vec<Message> = vec![self.prompt.clone()];
 
         let mut current_max_turns = 0;
@@ -497,6 +539,10 @@ where
                     "gen_ai.usage.cache_creation.input_tokens",
                     usage.cache_creation_input_tokens,
                 );
+
+                if let Some((memory, id)) = memory_handle.as_ref() {
+                    memory.append(id, new_messages.clone()).await?;
+                }
 
                 return Ok(PromptResponse::new(merged_texts, usage).with_messages(new_messages));
             }
@@ -764,6 +810,23 @@ where
         self
     }
 
+    /// Set the conversation id used to load and persist memory for this request.
+    ///
+    /// Overrides any default conversation id set on the agent. If memory is not
+    /// configured on the agent, this has no effect.
+    pub fn conversation(mut self, id: impl Into<String>) -> Self {
+        self.inner = self.inner.conversation(id);
+        self
+    }
+
+    /// Disable conversation memory for this request.
+    ///
+    /// History will neither be loaded from nor saved to the agent's memory backend.
+    pub fn without_memory(mut self) -> Self {
+        self.inner = self.inner.without_memory();
+        self
+    }
+
     /// Attach a per-request hook for tool call events.
     ///
     /// This overrides any default hook set on the agent.
@@ -852,7 +915,7 @@ mod tests {
         agent::AgentBuilder,
         completion::{
             AssistantContent, CompletionError, CompletionModel, CompletionRequest,
-            CompletionResponse, Message, Prompt, Usage,
+            CompletionResponse, Message, Prompt, PromptError, Usage,
         },
         message::UserContent,
         streaming::StreamingCompletionResponse,
@@ -1067,5 +1130,304 @@ mod tests {
                 ))
         )));
         assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
+    }
+
+    // ----- Conversation memory integration tests -----
+
+    use crate::memory::{ConversationMemory, InMemoryConversationMemory, MemoryError};
+    use crate::wasm_compat::WasmBoxedFuture;
+
+    /// Mock model that records the chat history it received and returns a fixed response.
+    #[derive(Clone, Default)]
+    struct RecordingMockModel {
+        last_history: Arc<std::sync::Mutex<Vec<Message>>>,
+        fail_with: Arc<std::sync::Mutex<Option<String>>>,
+    }
+
+    #[allow(refining_impl_trait)]
+    impl CompletionModel for RecordingMockModel {
+        type Response = ();
+        type StreamingResponse = ();
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+            Self::default()
+        }
+
+        async fn completion(
+            &self,
+            request: CompletionRequest,
+        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            let mut guard = self.last_history.lock().expect("recording mock poisoned");
+            *guard = request.chat_history.iter().cloned().collect();
+            drop(guard);
+
+            if let Some(err) = self
+                .fail_with
+                .lock()
+                .expect("recording mock poisoned")
+                .clone()
+            {
+                return Err(CompletionError::ProviderError(err));
+            }
+
+            Ok(CompletionResponse {
+                choice: OneOrMany::one(AssistantContent::text("ack")),
+                usage: Usage::new(),
+                raw_response: (),
+                message_id: None,
+            })
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+            Err(CompletionError::ProviderError(
+                "stream is unused in this non-streaming test".to_string(),
+            ))
+        }
+    }
+
+    /// Memory backend that counts calls; backed by InMemoryConversationMemory for storage.
+    #[derive(Clone, Default)]
+    struct CountingMemory {
+        inner: InMemoryConversationMemory,
+        loads: Arc<AtomicUsize>,
+        appends: Arc<AtomicUsize>,
+    }
+
+    impl ConversationMemory for CountingMemory {
+        fn load<'a>(
+            &'a self,
+            conversation_id: &'a str,
+        ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+            self.loads.fetch_add(1, Ordering::SeqCst);
+            self.inner.load(conversation_id)
+        }
+
+        fn append<'a>(
+            &'a self,
+            conversation_id: &'a str,
+            messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            self.appends.fetch_add(1, Ordering::SeqCst);
+            self.inner.append(conversation_id, messages)
+        }
+
+        fn clear<'a>(
+            &'a self,
+            conversation_id: &'a str,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            self.inner.clear(conversation_id)
+        }
+    }
+
+    #[tokio::test]
+    async fn memory_loads_into_request_history() {
+        let memory = InMemoryConversationMemory::new();
+        memory
+            .append(
+                "thread-1",
+                vec![Message::user("hello"), Message::assistant("hi there")],
+            )
+            .await
+            .unwrap();
+
+        let model = RecordingMockModel::default();
+        let recorded = model.last_history.clone();
+
+        let agent = AgentBuilder::new(model).memory(memory).build();
+        let _ = agent
+            .prompt("ping")
+            .conversation("thread-1")
+            .await
+            .expect("prompt should succeed");
+
+        let received = recorded.lock().unwrap().clone();
+        assert_eq!(
+            received.len(),
+            3,
+            "loaded memory (2) + current prompt should appear in request: {received:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_appends_full_turn_after_success() {
+        let memory = InMemoryConversationMemory::new();
+        let model = RecordingMockModel::default();
+        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+
+        let _ = agent
+            .prompt("hello")
+            .conversation("t1")
+            .await
+            .expect("prompt should succeed");
+
+        let stored = memory.load("t1").await.unwrap();
+        assert_eq!(stored.len(), 2, "user prompt + assistant response saved");
+    }
+
+    #[tokio::test]
+    async fn explicit_with_history_overrides_memory() {
+        let memory = CountingMemory::default();
+        memory
+            .inner
+            .append("t1", vec![Message::user("from-memory")])
+            .await
+            .unwrap();
+
+        let model = RecordingMockModel::default();
+        let recorded = model.last_history.clone();
+
+        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let _ = agent
+            .prompt("hello")
+            .conversation("t1")
+            .with_history(vec![Message::user("from-caller")])
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(memory.loads.load(Ordering::SeqCst), 0, "load skipped");
+        let appends = memory.appends.load(Ordering::SeqCst);
+        assert_eq!(appends, 0, "append skipped");
+
+        let received = recorded.lock().unwrap().clone();
+        assert_eq!(received.len(), 2, "caller history (1) + current prompt");
+        assert!(matches!(
+            received.first(),
+            Some(Message::User { content })
+                if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
+        ));
+    }
+
+    #[tokio::test]
+    async fn memory_unchanged_on_provider_error() {
+        let memory = InMemoryConversationMemory::new();
+        let model = RecordingMockModel::default();
+        *model.fail_with.lock().unwrap() = Some("boom".to_string());
+
+        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let result = agent.prompt("hello").conversation("t1").await;
+        assert!(result.is_err());
+
+        let stored = memory.load("t1").await.unwrap();
+        assert!(stored.is_empty(), "no append on error");
+    }
+
+    #[tokio::test]
+    async fn missing_conversation_id_behaves_as_no_memory() {
+        let memory = CountingMemory::default();
+        let model = RecordingMockModel::default();
+        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+
+        let _ = agent.prompt("hello").await.expect("prompt should succeed");
+
+        assert_eq!(memory.loads.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.appends.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn default_conversation_id_is_used_when_none_per_request() {
+        let memory = InMemoryConversationMemory::new();
+        let model = RecordingMockModel::default();
+        let agent = AgentBuilder::new(model)
+            .memory(memory.clone())
+            .conversation_id("default-thread")
+            .build();
+
+        let _ = agent.prompt("hello").await.expect("prompt should succeed");
+        let stored = memory.load("default-thread").await.unwrap();
+        assert_eq!(stored.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn with_filter_truncates_loaded_history() {
+        let memory = InMemoryConversationMemory::new()
+            .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());
+        memory
+            .append(
+                "t1",
+                vec![
+                    Message::user("1"),
+                    Message::assistant("2"),
+                    Message::user("3"),
+                    Message::assistant("4"),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let model = RecordingMockModel::default();
+        let recorded = model.last_history.clone();
+        let agent = AgentBuilder::new(model).memory(memory).build();
+
+        let _ = agent
+            .prompt("ping")
+            .conversation("t1")
+            .await
+            .expect("prompt should succeed");
+
+        let received = recorded.lock().unwrap().clone();
+        assert_eq!(
+            received.len(),
+            3,
+            "window-truncated history (2) + current prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn without_memory_disables_for_request() {
+        let memory = CountingMemory::default();
+        let model = RecordingMockModel::default();
+        let agent = AgentBuilder::new(model)
+            .memory(memory.clone())
+            .conversation_id("t1")
+            .build();
+
+        let _ = agent
+            .prompt("hello")
+            .without_memory()
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(memory.loads.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.appends.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn memory_load_error_surfaces_as_prompt_error() {
+        #[derive(Clone)]
+        struct FailingMemory;
+        impl ConversationMemory for FailingMemory {
+            fn load<'a>(
+                &'a self,
+                _id: &'a str,
+            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("load boom"))) })
+            }
+            fn append<'a>(
+                &'a self,
+                _id: &'a str,
+                _msgs: Vec<Message>,
+            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        let model = RecordingMockModel::default();
+        let agent = AgentBuilder::new(model).memory(FailingMemory).build();
+        let result = agent.prompt("hello").conversation("t1").await;
+
+        match result {
+            Err(PromptError::CompletionError(CompletionError::RequestError(err))) => {
+                let msg = format!("{err}");
+                assert!(msg.contains("load boom"), "got: {msg}");
+            }
+            other => panic!("expected PromptError::CompletionError(RequestError), got {other:?}"),
+        }
     }
 }
