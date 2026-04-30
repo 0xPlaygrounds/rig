@@ -1,7 +1,7 @@
 //! DeepSeek model listing smoke test.
 //!
 //! Run with:
-//! `cargo test -p rig-core --test deepseek deepseek::models::list_models_smoke -- --ignored --nocapture`
+//! `cargo test -p rig --test deepseek deepseek::models::list_models_smoke -- --ignored --nocapture`
 
 use rig::client::{ModelListingClient, ProviderClient};
 use rig::providers::deepseek;

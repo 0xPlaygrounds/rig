@@ -1,7 +1,7 @@
 //! Gemini reasoning roundtrip tests.
 //!
 //! Run only these cases with:
-//! `cargo test -p rig-core --test gemini gemini::reasoning_roundtrip::streaming -- --ignored --nocapture`
+//! `cargo test -p rig --test gemini gemini::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::gemini;

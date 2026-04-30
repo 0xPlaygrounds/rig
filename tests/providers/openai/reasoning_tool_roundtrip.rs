@@ -1,7 +1,7 @@
 //! OpenAI reasoning-enabled tool roundtrip tests.
 //!
 //! Run only these cases with:
-//! `cargo test -p rig-core --test openai openai::reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
+//! `cargo test -p rig --test openai openai::reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
