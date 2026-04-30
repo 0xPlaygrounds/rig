@@ -39,6 +39,4 @@ async fn list_models_smoke() {
         !models.is_empty(),
         "expected Copilot to return at least one model\nModel list: {models:#?}"
     );
-
-    println!("Successfully listed Copilot models: {models:#?}");
 }
