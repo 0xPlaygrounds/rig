@@ -1,8 +1,8 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
-use rig::client::Nothing;
-use rig::prelude::*;
+use rig_core::client::Nothing;
+use rig_core::prelude::*;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -96,7 +96,7 @@ impl Client {
 
 impl ProviderClient for Client {
     type Input = Nothing;
-    type Error = rig::client::ProviderClientError;
+    type Error = rig_core::client::ProviderClientError;
 
     fn from_env() -> Result<Self, Self::Error>
     where
@@ -109,7 +109,7 @@ impl ProviderClient for Client {
     where
         Self: Sized,
     {
-        Err(rig::client::ProviderClientError::InvalidConfiguration(
+        Err(rig_core::client::ProviderClientError::InvalidConfiguration(
             "use `Client::from_env()` or `Client::with_profile_name(\"aws_profile\")` instead",
         ))
     }

@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig = { package = "rig-core", path = "../rig-core", version = "0.36.0" }
+rig-core = { path = "../rig-core", version = "0.36.0" }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -25,4 +25,4 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[example]]
 name = "vectorize_vector_search"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]

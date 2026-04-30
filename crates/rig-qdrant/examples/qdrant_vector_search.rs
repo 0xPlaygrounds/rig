@@ -11,14 +11,14 @@ use qdrant_client::{
     Qdrant,
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
-use rig::{
+use rig_core::{
     Embed,
     client::ProviderClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{self, Client},
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
+use rig_core::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_qdrant::QdrantVectorStore;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]

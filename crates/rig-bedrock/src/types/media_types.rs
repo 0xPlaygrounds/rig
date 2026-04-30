@@ -1,5 +1,5 @@
 use aws_sdk_bedrockruntime::types::DocumentFormat;
-use rig::{
+use rig_core::{
     completion::CompletionError,
     message::{DocumentMediaType, MimeType},
 };

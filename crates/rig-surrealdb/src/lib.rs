@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use rig::{
+use rig_core::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
@@ -421,7 +421,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
-    use rig::{
+    use rig_core::{
         client::Nothing,
         embeddings::{Embedding, EmbeddingError, EmbeddingModel},
         vector_store::{VectorStoreIndexDyn, request::Filter},

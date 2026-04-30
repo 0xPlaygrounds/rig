@@ -18,6 +18,24 @@ mod embed;
 
 pub(crate) const EMBED: &str = "embed";
 
+pub(crate) fn rig_core_path() -> proc_macro2::TokenStream {
+    match proc_macro_crate::crate_name("rig-core") {
+        Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+        Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+            let ident = format_ident!("{name}");
+            quote!(::#ident)
+        }
+        Err(_) => match proc_macro_crate::crate_name("rig") {
+            Ok(proc_macro_crate::FoundCrate::Itself) => quote!(crate),
+            Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+                let ident = format_ident!("{name}");
+                quote!(::#ident)
+            }
+            Err(_) => quote!(::rig_core),
+        },
+    }
+}
+
 #[proc_macro_derive(ProviderClient, attributes(client))]
 pub fn derive_provider_client(input: TokenStream) -> TokenStream {
     client::provider_client(input)
@@ -461,6 +479,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
+    let rig_core = rig_core_path();
     let expanded = quote! {
         #[derive(serde::Deserialize)]
         #vis struct #params_struct_name {
@@ -472,7 +491,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         #[derive(Default)]
         #vis struct #struct_name;
 
-        impl rig::tool::Tool for #struct_name {
+        impl #rig_core::tool::Tool for #struct_name {
             const NAME: &'static str = #tool_name;
 
             type Args = #params_struct_name;
@@ -483,7 +502,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                 #tool_name.to_string()
             }
 
-            async fn definition(&self, _prompt: String) -> rig::completion::ToolDefinition {
+            async fn definition(&self, _prompt: String) -> #rig_core::completion::ToolDefinition {
                 let parameters = serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -497,7 +516,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
                     "required": [#(#required_args),*]
                 });
 
-                rig::completion::ToolDefinition {
+                #rig_core::completion::ToolDefinition {
                     name: #tool_name.to_string(),
                     description: #tool_description.to_string(),
                     parameters,

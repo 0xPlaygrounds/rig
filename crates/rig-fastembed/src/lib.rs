@@ -3,12 +3,12 @@ use std::{error::Error as StdError, fmt};
 
 pub use fastembed::EmbeddingModel as FastembedModel;
 use fastembed::{InitOptionsUserDefined, ModelInfo, TextEmbedding, UserDefinedEmbeddingModel};
-use rig::embeddings::{self, EmbeddingError};
+use rig_core::embeddings::{self, EmbeddingError};
 
 #[cfg(feature = "hf-hub")]
 use fastembed::InitOptions;
 #[cfg(feature = "hf-hub")]
-use rig::{Embed, embeddings::EmbeddingsBuilder};
+use rig_core::{Embed, embeddings::EmbeddingsBuilder};
 
 /// The `rig-fastembed` client.
 ///

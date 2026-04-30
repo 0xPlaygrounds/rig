@@ -1,8 +1,8 @@
-use rig::embeddings::{Embedding, EmbeddingModel};
-use rig::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
-use rig::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use rig::{Embed, OneOrMany};
+use rig_core::embeddings::{Embedding, EmbeddingModel};
+use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
+use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::{Embed, OneOrMany};
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -46,7 +46,7 @@ impl Column {
 
 /// Example of a document type that can be used with SqliteVectorStore
 /// ```rust
-/// use rig::Embed;
+/// use rig_core::Embed;
 /// use serde::{Deserialize, Serialize};
 /// use rig_sqlite::{Column, ColumnValue, SqliteVectorStoreTable};
 ///
@@ -438,7 +438,7 @@ impl SqliteSearchFilter {
 ///
 /// # Example
 /// ```no_run
-/// use rig::{
+/// use rig_core::{
 ///     client::EmbeddingsClient,
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
@@ -446,7 +446,7 @@ impl SqliteSearchFilter {
 ///     Embed,
 /// };
 /// use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
-/// use rig::vector_store::request::VectorSearchRequest;
+/// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
 ///

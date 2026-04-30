@@ -5,9 +5,9 @@ use aws_sdk_bedrockruntime::error::SdkError;
 use aws_sdk_bedrockruntime::operation::converse::ConverseError;
 use aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError;
 use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
-use rig::completion::CompletionError;
-use rig::embeddings::EmbeddingError;
-use rig::image_generation::ImageGenerationError;
+use rig_core::completion::CompletionError;
+use rig_core::embeddings::EmbeddingError;
+use rig_core::image_generation::ImageGenerationError;
 
 pub struct AwsSdkInvokeModelError(pub SdkError<InvokeModelError, HttpResponse>);
 

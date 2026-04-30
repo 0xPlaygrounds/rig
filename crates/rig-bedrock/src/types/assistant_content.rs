@@ -1,6 +1,6 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use rig::{
+use rig_core::{
     completion::CompletionError,
     message::{AssistantContent, Text},
 };
@@ -12,8 +12,8 @@ use super::{
     converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
     json::AwsDocument,
 };
-use rig::completion::{self, GetTokenUsage};
-use rig::telemetry::ProviderResponseExt;
+use rig_core::completion::{self, GetTokenUsage};
+use rig_core::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AwsConverseOutput(pub InternalConverseOutput);
@@ -137,7 +137,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
             aws_bedrock::ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(
-                        rig::message::Reasoning::new_with_signature(
+                        rig_core::message::Reasoning::new_with_signature(
                             &reasoning_text.text,
                             reasoning_text.signature,
                         ),
@@ -178,7 +178,7 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                     .filter(|content| {
                         matches!(
                             content,
-                            rig::message::ReasoningContent::Text {
+                            rig_core::message::ReasoningContent::Text {
                                 signature: Some(_),
                                 ..
                             }
@@ -246,7 +246,7 @@ mod tests {
 
     use super::AwsConverseOutput;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig::{
+    use rig_core::{
         OneOrMany, completion,
         completion::GetTokenUsage,
         message::{AssistantContent, ReasoningContent},
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn rig_reasoning_to_aws_content_block_without_signature() {
         // Test conversion from Rig Reasoning to AWS ContentBlock without signature
-        let reasoning = rig::message::Reasoning::new("My reasoning content");
+        let reasoning = rig_core::message::Reasoning::new("My reasoning content");
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
         let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn rig_reasoning_to_aws_content_block_with_signature() {
         // Test conversion from Rig Reasoning to AWS ContentBlock with signature
-        let reasoning = rig::message::Reasoning::new_with_signature(
+        let reasoning = rig_core::message::Reasoning::new_with_signature(
             "My reasoning content",
             Some("sig_abc_123".to_string()),
         );
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn rig_reasoning_with_multiple_strings_to_aws_content_block() {
         // Test that multiple reasoning strings are joined correctly
-        let reasoning = rig::message::Reasoning::multi(vec![
+        let reasoning = rig_core::message::Reasoning::multi(vec![
             "First part".to_string(),
             " Second part".to_string(),
             " Third part".to_string(),
@@ -558,8 +558,10 @@ mod tests {
         // plaintext body is empty but with a real cryptographic signature
         // attached. Verify we forward this as a `ReasoningTextBlock` with
         // empty text + signature instead of rejecting it.
-        let reasoning =
-            rig::message::Reasoning::new_with_signature("", Some("sig_empty_text".to_string()));
+        let reasoning = rig_core::message::Reasoning::new_with_signature(
+            "",
+            Some("sig_empty_text".to_string()),
+        );
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
         let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
@@ -578,7 +580,7 @@ mod tests {
 
     #[test]
     fn rig_reasoning_with_empty_text_and_no_signature_returns_error() {
-        let reasoning = rig::message::Reasoning::new_with_signature("", None);
+        let reasoning = rig_core::message::Reasoning::new_with_signature("", None);
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
         let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
@@ -592,7 +594,7 @@ mod tests {
     #[test]
     fn rig_reasoning_with_multiple_signed_text_blocks_returns_error() {
         let mut reasoning =
-            rig::message::Reasoning::new_with_signature("part one", Some("sig_1".to_string()));
+            rig_core::message::Reasoning::new_with_signature("part one", Some("sig_1".to_string()));
         reasoning.content.push(ReasoningContent::Text {
             text: "part two".to_string(),
             signature: Some("sig_2".to_string()),

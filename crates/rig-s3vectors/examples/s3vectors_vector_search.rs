@@ -1,12 +1,12 @@
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3vectors::Client;
 use aws_sdk_s3vectors::config::Credentials;
-use rig::Embed;
-use rig::client::{EmbeddingsClient, ProviderClient};
-use rig::embeddings::EmbeddingsBuilder;
-use rig::providers::openai::{self, Client as OpenAIClient};
-use rig::vector_store::request::VectorSearchRequest;
-use rig::vector_store::{InsertDocuments, VectorStoreIndex};
+use rig_core::Embed;
+use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::embeddings::EmbeddingsBuilder;
+use rig_core::providers::openai::{self, Client as OpenAIClient};
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
 use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";

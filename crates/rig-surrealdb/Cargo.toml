@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem"] }
-rig = { package = "rig-core", path = "../rig-core", version = "0.36.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.36.0", default-features = false, features = [
   "derive",
 ] }
 serde = { workspace = true, features = ["derive"] }
@@ -25,8 +25,8 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[example]]
 name = "vector_search_surreal"
-required-features = ["rig/derive", "rig/rustls"]
+required-features = ["rig-core/derive", "rig-core/rustls"]
 
 [[example]]
 name = "vector_store"
-required-features = ["rig/derive", "rig/rustls"]
+required-features = ["rig-core/derive", "rig-core/rustls"]

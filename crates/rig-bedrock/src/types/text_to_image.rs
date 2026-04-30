@@ -1,7 +1,7 @@
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use rig::image_generation;
-use rig::image_generation::ImageGenerationError;
+use rig_core::image_generation;
+use rig_core::image_generation::ImageGenerationError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]

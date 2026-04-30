@@ -1,7 +1,7 @@
-use rig::client::{EmbeddingsClient, ProviderClient};
-use rig::providers::openai;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::{
+use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::providers::openai;
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorStoreIndex},

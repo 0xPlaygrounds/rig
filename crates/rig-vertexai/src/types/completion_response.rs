@@ -1,7 +1,7 @@
 use google_cloud_aiplatform_v1 as vertexai;
-use rig::OneOrMany;
-use rig::completion::{CompletionError, CompletionResponse, Usage};
-use rig::message::{AssistantContent, Text, ToolCall, ToolFunction};
+use rig_core::OneOrMany;
+use rig_core::completion::{CompletionError, CompletionResponse, Usage};
+use rig_core::message::{AssistantContent, Text, ToolCall, ToolFunction};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -25,7 +25,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
         let mut assistant_contents = Vec::new();
 
         // vertexai internally uses a wkt::Struct (serde_json::Map<String, serde_json::Value>) in
-        // function calling args. We need to convert that to serde_json::Value for rig::completion type matching
+        // function calling args. We need to convert that to serde_json::Value for rig_core::completion type matching
         for part in content.parts.iter() {
             if let Some(function_call) = part.function_call() {
                 let args_json = function_call
@@ -78,8 +78,8 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
 mod tests {
     use super::*;
     use google_cloud_aiplatform_v1 as vertexai;
-    use rig::OneOrMany;
-    use rig::message::{AssistantContent, Text, ToolCall};
+    use rig_core::OneOrMany;
+    use rig_core::message::{AssistantContent, Text, ToolCall};
 
     fn create_text_response(text: &str) -> VertexGenerateContentOutput {
         let part = vertexai::model::Part::new().set_text(text.to_string());

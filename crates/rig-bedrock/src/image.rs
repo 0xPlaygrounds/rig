@@ -2,7 +2,7 @@ use crate::client::Client;
 use crate::types::errors::AwsSdkInvokeModelError;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
-use rig::image_generation::{
+use rig_core::image_generation::{
     self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
 };
 

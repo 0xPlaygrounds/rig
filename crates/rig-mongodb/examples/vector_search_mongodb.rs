@@ -3,13 +3,15 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::{client::ProviderClient, providers::openai, vector_store::request::VectorSearchRequest};
+use rig_core::{
+    client::ProviderClient, providers::openai, vector_store::request::VectorSearchRequest,
+};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
 
-use rig::client::EmbeddingsClient;
-use rig::{
+use rig_core::client::EmbeddingsClient;
+use rig_core::{
     Embed, embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};

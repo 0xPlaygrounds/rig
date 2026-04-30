@@ -5,7 +5,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::client::CompletionClient;
+//! use rig_core::client::CompletionClient;
 //! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -37,11 +37,11 @@ pub use proto::{
 };
 
 // Implement GetTokenUsage for proto::GenerateContentResponse to support streaming
-impl rig::completion::GetTokenUsage for proto::GenerateContentResponse {
-    fn token_usage(&self) -> Option<rig::completion::Usage> {
+impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
+    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
         self.usage_metadata
             .as_ref()
-            .map(|u| rig::completion::Usage {
+            .map(|u| rig_core::completion::Usage {
                 input_tokens: u.prompt_token_count as u64,
                 output_tokens: u.candidates_token_count as u64,
                 total_tokens: u.total_token_count as u64,

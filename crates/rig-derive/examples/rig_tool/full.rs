@@ -1,7 +1,7 @@
-use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::Prompt;
-use rig::providers;
-use rig::tool::Tool;
+use rig_core::client::{CompletionClient, ProviderClient};
+use rig_core::completion::Prompt;
+use rig_core::providers;
+use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 // Example with full attributes including parameter descriptions
@@ -13,13 +13,13 @@ use rig_derive::rig_tool;
     ),
     required(text, operation)
 )]
-fn string_processor(text: String, operation: String) -> Result<String, rig::tool::ToolError> {
+fn string_processor(text: String, operation: String) -> Result<String, rig_core::tool::ToolError> {
     let result = match operation.as_str() {
         "uppercase" => text.to_uppercase(),
         "lowercase" => text.to_lowercase(),
         "reverse" => text.chars().rev().collect(),
         _ => {
-            return Err(rig::tool::ToolError::ToolCallError(
+            return Err(rig_core::tool::ToolError::ToolCallError(
                 format!("Unknown operation: {operation}").into(),
             ));
         }

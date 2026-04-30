@@ -1,7 +1,7 @@
-use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::Prompt;
-use rig::providers;
-use rig::tool::{Tool, ToolError};
+use rig_core::client::{CompletionClient, ProviderClient};
+use rig_core::completion::Prompt;
+use rig_core::providers;
+use rig_core::tool::{Tool, ToolError};
 use rig_derive::rig_tool;
 use std::time::Duration;
 

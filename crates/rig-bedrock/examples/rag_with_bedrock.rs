@@ -1,13 +1,13 @@
 use std::vec;
 
-use rig::client::{CompletionClient, EmbeddingsClient, ProviderClient};
-use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
-    vector_store::in_memory_store::InMemoryVectorStore,
-};
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
+use rig_core::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use rig_core::{
+    Embed, completion::Prompt, embeddings::EmbeddingsBuilder,
+    vector_store::in_memory_store::InMemoryVectorStore,
+};
 use serde::Serialize;
 use tracing::info;
 

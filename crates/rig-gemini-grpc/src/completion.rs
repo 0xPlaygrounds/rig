@@ -10,10 +10,10 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
-use rig::OneOrMany;
-use rig::completion::{self, CompletionError, CompletionRequest};
-use rig::message::{self, MimeType, Reasoning};
-use rig::telemetry::ProviderResponseExt;
+use rig_core::OneOrMany;
+use rig_core::completion::{self, CompletionError, CompletionRequest};
+use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
 
 use super::Client;
@@ -70,8 +70,10 @@ impl completion::CompletionModel for CompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<rig::streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-    {
+    ) -> Result<
+        rig_core::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
+        CompletionError,
+    > {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }

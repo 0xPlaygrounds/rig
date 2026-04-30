@@ -7,7 +7,7 @@
 
 use std::env;
 
-use rig::{
+use rig_core::{
     providers::openai::{self, Client},
     vector_store::{
         VectorStoreIndex,
@@ -16,7 +16,7 @@ use rig::{
 };
 
 use neo4rs::*;
-use rig::client::EmbeddingsClient;
+use rig_core::client::EmbeddingsClient;
 use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::IndexConfig};
 use serde::{Deserialize, Serialize};
 

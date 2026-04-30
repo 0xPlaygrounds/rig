@@ -4,11 +4,11 @@ use super::Client;
 use crate::types::{
     completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
 };
-use rig::completion::{
+use rig_core::completion::{
     CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
     CompletionResponse, GetTokenUsage,
 };
-use rig::streaming::StreamingCompletionResponse;
+use rig_core::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 
 /// `gemini-1.5-pro`
@@ -38,7 +38,7 @@ pub struct CompletionModel {
 pub struct PlaceholderStreamingResponse;
 
 impl GetTokenUsage for PlaceholderStreamingResponse {
-    fn token_usage(&self) -> Option<rig::completion::Usage> {
+    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
         None
     }
 }
@@ -83,7 +83,7 @@ impl CompletionModelTrait for CompletionModel {
         request: CompletionRequest,
     ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
         tracing::debug!(
-            target: "rig::vertexai",
+            target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
         );
 
@@ -127,7 +127,7 @@ impl CompletionModelTrait for CompletionModel {
             .map_err(|e| CompletionError::ProviderError(format!("Vertex AI API error: {e}")))?;
 
         tracing::debug!(
-            target: "rig::vertexai",
+            target: "rig_core::vertexai",
             "Vertex AI completion response: {response:?}"
         );
 

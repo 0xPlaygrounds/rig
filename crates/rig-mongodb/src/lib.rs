@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
-use rig::{
+use rig_core::{
     Embed, OneOrMany,
     embeddings::embedding::{Embedding, EmbeddingModel},
     vector_store::{
@@ -66,7 +66,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # Example
 /// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::{ProviderClient, EmbeddingsClient}};
+/// use rig_core::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::{ProviderClient, EmbeddingsClient}};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]

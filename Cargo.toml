@@ -122,10 +122,28 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.36.0", default-features = false }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.5", optional = true }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = true }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true }
+rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true }
+rig-postgres = { path = "crates/rig-postgres", version = "0.2.5", optional = true }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.5", optional = true }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.5", optional = true }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.5", optional = true }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.5", optional = true }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.5", optional = true }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.5", optional = true }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.5", optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+arrow-array = { workspace = true }
 assert_fs = { workspace = true }
+async-stream = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
@@ -133,6 +151,11 @@ redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
+httpmock = { workspace = true }
+lancedb = { workspace = true }
+mongodb = { workspace = true }
+neo4rs = { workspace = true }
+qdrant-client = { workspace = true }
 reqwest-retry = { version = "0.9" }
 reqwest = { workspace = true, features = ["json", "stream"] }
 reqwest-middleware = { version = "0.5", default-features = false, features = [
@@ -145,7 +168,12 @@ reqwest-middleware = { version = "0.5", default-features = false, features = [
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+sqlite-vec = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
+testcontainers = { workspace = true }
 thiserror = { workspace = true }
+tokio-rusqlite = { workspace = true, features = ["bundled"] }
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
 rmcp = { version = "1", features = [
   "client",
@@ -163,10 +191,27 @@ opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 opentelemetry-otlp = "0.31.0"
 tracing = { workspace = true }
 tracing-opentelemetry = "0.32.1"
+url = { workspace = true }
 
 [features]
 default = ["rig-core/default"]
 all = ["rig-core/all"]
+bedrock = ["dep:rig-bedrock"]
+fastembed = ["dep:rig-fastembed"]
+gemini-grpc = ["dep:rig-gemini-grpc"]
+helixdb = ["dep:rig-helixdb"]
+lancedb = ["dep:rig-lancedb"]
+milvus = ["dep:rig-milvus"]
+mongodb = ["dep:rig-mongodb"]
+neo4j = ["dep:rig-neo4j"]
+postgres = ["dep:rig-postgres"]
+qdrant = ["dep:rig-qdrant"]
+s3vectors = ["dep:rig-s3vectors"]
+scylladb = ["dep:rig-scylladb"]
+sqlite = ["dep:rig-sqlite"]
+surrealdb = ["dep:rig-surrealdb"]
+vectorize = ["dep:rig-vectorize"]
+vertexai = ["dep:rig-vertexai"]
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["rig-core/derive"]

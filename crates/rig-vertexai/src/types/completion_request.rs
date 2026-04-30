@@ -1,15 +1,15 @@
 use crate::types::message::RigMessage;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig::completion::CompletionError;
+use rig_core::completion::CompletionError;
 
-pub struct VertexCompletionRequest(pub rig::completion::CompletionRequest);
+pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
     pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         let mut contents = Vec::new();
 
         for message in self.0.chat_history.iter() {
-            if matches!(message, rig::completion::Message::System { .. }) {
+            if matches!(message, rig_core::completion::Message::System { .. }) {
                 continue;
             }
             let content = RigMessage(message.clone()).try_into()?;
@@ -28,7 +28,7 @@ impl VertexCompletionRequest {
         }
 
         for message in self.0.chat_history.iter() {
-            if let rig::completion::Message::System { content } = message
+            if let rig_core::completion::Message::System { content } = message
                 && !content.is_empty()
             {
                 system_texts.push(content.clone());
@@ -72,15 +72,19 @@ impl VertexCompletionRequest {
         }
 
         let function_calling_config = match self.0.tool_choice.as_ref() {
-            Some(rig::message::ToolChoice::Auto) => vertexai::model::FunctionCallingConfig::new()
-                .set_mode(vertexai::model::function_calling_config::Mode::Auto),
-            Some(rig::message::ToolChoice::Required) => {
+            Some(rig_core::message::ToolChoice::Auto) => {
+                vertexai::model::FunctionCallingConfig::new()
+                    .set_mode(vertexai::model::function_calling_config::Mode::Auto)
+            }
+            Some(rig_core::message::ToolChoice::Required) => {
                 vertexai::model::FunctionCallingConfig::new()
                     .set_mode(vertexai::model::function_calling_config::Mode::Any)
             }
-            Some(rig::message::ToolChoice::None) => vertexai::model::FunctionCallingConfig::new()
-                .set_mode(vertexai::model::function_calling_config::Mode::None),
-            Some(rig::message::ToolChoice::Specific { function_names }) => {
+            Some(rig_core::message::ToolChoice::None) => {
+                vertexai::model::FunctionCallingConfig::new()
+                    .set_mode(vertexai::model::function_calling_config::Mode::None)
+            }
+            Some(rig_core::message::ToolChoice::Specific { function_names }) => {
                 vertexai::model::FunctionCallingConfig::new()
                     .set_mode(vertexai::model::function_calling_config::Mode::Any)
                     .set_allowed_function_names(function_names.clone())
@@ -114,9 +118,9 @@ impl VertexCompletionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig::OneOrMany;
-    use rig::completion::{CompletionRequest, ToolDefinition};
-    use rig::message::{Message, Text, ToolChoice, UserContent};
+    use rig_core::OneOrMany;
+    use rig_core::completion::{CompletionRequest, ToolDefinition};
+    use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
     // Helper to create a minimal CompletionRequest for testing
     fn minimal_request() -> CompletionRequest {

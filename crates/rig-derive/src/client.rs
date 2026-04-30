@@ -4,6 +4,8 @@ use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{DeriveInput, parse_macro_input};
 
+use crate::rig_core_path;
+
 #[derive(ParseMetaItem, Default, ParseAttributes)]
 #[deluxe(attributes(client))]
 struct ClientAttr {
@@ -55,13 +57,14 @@ pub fn provider_client(input: TokenStream) -> TokenStream {
         ),
     ]);
 
+    let rig_core = rig_core_path();
     let mut impls = Vec::new();
     for (flag, feat) in known_features {
         let as_trait_ident = format_ident!("{}", feat.as_trait_name);
 
         if !features.iter().any(|f| f == flag) {
             impls.push(quote! {
-                impl rig::client::#as_trait_ident for #ident {}
+                impl #rig_core::client::#as_trait_ident for #ident {}
             });
         }
     }

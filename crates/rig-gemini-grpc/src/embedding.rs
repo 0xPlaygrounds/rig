@@ -5,7 +5,7 @@
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
 
-use rig::embeddings::{self, EmbeddingError};
+use rig_core::embeddings::{self, EmbeddingError};
 
 use super::Client;
 use super::proto::{self, EmbedContentRequest};
@@ -42,7 +42,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + rig::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
         let mut embeddings = Vec::new();

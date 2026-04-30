@@ -42,7 +42,7 @@
 //! ```ignore
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
-//! use rig::{providers::openai::*, vector_store::VectorStoreIndex};
+//! use rig_core::{providers::openai::*, vector_store::VectorStoreIndex};
 //! use serde::Deserialize;
 //! use std::env;
 //!
@@ -89,7 +89,7 @@ use std::str::FromStr;
 
 use futures::TryStreamExt;
 use neo4rs::*;
-use rig::{
+use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{VectorStoreError, request::SearchFilter},
 };

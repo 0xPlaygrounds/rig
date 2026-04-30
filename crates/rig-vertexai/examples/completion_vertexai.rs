@@ -1,6 +1,6 @@
 use anyhow::Context;
-use rig::client::CompletionClient;
-use rig::completion::CompletionModel;
+use rig_core::client::CompletionClient;
+use rig_core::completion::CompletionModel;
 use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
 
 #[tokio::main]
@@ -23,7 +23,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut response_text = String::new();
     for content in response.choice.iter() {
-        if let rig::message::AssistantContent::Text(rig::message::Text { text }) = content {
+        if let rig_core::message::AssistantContent::Text(rig_core::message::Text { text }) = content
+        {
             response_text.push_str(text);
         }
     }

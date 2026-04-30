@@ -6,7 +6,7 @@ use aws_sdk_s3vectors::{
     types::{PutInputVector, VectorData},
 };
 use aws_smithy_types::Document;
-use rig::{
+use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
@@ -132,10 +132,10 @@ impl<M> InsertDocuments for S3VectorsVectorStore<M>
 where
     M: EmbeddingModel,
 {
-    async fn insert_documents<Doc: serde::Serialize + rig::Embed + Send>(
+    async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + Send>(
         &self,
-        documents: Vec<(Doc, rig::OneOrMany<rig::embeddings::Embedding>)>,
-    ) -> Result<(), rig::vector_store::VectorStoreError> {
+        documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
+    ) -> Result<(), rig_core::vector_store::VectorStoreError> {
         let docs: Vec<PutInputVector> = documents
             .into_iter()
             .map(|x| {

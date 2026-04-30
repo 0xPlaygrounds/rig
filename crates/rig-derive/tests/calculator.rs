@@ -6,7 +6,7 @@
     clippy::unreachable
 )]
 
-use rig::tool::Tool;
+use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
 #[rig_tool(
@@ -17,21 +17,21 @@ use rig_derive::rig_tool;
         operation = "The operation to perform (add, subtract, multiply, divide)"
     )
 )]
-async fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolError> {
+async fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig_core::tool::ToolError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig::tool::ToolError::ToolCallError(
+                Err(rig_core::tool::ToolError::ToolCallError(
                     "Division by zero".into(),
                 ))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig::tool::ToolError::ToolCallError(
+        _ => Err(rig_core::tool::ToolError::ToolCallError(
             format!("Unknown operation: {operation}").into(),
         )),
     }
@@ -45,21 +45,21 @@ async fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool:
         operation = "The operation to perform (add, subtract, multiply, divide)"
     )
 )]
-fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig::tool::ToolError> {
+fn sync_calculator(x: i32, y: i32, operation: String) -> Result<i32, rig_core::tool::ToolError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig::tool::ToolError::ToolCallError(
+                Err(rig_core::tool::ToolError::ToolCallError(
                     "Division by zero".into(),
                 ))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig::tool::ToolError::ToolCallError(
+        _ => Err(rig_core::tool::ToolError::ToolCallError(
             format!("Unknown operation: {operation}").into(),
         )),
     }
@@ -127,7 +127,7 @@ async fn test_calculator_tool() {
         operation: "divide".to_string(),
     };
     let err = calculator.call(div_zero).await.unwrap_err();
-    assert!(matches!(err, rig::tool::ToolError::ToolCallError(_)));
+    assert!(matches!(err, rig_core::tool::ToolError::ToolCallError(_)));
 
     // Test invalid operation
     let invalid_op = CalculatorParameters {
@@ -136,7 +136,7 @@ async fn test_calculator_tool() {
         operation: "power".to_string(),
     };
     let err = calculator.call(invalid_op).await.unwrap_err();
-    assert!(matches!(err, rig::tool::ToolError::ToolCallError(_)));
+    assert!(matches!(err, rig_core::tool::ToolError::ToolCallError(_)));
 
     // Test sync calculator
     let sync_calculator = SyncCalculator;

@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 lancedb = { workspace = true }
-rig = { package = "rig-core", path = "../rig-core", version = "0.36.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.36.0", default-features = false }
 arrow-array = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -28,25 +28,21 @@ httpmock = { workspace = true }
 
 [features]
 default = []
-rig-rustls = ["rig/rustls"]
-rig-native-tls = ["rig/native-tls"]
+rig-rustls = ["rig-core/rustls"]
+rig-native-tls = ["rig-core/native-tls"]
 
 [[example]]
 name = "vector_search_local_ann"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]
 
 [[example]]
 name = "vector_search_local_ann_agent"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]
 
 [[example]]
 name = "vector_search_local_enn"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]
 
 [[example]]
 name = "vector_search_s3_ann"
-required-features = ["rig/derive"]
-
-[[test]]
-name = "integration_tests"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]

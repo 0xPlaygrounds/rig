@@ -1,5 +1,5 @@
 use aws_smithy_types::Blob;
-use rig::embeddings::{self, Embedding, EmbeddingError};
+use rig_core::embeddings::{self, Embedding, EmbeddingError};
 use serde::{Deserialize, Serialize};
 
 use crate::{client::Client, types::errors::AwsSdkInvokeModelError};

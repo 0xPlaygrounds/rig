@@ -1,5 +1,5 @@
-use rig::completion::Prompt;
-use rig::prelude::*;
+use rig_core::completion::Prompt;
+use rig_core::prelude::*;
 use rig_gemini_grpc::Client;
 
 #[tracing::instrument(ret)]

@@ -15,7 +15,7 @@ use arrow_array::{
     },
 };
 use lancedb::arrow::arrow_schema::{ArrowError, DataType, IntervalUnit, TimeUnit};
-use rig::vector_store::VectorStoreError;
+use rig_core::vector_store::VectorStoreError;
 use serde::Serialize;
 use serde_json::{Value, json};
 

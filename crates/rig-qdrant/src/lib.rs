@@ -8,7 +8,7 @@ use qdrant_client::{
         point_id::PointIdOptions,
     },
 };
-use rig::{
+use rig_core::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{

@@ -5,9 +5,9 @@ use crate::{
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig::completion::GetTokenUsage;
-use rig::streaming::StreamingCompletionResponse;
-use rig::{
+use rig_core::completion::GetTokenUsage;
+use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::{
     completion::CompletionError,
     message::ReasoningContent,
     streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
@@ -31,8 +31,8 @@ pub struct BedrockUsage {
 }
 
 impl GetTokenUsage for BedrockStreamingResponse {
-    fn token_usage(&self) -> Option<rig::completion::Usage> {
-        self.usage.as_ref().map(|u| rig::completion::Usage {
+    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
+        self.usage.as_ref().map(|u| rig_core::completion::Usage {
             input_tokens: u.input_tokens as u64,
             output_tokens: u.output_tokens as u64,
             total_tokens: u.total_tokens as u64,
@@ -83,7 +83,7 @@ fn finalize_reasoning(
 impl CompletionModel {
     pub(crate) async fn stream(
         &self,
-        completion_request: rig::completion::CompletionRequest,
+        completion_request: rig_core::completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let request = AwsCompletionRequest {

@@ -120,7 +120,7 @@ async fn main() -> Result<(), anyhow::Error> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Many provider-specific examples now also live as ignored live integration tests under [`crates/rig-core/tests`](./crates/rig-core/tests), organized by provider. When running those provider-backed tests, prefer `cargo test -p rig-core --test <provider> -- --ignored --test-threads=1` to avoid rate-limiting. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [docs.rig.rs](https://docs.rig.rs).
+You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Many provider-specific examples now also live as ignored live integration tests under [`tests/providers`](./tests/providers), organized by provider. When running those provider-backed tests, prefer `cargo test -p rig --test providers -- --ignored --test-threads=1` to avoid rate-limiting. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [docs.rig.rs](https://docs.rig.rs).
 
 ## Supported Integrations
 
@@ -140,6 +140,14 @@ The following providers are available as separate companion-crates:
 - AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock)
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed)
 - Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai)
+
+The root `rig` facade also exposes these companion crates behind one feature per integration:
+
+```toml
+rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+```
+
+With those features enabled, use the ergonomic root modules such as `rig::lancedb`, `rig::mongodb`, `rig::bedrock`, and `rig::fastembed`.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

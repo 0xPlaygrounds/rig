@@ -1,7 +1,7 @@
 mod filter;
 
 use reqwest::StatusCode;
-use rig::{
+use rig_core::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{

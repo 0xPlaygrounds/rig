@@ -1,12 +1,12 @@
-use rig::{
+use rig_core::{
     completion::{Prompt, message::Document},
     message::{DocumentMediaType, DocumentSourceKind},
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::{CompletionClient, ProviderClient};
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::client::{CompletionClient, ProviderClient};
 use tracing::info;
 
 const DOCUMENT_URL: &str = "https://bitcoin.org/bitcoin.pdf";

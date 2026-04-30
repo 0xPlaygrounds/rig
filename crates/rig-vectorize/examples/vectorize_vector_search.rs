@@ -11,7 +11,7 @@
 // 3. Run the example:
 //    cargo run --release --example vectorize_vector_search
 
-use rig::{
+use rig_core::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
     embeddings::EmbeddingsBuilder,

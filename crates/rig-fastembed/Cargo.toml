@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig = { package = "rig-core", path = "../rig-core", version = "0.36.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.36.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -32,8 +32,8 @@ hf-hub-native-tls = ["fastembed/hf-hub-native-tls"]
 
 [[example]]
 name = "vector_search_fastembed"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]
 
 [[example]]
 name = "vector_search_fastembed_local"
-required-features = ["rig/derive"]
+required-features = ["rig-core/derive"]

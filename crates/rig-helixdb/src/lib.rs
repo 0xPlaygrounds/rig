@@ -1,7 +1,7 @@
 use std::future::Future;
 
 use reqwest::{Client, StatusCode};
-use rig::{
+use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -125,11 +125,11 @@ where
 ///
 /// Usage:
 /// ```no_run
-/// use rig::client::{EmbeddingsClient, ProviderClient};
+/// use rig_core::client::{EmbeddingsClient, ProviderClient};
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {
-/// let openai_model = rig::providers::openai::Client::from_env()?
+/// let openai_model = rig_core::providers::openai::Client::from_env()?
 ///     .embedding_model("text-embedding-ada-002");
 ///
 /// let helixdb_client = HelixDB::new(None, Some(6969), None);
@@ -195,9 +195,9 @@ where
     C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
     E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
 {
-    async fn insert_documents<Doc: Serialize + rig::Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
-        documents: Vec<(Doc, rig::OneOrMany<rig::embeddings::Embedding>)>,
+        documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         #[derive(Serialize, Deserialize, Clone, Debug, Default)]
         struct QueryInput {
@@ -245,8 +245,8 @@ where
 
     async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
         &self,
-        req: rig::vector_store::VectorSearchRequest<HelixDBFilter>,
-    ) -> Result<Vec<(f64, String, T)>, rig::vector_store::VectorStoreError> {
+        req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
+    ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {
         let vector = self.model.embed_text(req.query()).await?.vec;
 
         let query_input =
@@ -297,8 +297,8 @@ where
 
     async fn top_n_ids(
         &self,
-        req: rig::vector_store::VectorSearchRequest<HelixDBFilter>,
-    ) -> Result<Vec<(f64, String)>, rig::vector_store::VectorStoreError> {
+        req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
+    ) -> Result<Vec<(f64, String)>, rig_core::vector_store::VectorStoreError> {
         let vector = self.model.embed_text(req.query()).await?.vec;
 
         let query_input =

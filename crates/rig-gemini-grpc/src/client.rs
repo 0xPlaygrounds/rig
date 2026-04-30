@@ -1,4 +1,4 @@
-use rig::prelude::*;
+use rig_core::prelude::*;
 use std::fmt::Debug;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;

@@ -14,14 +14,14 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
-use rig::providers::openai;
-use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::providers::openai;
+use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig_neo4j::Neo4jClient;
 
 use std::env;
 
-use rig::client::EmbeddingsClient;
-use rig::{providers::openai::Client, vector_store::VectorStoreIndex};
+use rig_core::client::EmbeddingsClient;
+use rig_core::{providers::openai::Client, vector_store::VectorStoreIndex};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]

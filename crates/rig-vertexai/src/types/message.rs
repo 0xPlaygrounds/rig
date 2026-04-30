@@ -1,6 +1,6 @@
 use google_cloud_aiplatform_v1 as vertexai;
-use rig::completion::CompletionError;
-use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
+use rig_core::completion::CompletionError;
+use rig_core::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 
 pub struct RigMessage(pub Message);
 
@@ -108,13 +108,13 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
 mod tests {
     use super::*;
     use google_cloud_aiplatform_v1 as vertexai;
-    use rig::OneOrMany;
-    use rig::message::{Message, Text, ToolResult, ToolResultContent};
+    use rig_core::OneOrMany;
+    use rig_core::message::{Message, Text, ToolResult, ToolResultContent};
 
     #[test]
     fn test_user_text_message_conversion() {
         let message = Message::User {
-            content: OneOrMany::one(rig::message::UserContent::Text(Text {
+            content: OneOrMany::one(rig_core::message::UserContent::Text(Text {
                 text: "Hello".to_string(),
             })),
         };
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_assistant_tool_call_message_conversion() {
-        use rig::message::{ToolCall, ToolFunction};
+        use rig_core::message::{ToolCall, ToolFunction};
         let tool_call = ToolCall::new(
             "add".to_string(),
             ToolFunction::new(
@@ -192,7 +192,7 @@ mod tests {
         };
 
         let message = Message::User {
-            content: OneOrMany::one(rig::message::UserContent::ToolResult(tool_result)),
+            content: OneOrMany::one(rig_core::message::UserContent::ToolResult(tool_result)),
         };
 
         let rig_message = RigMessage(message);

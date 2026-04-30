@@ -1,7 +1,7 @@
-use rig::agent::stream_to_stdout;
-use rig::client::{CompletionClient, ProviderClient};
-use rig::streaming::StreamingPrompt;
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
+use rig_core::agent::stream_to_stdout;
+use rig_core::client::{CompletionClient, ProviderClient};
+use rig_core::streaming::StreamingPrompt;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

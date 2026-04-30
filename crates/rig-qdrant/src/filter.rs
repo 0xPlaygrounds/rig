@@ -2,7 +2,7 @@ use qdrant_client::qdrant::{
     Condition, FieldCondition, Filter, IsEmptyCondition, IsNullCondition, Match, Range,
     condition::ConditionOneOf, r#match::MatchValue,
 };
-use rig::vector_store::request::{FilterError, SearchFilter};
+use rig_core::vector_store::request::{FilterError, SearchFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 

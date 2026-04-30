@@ -1,7 +1,7 @@
-use rig::client::ProviderClient;
-use rig::vector_store::InsertDocuments;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::{
+use rig_core::client::ProviderClient;
+use rig_core::vector_store::InsertDocuments;
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::{
     Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
 };
 use serde::{Deserialize, Serialize};
@@ -26,8 +26,8 @@ impl std::fmt::Display for WordDefinition {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = rig::providers::openai::Client::from_env()?;
-    let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    let openai_client = rig_core::providers::openai::Client::from_env()?;
+    let model = openai_client.embedding_model(rig_core::providers::openai::TEXT_EMBEDDING_3_SMALL);
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;

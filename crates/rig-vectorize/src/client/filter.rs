@@ -1,6 +1,6 @@
 //! Filter implementation for Cloudflare Vectorize.
 
-use rig::vector_store::request::SearchFilter;
+use rig_core::vector_store::request::SearchFilter;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -120,7 +120,7 @@ impl VectorizeFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig::vector_store::request::SearchFilter;
+    use rig_core::vector_store::request::SearchFilter;
     use serde_json::json;
 
     #[test]

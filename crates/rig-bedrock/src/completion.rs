@@ -8,9 +8,9 @@ use crate::{
     },
 };
 
-use rig::completion::{self, CompletionError, CompletionRequest};
-use rig::streaming::StreamingCompletionResponse;
-use rig::telemetry::SpanCombinator;
+use rig_core::completion::{self, CompletionError, CompletionRequest};
+use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::telemetry::SpanCombinator;
 use tracing::Instrument;
 
 /// `ai21.jamba-1-5-large-v1:0`
@@ -227,7 +227,7 @@ impl completion::CompletionModel for CompletionModel {
 
         let span = if tracing::Span::current().is_disabled() {
             tracing::info_span!(
-                target: "rig::completions",
+                target: "rig_core::completions",
                 "chat",
                 gen_ai.operation.name = "chat",
                 gen_ai.provider.name = "aws_bedrock",

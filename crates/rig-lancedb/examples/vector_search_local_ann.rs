@@ -3,10 +3,10 @@ use std::sync::Arc;
 use arrow_array::RecordBatchIterator;
 use fixture::{Word, as_record_batch, schema, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig::client::{EmbeddingsClient, ProviderClient};
-use rig::providers::openai;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::{
+use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::providers::openai;
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::Client,
     vector_store::VectorStoreIndex,

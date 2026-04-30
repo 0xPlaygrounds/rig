@@ -1,6 +1,6 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use rig::{
+use rig_core::{
     OneOrMany,
     completion::CompletionError,
     message::{AssistantContent, Message, UserContent},
@@ -105,7 +105,7 @@ impl TryFrom<super::converse_output::Message> for RigMessage {
 mod tests {
     use crate::types::message::RigMessage;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig::{
+    use rig_core::{
         OneOrMany,
         message::{Message, UserContent},
     };

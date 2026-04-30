@@ -1,4 +1,4 @@
-use rig::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
+use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
 use serde::{Deserialize, Serialize};
 
 pub enum MilvusValue {

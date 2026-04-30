@@ -7,8 +7,8 @@ use base64::Engine as _;
 use futures::StreamExt;
 use serde_json::{Map, Value};
 
-use rig::completion::{CompletionError, CompletionRequest};
-use rig::streaming;
+use rig_core::completion::{CompletionError, CompletionRequest};
+use rig_core::streaming;
 
 use super::Client;
 use super::GenerateContentResponse;

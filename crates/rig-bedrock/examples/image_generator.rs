@@ -1,8 +1,8 @@
-use rig::client::ProviderClient;
-use rig::client::image_generation::ImageGenerationClient;
-use rig::image_generation::ImageGenerationModel;
 use rig_bedrock::client::Client;
 use rig_bedrock::image::AMAZON_NOVA_CANVAS;
+use rig_core::client::ProviderClient;
+use rig_core::client::image_generation::ImageGenerationClient;
+use rig_core::image_generation::ImageGenerationModel;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;

@@ -5,12 +5,12 @@ use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
     ToolConfiguration, ToolInputSchema, ToolSpecification,
 };
-use rig::OneOrMany;
-use rig::completion::{CompletionError, Message};
-use rig::message::{DocumentMediaType, UserContent};
+use rig_core::OneOrMany;
+use rig_core::completion::{CompletionError, Message};
+use rig_core::message::{DocumentMediaType, UserContent};
 
 pub struct AwsCompletionRequest {
-    pub inner: rig::completion::CompletionRequest,
+    pub inner: rig_core::completion::CompletionRequest,
     pub prompt_caching: bool,
 }
 
@@ -70,14 +70,14 @@ impl AwsCompletionRequest {
                 .tool_choice
                 .as_ref()
                 .map(|choice| match choice {
-                    rig::message::ToolChoice::Auto => Ok(Some(aws_bedrock::ToolChoice::Auto(
+                    rig_core::message::ToolChoice::Auto => Ok(Some(aws_bedrock::ToolChoice::Auto(
                         aws_bedrock::AutoToolChoice::builder().build(),
                     ))),
-                    rig::message::ToolChoice::Required => Ok(Some(aws_bedrock::ToolChoice::Any(
-                        aws_bedrock::AnyToolChoice::builder().build(),
-                    ))),
-                    rig::message::ToolChoice::None => Ok(None),
-                    rig::message::ToolChoice::Specific { function_names } => function_names
+                    rig_core::message::ToolChoice::Required => Ok(Some(
+                        aws_bedrock::ToolChoice::Any(aws_bedrock::AnyToolChoice::builder().build()),
+                    )),
+                    rig_core::message::ToolChoice::None => Ok(None),
+                    rig_core::message::ToolChoice::Specific { function_names } => function_names
                         .first()
                         .map(|name| {
                             aws_bedrock::SpecificToolChoice::builder()
@@ -174,7 +174,7 @@ impl AwsCompletionRequest {
         let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
             Message::Assistant { content, .. } => content
                 .iter()
-                .any(|c| matches!(c, rig::completion::AssistantContent::Reasoning(_))),
+                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
             _ => false,
         });
 
@@ -198,9 +198,9 @@ impl AwsCompletionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig::OneOrMany;
-    use rig::completion::{CompletionRequest, ToolDefinition};
-    use rig::message::{Message, Text, ToolChoice, UserContent};
+    use rig_core::OneOrMany;
+    use rig_core::completion::{CompletionRequest, ToolDefinition};
+    use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
     // Helper to create a minimal CompletionRequest for testing
     fn minimal_request() -> CompletionRequest {
@@ -568,7 +568,7 @@ mod tests {
         // reasoning turn, even if the literal trailing block is a tool result.
         // Verify the message-level checkpoint is suppressed in that case.
         let reasoning =
-            rig::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
+            rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
         let request = CompletionRequest {
             chat_history: OneOrMany::many(vec![
                 Message::User {
@@ -578,7 +578,7 @@ mod tests {
                 },
                 Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(rig::completion::AssistantContent::Reasoning(
+                    content: OneOrMany::one(rig_core::completion::AssistantContent::Reasoning(
                         reasoning,
                     )),
                 },

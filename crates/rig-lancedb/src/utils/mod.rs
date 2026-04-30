@@ -8,7 +8,7 @@ use lancedb::{
     arrow::arrow_schema::{DataType, Schema},
     query::ExecutableQuery,
 };
-use rig::vector_store::VectorStoreError;
+use rig_core::vector_store::VectorStoreError;
 
 use crate::lancedb_to_rig_error;
 

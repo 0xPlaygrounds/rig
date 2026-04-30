@@ -1,6 +1,6 @@
 use anyhow::Result;
-use rig::prelude::*;
-use rig::{
+use rig_core::prelude::*;
+use rig_core::{
     completion::{Prompt, ToolDefinition},
     tool::Tool,
 };

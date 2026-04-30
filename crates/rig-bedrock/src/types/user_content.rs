@@ -1,6 +1,6 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use rig::{
+use rig_core::{
     OneOrMany,
     completion::CompletionError,
     message::{Text, ToolResult, ToolResultContent, UserContent},
@@ -99,7 +99,7 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
 mod tests {
     use crate::types::user_content::RigUserContent;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig::{
+    use rig_core::{
         OneOrMany,
         completion::CompletionError,
         message::{ToolResultContent, UserContent},
@@ -111,7 +111,7 @@ mod tests {
         let user_content: Result<RigUserContent, _> = cb.try_into();
         assert!(user_content.is_ok());
         let content = match user_content.unwrap().0 {
-            rig::message::UserContent::Text(text) => Ok(text),
+            rig_core::message::UserContent::Text(text) => Ok(text),
             _ => Err("Invalid content type"),
         };
         assert!(content.is_ok());
@@ -130,7 +130,7 @@ mod tests {
         let user_content: Result<RigUserContent, _> = cb.try_into();
         assert!(user_content.is_ok());
         let content = match user_content.unwrap().0 {
-            rig::message::UserContent::ToolResult(tool_result) => Ok(tool_result),
+            rig_core::message::UserContent::ToolResult(tool_result) => Ok(tool_result),
             _ => Err("Invalid content type"),
         };
         assert!(content.is_ok());

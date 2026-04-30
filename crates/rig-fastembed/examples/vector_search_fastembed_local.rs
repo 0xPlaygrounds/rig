@@ -3,7 +3,7 @@ use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
-use rig::{
+use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
     vector_store::{

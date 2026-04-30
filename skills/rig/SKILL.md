@@ -176,6 +176,14 @@ Create a client with `ProviderName::Client::from_env()` or `ProviderName::Client
 | Milvus | `rig-milvus` |
 | SurrealDB | `rig-surrealdb` |
 
+Root facade usage:
+
+```toml
+rig = { version = "...", features = ["lancedb", "fastembed"] }
+```
+
+Feature-gated integration modules are re-exported from the root crate, for example `rig::lancedb` and `rig::fastembed`.
+
 ## Key Rules
 
 - All async code runs on tokio.

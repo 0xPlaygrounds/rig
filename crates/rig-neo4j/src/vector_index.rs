@@ -5,7 +5,7 @@
 //! to search for similar nodes based on a query.
 
 use neo4rs::{Graph, Query};
-use rig::{
+use rig_core::{
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         VectorStoreError, VectorStoreIndex,

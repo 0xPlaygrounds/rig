@@ -15,7 +15,7 @@ use lancedb::{
     DistanceType,
     query::{QueryBase, VectorQuery},
 };
-use rig::{
+use rig_core::{
     embeddings::embedding::EmbeddingModel,
     vector_store::{
         VectorStoreError, VectorStoreIndex,
@@ -40,8 +40,8 @@ fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
 /// # Example
 /// ```ignore
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-/// use rig::client::ProviderClient;
-/// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
+/// use rig_core::client::ProviderClient;
+/// use rig_core::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
 /// let openai_client = Client::from_env()?;
 ///
@@ -377,8 +377,8 @@ where
     /// # Example
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig::client::ProviderClient;
-    /// use rig::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
+    /// use rig_core::client::ProviderClient;
+    /// use rig_core::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
     ///
     /// let openai_client = Client::from_env()?;
     ///
@@ -440,8 +440,8 @@ where
     /// # Example
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig::client::ProviderClient;
-    /// use rig::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
+    /// use rig_core::client::ProviderClient;
+    /// use rig_core::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
     ///
     /// let openai_client = Client::from_env()?;
     ///

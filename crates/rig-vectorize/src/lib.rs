@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use rig::client::ProviderClient;
-//! use rig::providers::openai;
+//! use rig_core::client::ProviderClient;
+//! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
 //! let openai = openai::Client::from_env()?;
@@ -31,10 +31,10 @@ pub use client::{
 };
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
-use rig::embeddings::EmbeddingModel;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig::{Embed, OneOrMany, embeddings::Embedding};
+use rig_core::embeddings::EmbeddingModel;
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
+use rig_core::{Embed, OneOrMany, embeddings::Embedding};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
