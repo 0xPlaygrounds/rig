@@ -29,6 +29,16 @@ jobs:
       - name: Validate generated agent instruction files
         run: bash scripts/validate_agent_instruction_files.sh
 
+  root-facade:
+    name: stable / validate root facade
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate root integration facade
+        run: bash scripts/validate_root_integration_facade.sh
+
   fmt:
     name: stable / fmt
     runs-on: ubuntu-latest

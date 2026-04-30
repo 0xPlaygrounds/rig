@@ -122,22 +122,22 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.36.0", default-features = false }
-rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.5", optional = true }
-rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = true }
-rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true }
-rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true }
-rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true }
-rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true }
-rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true }
-rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true }
-rig-postgres = { path = "crates/rig-postgres", version = "0.2.5", optional = true }
-rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.5", optional = true }
-rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.5", optional = true }
-rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.5", optional = true }
-rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.5", optional = true }
-rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.5", optional = true }
-rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.5", optional = true }
-rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.5", optional = true }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.5", optional = true, default-features = false }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = true, default-features = false }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true, default-features = false }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true, default-features = false }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true, default-features = false }
+rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true, default-features = false }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true, default-features = false }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true, default-features = false }
+rig-postgres = { path = "crates/rig-postgres", version = "0.2.5", optional = true, default-features = false }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.5", optional = true, default-features = false }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.5", optional = true, default-features = false }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.5", optional = true, default-features = false }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.5", optional = true, default-features = false }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.5", optional = true, default-features = false }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.5", optional = true, default-features = false }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.5", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
