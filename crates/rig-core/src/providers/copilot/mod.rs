@@ -23,12 +23,13 @@
 mod auth;
 
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
 };
 use crate::completion::{self, CompletionError, GetTokenUsage};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
+use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
@@ -174,7 +175,7 @@ impl<H> Capabilities<H> for CopilotExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
     type Transcription = Nothing;
-    type ModelListing = Nothing;
+    type ModelListing = Capable<CopilotModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
@@ -404,6 +405,24 @@ fn post_with_auth_base<H>(
         .ext()
         .build_uri(runtime_base_url(client, auth).as_ref(), path, transport);
     let mut req = Request::post(uri);
+
+    if let Some(headers) = req.headers_mut() {
+        headers.extend(client.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+
+    client.ext().with_custom(req)
+}
+
+fn get_with_auth_base<H>(
+    client: &Client<H>,
+    auth: &auth::AuthContext,
+    path: &str,
+    transport: Transport,
+) -> http_client::Result<http_client::Builder> {
+    let uri = client
+        .ext()
+        .build_uri(runtime_base_url(client, auth).as_ref(), path, transport);
+    let mut req = Request::get(uri);
 
     if let Some(headers) = req.headers_mut() {
         headers.extend(client.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
@@ -1259,6 +1278,101 @@ where
             let text = http_client::text(response).await?;
             Err(EmbeddingError::ProviderError(text))
         }
+    }
+}
+
+const MODEL_LISTING_PATH: &str = "/models";
+const MODEL_LISTING_PROVIDER: &str = "Copilot";
+
+#[derive(Debug, Deserialize)]
+struct ListModelsResponse {
+    data: Vec<ListModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListModelEntry {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    vendor: Option<String>,
+    #[serde(default)]
+    capabilities: Option<ListModelEntryCapabilities>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListModelEntryCapabilities {
+    #[serde(default, rename = "type")]
+    r#type: Option<String>,
+}
+
+impl From<ListModelEntry> for Model {
+    fn from(value: ListModelEntry) -> Self {
+        let mut model = Model::from_id(value.id);
+        model.name = value.name;
+        model.owned_by = value.vendor;
+        if let Some(caps) = value.capabilities {
+            model.r#type = caps.r#type;
+        }
+        model
+    }
+}
+
+/// [`ModelLister`] implementation for the GitHub Copilot API (`GET /models`).
+#[derive(Clone)]
+pub struct CopilotModelLister<H = reqwest::Client> {
+    client: Client<H>,
+}
+
+impl<H> ModelLister<H> for CopilotModelLister<H>
+where
+    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+{
+    type Client = Client<H>;
+
+    fn new(client: Self::Client) -> Self {
+        Self { client }
+    }
+
+    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
+        let auth = self.client.ext().auth.auth_context().await.map_err(|err| {
+            ModelListingError::AuthError {
+                message: err.to_string(),
+            }
+        })?;
+
+        let headers = default_headers(&auth.api_key, "user", false);
+        let req = apply_headers(
+            get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH, Transport::Http)?,
+            &headers,
+        )
+        .body(http_client::NoBody)?;
+
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
+
+        if !response.status().is_success() {
+            let status_code = response.status().as_u16();
+            let body = response.into_body().await?;
+            return Err(ModelListingError::api_error_with_context(
+                MODEL_LISTING_PROVIDER,
+                MODEL_LISTING_PATH,
+                status_code,
+                &body,
+            ));
+        }
+
+        let body = response.into_body().await?;
+        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
+            ModelListingError::parse_error_with_context(
+                MODEL_LISTING_PROVIDER,
+                MODEL_LISTING_PATH,
+                &error,
+                &body,
+            )
+        })?;
+        let models = api_resp.data.into_iter().map(Model::from).collect();
+
+        Ok(ModelList::new(models))
     }
 }
 
