@@ -70,10 +70,24 @@ pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
 pub const GPT_5_3_CODEX: &str = "gpt-5.3-codex";
 /// `gpt-5.1-codex`
 pub const GPT_5_1_CODEX: &str = "gpt-5.1-codex";
+/// `gpt-5.5`
+pub const GPT_5_5: &str = "gpt-5.5";
+/// `gpt-5.4`
+pub const GPT_5_4: &str = "gpt-5.4";
 /// `claude-sonnet-4` completion model (Anthropic, via Copilot)
 pub const CLAUDE_SONNET_4: &str = "claude-sonnet-4";
+/// `claude-sonnet-4.6`
+pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4.6";
+/// `claude-opus-4.6`
+pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4.6";
+/// `claude-opus-4.7`
+pub const CLAUDE_OPUS_4_7: &str = "claude-opus-4.7";
 /// `claude-3.5-sonnet` completion model (Anthropic, via Copilot)
 pub const CLAUDE_3_5_SONNET: &str = "claude-3.5-sonnet";
+/// `gemini-3-flash-preview` completion model (Google, via Copilot)
+pub const GEMINI_3_FLASH: &str = "gemini-3-flash-preview";
+/// `gemini-3.1-pro-preview` completion model (Google, via Copilot)
+pub const GEMINI_3_1_PRO_FLASH: &str = "gemini-3.1-pro-preview";
 /// `gemini-2.0-flash-001` completion model (Google, via Copilot)
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash-001";
 /// `o3-mini` reasoning model (OpenAI, via Copilot)
