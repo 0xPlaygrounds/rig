@@ -196,12 +196,29 @@ url = { workspace = true }
 [features]
 default = ["rig-core/default"]
 all = ["rig-core/all"]
-bedrock = ["dep:rig-bedrock"]
-fastembed = ["dep:rig-fastembed"]
+bedrock = ["dep:rig-bedrock", "rig-bedrock/bedrock-rustls"]
+fastembed = [
+  "dep:rig-fastembed",
+  "rig-fastembed/hf-hub",
+  "rig-fastembed/ort-download-binaries",
+  "rig-fastembed/hf-hub-rustls-tls",
+]
+fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
+fastembed-hf-hub-native-tls = ["dep:rig-fastembed", "rig-fastembed/hf-hub-native-tls"]
+fastembed-native-tls = [
+  "dep:rig-fastembed",
+  "rig-fastembed/hf-hub",
+  "rig-fastembed/ort-download-binaries",
+  "rig-fastembed/hf-hub-native-tls",
+]
+fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
 gemini-grpc = ["dep:rig-gemini-grpc"]
-helixdb = ["dep:rig-helixdb"]
-lancedb = ["dep:rig-lancedb"]
-milvus = ["dep:rig-milvus"]
+helixdb = ["dep:rig-helixdb", "rig-helixdb/rustls"]
+helixdb-native-tls = ["dep:rig-helixdb", "rig-helixdb/native-tls"]
+lancedb = ["dep:rig-lancedb", "rig-lancedb/rig-rustls"]
+lancedb-native-tls = ["dep:rig-lancedb", "rig-lancedb/rig-native-tls"]
+milvus = ["dep:rig-milvus", "rig-milvus/rustls"]
+milvus-native-tls = ["dep:rig-milvus", "rig-milvus/native-tls"]
 mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]
 postgres = ["dep:rig-postgres"]

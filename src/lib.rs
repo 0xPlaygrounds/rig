@@ -7,7 +7,13 @@ pub mod bedrock {
     pub use rig_bedrock::*;
 }
 
-#[cfg(feature = "fastembed")]
+#[cfg(any(
+    feature = "fastembed",
+    feature = "fastembed-hf-hub",
+    feature = "fastembed-hf-hub-native-tls",
+    feature = "fastembed-native-tls",
+    feature = "fastembed-ort-download-binaries",
+))]
 pub mod fastembed {
     pub use rig_fastembed::*;
 }
@@ -17,17 +23,17 @@ pub mod gemini_grpc {
     pub use rig_gemini_grpc::*;
 }
 
-#[cfg(feature = "helixdb")]
+#[cfg(any(feature = "helixdb", feature = "helixdb-native-tls",))]
 pub mod helixdb {
     pub use rig_helixdb::*;
 }
 
-#[cfg(feature = "lancedb")]
+#[cfg(any(feature = "lancedb", feature = "lancedb-native-tls",))]
 pub mod lancedb {
     pub use rig_lancedb::*;
 }
 
-#[cfg(feature = "milvus")]
+#[cfg(any(feature = "milvus", feature = "milvus-native-tls",))]
 pub mod milvus {
     pub use rig_milvus::*;
 }
