@@ -1,7 +1,7 @@
 //! OpenRouter reasoning roundtrip tests.
 //!
 //! Run only these cases with:
-//! `cargo test -p rig-core --test openrouter openrouter::reasoning_roundtrip::streaming -- --ignored --nocapture`
+//! `cargo test -p rig --test openrouter openrouter::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::openrouter;

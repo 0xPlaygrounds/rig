@@ -1,7 +1,7 @@
 //! Anthropic live regression coverage for empty `end_turn` tool follow-ups.
 //!
 //! Run only these ignored cases with:
-//! `cargo test -p rig-core --test anthropic anthropic::empty_end_turn -- --ignored --nocapture --test-threads=1`
+//! `cargo test -p rig --test anthropic anthropic::empty_end_turn -- --ignored --nocapture --test-threads=1`
 
 use std::sync::{
     Arc,

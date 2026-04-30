@@ -1,7 +1,7 @@
 //! Anthropic reasoning roundtrip tests.
 //!
 //! Run only these cases with:
-//! `cargo test -p rig-core --test anthropic anthropic::reasoning_roundtrip::streaming -- --ignored --nocapture`
+//! `cargo test -p rig --test anthropic anthropic::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
 use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
