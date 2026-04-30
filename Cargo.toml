@@ -1,8 +1,20 @@
+[package]
+name = "rig"
+version = "0.36.0"
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "An opinionated library for building LLM powered applications."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [workspace]
 resolver = "3"
 members = [
-    "rig/*",
-    "rig-integrations/*"
+    "crates/*",
 ]
 exclude = [
     "archived"
@@ -103,4 +115,186 @@ zerocopy = "0.8.26"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
-exclude-members = ["rig/rig-core", "rig/rig-derive"]
+exclude-members = ["crates/rig-core", "crates/rig-derive"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "crates/rig-core", version = "0.36.0", default-features = false }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.5", optional = true, default-features = false }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = true, default-features = false }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true, default-features = false }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true, default-features = false }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true, default-features = false }
+rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true, default-features = false }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true, default-features = false }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true, default-features = false }
+rig-postgres = { path = "crates/rig-postgres", version = "0.2.5", optional = true, default-features = false }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.5", optional = true, default-features = false }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.5", optional = true, default-features = false }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.5", optional = true, default-features = false }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.5", optional = true, default-features = false }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.5", optional = true, default-features = false }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.5", optional = true, default-features = false }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.5", optional = true, default-features = false }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+arrow-array = { workspace = true }
+assert_fs = { workspace = true }
+async-stream = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tokio-test = { workspace = true }
+redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
+serde_path_to_error = { workspace = true }
+base64 = { workspace = true }
+futures = { workspace = true }
+httpmock = { workspace = true }
+lancedb = { workspace = true }
+mongodb = { workspace = true }
+neo4rs = { workspace = true }
+qdrant-client = { workspace = true }
+reqwest-retry = { version = "0.9" }
+reqwest = { workspace = true, features = ["json", "stream"] }
+reqwest-middleware = { version = "0.5", default-features = false, features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+  "rustls",
+] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+sqlite-vec = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
+testcontainers = { workspace = true }
+thiserror = { workspace = true }
+tokio-rusqlite = { workspace = true, features = ["bundled"] }
+hyper-util = { version = "0.1.14", features = ["service", "server"] }
+rmcp = { version = "1", features = [
+  "client",
+  "macros",
+  "reqwest",
+  "transport-streamable-http-client",
+  "transport-streamable-http-client-reqwest",
+  "transport-streamable-http-server-session",
+  "transport-streamable-http-server",
+  "transport-worker",
+] }
+axum = "0.8.4"
+opentelemetry = "0.31.0"
+opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
+opentelemetry-otlp = "0.31.0"
+tracing = { workspace = true }
+tracing-opentelemetry = "0.32.1"
+url = { workspace = true }
+
+[features]
+default = ["rig-core/default", "rustls"]
+all = ["rig-core/all"]
+bedrock = ["dep:rig-bedrock"]
+fastembed = [
+  "dep:rig-fastembed",
+  "rig-fastembed/hf-hub",
+  "rig-fastembed/ort-download-binaries",
+]
+fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
+fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
+gemini-grpc = ["dep:rig-gemini-grpc"]
+helixdb = ["dep:rig-helixdb"]
+lancedb = ["dep:rig-lancedb"]
+milvus = ["dep:rig-milvus"]
+mongodb = ["dep:rig-mongodb"]
+neo4j = ["dep:rig-neo4j"]
+postgres = ["dep:rig-postgres"]
+qdrant = ["dep:rig-qdrant"]
+s3vectors = ["dep:rig-s3vectors"]
+scylladb = ["dep:rig-scylladb"]
+sqlite = ["dep:rig-sqlite"]
+surrealdb = ["dep:rig-surrealdb"]
+vectorize = ["dep:rig-vectorize"]
+vertexai = ["dep:rig-vertexai"]
+audio = ["rig-core/audio"]
+image = ["rig-core/image"]
+derive = ["rig-core/derive"]
+experimental = ["rig-core/experimental"]
+discord-bot = ["rig-core/discord-bot"]
+pdf = ["rig-core/pdf"]
+epub = ["rig-core/epub"]
+rayon = ["rig-core/rayon"]
+wasm = ["rig-core/wasm"]
+rmcp = ["rig-core/rmcp"]
+socks = ["rig-core/socks"]
+reqwest = ["rig-core/reqwest"]
+websocket = ["rig-core/websocket"]
+websocket-rustls = ["rig-core/websocket-rustls"]
+websocket-native-tls = ["rig-core/websocket-native-tls"]
+rustls = [
+  "rig-core/rustls",
+  "rig-bedrock?/bedrock-rustls",
+  "rig-fastembed?/hf-hub-rustls-tls",
+  "rig-helixdb?/rustls",
+  "rig-lancedb?/rig-rustls",
+  "rig-milvus?/rustls",
+]
+native-tls = [
+  "rig-core/native-tls",
+  "rig-fastembed?/hf-hub-native-tls",
+  "rig-helixdb?/native-tls",
+  "rig-lancedb?/rig-native-tls",
+  "rig-milvus?/native-tls",
+]
+reqwest-middleware = ["rig-core/reqwest-middleware"]
+reqwest-middleware-rustls = ["rig-core/reqwest-middleware-rustls"]
+reqwest-middleware-native-tls = ["rig-core/reqwest-middleware-native-tls"]
+
+[[example]]
+name = "rag"
+required-features = ["derive"]
+
+[[example]]
+name = "reqwest_middleware"
+required-features = ["reqwest-middleware"]
+
+[[example]]
+name = "rag_ollama"
+required-features = ["derive"]
+
+[[example]]
+name = "vector_search"
+required-features = ["derive"]
+
+[[example]]
+name = "vector_search_cohere"
+required-features = ["derive"]
+
+[[example]]
+name = "pdf_agent"
+required-features = ["derive", "pdf"]
+
+[[example]]
+name = "rmcp"
+required-features = ["rmcp"]
+
+[[example]]
+name = "discord_bot"
+required-features = ["discord-bot"]
+
+[[example]]
+name = "custom_vector_store"
+
+[[example]]
+name = "complex_agentic_loop_claude"
+required-features = ["derive"]
+
+[[example]]
+name = "gemini_extractor_with_rag"
+required-features = ["derive"]
+
+[[example]]
+name = "vector_search_ollama"
+required-features = ["derive"]

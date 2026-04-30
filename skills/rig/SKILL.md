@@ -176,6 +176,14 @@ Create a client with `ProviderName::Client::from_env()` or `ProviderName::Client
 | Milvus | `rig-milvus` |
 | SurrealDB | `rig-surrealdb` |
 
+Root facade usage:
+
+```toml
+rig = { version = "...", features = ["lancedb", "fastembed"] }
+```
+
+Feature-gated integration modules are re-exported from the root crate, for example `rig::lancedb` and `rig::fastembed`.
+
 ## Key Rules
 
 - All async code runs on tokio.
@@ -191,4 +199,4 @@ Detailed API documentation (available when installed via Claude Code skills):
 - **providers** — Provider-specific initialization, model constants, env vars
 - **patterns** — Multi-agent, hooks, streaming details, chaining, extraction
 
-For the full reference, see the Rig examples at `rig-core/examples/` or https://docs.rig.rs
+For the full reference, see the Rig examples at `examples/` or https://docs.rig.rs

@@ -95,7 +95,7 @@ Use `Capable<T>` for supported features and `Nothing` for unsupported ones.
 ## Implementing New Providers
 
 <!-- RIG_SKILL_MODULE: rig-provider-implementation START -->
-Reference implementation: `rig-core/src/providers/openai/` (Chat Completions API)
+Reference implementation: `crates/rig-core/src/providers/openai/` (Chat Completions API)
 
 When implementing a new provider, study the OpenAI Chat Completions implementation thoroughly. It demonstrates the complete pattern including both completion and embedding models.
 

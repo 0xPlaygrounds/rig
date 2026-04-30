@@ -68,8 +68,8 @@ let index = store.index(embedding_model);
 ### MongoDB
 
 ```rust
-// Cargo.toml: rig-mongodb = "..."
-use rig_mongodb::{MongoDbVectorStore, SearchParams};
+// Cargo.toml: rig = { version = "...", features = ["mongodb"] }
+use rig::mongodb::{MongoDbVectorStore, SearchParams};
 
 let collection = mongodb_client
     .database("my_db")
@@ -90,8 +90,8 @@ let index = store.index(
 ### LanceDB
 
 ```rust
-// Cargo.toml: rig-lancedb = "..."
-use rig_lancedb::{LanceDbVectorStore, SearchParams};
+// Cargo.toml: rig = { version = "...", features = ["lancedb"] }
+use rig::lancedb::{LanceDbVectorStore, SearchParams};
 
 let db = lancedb::connect("data/lancedb").execute().await?;
 let table = db.create_table("documents", embeddings).execute().await?;

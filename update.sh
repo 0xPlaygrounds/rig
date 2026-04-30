@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT="rig-integrations"
+ROOT="crates"
 
 find "$ROOT" \
   -type f \
