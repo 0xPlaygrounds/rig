@@ -116,6 +116,7 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 wasm = [
+  "dep:getrandom",
   "dep:wasm-bindgen-futures",
   "futures-timer/wasm-bindgen",
   "getrandom/js",
