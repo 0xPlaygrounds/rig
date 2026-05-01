@@ -5,7 +5,6 @@ Guidelines for AI coding agents contributing to Rig.
 ## Rig Skill Modules
 
 This file is the canonical source for Rig AI-agent guidance.
-Agent-specific adapter files are generated from the module blocks below.
 
 Module IDs:
 - `rig-core-patterns`
