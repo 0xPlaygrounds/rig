@@ -15,8 +15,7 @@ use super::{
 fn adaptive_thinking_params() -> serde_json::Value {
     json!({
         "thinking": {
-            "type": "adaptive",
-            "effort": "high"
+            "type": "adaptive"
         }
     })
 }
@@ -32,7 +31,7 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
             "You must call tools when the user asks for their result. \
              After a tool result is available, answer with the exact result.",
         )
-        .max_tokens(4096)
+        .max_tokens(2048)
         .additional_params(adaptive_thinking_params())
         .tool(AlphaSignal)
         .build();
@@ -51,7 +50,7 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
     let model = client().completion_model(anthropic_signature_only_model());
     let request = model
         .completion_request("What is 2 + 2? Answer with only the number.")
-        .max_tokens(4096)
+        .max_tokens(2048)
         .additional_params(adaptive_thinking_params())
         .build();
     let mut stream = model

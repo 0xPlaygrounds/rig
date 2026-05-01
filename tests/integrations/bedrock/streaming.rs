@@ -2,6 +2,7 @@
 
 use rig::client::CompletionClient;
 use rig::completion::CompletionModel as _;
+use rig::message::ToolChoice;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
@@ -59,6 +60,9 @@ async fn raw_streaming_tool_call_smoke() {
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
         .tool(AlphaSignal.definition(String::new()).await)
+        .tool_choice(ToolChoice::Specific {
+            function_names: vec![AlphaSignal::NAME.to_string()],
+        })
         .build();
 
     let observation = collect_raw_stream_observation(
