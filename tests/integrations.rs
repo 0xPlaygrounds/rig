@@ -6,6 +6,9 @@
     clippy::unreachable
 )]
 
+#[cfg(feature = "bedrock")]
+#[path = "integrations/bedrock/mod.rs"]
+mod bedrock;
 #[cfg(feature = "lancedb")]
 #[path = "integrations/lancedb/mod.rs"]
 mod lancedb;
@@ -21,9 +24,6 @@ mod postgres;
 #[cfg(feature = "qdrant")]
 #[path = "integrations/qdrant.rs"]
 mod qdrant;
-#[cfg(feature = "bedrock")]
-#[path = "integrations/rig-bedrock/mod.rs"]
-mod rig_bedrock;
 #[cfg(feature = "scylladb")]
 #[path = "integrations/scylladb.rs"]
 mod scylladb;
