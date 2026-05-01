@@ -773,8 +773,11 @@ where
                     if let Some((memory, id)) = memory_handle.as_ref()
                         && let Err(err) = memory.append(id, new_messages.clone()).await
                     {
-                        yield Err(StreamingError::from(err));
-                        break;
+                        tracing::warn!(
+                            error = %err,
+                            conversation_id = %id,
+                            "conversation memory append failed; yielding final response anyway"
+                        );
                     }
                     let final_messages: Option<Vec<Message>> = if has_history {
                         Some(new_messages.clone())
@@ -1741,6 +1744,53 @@ mod tests {
             received.len(),
             3,
             "window-truncated history (2) + current prompt: {received:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_append_error_does_not_suppress_final_response() {
+        use crate::memory::{ConversationMemory, MemoryError};
+        use crate::wasm_compat::WasmBoxedFuture;
+
+        #[derive(Clone)]
+        struct AppendFailingMemory;
+        impl ConversationMemory for AppendFailingMemory {
+            fn load<'a>(
+                &'a self,
+                _id: &'a str,
+            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+                Box::pin(async { Ok(Vec::new()) })
+            }
+            fn append<'a>(
+                &'a self,
+                _id: &'a str,
+                _msgs: Vec<Message>,
+            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
+            }
+            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .memory(AppendFailingMemory)
+        .build();
+
+        let mut stream = agent.stream_prompt("hi").conversation("t1").await;
+
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
+                saw_final = true;
+                break;
+            }
+        }
+        assert!(
+            saw_final,
+            "FinalResponse must be yielded even when memory.append fails"
         );
     }
 }

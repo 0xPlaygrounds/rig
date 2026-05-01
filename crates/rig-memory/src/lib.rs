@@ -59,17 +59,45 @@ pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
 /// observe policy errors.
 pub trait IntoFilter: MemoryPolicy + Sized + 'static {
     /// Convert this policy into a filter closure.
+    ///
+    /// On policy error the original input is returned unchanged and a
+    /// `tracing::warn!` is emitted, so a transient policy bug degrades
+    /// gracefully (the model still sees the unfiltered history) instead of
+    /// silently erasing context.
     #[cfg(not(target_family = "wasm"))]
     fn into_filter(self) -> Box<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync> {
         let policy = Arc::new(self);
-        Box::new(move |msgs| policy.apply(msgs).unwrap_or_default())
+        Box::new(move |msgs| {
+            let fallback = msgs.clone();
+            match policy.apply(msgs) {
+                Ok(out) => out,
+                Err(err) => {
+                    tracing::warn!(error = %err, "memory policy failed; returning unfiltered history");
+                    fallback
+                }
+            }
+        })
     }
 
     /// Convert this policy into a filter closure.
+    ///
+    /// On policy error the original input is returned unchanged and a
+    /// `tracing::warn!` is emitted, so a transient policy bug degrades
+    /// gracefully (the model still sees the unfiltered history) instead of
+    /// silently erasing context.
     #[cfg(target_family = "wasm")]
     fn into_filter(self) -> Box<dyn Fn(Vec<Message>) -> Vec<Message>> {
         let policy = Arc::new(self);
-        Box::new(move |msgs| policy.apply(msgs).unwrap_or_default())
+        Box::new(move |msgs| {
+            let fallback = msgs.clone();
+            match policy.apply(msgs) {
+                Ok(out) => out,
+                Err(err) => {
+                    tracing::warn!(error = %err, "memory policy failed; returning unfiltered history");
+                    fallback
+                }
+            }
+        })
     }
 }
 
@@ -319,5 +347,24 @@ mod tests {
         let policy = TokenWindowMemory::new(5, |_: &Message| 10);
         let out = policy.apply(vec![user("anything")]).unwrap();
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn into_filter_returns_input_on_policy_error() {
+        struct FailingPolicy;
+        impl MemoryPolicy for FailingPolicy {
+            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+                Err(MemoryError::Policy("intentional failure".into()))
+            }
+        }
+
+        let filter = FailingPolicy.into_filter();
+        let input = vec![user("a"), assistant("b"), user("c")];
+        let out = filter(input.clone());
+        assert_eq!(
+            out.len(),
+            input.len(),
+            "history must be preserved on policy error"
+        );
     }
 }

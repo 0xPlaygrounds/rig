@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     StreamingError` so memory failures propagate via `?` through the existing
     `CompletionError::RequestError(Box<dyn Error>)` variant — no new
     top-level error variants, fully additive change.
+  - `memory.append(...)` failures after a successful completion are
+    best-effort: they emit `tracing::warn!` and the agent still returns the
+    model response (parity for streaming `FinalResponse`). `memory.load(...)`
+    failures remain fatal because the requested history is unavailable.
   - Examples: `agent_with_memory.rs` and `agent_with_memory_streaming.rs`.
   - Named history-shaping policies (sliding window, token budget) live in the
     new companion crate `rig-memory`.

@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.36.0", default-features = false }
+tracing = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

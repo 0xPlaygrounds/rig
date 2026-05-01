@@ -540,8 +540,14 @@ where
                     usage.cache_creation_input_tokens,
                 );
 
-                if let Some((memory, id)) = memory_handle.as_ref() {
-                    memory.append(id, new_messages.clone()).await?;
+                if let Some((memory, id)) = memory_handle.as_ref()
+                    && let Err(err) = memory.append(id, new_messages.clone()).await
+                {
+                    tracing::warn!(
+                        error = %err,
+                        conversation_id = %id,
+                        "conversation memory append failed; returning model response anyway"
+                    );
                 }
 
                 return Ok(PromptResponse::new(merged_texts, usage).with_messages(new_messages));
@@ -1429,5 +1435,39 @@ mod tests {
             }
             other => panic!("expected PromptError::CompletionError(RequestError), got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn memory_append_error_does_not_drop_response() {
+        #[derive(Clone)]
+        struct AppendFailingMemory;
+        impl ConversationMemory for AppendFailingMemory {
+            fn load<'a>(
+                &'a self,
+                _id: &'a str,
+            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+                Box::pin(async { Ok(Vec::new()) })
+            }
+            fn append<'a>(
+                &'a self,
+                _id: &'a str,
+                _msgs: Vec<Message>,
+            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
+            }
+            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        let model = RecordingMockModel::default();
+        let agent = AgentBuilder::new(model).memory(AppendFailingMemory).build();
+        let response: String = agent
+            .prompt("hello")
+            .conversation("t1")
+            .await
+            .expect("append failure must not block successful completion");
+
+        assert!(!response.is_empty());
     }
 }
