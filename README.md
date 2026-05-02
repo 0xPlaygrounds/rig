@@ -7,7 +7,7 @@
 <br>
 <br>
 <a href="https://docs.rig.rs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
-<a href="https://docs.rs/rig-core/latest/rig/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
+<a href="https://docs.rs/rig-core/latest/rig_core/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg?color=dca282" /></a>
 &nbsp;
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/d/rig-core.svg?color=dca282" /></a>
@@ -54,7 +54,7 @@
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powered** applications.
 
-More information about this crate can be found in the [official](https://docs.rig.rs) & [crate](https://docs.rs/rig-core/latest/rig/) (API Reference) documentations.
+More information about this crate can be found in the [official](https://docs.rig.rs) and [crate](https://docs.rs/rig-core/latest/rig_core/) API reference documentation.
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
@@ -88,8 +88,12 @@ For a full list, check out our [ECOSYSTEM.md file.](https://www.github.com/0xPla
 Are you also using Rig? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
 ## Get Started
+Use the root `rig` facade when you want feature-gated access to companion crates,
+or use `rig-core` directly when you only need the core provider abstractions.
+
 ```bash
-cargo add rig-core
+cargo add rig
+# or: cargo add rig-core
 ```
 
 ### Simple example
@@ -105,7 +109,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt
     let comedian_agent = client
-        .agent("gpt-5.2")
+        .agent(openai::GPT_5_2)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 
@@ -135,10 +139,12 @@ Vector stores are available as separate companion-crates:
 - ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb)
 - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors)
 - HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
+- Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
 
 The following providers are available as separate companion-crates:
 - AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock)
 - Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed)
+- Google Gemini gRPC: [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc)
 - Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai)
 
 The root `rig` facade also exposes these companion crates behind one feature per integration:
@@ -147,7 +153,11 @@ The root `rig` facade also exposes these companion crates behind one feature per
 rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 ```
 
-With those features enabled, use the ergonomic root modules such as `rig::lancedb`, `rig::mongodb`, `rig::bedrock`, and `rig::fastembed`.
+Available facade features include `bedrock`, `fastembed`, `gemini-grpc`,
+`helixdb`, `lancedb`, `milvus`, `mongodb`, `neo4j`, `postgres`, `qdrant`,
+`s3vectors`, `scylladb`, `sqlite`, `surrealdb`, `vectorize`, and `vertexai`.
+With those features enabled, use the ergonomic root modules such as
+`rig::lancedb`, `rig::mongodb`, `rig::bedrock`, and `rig::fastembed`.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

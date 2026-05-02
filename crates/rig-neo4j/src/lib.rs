@@ -3,7 +3,7 @@
 //! This crate is a companion crate to the [rig-core crate](https://github.com/0xPlaygrounds/rig).
 //! It provides a vector store implementation that uses Neo4j as the underlying datastore.
 //!
-//! See the [README](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j) for more information.
+//! See the [README](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j) for more information.
 //!
 //! ## Prerequisites
 //!
@@ -38,7 +38,7 @@
 //! ```
 //!
 //! ## Simple example:
-//! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/rig-neo4j/examples) folder.
+//! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j/examples) folder.
 //! ```ignore
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;

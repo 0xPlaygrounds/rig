@@ -1,3 +1,11 @@
+//! HelixDB vector store integration for Rig.
+//!
+//! This crate provides a small HTTP client for HelixDB query endpoints and a
+//! [`HelixDBVectorStore`] implementation of Rig's vector store traits.
+//!
+//! The root `rig` facade re-exports this crate as `rig::helixdb` when the
+//! `helixdb` feature is enabled.
+
 use std::future::Future;
 
 use reqwest::{Client, StatusCode};

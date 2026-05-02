@@ -1,3 +1,12 @@
+//! SQLite vector store integration for Rig.
+//!
+//! This crate provides [`SqliteVectorStore`] and [`SqliteVectorIndex`] for
+//! storing embedded documents in SQLite with the `sqlite-vec` extension. Define
+//! document table schemas by implementing [`SqliteVectorStoreTable`].
+//!
+//! The root `rig` facade re-exports this crate as `rig::sqlite` when the
+//! `sqlite` feature is enabled.
+
 use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};

@@ -1,3 +1,11 @@
+//! Milvus vector store integration for Rig.
+//!
+//! This crate provides [`MilvusVectorStore`], a Rig vector store implementation
+//! that talks to Milvus over its HTTP API.
+//!
+//! The root `rig` facade re-exports this crate as `rig::milvus` when the
+//! `milvus` feature is enabled.
+
 mod filter;
 
 use reqwest::StatusCode;

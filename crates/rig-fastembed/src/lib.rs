@@ -1,3 +1,13 @@
+//! Local embedding model integration backed by `fastembed`.
+//!
+//! This crate adapts `fastembed` text embedding models to Rig's
+//! [`rig_core::embeddings::EmbeddingModel`] trait. The default feature set
+//! enables Hugging Face model downloads and ONNX Runtime binary downloads.
+//!
+//! `rig-fastembed` is native-only and does not target `wasm32-unknown-unknown`.
+//! The root `rig` facade re-exports this crate as `rig::fastembed` when one of
+//! its Fastembed features is enabled.
+
 use std::sync::Arc;
 use std::{error::Error as StdError, fmt};
 

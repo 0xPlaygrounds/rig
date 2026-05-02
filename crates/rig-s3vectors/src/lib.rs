@@ -1,3 +1,13 @@
+//! AWS S3Vectors vector store integration for Rig.
+//!
+//! This crate provides [`S3VectorsVectorStore`], a Rig vector store backed by
+//! AWS S3Vectors indexes. It uses the AWS SDK client supplied by the caller and
+//! maps Rig search filters to S3Vectors filter documents through
+//! [`S3SearchFilter`].
+//!
+//! The root `rig` facade re-exports this crate as `rig::s3vectors` when the
+//! `s3vectors` feature is enabled.
+
 #[macro_use]
 mod document;
 

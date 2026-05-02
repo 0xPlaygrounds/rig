@@ -32,7 +32,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-neo4j = "0.1"
+rig-neo4j = "0.5.5"
+rig-core = "0.36.0"
 ```
 
 You can also run `cargo add rig-neo4j rig-core` to add the most recent versions of the dependencies to your project.

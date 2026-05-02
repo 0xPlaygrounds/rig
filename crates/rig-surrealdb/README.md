@@ -2,10 +2,15 @@
 This crate integrates SurrealDB into Rig, allowing you to easily use RAG with this database.
 
 ## Installation
-To install this crate, run the following command in a Rust project directory which will add `rig-surrealdb` as a dependency (requires `rig-core` added for intended usage):
-```bash
-cargo add rig-surrealdb
+
+```toml
+[dependencies]
+rig-surrealdb = "0.2.5"
+rig-core = "0.36.0"
 ```
+
+You can also run `cargo add rig-surrealdb rig-core` to add the latest published
+versions. The root `rig` facade exposes this crate behind the `surrealdb` feature.
 
 There's a few different ways you can run SurrealDB:
 - [Install it locally and run it](https://surrealdb.com/docs/surrealdb/installation/linux)
