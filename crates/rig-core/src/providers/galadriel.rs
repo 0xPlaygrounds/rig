@@ -1,14 +1,20 @@
 //! Galadriel API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::galadriel;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::galadriel};
 //!
-//! let client = galadriel::Client::new("YOUR_API_KEY", None);
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = galadriel::Client::new("YOUR_API_KEY")?;
 //! // to use a fine-tuned model
-//! // let client = galadriel::Client::new("YOUR_API_KEY", "FINE_TUNE_API_KEY");
+//! // let client = galadriel::Client::builder()
+//! //     .api_key("YOUR_API_KEY")
+//! //     .fine_tune_api_key("FINE_TUNE_API_KEY")
+//! //     .build()?;
 //!
 //! let gpt4o = client.completion_model(galadriel::GPT_4O);
+//! # Ok(())
+//! # }
 //! ```
 use super::openai;
 use crate::client::{

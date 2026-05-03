@@ -20,32 +20,32 @@ use crate::{
 /// it will batch the documents in a single request to the model provider.
 ///
 /// # Example
-/// ```rust
-/// use std::env;
-///
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     client::{EmbeddingsClient, ProviderClient},
 ///     embeddings::EmbeddingsBuilder,
-///     providers::openai::{Client, TEXT_EMBEDDING_ADA_002},
+///     providers::openai,
 /// };
-/// use serde::{Deserialize, Serialize};
 ///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create OpenAI client
-/// let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-/// let openai_client = Client::new(&openai_api_key);
+/// let openai_client = openai::Client::from_env()?;
 ///
-/// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+/// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 ///
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(vec![
 ///         "1. *flurbo* (noun): A green alien that lives on cold planets.".to_string(),
-///         "2. *flurbo* (noun): A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
+///         "2. *flurbo* (noun): A fictional digital currency.".to_string(),
 ///         "1. *glarb-glarb* (noun): An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-///         "2. *glarb-glarb* (noun): A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+///         "2. *glarb-glarb* (noun): A fictional creature from marshlands.".to_string(),
 ///         "1. *linlingdong* (noun): A term used by inhabitants of the sombrero galaxy to describe humans.".to_string(),
-///         "2. *linlingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
+///         "2. *linlingdong* (noun): A rare instrument.".to_string(),
 ///     ])?
 ///     .build()
 ///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 #[non_exhaustive]
 pub struct EmbeddingsBuilder<M, T>
@@ -97,7 +97,9 @@ where
     T: Embed + Send,
 {
     /// Generate embeddings for all documents in the builder.
-    /// Returns a vector of tuples, where the first element is the document and the second element is the embeddings (either one embedding or many).
+    ///
+    /// Returns `(document, embeddings)` pairs. A document may produce one or many
+    /// embeddings depending on how its [`Embed`] implementation uses [`TextEmbedder`].
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
         use stream::TryStreamExt;
 

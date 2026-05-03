@@ -25,7 +25,7 @@ use std::fmt;
 /// # Example
 ///
 /// ```rust
-/// use rig::model::Model;
+/// use rig_core::model::Model;
 ///
 /// // Create a model with just an ID
 /// let model = Model::from_id("gpt-4");
@@ -86,7 +86,7 @@ impl Model {
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::Model;
+    /// use rig_core::model::Model;
     ///
     /// let model = Model::new("gpt-4", "GPT-4");
     /// assert_eq!(model.id, "gpt-4");
@@ -113,7 +113,7 @@ impl Model {
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::Model;
+    /// use rig_core::model::Model;
     ///
     /// let model = Model::from_id("gpt-4");
     /// assert_eq!(model.id, "gpt-4");
@@ -139,7 +139,7 @@ impl Model {
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::Model;
+    /// use rig_core::model::Model;
     ///
     /// let model_with_name = Model::new("gpt-4", "GPT-4");
     /// assert_eq!(model_with_name.display_name(), "GPT-4");
@@ -170,7 +170,7 @@ impl fmt::Display for Model {
 /// # Example
 ///
 /// ```rust
-/// use rig::model::{Model, ModelList};
+/// use rig_core::model::{Model, ModelList};
 ///
 /// let list = ModelList::new(vec![
 ///     Model::from_id("gpt-4"),
@@ -198,7 +198,7 @@ impl ModelList {
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::{Model, ModelList};
+    /// use rig_core::model::{Model, ModelList};
     ///
     /// let list = ModelList::new(vec![
     ///     Model::from_id("gpt-4"),
@@ -215,24 +215,24 @@ impl ModelList {
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::ModelList;
+    /// use rig_core::model::ModelList;
     ///
     /// let empty = ModelList::new(vec![]);
     /// assert!(empty.is_empty());
     ///
-    /// let non_empty = ModelList::new(vec![rig::model::Model::from_id("gpt-4")]);
+    /// let non_empty = ModelList::new(vec![rig_core::model::Model::from_id("gpt-4")]);
     /// assert!(!non_empty.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
-    /// Returns the number of models in this page.
+    /// Returns the number of models in this list.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::{Model, ModelList};
+    /// use rig_core::model::{Model, ModelList};
     ///
     /// let list = ModelList::new(vec![
     ///     Model::from_id("gpt-4"),
@@ -249,7 +249,7 @@ impl ModelList {
     /// # Example
     ///
     /// ```rust
-    /// use rig::model::{Model, ModelList};
+    /// use rig_core::model::{Model, ModelList};
     ///
     /// let list = ModelList::new(vec![
     ///     Model::from_id("gpt-4"),

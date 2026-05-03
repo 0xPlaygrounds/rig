@@ -28,7 +28,7 @@ impl ToolSchema {
     ///
     /// # Example
     /// ```rust
-    /// use rig::{
+    /// use rig_core::{
     ///     completion::ToolDefinition,
     ///     embeddings::ToolSchema,
     ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},

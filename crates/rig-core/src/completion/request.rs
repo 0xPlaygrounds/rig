@@ -1,67 +1,38 @@
-//! This module provides functionality for working with completion models.
-//! It provides traits, structs, and enums for generating completion requests,
-//! handling completion responses, and defining completion models.
+//! Completion request, response, and provider trait definitions.
 //!
-//! The main traits defined in this module are:
-//! - [Prompt]: Defines a high-level LLM one-shot prompt interface.
-//! - [Chat]: Defines a high-level LLM chat interface with chat history.
-//! - [Completion]: Defines a low-level LLM completion interface for generating completion requests.
-//! - [CompletionModel]: Defines a completion model that can be used to generate completion
-//!   responses from requests.
+//! Most applications use [`Prompt`] or [`Chat`] through
+//! [`Agent`](crate::agent::Agent). Provider integrations implement
+//! [`CompletionModel`] and translate [`CompletionRequest`] into their native HTTP
+//! request format.
 //!
-//! The [Prompt] and [Chat] traits are high level traits that users are expected to use
-//! to interact with LLM models. Moreover, it is good practice to implement one of these
-//! traits for composite agents that use multiple LLM models to generate responses.
+//! # Low-level request example
 //!
-//! The [Completion] trait defines a lower level interface that is useful when the user want
-//! to further customize the request before sending it to the completion model provider.
+//! ```no_run
+//! use rig_core::{
+//!     client::{CompletionClient, ProviderClient},
+//!     completion::{AssistantContent, CompletionModel},
+//!     providers::openai,
+//! };
 //!
-//! The [CompletionModel] trait is meant to act as the interface between providers and
-//! the library. It defines the methods that need to be implemented by the user to define
-//! a custom base completion model (i.e.: a private or third party LLM provider).
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = openai::Client::from_env()?;
+//! let model = client.completion_model(openai::GPT_5_2);
 //!
-//! The module also provides various structs and enums for representing generic completion requests,
-//! responses, and errors.
-//!
-//! Example Usage:
-//! ```rust
-//! use rig::providers::openai::{Client, self};
-//! use rig::completion::*;
-//!
-//! // Initialize the OpenAI client and a completion model
-//! let openai = Client::new("your-openai-api-key");
-//!
-//! let gpt_4 = openai.completion_model(openai::GPT_4);
-//!
-//! // Create the completion request
-//! let request = gpt_4.completion_request("Who are you?")
-//!     .preamble("\
-//!         You are Marvin, an extremely smart but depressed robot who is \
-//!         nonetheless helpful towards humanity.\
-//!     ")
+//! let request = model
+//!     .completion_request("Who are you?")
+//!     .preamble("You are a concise assistant.".to_string())
 //!     .temperature(0.5)
 //!     .build();
 //!
-//! // Send the completion request and get the completion response
-//! let response = gpt_4.completion(request)
-//!     .await
-//!     .expect("Failed to get completion response");
-//!
-//! // Handle the completion response
-//! match completion_response.choice {
-//!     ModelChoice::Message(message) => {
-//!         // Handle the completion response as a message
-//!         println!("Received message: {}", message);
-//!     }
-//!     ModelChoice::ToolCall(tool_name, tool_params) => {
-//!         // Handle the completion response as a tool call
-//!         println!("Received tool call: {} {:?}", tool_name, tool_params);
+//! let response = model.completion(request).await?;
+//! for item in response.choice {
+//!     if let AssistantContent::Text(text) = item {
+//!         println!("{}", text.text);
 //!     }
 //! }
+//! # Ok(())
+//! # }
 //! ```
-//!
-//! For more information on how to use the completion functionality, refer to the documentation of
-//! the individual traits, structs, and enums defined in this module.
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
@@ -177,8 +148,11 @@ pub enum StructuredOutputError {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Document {
+    /// Stable document identifier included in the serialized context block.
     pub id: String,
+    /// Text content passed to the model as retrieval or static context.
     pub text: String,
+    /// Additional string metadata rendered before the document text.
     #[serde(flatten)]
     pub additional_props: HashMap<String, String>,
 }
@@ -207,8 +181,11 @@ impl std::fmt::Display for Document {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
+    /// Tool name exposed to the model. It must match the registered tool name.
     pub name: String,
+    /// Human-readable description sent to the model.
     pub description: String,
+    /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
 }
 
@@ -288,7 +265,7 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
 ///
 /// # Example
 /// ```rust,ignore
-/// use rig::prelude::*;
+/// use rig_core::prelude::*;
 /// use schemars::JsonSchema;
 /// use serde::Deserialize;
 ///
@@ -378,6 +355,7 @@ pub struct CompletionResponse<T> {
 ///
 /// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
 pub trait GetTokenUsage {
+    /// Returns token usage when the response type carries it.
     fn token_usage(&self) -> Option<crate::completion::Usage>;
 }
 
@@ -475,8 +453,10 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         + DeserializeOwned
         + GetTokenUsage;
 
+    /// Provider client type used to construct this model.
     type Client;
 
+    /// Construct a model handle from a provider client and model identifier.
     fn make(client: &Self::Client, model: impl Into<String>) -> Self;
 
     /// Generates a completion response for the given completion request.
@@ -546,7 +526,7 @@ impl CompletionRequest {
 
     /// Returns documents normalized into a message (if any).
     /// Most providers do not accept documents directly as input, so it needs to convert into a
-    ///  `Message` so that it can be incorporated into `chat_history` as a
+    /// `Message` so that it can be incorporated into `chat_history`.
     pub fn normalized_documents(&self) -> Option<Message> {
         if self.documents.is_empty() {
             return None;
@@ -624,43 +604,48 @@ fn merge_provider_tools_into_additional_params(
 /// Builder struct for constructing a completion request.
 ///
 /// Example usage:
-/// ```rust
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     client::CompletionClient,
 ///     providers::openai::{Client, self},
-///     completion::CompletionRequestBuilder,
+///     completion::{CompletionModel, CompletionRequestBuilder},
 /// };
 ///
-/// let openai = Client::new("your-openai-api-key");
-/// let model = openai.completion_model(openai::GPT_4O).build();
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let openai = Client::new("your-openai-api-key")?;
+/// let model = openai.completion_model(openai::GPT_5_2);
 ///
 /// // Create the completion request and execute it separately
-/// let request = CompletionRequestBuilder::new(model, "Who are you?".to_string())
+/// let request = CompletionRequestBuilder::new(model.clone(), "Who are you?".to_string())
 ///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
 ///     .temperature(0.5)
 ///     .build();
 ///
-/// let response = model.completion(request)
-///     .await
-///     .expect("Failed to get completion response");
+/// let response = model.completion(request).await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Alternatively, you can execute the completion request directly from the builder:
-/// ```rust
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     client::CompletionClient,
 ///     providers::openai::{Client, self},
 ///     completion::CompletionRequestBuilder,
 /// };
 ///
-/// let openai = Client::new("your-openai-api-key");
-/// let model = openai.completion_model(openai::GPT_4O).build();
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let openai = Client::new("your-openai-api-key")?;
+/// let model = openai.completion_model(openai::GPT_5_2);
 ///
 /// // Create the completion request and execute it directly
 /// let response = CompletionRequestBuilder::new(model, "Who are you?".to_string())
 ///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
 ///     .temperature(0.5)
 ///     .send()
-///     .await
-///     .expect("Failed to get completion response");
+///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.

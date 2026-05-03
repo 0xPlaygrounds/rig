@@ -2,9 +2,9 @@
 //!
 //! # Example
 //! ```rust,ignore
-//! use rig::client::{Nothing, CompletionClient};
-//! use rig::completion::Prompt;
-//! use rig::providers::ollama;
+//! use rig_core::client::{Nothing, CompletionClient};
+//! use rig_core::completion::Prompt;
+//! use rig_core::providers::ollama;
 //!
 //! // Create a new Ollama client (defaults to http://localhost:11434, no auth)
 //! let client = ollama::Client::new(Nothing).unwrap();

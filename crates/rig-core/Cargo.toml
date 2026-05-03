@@ -17,7 +17,7 @@ workspace = true
 [lib]
 name = "rig_core"
 path = "src/lib.rs"
-doctest = false
+doctest = true
 
 [dependencies]
 as-any = { workspace = true }

@@ -32,38 +32,48 @@ pub mod request;
 /// Errors from vector store operations.
 #[derive(Debug, thiserror::Error)]
 pub enum VectorStoreError {
+    /// Embedding generation failed while preparing a vector query or insert.
     #[error("Embedding error: {0}")]
     EmbeddingError(#[from] EmbeddingError),
 
+    /// JSON serialization or deserialization failed.
     #[error("Json error: {0}")]
     JsonError(#[from] serde_json::Error),
 
     #[cfg(not(target_family = "wasm"))]
+    /// Backend-specific datastore error.
     #[error("Datastore error: {0}")]
     DatastoreError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
+    /// Filter construction or translation failed.
     #[error("Filter error: {0}")]
     FilterError(#[from] FilterError),
 
     #[cfg(target_family = "wasm")]
+    /// Backend-specific datastore error.
     #[error("Datastore error: {0}")]
     DatastoreError(#[from] Box<dyn std::error::Error + 'static>),
 
+    /// A document was missing an ID required by the backend.
     #[error("Missing Id: {0}")]
     MissingIdError(String),
 
+    /// HTTP request failed for an external vector store service.
     #[error("HTTP request error: {0}")]
     ReqwestError(#[from] reqwest::Error),
 
+    /// External vector store service returned an error response.
     #[error("External call to API returned an error. Error code: {0} Message: {1}")]
     ExternalAPIError(StatusCode, String),
 
+    /// A vector search request builder received invalid input.
     #[error("Error while building VectorSearchRequest: {0}")]
     BuilderError(String),
 }
 
 /// Trait for inserting documents and embeddings into a vector store.
 pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
+    /// Insert precomputed embeddings for each document.
     fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
@@ -89,15 +99,18 @@ pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + WasmCompatSend;
 }
 
+/// Type-erased `top_n` result: `(score, id, document)` tuples as JSON values.
 pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
 
 /// Type-erased [`VectorStoreIndex`] for dynamic dispatch.
 pub trait VectorStoreIndexDyn: WasmCompatSend + WasmCompatSync {
+    /// Returns the top N documents for a JSON-serializable request.
     fn top_n<'a>(
         &'a self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
     ) -> WasmBoxedFuture<'a, TopNResults>;
 
+    /// Returns only the top N document IDs for a JSON-serializable request.
     fn top_n_ids<'a>(
         &'a self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
@@ -167,8 +180,11 @@ fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
 /// The output of vector store queries invoked via [`Tool`]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VectorStoreOutput {
+    /// Similarity score returned by the vector store.
     pub score: f64,
+    /// Document ID returned by the vector store.
     pub id: String,
+    /// Serialized document payload.
     pub document: Value,
 }
 
@@ -201,7 +217,7 @@ where
                     },
                     "samples": {
                         "type": "integer",
-                        "description": "The maxinum number of samples / documents to retrieve.",
+                        "description": "The maximum number of samples / documents to retrieve.",
                         "default": 5,
                         "minimum": 1
                     },

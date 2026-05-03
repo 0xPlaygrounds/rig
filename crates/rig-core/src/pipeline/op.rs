@@ -39,15 +39,17 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     /// Chain a function `f` to the current op.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op};
     ///
+    /// # async fn run() {
     /// let chain = pipeline::new()
     ///    .map(|(x, y)| x + y)
     ///    .map(|z| format!("Result: {z}!"));
     ///
     /// let result = chain.call((1, 2)).await;
     /// assert_eq!(result, "Result: 3!");
+    /// # }
     /// ```
     fn map<F, Input>(self, f: F) -> Sequential<Self, Map<F, Self::Output>>
     where
@@ -61,9 +63,10 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     /// Same as `map` but for asynchronous functions
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op};
     ///
+    /// # async fn run() {
     /// let chain = pipeline::new()
     ///     .then(|email: String| async move {
     ///         email.split('@').next().unwrap().to_string()
@@ -74,6 +77,7 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     ///
     /// let result = chain.call("bob@gmail.com".to_string()).await;
     /// assert_eq!(result, "Hello, bob!");
+    /// # }
     /// ```
     fn then<F, Fut>(self, f: F) -> Sequential<Self, Then<F, Fut::Output>>
     where
@@ -88,9 +92,10 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     /// Chain an arbitrary operation to the current op.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op};
     ///
+    /// # async fn run() {
     /// struct AddOne;
     ///
     /// impl Op for AddOne {
@@ -107,6 +112,7 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     ///
     /// let result = chain.call(1).await;
     /// assert_eq!(result, 2);
+    /// # }
     /// ```
     fn chain<T>(self, op: T) -> Sequential<Self, T>
     where
@@ -121,8 +127,8 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     /// retrieve the top `n` documents from the index and return them with the query string.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::chain::{self, Chain};
+    /// ```ignore
+    /// use rig_core::chain::{self, Chain};
     ///
     /// let chain = chain::new()
     ///     .lookup(index, 2)
@@ -152,8 +158,8 @@ pub trait Op: WasmCompatSend + WasmCompatSync {
     /// the response.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::chain::{self, Chain};
+    /// ```ignore
+    /// use rig_core::chain::{self, Chain};
     ///
     /// let agent = &openai_client.agent("gpt-4").build();
     ///

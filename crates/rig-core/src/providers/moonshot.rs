@@ -2,8 +2,8 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::providers::moonshot;
-//! use rig::client::CompletionClient;
+//! use rig_core::providers::moonshot;
+//! use rig_core::client::CompletionClient;
 //!
 //! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
 //!
@@ -14,7 +14,7 @@
 //! The default base URL is `https://api.moonshot.ai/v1`. For China access,
 //! use `https://api.moonshot.cn/v1`:
 //! ```no_run
-//! use rig::providers::moonshot;
+//! use rig_core::providers::moonshot;
 //!
 //! let client = moonshot::Client::builder()
 //!     .api_key("YOUR_API_KEY")

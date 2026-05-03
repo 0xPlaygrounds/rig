@@ -22,6 +22,7 @@ pub enum EmbeddingError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
+    /// URL construction or parsing failed while preparing a provider request.
     #[error("UrlError: {0}")]
     UrlError(#[from] url::ParseError),
 
@@ -49,8 +50,10 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of documents that can be embedded in a single request.
     const MAX_DOCUMENTS: usize;
 
+    /// Provider client type used to construct this embedding model.
     type Client;
 
+    /// Construct a model handle from a provider client, model identifier, and optional dimensions.
     fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self;
 
     /// The number of dimensions in the embedding vector.
@@ -87,6 +90,8 @@ pub trait ImageEmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
     fn ndims(&self) -> usize;
 
     /// Embed multiple images in a single request from bytes.
+    ///
+    /// Implementations should preserve input order in the returned embeddings.
     fn embed_images(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,

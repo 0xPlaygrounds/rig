@@ -15,8 +15,8 @@ use std::future::Future;
 /// # Example
 ///
 /// ```rust,ignore
-/// use rig::client::ModelListingClient;
-/// use rig::providers::openai::Client;
+/// use rig_core::client::ModelListingClient;
+/// use rig_core::providers::openai::Client;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,8 +55,8 @@ pub trait ModelListingClient {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use rig::client::{ModelListingClient, ProviderClient};
-    /// use rig::providers::openai::Client;
+    /// use rig_core::client::{ModelListingClient, ProviderClient};
+    /// use rig_core::providers::openai::Client;
     ///
     /// let openai = Client::from_env()?;
     /// let models = openai.list_models().await?;

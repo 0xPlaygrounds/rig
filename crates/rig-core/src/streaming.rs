@@ -36,6 +36,7 @@ pub struct PauseControl {
 }
 
 impl PauseControl {
+    /// Create a pause controller in the running state.
     pub fn new() -> Self {
         let (paused_tx, paused_rx) = watch::channel(false);
         Self {
@@ -44,14 +45,17 @@ impl PauseControl {
         }
     }
 
+    /// Pause polling of the public stream until [`PauseControl::resume`] is called.
     pub fn pause(&self) {
         let _ = self.paused_tx.send(true);
     }
 
+    /// Resume polling after a pause.
     pub fn resume(&self) {
         let _ = self.paused_tx.send(false);
     }
 
+    /// Returns whether the stream is currently paused.
     pub fn is_paused(&self) -> bool {
         *self.paused_rx.borrow()
     }
@@ -66,7 +70,9 @@ impl Default for PauseControl {
 /// The content of a tool call delta - either the tool name or argument data
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum ToolCallDeltaContent {
+    /// Tool/function name emitted by the provider.
     Name(String),
+    /// Partial JSON argument data emitted by the provider.
     Delta(String),
 }
 
@@ -91,12 +97,16 @@ where
     },
     /// A reasoning (in its entirety)
     Reasoning {
+        /// Provider-supplied reasoning block ID, when present.
         id: Option<String>,
+        /// Complete reasoning content block.
         content: ReasoningContent,
     },
     /// A reasoning partial/delta
     ReasoningDelta {
+        /// Provider-supplied reasoning block ID, when present.
         id: Option<String>,
+        /// Partial reasoning text.
         reasoning: String,
     },
 
@@ -116,14 +126,20 @@ pub struct RawStreamingToolCall {
     pub id: String,
     /// Rig-generated unique identifier for this tool call.
     pub internal_call_id: String,
+    /// Provider-specific call ID used by some APIs for tool result correlation.
     pub call_id: Option<String>,
+    /// Tool/function name.
     pub name: String,
+    /// Parsed tool arguments.
     pub arguments: serde_json::Value,
+    /// Optional provider signature associated with the tool call.
     pub signature: Option<String>,
+    /// Additional provider-specific tool call metadata.
     pub additional_params: Option<serde_json::Value>,
 }
 
 impl RawStreamingToolCall {
+    /// Create an empty tool call accumulator for provider streaming parsers.
     pub fn empty() -> Self {
         Self {
             id: String::new(),
@@ -136,6 +152,7 @@ impl RawStreamingToolCall {
         }
     }
 
+    /// Create a complete tool call with a generated internal call ID.
     pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
         Self {
             id,
@@ -148,21 +165,25 @@ impl RawStreamingToolCall {
         }
     }
 
+    /// Override the generated internal call ID.
     pub fn with_internal_call_id(mut self, internal_call_id: String) -> Self {
         self.internal_call_id = internal_call_id;
         self
     }
 
+    /// Attach a provider-specific call ID.
     pub fn with_call_id(mut self, call_id: String) -> Self {
         self.call_id = Some(call_id);
         self
     }
 
+    /// Attach or clear a provider signature.
     pub fn with_signature(mut self, signature: Option<String>) -> Self {
         self.signature = signature;
         self
     }
 
+    /// Attach provider-specific metadata.
     pub fn with_additional_params(mut self, additional_params: Option<serde_json::Value>) -> Self {
         self.additional_params = additional_params;
         self
@@ -185,10 +206,12 @@ impl From<RawStreamingToolCall> for ToolCall {
 }
 
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+/// Provider stream of raw completion chunks on native targets.
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+/// Provider stream of raw completion chunks on wasm targets.
 pub type StreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
 
@@ -220,6 +243,7 @@ impl<R> StreamingCompletionResponse<R>
 where
     R: Clone + Unpin + GetTokenUsage,
 {
+    /// Wrap a provider stream and initialize aggregation state.
     pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
@@ -238,18 +262,22 @@ where
         }
     }
 
+    /// Cancel the stream. Cancellation is surfaced as normal stream termination.
     pub fn cancel(&self) {
         self.abort_handle.abort();
     }
 
+    /// Pause stream polling.
     pub fn pause(&self) {
         self.pause_control.pause();
     }
 
+    /// Resume stream polling after a pause.
     pub fn resume(&self) {
         self.pause_control.resume();
     }
 
+    /// Returns whether the stream is currently paused.
     pub fn is_paused(&self) -> bool {
         self.pause_control.is_paused()
     }
@@ -888,13 +916,16 @@ mod tests {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum StreamedAssistantContent<R> {
+    /// Text delta emitted by the assistant.
     Text(Text),
+    /// Complete tool call emitted by the assistant.
     ToolCall {
         tool_call: ToolCall,
         /// Rig-generated unique identifier for this tool call.
         /// Use this to correlate with ToolCallDelta events.
         internal_call_id: String,
     },
+    /// Partial tool call data emitted by the assistant.
     ToolCallDelta {
         /// Provider-supplied tool call ID.
         id: String,
@@ -902,11 +933,16 @@ pub enum StreamedAssistantContent<R> {
         internal_call_id: String,
         content: ToolCallDeltaContent,
     },
+    /// Complete reasoning block emitted by the assistant.
     Reasoning(Reasoning),
+    /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
+        /// Provider-supplied reasoning block ID, when present.
         id: Option<String>,
+        /// Partial reasoning text.
         reasoning: String,
     },
+    /// Final provider response object, if yielded by the provider stream.
     Final(R),
 }
 
@@ -914,12 +950,14 @@ impl<R> StreamedAssistantContent<R>
 where
     R: Clone + Unpin,
 {
+    /// Create a text stream item.
     pub fn text(text: &str) -> Self {
         Self::Text(Text {
             text: text.to_string(),
         })
     }
 
+    /// Create a final response stream item.
     pub fn final_response(res: R) -> Self {
         Self::Final(res)
     }
@@ -929,6 +967,7 @@ where
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum StreamedUserContent {
+    /// Tool result emitted during a multi-turn streaming agent loop.
     ToolResult {
         tool_result: ToolResult,
         /// Rig-generated unique identifier for the tool call this result
@@ -939,6 +978,7 @@ pub enum StreamedUserContent {
 }
 
 impl StreamedUserContent {
+    /// Create a streamed tool result correlated to an internal tool call ID.
     pub fn tool_result(tool_result: ToolResult, internal_call_id: String) -> Self {
         Self::ToolResult {
             tool_result,

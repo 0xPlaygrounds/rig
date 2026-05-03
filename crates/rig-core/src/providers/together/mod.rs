@@ -1,12 +1,15 @@
 //! Together AI API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::together_ai;
+//! ```no_run
+//! use rig_core::{client::EmbeddingsClient, providers::together};
 //!
-//! let client = together_ai::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = together::Client::new("YOUR_API_KEY")?;
 //!
-//! let together_embedding_model = client.embedding_model(together_ai::EMBEDDING_V1);
+//! let together_embedding_model = client.embedding_model(together::BGE_BASE_EN_V1_5);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod client;

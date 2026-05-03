@@ -75,8 +75,8 @@ impl Loadable for Vec<u8> {
 ///
 /// # Example Usage
 ///
-/// ```rust
-/// use rig:loaders::PdfileLoader;
+/// ```no_run
+/// use rig_core::loaders::PdfFileLoader;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     // Create a FileLoader using a glob pattern
@@ -84,9 +84,12 @@ impl Loadable for Vec<u8> {
 ///
 ///     // Load pdf file contents by page, ignoring any errors
 ///     let contents: Vec<String> = loader
-///         .load_with_path()
+///         .load()
 ///         .ignore_errors()
 ///         .by_page()
+///         .ignore_errors()
+///         .into_iter()
+///         .collect();
 ///
 ///     for content in contents {
 ///         println!("{}", content);
@@ -111,14 +114,18 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, doc)) => println!("{:?} {}", path, doc),
+    ///         Ok(doc) => println!("{:?}", doc),
     ///         Err(e) => eprintln!("Error reading pdf: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn load(self) -> PdfFileLoader<'a, Result<Document, PdfLoaderError>> {
         PdfFileLoader {
@@ -133,14 +140,18 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and return the loaded documents
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load_with_path().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, doc)) => println!("{:?} {}", path, doc),
+    ///         Ok((path, doc)) => println!("{:?} {:?}", path, doc),
     ///         Err(e) => eprintln!("Error reading pdf: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn load_with_path(self) -> PdfFileLoader<'a, Result<(PathBuf, Document), PdfLoaderError>> {
         PdfFileLoader {
@@ -156,14 +167,18 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and return the contents of the documents.
     ///
-    /// ```rust
-    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read_with_path().into_iter();
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, content)) => println!("{}", content),
+    ///         Ok(content) => println!("{}", content),
     ///         Err(e) => eprintln!("Error reading pdf: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn read(self) -> PdfFileLoader<'a, Result<String, PdfLoaderError>> {
         PdfFileLoader {
@@ -190,7 +205,9 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and return the content and paths of the documents.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read_with_path().into_iter();
     /// for result in content {
     ///     match result {
@@ -198,6 +215,8 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     ///         Err(e) => eprintln!("Error reading pdf: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn read_with_path(self) -> PdfFileLoader<'a, Result<(PathBuf, String), PdfLoaderError>> {
         PdfFileLoader {
@@ -231,14 +250,22 @@ impl<'a> PdfFileLoader<'a, Document> {
     /// # Example
     /// Load pdfs in directory "tests/data/*.pdf" and chunk all document into it's pages.
     ///
-    /// ```rust
-    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load().by_page().into_iter();
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
+    ///     .load()
+    ///     .ignore_errors()
+    ///     .by_page()
+    ///     .into_iter();
     /// for result in content {
     ///     match result {
     ///         Ok(page) => println!("{}", page),
     ///         Err(e) => eprintln!("Error reading pdf: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn by_page(self) -> PdfFileLoader<'a, Result<String, PdfLoaderError>> {
         PdfFileLoader {
@@ -263,26 +290,26 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     /// # Example
     /// Read pdfs in directory "tests/data/*.pdf" and chunk all documents by path by it's pages.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
     ///     .load_with_path()
     ///     .ignore_errors()
     ///     .by_page()
     ///     .into_iter();
     ///
-    /// for result in content {
-    ///     match result {
-    ///         Ok(documents) => {
-    ///             for doc in documents {
-    ///                 match doc {
-    ///                     Ok((pageno, content)) => println!("Page {}: {}", pageno, content),
-    ///                     Err(e) => eprintln!("Error reading page: {}", e),
-    ///                }
-    ///             }
-    ///         },
-    ///         Err(e) => eprintln!("Error reading pdf: {}", e),
+    /// for (path, pages) in content {
+    ///     println!("{}", path.display());
+    ///     for (pageno, result) in pages {
+    ///         match result {
+    ///             Ok(content) => println!("Page {}: {}", pageno, content),
+    ///             Err(e) => eprintln!("Error reading page: {}", e),
+    ///         }
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn by_page(self) -> PdfFileLoader<'a, ByPage> {
         PdfFileLoader {
@@ -312,11 +339,19 @@ impl<'a> PdfFileLoader<'a, ByPage> {
     /// # Example
     /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
     ///
-    /// ```rust
-    /// let content = FileLoader::with_glob("tests/data/*.pdf")?.read().ignore_errors().into_iter();
-    /// for result in content {
-    ///     println!("{}", content)
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?
+    ///     .load_with_path()
+    ///     .ignore_errors()
+    ///     .by_page()
+    ///     .ignore_errors();
+    /// for (_path, pages) in content {
+    ///     println!("{}", pages.len())
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn ignore_errors(self) -> PdfFileLoader<'a, (PathBuf, Vec<(usize, String)>)> {
         PdfFileLoader {
@@ -341,11 +376,15 @@ where
     /// # Example
     /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
     ///
-    /// ```rust
-    /// let content = FileLoader::with_glob("tests/data/*.pdf")?.read().ignore_errors().into_iter();
-    /// for result in content {
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read().ignore_errors();
+    /// for content in content {
     ///     println!("{}", content)
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn ignore_errors(self) -> PdfFileLoader<'a, T> {
         PdfFileLoader {
@@ -360,8 +399,12 @@ impl PdfFileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// # Example
     /// Create a [PdfFileLoader] for all `.pdf` files that match the glob "tests/data/*.pdf".
     ///
-    /// ```rust
-    /// let loader = FileLoader::with_glob("tests/data/*.txt")?;
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let loader = PdfFileLoader::with_glob("tests/data/*.pdf")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_glob(
         pattern: &str,
@@ -380,8 +423,12 @@ impl PdfFileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// # Example
     /// Create a [PdfFileLoader] for all files that are in the directory "files".
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::PdfFileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let loader = PdfFileLoader::with_dir("files")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_dir(
         directory: &str,

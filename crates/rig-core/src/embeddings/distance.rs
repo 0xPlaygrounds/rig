@@ -1,3 +1,10 @@
+//! Distance and similarity helpers for embedding vectors.
+//!
+//! The [`VectorDistance`] implementation for [`Embedding`](crate::embeddings::Embedding)
+//! uses iterator-based calculations by default and switches to Rayon-backed
+//! parallel iterators when the `rayon` feature is enabled.
+
+/// Distance and similarity metrics for embedding vectors.
 pub trait VectorDistance {
     /// Get dot product of two embedding vectors
     fn dot_product(&self, other: &Self) -> f64;

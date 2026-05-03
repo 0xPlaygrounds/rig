@@ -17,86 +17,81 @@
 //! before building the agent.
 //!
 //! # Example
-//! ```rust
-//! use rig::{
-//!     client::ProviderClient,
+//! ```no_run
+//! use rig_core::{
+//!     client::{CompletionClient, ProviderClient},
 //!     completion::{Chat, Completion, Prompt},
 //!     providers::openai,
 //! };
 //!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let openai = openai::Client::from_env()?;
 //!
 //! // Configure the agent
-//! let agent = openai.agent("gpt-4o")
+//! let agent = openai.agent(openai::GPT_5_2)
 //!     .preamble("System prompt")
 //!     .context("Context document 1")
 //!     .context("Context document 2")
-//!     .tool(tool1)
-//!     .tool(tool2)
 //!     .temperature(0.8)
-//!     .additional_params(json!({"foo": "bar"}))
 //!     .build();
 //!
 //! // Use the agent for completions and prompts
 //! // Generate a chat completion response from a prompt and chat history
-//! let chat_response = agent.chat("Prompt", chat_history)
-//!     .await
-//!     .expect("Failed to chat with Agent");
+//! let chat_response = agent.chat("Prompt", Vec::<rig_core::completion::Message>::new()).await?;
 //!
 //! // Generate a prompt completion response from a simple prompt
-//! let chat_response = agent.prompt("Prompt")
-//!     .await
-//!     .expect("Failed to prompt the Agent");
+//! let prompt_response = agent.prompt("Prompt").await?;
 //!
 //! // Generate a completion request builder from a prompt and chat history. The builder
 //! // will contain the agent's configuration (i.e.: preamble, context documents, tools,
 //! // model parameters, etc.), but these can be overwritten.
-//! let completion_req_builder = agent.completion("Prompt", chat_history)
-//!     .await
-//!     .expect("Failed to create completion request builder");
+//! let completion_req_builder = agent
+//!     .completion("Prompt", Vec::<rig_core::completion::Message>::new())
+//!     .await?;
 //!
 //! let response = completion_req_builder
 //!     .temperature(0.9) // Overwrite the agent's temperature
 //!     .send()
-//!     .await
-//!     .expect("Failed to send completion request");
+//!     .await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! RAG Agent example
-//! ```rust
-//! use rig::{
-//!     client::ProviderClient,
+//! ```no_run
+//! use rig_core::{
+//!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
 //!     completion::Prompt,
 //!     embeddings::EmbeddingsBuilder,
 //!     providers::openai,
-//!     vector_store::{in_memory_store::InMemoryVectorStore, VectorStore},
+//!     vector_store::in_memory_store::InMemoryVectorStore,
 //! };
 //!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize OpenAI client
 //! let openai = openai::Client::from_env()?;
 //!
 //! // Initialize OpenAI embedding model
-//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 //!
 //! // Create vector store, compute embeddings and load them in the store
 //! let mut vector_store = InMemoryVectorStore::default();
 //!
 //! let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-//!     .simple_document("doc0", "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
-//!     .simple_document("doc1", "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
-//!     .simple_document("doc2", "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.")
+//!     .documents(vec![
+//!         "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
+//!         "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+//!         "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
+//!     ])?
 //!     .build()
-//!     .await
-//!     .expect("Failed to build embeddings");
+//!     .await?;
 //!
-//! vector_store.add_documents(embeddings)
-//!     .await
-//!     .expect("Failed to add documents");
+//! vector_store.add_documents(embeddings);
 //!
 //! // Create vector store index
 //! let index = vector_store.index(embedding_model);
 //!
-//! let agent = openai.agent(openai::GPT_4O)
+//! let agent = openai.agent(openai::GPT_5_2)
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
@@ -105,8 +100,9 @@
 //!     .build();
 //!
 //! // Prompt the agent and print the response
-//! let response = agent.prompt("What does \"glarb-glarb\" mean?").await
-//!     .expect("Failed to prompt the agent");
+//! let response = agent.prompt("What does \"glarb-glarb\" mean?").await?;
+//! # Ok(())
+//! # }
 //! ```
 mod builder;
 mod completion;

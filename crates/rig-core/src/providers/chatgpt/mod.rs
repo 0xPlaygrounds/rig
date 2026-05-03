@@ -5,8 +5,8 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::client::{CompletionClient, ProviderClient};
-//! use rig::providers::chatgpt;
+//! use rig_core::client::{CompletionClient, ProviderClient};
+//! use rig_core::providers::chatgpt;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = chatgpt::Client::from_env()?;

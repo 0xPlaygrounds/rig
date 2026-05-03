@@ -20,9 +20,10 @@
 //! For example, the pipeline below takes a tuple of two integers, adds them together and then formats
 //! the result as a string using the [map](Op::map) combinator method, which applies a simple function
 //! op to the output of the previous op:
-//! ```rust
-//! use rig::pipeline::{self, Op};
+//! ```no_run
+//! use rig_core::pipeline::{self, Op};
 //!
+//! # async fn run() {
 //! let pipeline = pipeline::new()
 //!     // op1: add two numbers
 //!     .map(|(x, y)| x + y)
@@ -31,6 +32,7 @@
 //!
 //! let result = pipeline.call((1, 2)).await;
 //! assert_eq!(result, "Result: 3!");
+//! # }
 //! ```
 //!
 //! This pipeline can be visualized as the following DAG:
@@ -41,14 +43,15 @@
 //! ```
 //!
 //! ## Parallel Operations
-//! The pipeline API also provides a [parallel!](crate::parallel!) and macro for running operations in parallel.
+//! The pipeline API also provides the [`parallel!`](crate::parallel!) macro for running operations in parallel.
 //! The macro takes a list of ops and turns them into a single op that will duplicate the input
 //! and run each op in concurrently. The results of each op are then collected and returned as a tuple.
 //!
 //! For example, the pipeline below runs two operations concurrently:
-//! ```rust
-//! use rig::{pipeline::{self, Op, map}, parallel};
+//! ```no_run
+//! use rig_core::{pipeline::{self, Op, map}, parallel};
 //!
+//! # async fn run() {
 //! let pipeline = pipeline::new()
 //!     .chain(parallel!(
 //!         // op1: add 1 to input
@@ -60,7 +63,8 @@
 //!     .map(|(a, b)| format!("Results: {a}, {b}"));
 //!
 //! let result = pipeline.call(1).await;
-//! assert_eq!(result, "Result: 2, 0");
+//! assert_eq!(result, "Results: 2, 0");
+//! # }
 //! ```
 //!
 //! Notes:
@@ -110,15 +114,17 @@ impl<E> PipelineBuilder<E> {
     /// Add a function to the current pipeline
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op};
     ///
+    /// # async fn run() {
     /// let pipeline = pipeline::new()
     ///    .map(|(x, y)| x + y)
     ///    .map(|z| format!("Result: {z}!"));
     ///
     /// let result = pipeline.call((1, 2)).await;
     /// assert_eq!(result, "Result: 3!");
+    /// # }
     /// ```
     pub fn map<F, Input, Output>(self, f: F) -> op::Map<F, Input>
     where
@@ -133,12 +139,13 @@ impl<E> PipelineBuilder<E> {
     /// Same as `map` but for asynchronous functions
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op};
     ///
+    /// # async fn run() {
     /// let pipeline = pipeline::new()
     ///     .then(|email: String| async move {
-    ///         email.split('@').next().unwrap().to_string()
+    ///         email.split('@').next().unwrap_or_default().to_string()
     ///     })
     ///     .then(|username: String| async move {
     ///         format!("Hello, {}!", username)
@@ -146,6 +153,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// let result = pipeline.call("bob@gmail.com".to_string()).await;
     /// assert_eq!(result, "Hello, bob!");
+    /// # }
     /// ```
     pub fn then<F, Input, Fut>(self, f: F) -> op::Then<F, Input>
     where
@@ -161,9 +169,10 @@ impl<E> PipelineBuilder<E> {
     /// Add an arbitrary operation to the current pipeline.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op};
     ///
+    /// # async fn run() {
     /// struct MyOp;
     ///
     /// impl Op for MyOp {
@@ -180,6 +189,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// let result = pipeline.call(1).await;
     /// assert_eq!(result, 2);
+    /// # }
     /// ```
     pub fn chain<T>(self, op: T) -> T
     where
@@ -194,8 +204,8 @@ impl<E> PipelineBuilder<E> {
     /// retrieve the top `n` documents from the index and return them with the query string.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```ignore
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// let pipeline = pipeline::new()
     ///     .lookup(index, 2)
@@ -222,8 +232,8 @@ impl<E> PipelineBuilder<E> {
     /// the response.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```ignore
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// let agent = &openai_client.agent("gpt-4").build();
     ///
@@ -248,8 +258,8 @@ impl<E> PipelineBuilder<E> {
     /// to extract information from the string in the form of the type `T` and return it.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, Op};
+    /// ```ignore
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
     /// struct Sentiment {
@@ -288,12 +298,14 @@ pub enum ChainError {
     LookupError(#[from] vector_store::VectorStoreError),
 }
 
+/// Create a pipeline builder using Rig's default [`ChainError`] type.
 pub fn new() -> PipelineBuilder<ChainError> {
     PipelineBuilder {
         _error: std::marker::PhantomData,
     }
 }
 
+/// Create a pipeline builder with a custom error type.
 pub fn with_error<E>() -> PipelineBuilder<E> {
     PipelineBuilder {
         _error: std::marker::PhantomData,

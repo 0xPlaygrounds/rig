@@ -1,12 +1,15 @@
 //! Groq API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::groq;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::groq};
 //!
-//! let client = groq::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = groq::Client::new("YOUR_API_KEY")?;
 //!
-//! let gpt4o = client.completion_model(groq::GPT_4O);
+//! let llama = client.completion_model(groq::LLAMA_3_1_8B_INSTANT);
+//! # Ok(())
+//! # }
 //! ```
 use bytes::Bytes;
 use http::Request;

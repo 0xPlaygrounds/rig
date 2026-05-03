@@ -6,8 +6,8 @@
 //!
 //! # Example
 //! ```rust,ignore
-//! use rig::providers::llamafile;
-//! use rig::completion::Prompt;
+//! use rig_core::providers::llamafile;
+//! use rig_core::completion::Prompt;
 //!
 //! // Create a new Llamafile client (defaults to http://localhost:8080)
 //! let client = llamafile::Client::from_url("http://localhost:8080");

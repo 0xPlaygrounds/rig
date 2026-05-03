@@ -28,15 +28,17 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     /// be returned.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, TryOp};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, TryOp};
     ///
+    /// # async fn run() {
     /// let op = pipeline::new()
     ///    .map(|x: i32| if x % 2 == 0 { Ok(x + 1) } else { Err("x is odd") });
     ///
     /// // Execute the pipeline concurrently with 2 inputs
     /// let result = op.try_batch_call(2, vec![2, 4]).await;
     /// assert_eq!(result, Ok(vec![3, 5]));
+    /// # }
     /// ```
     fn try_batch_call<I>(
         &self,
@@ -63,15 +65,17 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     /// using the provided closure.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, TryOp};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, TryOp};
     ///
+    /// # async fn run() {
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .map_ok(|x| x * 2);
     ///
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
+    /// # }
     /// ```
     fn map_ok<F, Output>(self, f: F) -> MapOk<Self, op::Map<F, Self::Output>>
     where
@@ -86,15 +90,17 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     /// using the provided closure.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, TryOp};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, TryOp};
     ///
+    /// # async fn run() {
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .map_err(|err| format!("Error: {}", err));
     ///
     /// let result = op.try_call(1).await;
     /// assert_eq!(result, Err("Error: x is odd".to_string()));
+    /// # }
     /// ```
     fn map_err<F, E>(self, f: F) -> MapErr<Self, op::Map<F, Self::Error>>
     where
@@ -110,15 +116,17 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     /// `Result<T, E>` where `E` is the same type as the error type of the current.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, TryOp};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, TryOp};
     ///
+    /// # async fn run() {
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .and_then(|x| async move { Ok(x * 2) });
     ///
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(4));
+    /// # }
     /// ```
     fn and_then<F, Fut, Output>(self, f: F) -> AndThen<Self, op::Then<F, Self::Output>>
     where
@@ -135,15 +143,17 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     /// `Result<T, E>` where `T` is the same type as the output type of the current op.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, TryOp};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, TryOp};
     ///
+    /// # async fn run() {
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
     ///     .or_else(|err| async move { Err(format!("Error: {}", err)) });
     ///
     /// let result = op.try_call(1).await;
     /// assert_eq!(result, Err("Error: x is odd".to_string()));
+    /// # }
     /// ```
     fn or_else<F, Fut, E>(self, f: F) -> OrElse<Self, op::Then<F, Self::Error>>
     where
@@ -160,9 +170,10 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     /// implements the `Op` trait.
     ///
     /// # Example
-    /// ```rust
-    /// use rig::pipeline::{self, TryOp};
+    /// ```no_run
+    /// use rig_core::pipeline::{self, Op, TryOp};
     ///
+    /// # async fn run() {
     /// struct AddOne;
     ///
     /// impl Op for AddOne {
@@ -176,10 +187,11 @@ pub trait TryOp: WasmCompatSend + WasmCompatSync {
     ///
     /// let op = pipeline::new()
     ///     .map(|x: i32| if x % 2 == 0 { Ok(x) } else { Err("x is odd") })
-    ///     .chain_ok(MyOp);
+    ///     .chain_ok(AddOne);
     ///
     /// let result = op.try_call(2).await;
     /// assert_eq!(result, Ok(3));
+    /// # }
     /// ```
     fn chain_ok<T>(self, op: T) -> TrySequential<Self, T>
     where

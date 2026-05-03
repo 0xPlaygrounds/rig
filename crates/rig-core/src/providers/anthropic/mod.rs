@@ -1,12 +1,15 @@
 //! Anthropic API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::anthropic;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::anthropic};
 //!
-//! let client = anthropic::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = anthropic::Client::new("YOUR_API_KEY")?;
 //!
 //! let sonnet = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod client;

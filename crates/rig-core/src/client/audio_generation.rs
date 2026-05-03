@@ -11,13 +11,17 @@ mod audio {
         /// Create an audio generation model with the given name.
         ///
         /// # Example
-        /// ```
-        /// use rig::providers::openai::{Client, self};
+        /// ```no_run
+        /// use rig_core::prelude::AudioGenerationClient;
+        /// use rig_core::providers::openai::{Client, self};
         ///
+        /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
         /// // Initialize the OpenAI client
-        /// let openai = Client::new("your-open-ai-api-key");
+        /// let openai = Client::new("your-open-ai-api-key")?;
         ///
         /// let tts = openai.audio_generation_model(openai::TTS_1);
+        /// # Ok(())
+        /// # }
         /// ```
         fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
             Self::AudioGenerationModel::make(self, model)

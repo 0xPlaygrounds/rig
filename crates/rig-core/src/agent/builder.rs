@@ -55,23 +55,23 @@ pub struct WithBuilderTools {
 /// `ToolServerHandle`, or add tools via the builder API, but not both.
 ///
 /// # Example
-/// ```
-/// use rig::{client::ProviderClient, providers::openai, agent::AgentBuilder};
+/// ```no_run
+/// use rig_core::{agent::AgentBuilder, client::{CompletionClient, ProviderClient}, providers::openai};
 ///
+/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// let openai = openai::Client::from_env()?;
 ///
-/// let gpt4o = openai.completion_model("gpt-4o");
+/// let model = openai.completion_model(openai::GPT_5_2);
 ///
 /// // Configure the agent
-/// let agent = AgentBuilder::new(gpt4o)
+/// let agent = AgentBuilder::new(model)
 ///     .preamble("System prompt")
 ///     .context("Context document 1")
 ///     .context("Context document 2")
-///     .tool(tool1)
-///     .tool(tool2)
 ///     .temperature(0.8)
-///     .additional_params(json!({"foo": "bar"}))
 ///     .build();
+/// # Ok(())
+/// # }
 /// ```
 pub struct AgentBuilder<M, P = (), ToolState = NoToolConfig>
 where

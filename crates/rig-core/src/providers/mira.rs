@@ -2,7 +2,7 @@
 //!
 //! # Example
 //! ```
-//! use rig::providers::mira;
+//! use rig_core::providers::mira;
 //!
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!

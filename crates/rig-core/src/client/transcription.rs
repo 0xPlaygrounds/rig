@@ -9,14 +9,17 @@ pub trait TranscriptionClient {
     /// Create a transcription model with the given name.
     ///
     /// # Example with OpenAI
-    /// ```
-    /// use rig::prelude::*;
-    /// use rig::providers::openai::{Client, self};
+    /// ```no_run
+    /// use rig_core::prelude::TranscriptionClient;
+    /// use rig_core::providers::openai::{Client, self};
     ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// let openai = Client::new("your-open-ai-api-key")?;
     ///
     /// let whisper = openai.transcription_model(openai::WHISPER_1);
+    /// # Ok(())
+    /// # }
     /// ```
     fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel;
 }

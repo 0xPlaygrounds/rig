@@ -38,7 +38,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// # Examples
     ///
     /// ```ignore
-    /// use rig::vector_store::InMemoryVectorStore;
+    /// use rig_core::vector_store::InMemoryVectorStore;
     ///
     /// let store = InMemoryVectorStore::<String>::builder()
     ///     .with_lsh()
