@@ -43,12 +43,14 @@ use crate::{
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ClientBuilderError {
+    /// The underlying HTTP backend failed during builder construction.
     #[error("reqwest error: {0}")]
     HttpError(
         #[from]
         #[source]
         reqwest::Error,
     ),
+    /// A provider-specific builder property was invalid.
     #[error("invalid property: {0}")]
     InvalidProperty(&'static str),
 }
@@ -122,9 +124,13 @@ pub trait ProviderClient {
         Self: Sized;
 }
 
-/// A trait for API keys. This determines whether the key is inserted into a [Client]'s default
-/// headers (in the `Some` case) or handled by a given provider extension (in the `None` case)
+/// A trait for API key inputs accepted by [`ClientBuilder::api_key`].
+///
+/// Returning `Some` inserts a header into the generic [`Client`]. Returning `None`
+/// lets the provider extension handle credentials itself.
 pub trait ApiKey: Sized {
+    /// Convert this key into a default request header, if the generic client
+    /// should own that authentication header.
     fn into_header(self) -> Option<http_client::Result<(HeaderName, HeaderValue)>> {
         None
     }
@@ -166,6 +172,11 @@ impl TryFrom<String> for Nothing {
 }
 
 #[derive(Clone)]
+/// Generic provider client shared by Rig provider integrations.
+///
+/// `Ext` stores provider-specific behavior such as URL construction, request
+/// customization, and capabilities. `H` is the HTTP backend and defaults to
+/// `reqwest::Client`.
 pub struct Client<Ext = Nothing, H = reqwest::Client> {
     base_url: Arc<str>,
     headers: Arc<HeaderMap>,
@@ -173,7 +184,9 @@ pub struct Client<Ext = Nothing, H = reqwest::Client> {
     ext: Ext,
 }
 
+/// Provider extension hook for redacted [`Debug`] output.
 pub trait DebugExt: Debug {
+    /// Additional provider-specific fields to include in `Client` debug output.
     fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
         std::iter::empty()
     }
@@ -213,8 +226,11 @@ where
 }
 
 pub enum Transport {
+    /// Regular request/response HTTP transport.
     Http,
+    /// Server-sent events streaming transport.
     Sse,
+    /// Newline-delimited JSON streaming transport.
     NdJson,
 }
 
@@ -226,8 +242,10 @@ pub trait Provider: Sized {
     /// This associates extensions with their builders for type inference.
     type Builder: ProviderBuilder;
 
+    /// Provider endpoint used by [`VerifyClient`] to validate credentials.
     const VERIFY_PATH: &'static str;
 
+    /// Build a complete request URI for the given base URL, provider path, and transport.
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
         // Some providers (like Azure) have a blank base URL to allow users to input their own endpoints.
         let base_url = if base_url.is_empty() {
@@ -239,6 +257,7 @@ pub trait Provider: Sized {
         base_url.to_string() + path.trim_start_matches('/')
     }
 
+    /// Apply provider-specific request customization before sending.
     fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
         Ok(req)
     }
@@ -247,7 +266,9 @@ pub trait Provider: Sized {
 /// A wrapper type providing runtime checks on a provider's capabilities via the [Capability] trait
 pub struct Capable<M>(PhantomData<M>);
 
+/// Type-level marker for whether a provider supports a capability.
 pub trait Capability {
+    /// Whether this marker represents a supported capability.
     const CAPABLE: bool;
 }
 
@@ -261,13 +282,19 @@ impl Capability for Nothing {
 
 /// The capabilities of a given provider, i.e. embeddings, audio transcriptions, text completion
 pub trait Capabilities<H = reqwest::Client> {
+    /// Completion model capability marker.
     type Completion: Capability;
+    /// Embedding model capability marker.
     type Embeddings: Capability;
+    /// Audio transcription model capability marker.
     type Transcription: Capability;
+    /// Model listing capability marker.
     type ModelListing: Capability;
     #[cfg(feature = "image")]
+    /// Image generation model capability marker.
     type ImageGeneration: Capability;
     #[cfg(feature = "audio")]
+    /// Audio generation model capability marker.
     type AudioGeneration: Capability;
 }
 
@@ -276,11 +303,14 @@ pub trait Capabilities<H = reqwest::Client> {
 ///
 /// See [Provider]
 pub trait ProviderBuilder: Sized + Default + Clone {
+    /// Provider extension type built for a concrete HTTP backend.
     type Extension<H>: Provider
     where
         H: HttpClientExt;
+    /// API key input type accepted by the provider's client builder.
     type ApiKey: ApiKey;
 
+    /// Default base URL for the provider.
     const BASE_URL: &'static str;
 
     /// Build the provider extension from the client builder configuration.
@@ -308,6 +338,7 @@ where
     Ext: Provider,
     Ext::Builder: ProviderBuilder<Extension<reqwest::Client> = Ext> + Default,
 {
+    /// Construct a provider client using the default `reqwest::Client` backend.
     pub fn new(
         api_key: impl Into<<Ext::Builder as ProviderBuilder>::ApiKey>,
     ) -> http_client::Result<Self> {
@@ -316,18 +347,22 @@ where
 }
 
 impl<Ext, H> Client<Ext, H> {
+    /// Returns the configured provider base URL.
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
 
+    /// Returns default headers applied to outgoing provider requests.
     pub fn headers(&self) -> &HeaderMap {
         &self.headers
     }
 
+    /// Returns the provider extension.
     pub fn ext(&self) -> &Ext {
         &self.ext
     }
 
+    /// Reuse this client's base URL, headers, and HTTP backend with a different extension.
     pub fn with_ext<NewExt>(self, new_ext: NewExt) -> Client<NewExt, H> {
         Client {
             base_url: self.base_url,
@@ -397,6 +432,7 @@ where
     Ext: Provider,
     Ext::Builder: ProviderBuilder + Default,
 {
+    /// Start constructing a provider client.
     pub fn builder() -> ClientBuilder<Ext::Builder, Missing, Missing> {
         ClientBuilder::default()
     }
@@ -406,6 +442,7 @@ impl<Ext, H> Client<Ext, H>
 where
     Ext: Provider,
 {
+    /// Build a provider-customized POST request for a regular HTTP endpoint.
     pub fn post<S>(&self, path: S) -> http_client::Result<Builder>
     where
         S: AsRef<str>,
@@ -423,6 +460,7 @@ where
         self.ext.with_custom(req)
     }
 
+    /// Build a provider-customized POST request for an SSE endpoint.
     pub fn post_sse<S>(&self, path: S) -> http_client::Result<Builder>
     where
         S: AsRef<str>,
@@ -440,6 +478,7 @@ where
         self.ext.with_custom(req)
     }
 
+    /// Build a provider-customized GET request for an SSE endpoint.
     pub fn get_sse<S>(&self, path: S) -> http_client::Result<Builder>
     where
         S: AsRef<str>,
@@ -457,6 +496,7 @@ where
         self.ext.with_custom(req)
     }
 
+    /// Build a provider-customized GET request for a regular HTTP endpoint.
     pub fn get<S>(&self, path: S) -> http_client::Result<Builder>
     where
         S: AsRef<str>,
@@ -646,10 +686,12 @@ impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
 }
 
 impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
+    /// Returns the provider extension builder state.
     pub fn ext(&self) -> &Ext {
         &self.ext
     }
 
+    /// Returns the configured base URL.
     pub fn get_base_url(&self) -> &str {
         &self.base_url
     }
@@ -665,6 +707,7 @@ where
     ExtBuilder: ProviderBuilder<ApiKey = Key>,
     Key: ApiKey,
 {
+    /// Build a client using the default `reqwest::Client` backend.
     pub fn build(
         self,
     ) -> http_client::Result<Client<ExtBuilder::Extension<reqwest::Client>, reqwest::Client>> {
@@ -680,6 +723,7 @@ where
     Key: ApiKey,
     H: HttpClientExt,
 {
+    /// Build a client using the HTTP backend supplied with [`ClientBuilder::http_client`].
     pub fn build(mut self) -> http_client::Result<Client<ExtBuilder::Extension<H>, H>> {
         let ext_builder = self.ext.clone();
 

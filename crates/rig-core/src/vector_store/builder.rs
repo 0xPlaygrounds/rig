@@ -5,7 +5,7 @@ use crate::{OneOrMany, embeddings::Embedding};
 
 use super::{IndexStrategy, in_memory_store::InMemoryVectorStore};
 
-/// Builder for creating an [InMemoryVectorStore] with custom configuration.
+/// Builder for creating an [`InMemoryVectorStore`] with custom configuration.
 pub struct InMemoryVectorStoreBuilder<D>
 where
     D: Serialize,
@@ -31,7 +31,8 @@ where
     D: Serialize + Eq,
 {
     /// Create a new builder with default settings.
-    /// Default index strategy is BruteForce.
+    ///
+    /// The default index strategy is [`IndexStrategy::BruteForce`].
     pub fn new() -> Self {
         Self {
             embeddings: HashMap::new(),
@@ -43,7 +44,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```
     /// use rig::vector_store::{InMemoryVectorStoreBuilder, IndexStrategy};
     ///
     /// let store = InMemoryVectorStoreBuilder::<String>::new()
@@ -99,7 +100,7 @@ where
         self
     }
 
-    /// Build the [InMemoryVectorStore] with the configured settings.
+    /// Build the [`InMemoryVectorStore`] with the configured settings.
     pub fn build(self) -> InMemoryVectorStore<D> {
         InMemoryVectorStore::from_builder(self.embeddings, self.index_strategy)
     }

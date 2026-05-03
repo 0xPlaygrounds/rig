@@ -1,7 +1,9 @@
-//! This module provides functionality for working with embeddings.
-//! Embeddings are numerical representations of documents or other objects, typically used in
-//! natural language processing (NLP) tasks such as text classification, information retrieval,
-//! and document similarity.
+//! Provider-agnostic embedding abstractions.
+//!
+//! Embeddings are numerical representations of text or other inputs. Rig uses
+//! [`EmbeddingModel`] to generate vectors, [`Embed`] to select which text from a
+//! Rust value should be embedded, and [`EmbeddingsBuilder`] to batch embedding
+//! requests for vector stores or retrieval workflows.
 
 pub mod builder;
 pub mod embed;

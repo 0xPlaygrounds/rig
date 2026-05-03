@@ -13,14 +13,17 @@ pub trait CompletionClient {
     /// Create a completion model with the given model.
     ///
     /// # Example with OpenAI
-    /// ```
+    /// ```no_run
     /// use rig::prelude::*;
     /// use rig::providers::openai::{Client, self};
     ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// let openai = Client::new("your-open-ai-api-key")?;
     ///
-    /// let gpt4 = openai.completion_model(openai::GPT4);
+    /// let gpt = openai.completion_model(openai::GPT_5_2);
+    /// # Ok(())
+    /// # }
     /// ```
     fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
         Self::CompletionModel::make(self, model)
@@ -29,17 +32,20 @@ pub trait CompletionClient {
     /// Create an agent builder with the given completion model.
     ///
     /// # Example with OpenAI
-    /// ```
+    /// ```no_run
     /// use rig::prelude::*;
     /// use rig::providers::openai::{Client, self};
     ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client
-    /// let openai = Client::new("your-open-ai-api-key");
+    /// let openai = Client::new("your-open-ai-api-key")?;
     ///
-    /// let agent = openai.agent(openai::GPT_4)
+    /// let agent = openai.agent(openai::GPT_5_2)
     ///    .preamble("You are comedian AI with a mission to make people laugh.")
     ///    .temperature(0.0)
     ///    .build();
+    /// # Ok(())
+    /// # }
     /// ```
     fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel> {
         AgentBuilder::new(self.completion_model(model))

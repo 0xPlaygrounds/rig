@@ -1,34 +1,52 @@
-//! This module contains clients for the different LLM providers that Rig supports.
+//! Provider integrations included in `rig-core`.
 //!
-//! Currently, the following providers are supported:
-//! - Cohere
-//! - OpenAI
-//! - Perplexity
 //! - Anthropic
-//! - Google Gemini
-//! - xAI
-//! - EternalAI
-//! - DeepSeek
 //! - Azure OpenAI
+//! - ChatGPT and GitHub Copilot auth-backed clients
+//! - Cohere
+//! - DeepSeek
+//! - Galadriel
+//! - Gemini
+//! - Groq
+//! - Hugging Face
+//! - Hyperbolic
+//! - Llamafile
+//! - MiniMax
 //! - Mira
+//! - Mistral
+//! - Moonshot
+//! - Ollama
+//! - OpenAI
+//! - OpenRouter
+//! - Perplexity
+//! - Together
+//! - Voyage AI
+//! - xAI
+//! - Xiaomi MiMo
+//! - Z.ai
 //!
-//! Each provider has its own module, which contains a `Client` implementation that can
-//! be used to initialize completion and embedding models and execute requests to those models.
-//!
-//! The clients also contain methods to easily create higher level AI constructs such as
-//! agents and RAG systems, reducing the need for boilerplate.
+//! Each provider module defines a `Client` type and model types for the
+//! capabilities it supports. Capability traits such as
+//! [`CompletionClient`](crate::client::CompletionClient) and
+//! [`EmbeddingsClient`](crate::client::EmbeddingsClient) are implemented only
+//! when the provider declares that capability.
 //!
 //! # Example
-//! ```
-//! use rig::{providers::openai, agent::AgentBuilder};
+//! ```no_run
+//! use rig::{
+//!     agent::AgentBuilder,
+//!     client::{CompletionClient, ProviderClient},
+//!     providers::openai,
+//! };
 //!
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client
-//! let openai = openai::Client::new("your-openai-api-key");
+//! let openai = openai::Client::from_env()?;
 //!
 //! // Create a model and initialize an agent
-//! let gpt_4o = openai.completion_model("gpt-4o");
+//! let model = openai.completion_model(openai::GPT_5_2);
 //!
-//! let agent = AgentBuilder::new(gpt_4o)
+//! let agent = AgentBuilder::new(model)
 //!     .preamble("\
 //!         You are Gandalf the white and you will be conversing with other \
 //!         powerful beings to discuss the fate of Middle Earth.\
@@ -36,15 +54,15 @@
 //!     .build();
 //!
 //! // Alternatively, you can initialize an agent directly
-//! let agent = openai.agent("gpt-4o")
+//! let agent = openai.agent(openai::GPT_5_2)
 //!     .preamble("\
 //!         You are Gandalf the white and you will be conversing with other \
 //!         powerful beings to discuss the fate of Middle Earth.\
 //!     ")
 //!     .build();
+//! # Ok(())
+//! # }
 //! ```
-//! Note: The example above uses the OpenAI provider client, but the same pattern can
-//! be used with the Cohere provider client.
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;

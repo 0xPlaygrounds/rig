@@ -144,6 +144,7 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
 
 /// Trait that represents an LLM tool that can be stored in a vector store and RAGged
 pub trait ToolEmbedding: Tool {
+    /// Error returned when reconstructing a dynamic tool from stored context.
     type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
 
     /// Type of the tool' context. This context will be saved and loaded from the
@@ -171,10 +172,13 @@ pub trait ToolEmbedding: Tool {
 
 /// Wrapper trait to allow for dynamic dispatch of simple tools
 pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
+    /// Returns the tool name used for dispatch.
     fn name(&self) -> String;
 
+    /// Returns the provider-facing tool schema.
     fn definition<'a>(&'a self, prompt: String) -> WasmBoxedFuture<'a, ToolDefinition>;
 
+    /// Calls the tool with JSON-encoded arguments and returns model-facing text.
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>>;
 }
 
@@ -213,8 +217,10 @@ pub mod rmcp;
 
 /// Wrapper trait to allow for dynamic dispatch of raggable tools
 pub trait ToolEmbeddingDyn: ToolDyn {
+    /// Serializes context needed to reconstruct this dynamic tool.
     fn context(&self) -> serde_json::Result<serde_json::Value>;
 
+    /// Returns text fragments used to retrieve this tool from a vector store.
     fn embedding_docs(&self) -> Vec<String>;
 }
 
@@ -270,7 +276,7 @@ pub enum ToolSetError {
     #[error("ToolNotFoundError: {0}")]
     ToolNotFoundError(String),
 
-    // TODO: Revisit this
+    /// JSON serialization or deserialization failed while preparing tool data.
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
@@ -295,6 +301,7 @@ impl ToolSet {
         toolset
     }
 
+    /// Create a new `ToolSet` from boxed dynamically-dispatched tools.
     pub fn from_tools_boxed(tools: Vec<Box<dyn ToolDyn + 'static>>) -> Self {
         let mut toolset = Self::default();
         tools.into_iter().for_each(|tool| {
@@ -325,6 +332,7 @@ impl ToolSet {
             .insert(tool.name(), ToolType::Simple(Arc::from(tool)));
     }
 
+    /// Remove a tool by name. Missing tools are ignored.
     pub fn delete_tool(&mut self, tool_name: &str) {
         let _ = self.tools.remove(tool_name);
     }
@@ -338,6 +346,7 @@ impl ToolSet {
         self.tools.get(toolname)
     }
 
+    /// Return definitions for all tools currently registered in the set.
     pub async fn get_tool_definitions(&self) -> Result<Vec<ToolDefinition>, ToolSetError> {
         let mut defs = Vec::new();
         for tool in self.tools.values() {
@@ -418,21 +427,25 @@ impl ToolSet {
 }
 
 #[derive(Default)]
+/// Builder for constructing a [`ToolSet`] with static and dynamic tools.
 pub struct ToolSetBuilder {
     tools: Vec<ToolType>,
 }
 
 impl ToolSetBuilder {
+    /// Add a regular tool that is always available when the set is used.
     pub fn static_tool(mut self, tool: impl ToolDyn + 'static) -> Self {
         self.tools.push(ToolType::Simple(Arc::new(tool)));
         self
     }
 
+    /// Add a tool that can be represented as embeddings for dynamic retrieval.
     pub fn dynamic_tool(mut self, tool: impl ToolEmbeddingDyn + 'static) -> Self {
         self.tools.push(ToolType::Embedding(Arc::new(tool)));
         self
     }
 
+    /// Build the tool set, keyed by each tool's name.
     pub fn build(self) -> ToolSet {
         ToolSet {
             tools: self

@@ -1,7 +1,7 @@
 # Rig
 Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 
-More information about this crate can be found in the [crate documentation](https://docs.rs/rig/latest/rig/).
+More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig_core/).
 ## Table of contents
 
 - [Rig](#rig)
@@ -29,7 +29,7 @@ cargo add rig-core
 
 ## Simple example
 ```rust
-use rig::{client::{CompletionClient, ProviderClient}, completion::Prompt, providers::openai};
+use rig_core::{client::{CompletionClient, ProviderClient}, completion::Prompt, providers::openai};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

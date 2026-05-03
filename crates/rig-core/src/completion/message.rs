@@ -21,16 +21,13 @@ pub trait ConvertMessage: Sized + Send + Sync {
     fn convert_from_message(message: Message) -> Result<Vec<Self>, Self::Error>;
 }
 
-/// A message represents a run of input (user) and output (assistant).
-/// Each message type (based on it's `role`) can contain a atleast one bit of content such as text,
-///  images, audio, documents, or tool related information. While each message type can contain
-///  multiple content, most often, you'll only see one content type per message
-///  (an image w/ a description, etc).
+/// A provider-agnostic chat message.
 ///
-/// Each provider is responsible with converting the generic message into it's provider specific
-///  type using `From` or `TryFrom` traits. Since not every provider supports every feature, the
-///  conversion can be lossy (providing an image might be discarded for a non-image supporting
-///  provider) though the message being converted back and forth should always be the same.
+/// Messages are role-tagged and may contain one or many content items, including
+/// text, images, audio, documents, tool calls, and tool results. Provider modules
+/// are responsible for translating these generic messages into provider-native
+/// request bodies. That conversion may be lossy when a provider does not support
+/// a particular content type.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
@@ -42,6 +39,7 @@ pub enum Message {
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
+        /// Provider-assigned assistant message ID, when available.
         id: Option<String>,
         content: OneOrMany<AssistantContent>,
     },
@@ -53,11 +51,17 @@ pub enum Message {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum UserContent {
+    /// Plain text user content.
     Text(Text),
+    /// Result of a tool call returned as user-visible context to the model.
     ToolResult(ToolResult),
+    /// Image content.
     Image(Image),
+    /// Audio content.
     Audio(Audio),
+    /// Video content.
     Video(Video),
+    /// Document content.
     Document(Document),
 }
 
@@ -65,9 +69,13 @@ pub enum UserContent {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum AssistantContent {
+    /// Plain assistant text.
     Text(Text),
+    /// Tool call requested by the assistant.
     ToolCall(ToolCall),
+    /// Structured reasoning emitted by the assistant.
     Reasoning(Reasoning),
+    /// Image content emitted by the assistant.
     Image(Image),
 }
 
@@ -212,9 +220,12 @@ impl Reasoning {
 /// Tool result content containing information about a tool call and it's resulting content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolResult {
+    /// Tool call ID that this result answers.
     pub id: String,
+    /// Provider-specific call ID, when distinct from `id`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
+    /// One or more content items produced by the tool.
     pub content: OneOrMany<ToolResultContent>,
 }
 
@@ -229,8 +240,11 @@ pub enum ToolResultContent {
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolCall {
+    /// Provider-supplied tool call ID.
     pub id: String,
+    /// Provider-specific call ID used by some APIs for tool result correlation.
     pub call_id: Option<String>,
+    /// Function name and JSON arguments requested by the model.
     pub function: ToolFunction,
     /// Optional cryptographic signature for the tool call.
     ///
@@ -276,11 +290,14 @@ impl ToolCall {
 /// Describes a tool function to call with a name and arguments, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolFunction {
+    /// Tool/function name to invoke.
     pub name: String,
+    /// JSON arguments for the tool/function.
     pub arguments: serde_json::Value,
 }
 
 impl ToolFunction {
+    /// Create a tool function call payload.
     pub fn new(name: String, arguments: serde_json::Value) -> Self {
         Self { name, arguments }
     }
@@ -293,10 +310,12 @@ impl ToolFunction {
 /// Basic text content.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Text {
+    /// Text content.
     pub text: String,
 }
 
 impl Text {
+    /// Returns the inner text string.
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -312,11 +331,15 @@ impl std::fmt::Display for Text {
 /// Image content containing image data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Image {
+    /// Image source data.
     pub data: DocumentSourceKind,
+    /// Image media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<ImageMediaType>,
+    /// Provider-specific image detail preference.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
+    /// Provider-specific image fields.
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -364,26 +387,32 @@ pub enum DocumentSourceKind {
 }
 
 impl DocumentSourceKind {
+    /// Create a URL-backed source.
     pub fn url(url: &str) -> Self {
         Self::Url(url.to_string())
     }
 
+    /// Create a base64-backed source.
     pub fn base64(base64_string: &str) -> Self {
         Self::Base64(base64_string.to_string())
     }
 
+    /// Create a raw byte source.
     pub fn raw(bytes: impl Into<Vec<u8>>) -> Self {
         Self::Raw(bytes.into())
     }
 
+    /// Create a string-backed source.
     pub fn string(input: &str) -> Self {
         Self::String(input.into())
     }
 
+    /// Create an unknown source placeholder.
     pub fn unknown() -> Self {
         Self::Unknown
     }
 
+    /// Return the contained URL or base64 string, if this source stores one.
     pub fn try_into_inner(self) -> Option<String> {
         match self {
             Self::Url(s) | Self::Base64(s) => Some(s),
@@ -407,9 +436,12 @@ impl std::fmt::Display for DocumentSourceKind {
 /// Audio content containing audio data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Audio {
+    /// Audio source data.
     pub data: DocumentSourceKind,
+    /// Audio media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<AudioMediaType>,
+    /// Provider-specific audio fields.
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -417,9 +449,12 @@ pub struct Audio {
 /// Video content containing video data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Video {
+    /// Video source data.
     pub data: DocumentSourceKind,
+    /// Video media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
+    /// Provider-specific video fields.
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -427,9 +462,12 @@ pub struct Video {
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Document {
+    /// Document source data.
     pub data: DocumentSourceKind,
+    /// Document media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
+    /// Provider-specific document fields.
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }

@@ -227,7 +227,7 @@ impl ModelList {
         self.data.is_empty()
     }
 
-    /// Returns the number of models in this page.
+    /// Returns the number of models in this list.
     ///
     /// # Example
     ///

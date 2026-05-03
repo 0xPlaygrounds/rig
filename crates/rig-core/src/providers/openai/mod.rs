@@ -1,12 +1,15 @@
 //! OpenAI API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::openai;
+//! ```no_run
+//! use rig::{client::CompletionClient, providers::openai};
 //!
-//! let client = openai::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = openai::Client::new("YOUR_API_KEY")?;
 //!
-//! let gpt4o = client.completion_model(openai::GPT_4O);
+//! let model = client.completion_model(openai::GPT_5_2);
+//! # Ok(())
+//! # }
 //! ```
 pub mod client;
 pub mod completion;

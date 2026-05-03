@@ -28,8 +28,10 @@ impl EmbedError {
 /// ```rust
 /// use std::env;
 ///
-/// use serde::{Deserialize, Serialize};
-/// use rig::{Embed, embeddings::{TextEmbedder, EmbedError}};
+/// use rig::{
+///     Embed,
+///     embeddings::{self, EmbedError, TextEmbedder},
+/// };
 ///
 /// struct WordDefinition {
 ///     id: String,
@@ -61,6 +63,7 @@ impl EmbedError {
 /// assert_eq!(embeddings::to_texts(fake_definition).unwrap(), vec!["a fruit", " a tech company"]);
 /// ```
 pub trait Embed {
+    /// Append all text fragments that should be embedded for this value.
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError>;
 }
 
