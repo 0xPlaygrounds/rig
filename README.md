@@ -7,7 +7,7 @@
 <br>
 <br>
 <a href="https://docs.rig.rs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
-<a href="https://docs.rs/rig-core/latest/rig_core/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
+<a href="https://docs.rs/rig/latest/rig/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg?color=dca282" /></a>
 &nbsp;
 <a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/d/rig-core.svg?color=dca282" /></a>
@@ -54,7 +54,7 @@
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powered** applications.
 
-More information about this crate can be found in the [official](https://docs.rig.rs) and [crate](https://docs.rs/rig-core/latest/rig_core/) API reference documentation.
+More information about this crate can be found in the [official](https://docs.rig.rs) and [crate](https://docs.rs/rig/latest/rig/) API reference documentation.
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
