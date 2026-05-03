@@ -246,6 +246,14 @@ pub enum UserContent {
     Audio {
         input_audio: InputAudio,
     },
+    /// File content part for documents such as PDFs.
+    ///
+    /// Maps to OpenAI's `{"type":"file","file":{...}}` content type. Either
+    /// `file_data` (a base64 data URI like `data:application/pdf;base64,...`)
+    /// or `file_id` (a previously uploaded file reference) must be set.
+    File {
+        file: FileData,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -259,6 +267,25 @@ pub struct ImageUrl {
 pub struct InputAudio {
     pub data: String,
     pub format: AudioMediaType,
+}
+
+/// File payload for [`UserContent::File`].
+///
+/// At least one of `file_data` or `file_id` must be set for the content part
+/// to be accepted by OpenAI's chat completions API. `filename` is optional
+/// but recommended.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct FileData {
+    /// Inline file data as a base64 data URI, e.g.
+    /// `data:application/pdf;base64,JVBERi0xLjQK...`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_data: Option<String>,
+    /// Identifier of a previously uploaded file (OpenAI Files API).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
+    /// Display name of the file. Recommended for inline `file_data`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -493,6 +520,31 @@ impl TryFrom<message::UserContent> for UserContent {
                 doc => Err(message::MessageError::ConversionError(format!(
                     "Unsupported document type: {doc:?}"
                 ))),
+            },
+            message::UserContent::Document(message::Document {
+                data,
+                media_type: Some(message::DocumentMediaType::PDF),
+                ..
+            }) => match data {
+                DocumentSourceKind::Base64(b64) => Ok(UserContent::File {
+                    file: FileData {
+                        file_data: Some(format!("data:application/pdf;base64,{b64}")),
+                        file_id: None,
+                        filename: Some("document.pdf".to_string()),
+                    },
+                }),
+                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
+                    "OpenAI chat completions does not accept URL files; use the Responses API or pass base64-encoded bytes".into(),
+                )),
+                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
+                    "Raw files not supported, encode as base64 first".into(),
+                )),
+                DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
+                    "PDF documents must be base64-encoded, not raw strings".into(),
+                )),
+                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
+                    "Document has no body".into(),
+                )),
             },
             message::UserContent::Document(message::Document { data, .. }) => {
                 if let DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text) = data {
@@ -743,6 +795,29 @@ impl From<UserContent> for message::UserContent {
             UserContent::Audio { input_audio } => {
                 message::UserContent::audio(input_audio.data, Some(input_audio.format))
             }
+            UserContent::File {
+                file: FileData {
+                    file_data, file_id, ..
+                },
+            } => match file_data {
+                Some(data_url) => {
+                    let kind = match data_url.strip_prefix("data:application/pdf;base64,") {
+                        Some(b64) => DocumentSourceKind::Base64(b64.to_string()),
+                        None => DocumentSourceKind::String(data_url),
+                    };
+                    message::UserContent::Document(message::Document {
+                        data: kind,
+                        media_type: Some(message::DocumentMediaType::PDF),
+                        additional_params: None,
+                    })
+                }
+                // `DocumentSourceKind` cannot model a remote file handle today,
+                // so a `file_id`-only payload is preserved as a text breadcrumb.
+                None => match file_id {
+                    Some(id) => message::UserContent::text(format!("[file_id: {id}]")),
+                    None => message::UserContent::text(String::new()),
+                },
+            },
         }
     }
 }
@@ -1970,5 +2045,142 @@ mod tests {
             reasoning.first_text(),
             Some("Now I understand the structure better. I need to: ...")
         );
+    }
+
+    #[test]
+    fn pdf_base64_document_serializes_as_file_content_part() {
+        let doc = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::Base64("JVBERi0xLjQK".into()),
+            media_type: Some(message::DocumentMediaType::PDF),
+            additional_params: None,
+        });
+        let converted: UserContent = doc.try_into().expect("conversion should succeed");
+        let json = serde_json::to_value(&converted).expect("serialize");
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(
+            json["file"]["file_data"],
+            "data:application/pdf;base64,JVBERi0xLjQK"
+        );
+        assert_eq!(json["file"]["filename"], "document.pdf");
+        assert!(json["file"].get("file_id").is_none());
+    }
+
+    // Regression guard: callers passing markdown/plain text wrapped in
+    // `UserContent::Document` should keep getting flattened to `text`.
+    #[test]
+    fn non_pdf_document_still_serializes_as_text() {
+        let doc = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::String("# Markdown".into()),
+            media_type: None,
+            additional_params: None,
+        });
+        let converted: UserContent = doc.try_into().expect("conversion should succeed");
+        let json = serde_json::to_value(&converted).expect("serialize");
+
+        assert_eq!(json["type"], "text");
+        assert_eq!(json["text"], "# Markdown");
+    }
+
+    #[test]
+    fn pdf_url_document_returns_conversion_error() {
+        let doc = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::Url("https://example.com/x.pdf".into()),
+            media_type: Some(message::DocumentMediaType::PDF),
+            additional_params: None,
+        });
+        let res: Result<UserContent, _> = doc.try_into();
+        assert!(matches!(
+            res,
+            Err(message::MessageError::ConversionError(_))
+        ));
+    }
+
+    #[test]
+    fn pdf_raw_document_returns_conversion_error() {
+        let doc = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::Raw(b"%PDF-1.4\n".to_vec()),
+            media_type: Some(message::DocumentMediaType::PDF),
+            additional_params: None,
+        });
+        let res: Result<UserContent, _> = doc.try_into();
+        assert!(matches!(
+            res,
+            Err(message::MessageError::ConversionError(_))
+        ));
+    }
+
+    #[test]
+    fn file_user_content_deserializes_from_wire_json() {
+        let raw = r#"{"type":"file","file":{"file_data":"data:application/pdf;base64,AAAA","filename":"x.pdf"}}"#;
+        let parsed: UserContent = serde_json::from_str(raw).expect("deserialize");
+        let UserContent::File { file } = parsed else {
+            panic!("expected File variant");
+        };
+        assert_eq!(
+            file.file_data.as_deref(),
+            Some("data:application/pdf;base64,AAAA")
+        );
+        assert_eq!(file.filename.as_deref(), Some("x.pdf"));
+        assert!(file.file_id.is_none());
+    }
+
+    #[test]
+    fn file_variant_round_trips_back_to_pdf_document() {
+        let wire = UserContent::File {
+            file: FileData {
+                file_data: Some("data:application/pdf;base64,QUJD".to_string()),
+                file_id: None,
+                filename: Some("document.pdf".to_string()),
+            },
+        };
+        let rig: message::UserContent = wire.into();
+        let message::UserContent::Document(doc) = rig else {
+            panic!("expected Document");
+        };
+        assert_eq!(doc.media_type, Some(message::DocumentMediaType::PDF));
+        assert!(matches!(doc.data, DocumentSourceKind::Base64(ref b) if b == "QUJD"));
+    }
+
+    #[test]
+    fn file_variant_with_file_id_only_falls_back_to_text() {
+        let wire = UserContent::File {
+            file: FileData {
+                file_data: None,
+                file_id: Some("file_abc".to_string()),
+                filename: None,
+            },
+        };
+        let rig: message::UserContent = wire.into();
+        let message::UserContent::Text(text) = rig else {
+            panic!("expected Text");
+        };
+        assert_eq!(text.text, "[file_id: file_abc]");
+    }
+
+    // Guards against `OneOrMany::many` flattening at the User content site:
+    // a mixed text + PDF message must produce one User message with both parts.
+    #[test]
+    fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
+        let user = message::Message::User {
+            content: OneOrMany::many(vec![
+                message::UserContent::text("What is in this PDF?"),
+                message::UserContent::Document(message::Document {
+                    data: DocumentSourceKind::Base64("JVBERi0K".into()),
+                    media_type: Some(message::DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+            ])
+            .expect("non-empty content"),
+        };
+        let converted: Vec<Message> = user.try_into().expect("conversion should succeed");
+        assert_eq!(converted.len(), 1);
+        let Message::User { content, .. } = &converted[0] else {
+            panic!("expected user message");
+        };
+        let parts: Vec<&UserContent> = content.iter().collect();
+        assert_eq!(parts.len(), 2);
+        assert!(matches!(parts[0], UserContent::Text { .. }));
+        assert!(matches!(parts[1], UserContent::File { .. }));
     }
 }
