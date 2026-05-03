@@ -145,6 +145,7 @@ pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
 pub mod markers;
+pub mod memory;
 pub mod model;
 pub mod one_or_many;
 pub mod pipeline;

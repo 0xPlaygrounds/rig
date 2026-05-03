@@ -1,0 +1,24 @@
+[package]
+name = "rig-memory"
+version = "0.1.0"
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "Conversation memory policies (sliding window, token budget, ...) for the Rig agent framework."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.36.0", default-features = false }
+tracing = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+[[example]]
+name = "agent_with_memory_policies"
+required-features = ["rig-core/reqwest", "rig-core/rustls"]

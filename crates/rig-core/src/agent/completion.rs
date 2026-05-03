@@ -198,6 +198,10 @@ where
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub output_schema: Option<schemars::Schema>,
+    /// Optional conversation memory backend that loads/saves history per conversation id.
+    pub memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
+    /// Optional default conversation id used when none is set per-request.
+    pub default_conversation_id: Option<String>,
 }
 
 impl<M, P> Agent<M, P>
