@@ -5,8 +5,8 @@
 //!
 //! # OpenAI-compatible example
 //! ```no_run
-//! use rig::client::CompletionClient;
-//! use rig::providers::xiaomimimo;
+//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::xiaomimimo;
 //!
 //! let client = xiaomimimo::Client::new("YOUR_API_KEY").expect("Failed to build client");
 //! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
@@ -14,8 +14,8 @@
 //!
 //! # Anthropic-compatible example
 //! ```no_run
-//! use rig::client::CompletionClient;
-//! use rig::providers::xiaomimimo;
+//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::xiaomimimo;
 //!
 //! let client = xiaomimimo::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
 //! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);

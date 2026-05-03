@@ -1,13 +1,19 @@
 //! Create a new completion model with the given name
 //!
 //! # Example
-//! ```
-//! use rig::providers::huggingface::{client::self, completion::self}
+//! ```no_run
+//! use rig_core::{
+//!     client::CompletionClient,
+//!     providers::huggingface::{client, completion},
+//! };
 //!
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the Huggingface client
-//! let client = client::Client::new("your-huggingface-api-key");
+//! let client = client::Client::new("your-huggingface-api-key")?;
 //!
 //! let completion_model = client.completion_model(completion::GEMMA_2);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod client;

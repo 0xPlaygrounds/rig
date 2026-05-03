@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use rig::{
+//! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::Prompt,
 //!     providers::openai,

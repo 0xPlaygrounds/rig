@@ -9,8 +9,8 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::client::{CompletionClient, ProviderClient};
-//! use rig::providers::copilot;
+//! use rig_core::client::{CompletionClient, ProviderClient};
+//! use rig_core::providers::copilot;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = copilot::Client::from_env()?;

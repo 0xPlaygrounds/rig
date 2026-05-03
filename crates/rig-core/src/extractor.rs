@@ -4,11 +4,12 @@
 //! and `schemars::JsonSchema` traits. Those can be easily derived using the `derive` macro.
 //!
 //! # Example
-//! ```
-//! use rig::providers::openai;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::openai};
 //!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client
-//! let openai = openai::Client::new("your-open-ai-api-key");
+//! let openai = openai::Client::new("your-open-ai-api-key")?;
 //!
 //! // Define the structure of the data you want to extract
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -23,9 +24,9 @@
 //!     .build();
 //!
 //! // Extract structured data from text
-//! let person = extractor.extract("John Doe is a 30 year old doctor.")
-//!     .await
-//!     .expect("Failed to extract data from text");
+//! let person = extractor.extract("John Doe is a 30 year old doctor.").await?;
+//! # Ok(())
+//! # }
 //! ```
 
 use std::marker::PhantomData;

@@ -33,7 +33,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::{
+//! use rig_core::{
 //!     agent::AgentBuilder,
 //!     client::{CompletionClient, ProviderClient},
 //!     providers::openai,

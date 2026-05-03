@@ -6,8 +6,8 @@
 //!
 //! # OpenAI-compatible example
 //! ```no_run
-//! use rig::client::CompletionClient;
-//! use rig::providers::zai;
+//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::zai;
 //!
 //! let client = zai::Client::new("YOUR_API_KEY").expect("Failed to build client");
 //! let glm_4_6 = client.completion_model(zai::GLM_4_6);
@@ -15,8 +15,8 @@
 //!
 //! # Anthropic-compatible example
 //! ```no_run
-//! use rig::client::CompletionClient;
-//! use rig::providers::zai;
+//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::zai;
 //!
 //! let client = zai::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
 //! let glm_4_6 = client.completion_model(zai::GLM_4_6);

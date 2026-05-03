@@ -11,8 +11,8 @@ pub trait EmbeddingsClient {
     ///
     /// # Example
     /// ```no_run
-    /// use rig::prelude::*;
-    /// use rig::providers::openai::{Client, self};
+    /// use rig_core::prelude::*;
+    /// use rig_core::providers::openai::{Client, self};
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client
@@ -30,8 +30,8 @@ pub trait EmbeddingsClient {
     ///
     /// # Example with OpenAI
     /// ```no_run
-    /// use rig::prelude::*;
-    /// use rig::providers::openai::{Client, self};
+    /// use rig_core::prelude::*;
+    /// use rig_core::providers::openai::{Client, self};
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client
@@ -51,8 +51,8 @@ pub trait EmbeddingsClient {
     ///
     /// # Example with OpenAI
     /// ```no_run
-    /// use rig::prelude::*;
-    /// use rig::providers::openai::{Client, self};
+    /// use rig_core::prelude::*;
+    /// use rig_core::providers::openai::{Client, self};
     ///
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client
@@ -76,8 +76,8 @@ pub trait EmbeddingsClient {
     ///
     /// # Example with OpenAI
     /// ```no_run
-    /// use rig::prelude::*;
-    /// use rig::providers::openai::{Client, self};
+    /// use rig_core::prelude::*;
+    /// use rig_core::providers::openai::{Client, self};
     ///
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// // Initialize the OpenAI client

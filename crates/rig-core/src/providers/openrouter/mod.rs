@@ -1,12 +1,15 @@
 //! OpenRouter Inference API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::openrouter;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::openrouter};
 //!
-//! let client = openrouter::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = openrouter::Client::new("YOUR_API_KEY")?;
 //!
-//! let llama_3_1_8b = client.completion_model(openrouter::LLAMA_3_1_8B);
+//! let sonar = client.completion_model(openrouter::PERPLEXITY_SONAR_PRO);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod client;

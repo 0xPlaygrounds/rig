@@ -28,7 +28,7 @@ impl EmbedError {
 /// ```rust
 /// use std::env;
 ///
-/// use rig::{
+/// use rig_core::{
 ///     Embed,
 ///     embeddings::{self, EmbedError, TextEmbedder},
 /// };

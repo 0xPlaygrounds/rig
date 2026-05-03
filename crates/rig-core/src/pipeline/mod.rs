@@ -21,7 +21,7 @@
 //! the result as a string using the [map](Op::map) combinator method, which applies a simple function
 //! op to the output of the previous op:
 //! ```no_run
-//! use rig::pipeline::{self, Op};
+//! use rig_core::pipeline::{self, Op};
 //!
 //! # async fn run() {
 //! let pipeline = pipeline::new()
@@ -49,7 +49,7 @@
 //!
 //! For example, the pipeline below runs two operations concurrently:
 //! ```no_run
-//! use rig::{pipeline::{self, Op, map}, parallel};
+//! use rig_core::{pipeline::{self, Op, map}, parallel};
 //!
 //! # async fn run() {
 //! let pipeline = pipeline::new()
@@ -115,7 +115,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// # Example
     /// ```no_run
-    /// use rig::pipeline::{self, Op};
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// # async fn run() {
     /// let pipeline = pipeline::new()
@@ -140,7 +140,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// # Example
     /// ```no_run
-    /// use rig::pipeline::{self, Op};
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// # async fn run() {
     /// let pipeline = pipeline::new()
@@ -170,7 +170,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// # Example
     /// ```no_run
-    /// use rig::pipeline::{self, Op};
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// # async fn run() {
     /// struct MyOp;
@@ -205,7 +205,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// # Example
     /// ```ignore
-    /// use rig::pipeline::{self, Op};
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// let pipeline = pipeline::new()
     ///     .lookup(index, 2)
@@ -233,7 +233,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// # Example
     /// ```ignore
-    /// use rig::pipeline::{self, Op};
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// let agent = &openai_client.agent("gpt-4").build();
     ///
@@ -259,7 +259,7 @@ impl<E> PipelineBuilder<E> {
     ///
     /// # Example
     /// ```ignore
-    /// use rig::pipeline::{self, Op};
+    /// use rig_core::pipeline::{self, Op};
     ///
     /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
     /// struct Sentiment {

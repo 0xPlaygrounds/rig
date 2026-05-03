@@ -1,12 +1,15 @@
 //! Cohere API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::cohere;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::cohere};
 //!
-//! let client = cohere::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = cohere::Client::new("YOUR_API_KEY")?;
 //!
 //! let command_r = client.completion_model(cohere::COMMAND_R);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod client;

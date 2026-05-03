@@ -58,7 +58,7 @@ impl fmt::Display for ToolError {
 ///
 /// # Example
 /// ```
-/// use rig::{
+/// use rig_core::{
 ///     completion::ToolDefinition,
 ///     tool::{ToolSet, Tool},
 /// };

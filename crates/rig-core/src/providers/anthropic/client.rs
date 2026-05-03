@@ -127,14 +127,19 @@ impl ProviderClient for Client {
 /// Create a new anthropic client using the builder
 ///
 /// # Example
-/// ```
-/// use rig::providers::anthropic::{ClientBuilder, self};
+/// ```no_run
+/// use rig_core::providers::anthropic::{Client, self};
+/// use rig_core::providers::anthropic::completion::ANTHROPIC_VERSION_LATEST;
 ///
+/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// // Initialize the Anthropic client
-/// let anthropic_client = ClientBuilder::new("your-claude-api-key")
+/// let anthropic_client = Client::builder()
+///    .api_key("your-claude-api-key")
 ///    .anthropic_version(ANTHROPIC_VERSION_LATEST)
 ///    .anthropic_beta("prompt-caching-2024-07-31")
-///    .build()
+///    .build()?;
+/// # Ok(())
+/// # }
 /// ```
 impl<H> ClientBuilder<H> {
     pub fn anthropic_version(self, anthropic_version: &str) -> Self {

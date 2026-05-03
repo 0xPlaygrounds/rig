@@ -56,7 +56,7 @@ pub struct WithBuilderTools {
 ///
 /// # Example
 /// ```no_run
-/// use rig::{agent::AgentBuilder, client::{CompletionClient, ProviderClient}, providers::openai};
+/// use rig_core::{agent::AgentBuilder, client::{CompletionClient, ProviderClient}, providers::openai};
 ///
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// let openai = openai::Client::from_env()?;

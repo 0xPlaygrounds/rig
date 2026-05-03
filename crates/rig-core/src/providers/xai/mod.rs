@@ -1,12 +1,15 @@
 //! xAI API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::xai;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::xai};
 //!
-//! let client = xai::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = xai::Client::new("YOUR_API_KEY")?;
 //!
 //! let grok = client.completion_model(xai::GROK_3);
+//! # Ok(())
+//! # }
 //! ```
 
 mod api;

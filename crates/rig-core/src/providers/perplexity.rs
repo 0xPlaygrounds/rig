@@ -1,12 +1,15 @@
 //! Perplexity API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::perplexity;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::perplexity};
 //!
-//! let client = perplexity::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = perplexity::Client::new("YOUR_API_KEY")?;
 //!
-//! let llama_3_1_sonar_small_online = client.completion_model(perplexity::LLAMA_3_1_SONAR_SMALL_ONLINE);
+//! let sonar = client.completion_model(perplexity::SONAR);
+//! # Ok(())
+//! # }
 //! ```
 use crate::client::BearerAuth;
 use crate::completion::CompletionRequest;

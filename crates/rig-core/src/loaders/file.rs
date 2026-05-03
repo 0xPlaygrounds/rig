@@ -88,8 +88,8 @@ impl<T: Readable> Readable for Result<T, FileLoaderError> {
 ///
 /// # Example Usage
 ///
-/// ```rust
-/// use rig:loaders::FileLoader;
+/// ```no_run
+/// use rig_core::loaders::FileLoader;
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     // Create a FileLoader using a glob pattern
@@ -99,6 +99,8 @@ impl<T: Readable> Readable for Result<T, FileLoaderError> {
 ///     let contents: Vec<String> = loader
 ///         .read()
 ///         .ignore_errors()
+///         .into_iter()
+///         .collect();
 ///
 ///     for content in contents {
 ///         println!("{}", content);
@@ -121,14 +123,18 @@ impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
     /// # Example
     /// Read files in directory "files/*.txt" and print the content for each file
     ///
-    /// ```rust
-    /// let content = FileLoader::with_glob(...)?.read();
+    /// ```no_run
+    /// # use rig_core::loaders::FileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let content = FileLoader::with_glob("files/*.txt")?.read();
     /// for result in content {
     ///     match result {
     ///         Ok(content) => println!("{}", content),
     ///         Err(e) => eprintln!("Error reading file: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
         FileLoader {
@@ -142,14 +148,18 @@ impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
     /// Read files in directory "files/*.txt" and print the content for corresponding path for each
     ///  file.
     ///
-    /// ```rust
-    /// let content = FileLoader::with_glob("files/*.txt")?.read();
-    /// for (path, result) in content {
+    /// ```no_run
+    /// # use rig_core::loaders::FileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let content = FileLoader::with_glob("files/*.txt")?.read_with_path();
+    /// for result in content {
     ///     match result {
     ///         Ok((path, content)) => println!("{:?} {}", path, content),
     ///         Err(e) => eprintln!("Error reading file: {}", e),
     ///     }
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
         FileLoader {
@@ -168,11 +178,15 @@ where
     /// # Example
     /// Read files in directory "files/*.txt" and ignore errors from unreadable files.
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::FileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read().ignore_errors();
-    /// for result in content {
+    /// for content in content {
     ///     println!("{}", content)
     /// }
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn ignore_errors(self) -> FileLoader<'a, T> {
         FileLoader {
@@ -187,8 +201,12 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// # Example
     /// Create a [FileLoader] for all `.txt` files that match the glob "files/*.txt".
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::FileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let loader = FileLoader::with_glob("files/*.txt")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_glob(
         pattern: &str,
@@ -208,8 +226,12 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// # Example
     /// Create a [FileLoader] for all files that are in the directory "files" (ignores subdirectories).
     ///
-    /// ```rust
+    /// ```no_run
+    /// # use rig_core::loaders::FileLoader;
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let loader = FileLoader::with_dir("files")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn with_dir(
         directory: &str,

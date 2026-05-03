@@ -18,7 +18,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::{
+//! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{Chat, Completion, Prompt},
 //!     providers::openai,
@@ -37,7 +37,7 @@
 //!
 //! // Use the agent for completions and prompts
 //! // Generate a chat completion response from a prompt and chat history
-//! let chat_response = agent.chat("Prompt", Vec::<rig::completion::Message>::new()).await?;
+//! let chat_response = agent.chat("Prompt", Vec::<rig_core::completion::Message>::new()).await?;
 //!
 //! // Generate a prompt completion response from a simple prompt
 //! let prompt_response = agent.prompt("Prompt").await?;
@@ -46,7 +46,7 @@
 //! // will contain the agent's configuration (i.e.: preamble, context documents, tools,
 //! // model parameters, etc.), but these can be overwritten.
 //! let completion_req_builder = agent
-//!     .completion("Prompt", Vec::<rig::completion::Message>::new())
+//!     .completion("Prompt", Vec::<rig_core::completion::Message>::new())
 //!     .await?;
 //!
 //! let response = completion_req_builder
@@ -59,7 +59,7 @@
 //!
 //! RAG Agent example
 //! ```no_run
-//! use rig::{
+//! use rig_core::{
 //!     client::{CompletionClient, EmbeddingsClient, ProviderClient},
 //!     completion::Prompt,
 //!     embeddings::EmbeddingsBuilder,

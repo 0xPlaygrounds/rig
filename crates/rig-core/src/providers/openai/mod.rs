@@ -2,7 +2,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig::{client::CompletionClient, providers::openai};
+//! use rig_core::{client::CompletionClient, providers::openai};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = openai::Client::new("YOUR_API_KEY")?;

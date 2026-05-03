@@ -1,12 +1,15 @@
 //! Google Gemini API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::gemini;
+//! ```no_run
+//! use rig_core::{client::EmbeddingsClient, providers::gemini};
 //!
-//! let client = gemini::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = gemini::Client::new("YOUR_API_KEY")?;
 //!
 //! let gemini_embedding_model = client.embedding_model(gemini::EMBEDDING_001);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod client;

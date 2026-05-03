@@ -110,41 +110,50 @@ pub struct TranscriptionRequest {
 /// Builder struct for a transcription request
 ///
 /// Example usage:
-/// ```rust
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     prelude::TranscriptionClient,
 ///     providers::openai::{Client, self},
-///     transcription::TranscriptionRequestBuilder,
+///     transcription::{TranscriptionModel, TranscriptionRequestBuilder},
 /// };
 ///
-/// let openai = Client::new("your-openai-api-key");
-/// let model = openai.transcription_model(openai::WHISPER_1).build();
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let openai = Client::new("your-openai-api-key")?;
+/// let model = openai.transcription_model(openai::WHISPER_1);
 ///
-/// // Create the completion request and execute it separately
-/// let request = TranscriptionRequestBuilder::new(model, "~/audio.mp3".to_string())
+/// // Create the transcription request and execute it separately.
+/// let request = TranscriptionRequestBuilder::new(model.clone())
+///     .data(vec![0; 16])
+///     .filename(Some("audio.mp3".to_string()))
 ///     .temperature(0.5)
 ///     .build();
 ///
-/// let response = model.transcription(request)
-///     .await
-///     .expect("Failed to get transcription response");
+/// let response = model.transcription(request).await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Alternatively, you can execute the transcription request directly from the builder:
-/// ```rust
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     prelude::TranscriptionClient,
 ///     providers::openai::{Client, self},
 ///     transcription::TranscriptionRequestBuilder,
 /// };
 ///
-/// let openai = Client::new("your-openai-api-key");
-/// let model = openai.transcription_model(openai::WHISPER_1).build();
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let openai = Client::new("your-openai-api-key")?;
+/// let model = openai.transcription_model(openai::WHISPER_1);
 ///
-/// // Create the completion request and execute it directly
-/// let response = TranscriptionRequestBuilder::new(model, "~/audio.mp3".to_string())
+/// // Create the transcription request and execute it directly.
+/// let response = TranscriptionRequestBuilder::new(model)
+///     .data(vec![0; 16])
+///     .filename(Some("audio.mp3".to_string()))
 ///     .temperature(0.5)
 ///     .send()
-///     .await
-///     .expect("Failed to get transcription response");
+///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.

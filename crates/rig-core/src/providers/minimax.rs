@@ -5,8 +5,8 @@
 //!
 //! # OpenAI-compatible example
 //! ```no_run
-//! use rig::client::CompletionClient;
-//! use rig::providers::minimax;
+//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::minimax;
 //!
 //! let client = minimax::Client::new("YOUR_API_KEY").expect("Failed to build client");
 //! let model = client.completion_model(minimax::MINIMAX_M2_7);
@@ -14,8 +14,8 @@
 //!
 //! # Anthropic-compatible example
 //! ```no_run
-//! use rig::client::CompletionClient;
-//! use rig::providers::minimax;
+//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::minimax;
 //!
 //! let client = minimax::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
 //! let model = client.completion_model(minimax::MINIMAX_M2);

@@ -1,16 +1,19 @@
 //! Azure OpenAI API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::azure;
-//! use rig::client::CompletionClient;
+//! ```no_run
+//! use rig_core::providers::azure;
+//! use rig_core::client::CompletionClient;
 //!
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = azure::Client::builder()
 //!     .api_key("test")
 //!     .azure_endpoint("test".to_string()) // add your endpoint here!
 //!     .build()?;
 //!
 //! let gpt4o = client.completion_model(azure::GPT_4O);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Authentication

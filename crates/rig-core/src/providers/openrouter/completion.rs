@@ -293,7 +293,7 @@ impl MaxPrice {
 /// # Example
 ///
 /// ```rust
-/// use rig::providers::openrouter::{ProviderPreferences, ProviderSortStrategy, Quantization};
+/// use rig_core::providers::openrouter::{ProviderPreferences, ProviderSortStrategy, Quantization};
 ///
 /// // Create preferences for zero data retention providers, sorted by throughput
 /// let prefs = ProviderPreferences::new()
@@ -378,7 +378,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::ProviderPreferences;
+    /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
     ///     .order(["anthropic", "openai"]);
@@ -393,7 +393,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::ProviderPreferences;
+    /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
     ///     .only(["azure", "together"])
@@ -409,7 +409,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::ProviderPreferences;
+    /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
     ///     .ignore(["deepinfra"]);
@@ -451,7 +451,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::ProviderPreferences;
+    /// use rig_core::providers::openrouter::ProviderPreferences;
     ///
     /// let prefs = ProviderPreferences::new()
     ///     .zdr(true);
@@ -471,7 +471,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::{ProviderPreferences, ProviderSortStrategy};
+    /// use rig_core::providers::openrouter::{ProviderPreferences, ProviderSortStrategy};
     ///
     /// let prefs = ProviderPreferences::new()
     ///     .sort(ProviderSortStrategy::Latency);
@@ -488,7 +488,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::{ProviderPreferences, ThroughputThreshold, PercentileThresholds};
+    /// use rig_core::providers::openrouter::{ProviderPreferences, ThroughputThreshold, PercentileThresholds};
     ///
     /// // Simple threshold
     /// let prefs = ProviderPreferences::new()
@@ -528,7 +528,7 @@ impl ProviderPreferences {
     /// # Example
     ///
     /// ```rust
-    /// use rig::providers::openrouter::{ProviderPreferences, Quantization};
+    /// use rig_core::providers::openrouter::{ProviderPreferences, Quantization};
     ///
     /// let prefs = ProviderPreferences::new()
     ///     .quantizations([Quantization::Int8, Quantization::Fp16]);
@@ -748,7 +748,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 /// # Example
 ///
 /// ```rust
-/// use rig::providers::openrouter::UserContent;
+/// use rig_core::providers::openrouter::UserContent;
 ///
 /// // Text content
 /// let text = UserContent::text("Hello, world!");
@@ -760,14 +760,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 /// let pdf = UserContent::file_url("https://example.com/document.pdf", Some("document.pdf".to_string()));
 ///
 /// // Audio from base64
-/// use rig::completion::message::AudioMediaType;
+/// use rig_core::completion::message::AudioMediaType;
 /// let audio = UserContent::audio_base64("base64data", AudioMediaType::WAV);
 ///
 /// // Video from URL
 /// let video = UserContent::video_url("https://example.com/video.mp4");
 ///
 /// // Video from base64
-/// use rig::completion::message::VideoMediaType;
+/// use rig_core::completion::message::VideoMediaType;
 /// let video = UserContent::video_base64("base64data", VideoMediaType::MP4);
 /// ```
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]

@@ -1,12 +1,15 @@
 //! Hyperbolic Inference API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::hyperbolic;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::hyperbolic};
 //!
-//! let client = hyperbolic::Client::new("YOUR_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = hyperbolic::Client::new("YOUR_API_KEY")?;
 //!
 //! let llama_3_1_8b = client.completion_model(hyperbolic::LLAMA_3_1_8B);
+//! # Ok(())
+//! # }
 //! ```
 use super::openai::{AssistantContent, send_compatible_streaming_request};
 

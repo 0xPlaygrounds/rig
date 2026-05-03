@@ -605,8 +605,12 @@ where
                         Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
                             if let Some(ref hook) = self.hook {
                                 let (name, delta) = match &content {
-                                    rig::streaming::ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
-                                    rig::streaming::ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
+                                    rig::streaming::ToolCallDeltaContent::Name(n) => {
+                                        (Some(n.as_str()), "")
+                                    }
+                                    rig::streaming::ToolCallDeltaContent::Delta(d) => {
+                                        (None, d.as_str())
+                                    }
                                 };
 
                                 if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)

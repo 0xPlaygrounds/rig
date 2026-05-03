@@ -148,20 +148,25 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
 /// prompt requests unless overridden via `.with_hook()` on the request.
 ///
 /// # Example
-/// ```
-/// use rig::{client::ProviderClient, completion::Prompt, providers::openai};
+/// ```no_run
+/// use rig_core::{
+///     client::{CompletionClient, ProviderClient},
+///     completion::Prompt,
+///     providers::openai,
+/// };
 ///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// let openai = openai::Client::from_env()?;
 ///
 /// let comedian_agent = openai
-///     .agent("gpt-4o")
+///     .agent(openai::GPT_5_2)
 ///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 ///     .temperature(0.9)
 ///     .build();
 ///
-/// let response = comedian_agent.prompt("Entertain me!")
-///     .await
-///     .expect("Failed to prompt the agent");
+/// let response = comedian_agent.prompt("Entertain me!").await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 #[non_exhaustive]
@@ -382,7 +387,7 @@ where
     ///
     /// # Example
     /// ```rust,ignore
-    /// use rig::prelude::*;
+    /// use rig_core::prelude::*;
     /// use schemars::JsonSchema;
     /// use serde::Deserialize;
     ///

@@ -21,7 +21,7 @@ use crate::{
 ///
 /// # Example
 /// ```no_run
-/// use rig::{
+/// use rig_core::{
 ///     client::{EmbeddingsClient, ProviderClient},
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai,

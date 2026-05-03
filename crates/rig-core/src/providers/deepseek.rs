@@ -1,12 +1,15 @@
 //! DeepSeek API client and Rig integration
 //!
 //! # Example
-//! ```
-//! use rig::providers::deepseek;
+//! ```no_run
+//! use rig_core::{client::CompletionClient, providers::deepseek};
 //!
-//! let client = deepseek::Client::new("DEEPSEEK_API_KEY");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = deepseek::Client::new("DEEPSEEK_API_KEY")?;
 //!
 //! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
+//! # Ok(())
+//! # }
 //! ```
 
 use bytes::Bytes;

@@ -8,7 +8,7 @@
 //! # Low-level request example
 //!
 //! ```no_run
-//! use rig::{
+//! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
@@ -20,7 +20,7 @@
 //!
 //! let request = model
 //!     .completion_request("Who are you?")
-//!     .preamble("You are a concise assistant.")
+//!     .preamble("You are a concise assistant.".to_string())
 //!     .temperature(0.5)
 //!     .build();
 //!
@@ -265,7 +265,7 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
 ///
 /// # Example
 /// ```rust,ignore
-/// use rig::prelude::*;
+/// use rig_core::prelude::*;
 /// use schemars::JsonSchema;
 /// use serde::Deserialize;
 ///
@@ -604,43 +604,48 @@ fn merge_provider_tools_into_additional_params(
 /// Builder struct for constructing a completion request.
 ///
 /// Example usage:
-/// ```rust
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     client::CompletionClient,
 ///     providers::openai::{Client, self},
-///     completion::CompletionRequestBuilder,
+///     completion::{CompletionModel, CompletionRequestBuilder},
 /// };
 ///
-/// let openai = Client::new("your-openai-api-key");
-/// let model = openai.completion_model(openai::GPT_4O).build();
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let openai = Client::new("your-openai-api-key")?;
+/// let model = openai.completion_model(openai::GPT_5_2);
 ///
 /// // Create the completion request and execute it separately
-/// let request = CompletionRequestBuilder::new(model, "Who are you?".to_string())
+/// let request = CompletionRequestBuilder::new(model.clone(), "Who are you?".to_string())
 ///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
 ///     .temperature(0.5)
 ///     .build();
 ///
-/// let response = model.completion(request)
-///     .await
-///     .expect("Failed to get completion response");
+/// let response = model.completion(request).await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Alternatively, you can execute the completion request directly from the builder:
-/// ```rust
-/// use rig::{
+/// ```no_run
+/// use rig_core::{
+///     client::CompletionClient,
 ///     providers::openai::{Client, self},
 ///     completion::CompletionRequestBuilder,
 /// };
 ///
-/// let openai = Client::new("your-openai-api-key");
-/// let model = openai.completion_model(openai::GPT_4O).build();
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let openai = Client::new("your-openai-api-key")?;
+/// let model = openai.completion_model(openai::GPT_5_2);
 ///
 /// // Create the completion request and execute it directly
 /// let response = CompletionRequestBuilder::new(model, "Who are you?".to_string())
 ///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
 ///     .temperature(0.5)
 ///     .send()
-///     .await
-///     .expect("Failed to get completion response");
+///     .await?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.

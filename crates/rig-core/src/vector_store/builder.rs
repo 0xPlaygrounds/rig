@@ -45,7 +45,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// use rig::vector_store::{InMemoryVectorStoreBuilder, IndexStrategy};
+    /// use rig_core::vector_store::{builder::InMemoryVectorStoreBuilder, IndexStrategy};
     ///
     /// let store = InMemoryVectorStoreBuilder::<String>::new()
     ///     .index_strategy(IndexStrategy::LSH {
