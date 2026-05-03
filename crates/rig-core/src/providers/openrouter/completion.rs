@@ -325,6 +325,9 @@ pub struct ProviderPreferences {
 
     // === Compatibility and Policy Filters ===
     /// If `true`, only route to providers that support all parameters in your request.
+    ///
+    /// This is recommended for structured outputs so OpenRouter only selects
+    /// providers that support the generated `response_format` parameter.
     /// Default is `false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub require_parameters: Option<bool>,
@@ -1590,10 +1593,6 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         } = params;
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for OpenRouter");
-        }
-
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
@@ -1631,13 +1630,40 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             })
             .collect();
 
+        let additional_params = if let Some(schema) = req.output_schema {
+            let name = schema
+                .as_object()
+                .and_then(|o| o.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response_schema")
+                .to_string();
+            let mut schema_value = schema.to_value();
+            openai::sanitize_schema(&mut schema_value);
+            let response_format = serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": name,
+                        "strict": true,
+                        "schema": schema_value
+                    }
+                }
+            });
+            Some(match req.additional_params {
+                Some(existing) => json_utils::merge(existing, response_format),
+                None => response_format,
+            })
+        } else {
+            req.additional_params
+        };
+
         Ok(Self {
             model,
             messages: full_history,
             temperature: req.temperature,
             tools,
             tool_choice,
-            additional_params: req.additional_params,
+            additional_params,
         })
     }
 }
@@ -1848,6 +1874,104 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "openai/gpt-4o-mini");
+    }
+
+    #[test]
+    fn test_openrouter_request_maps_output_schema_to_response_format() {
+        let schema: schemars::Schema = serde_json::from_value(json!({
+            "title": "WeatherResponse",
+            "type": "object",
+            "properties": {
+                "city": { "type": "string" },
+                "weather": { "type": "string" }
+            }
+        }))
+        .expect("schema should deserialize");
+
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: Some(schema),
+        };
+
+        let openrouter_request =
+            OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
+                .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(
+            serialized["response_format"],
+            json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "WeatherResponse",
+                    "strict": true,
+                    "schema": {
+                        "title": "WeatherResponse",
+                        "type": "object",
+                        "properties": {
+                            "city": { "type": "string" },
+                            "weather": { "type": "string" }
+                        },
+                        "additionalProperties": false,
+                        "required": ["city", "weather"]
+                    }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn test_openrouter_request_merges_output_schema_with_provider_preferences() {
+        let schema: schemars::Schema = serde_json::from_value(json!({
+            "type": "object",
+            "properties": {
+                "answer": { "type": "string" }
+            }
+        }))
+        .expect("schema should deserialize");
+
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(
+                ProviderPreferences::new()
+                    .require_parameters(true)
+                    .to_json(),
+            ),
+            output_schema: Some(schema),
+        };
+
+        let openrouter_request =
+            OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
+                .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["provider"]["require_parameters"], true);
+        assert_eq!(serialized["response_format"]["type"], "json_schema");
+        assert_eq!(
+            serialized["response_format"]["json_schema"]["name"],
+            "response_schema"
+        );
+        assert_eq!(
+            serialized["response_format"]["json_schema"]["schema"]["additionalProperties"],
+            false
+        );
     }
 
     #[test]
