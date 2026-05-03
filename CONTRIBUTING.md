@@ -94,8 +94,6 @@ cargo clippy --all-features --all-targets
 cargo fmt -- --check
 ```
 
-If you have the `just` task runner installed, you can also run `just` (or `just ci`).
-
 ### Tests
 
 Make sure to test against the test suite before making a pull request.
