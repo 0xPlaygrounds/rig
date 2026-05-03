@@ -1,3 +1,12 @@
+//! SurrealDB vector store integration for Rig.
+//!
+//! This crate provides [`SurrealVectorStore`], a Rig vector store backed by
+//! SurrealDB. It supports local in-memory and remote WebSocket connections
+//! through the re-exported SurrealDB engine types.
+//!
+//! The root `rig` facade re-exports this crate as `rig::surrealdb` when the
+//! `surrealdb` feature is enabled.
+
 use std::fmt::Display;
 
 use rig_core::{

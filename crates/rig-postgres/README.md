@@ -23,8 +23,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-core = "0.4.0"
-rig-postgres = "0.1.0"
+rig-core = "0.36.0"
+rig-postgres = "0.2.5"
 ```
 
 You can also run `cargo add rig-core rig-postgres` to add the most recent versions of the dependencies to your project.

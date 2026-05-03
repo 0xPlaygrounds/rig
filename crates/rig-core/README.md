@@ -1,7 +1,7 @@
 # Rig
 Rig is a Rust library for building LLM-powered applications that focuses on ergonomics and modularity.
 
-More information about this crate can be found in the [crate documentation](https://docs.rs/rig-core/latest/rig/).
+More information about this crate can be found in the [crate documentation](https://docs.rs/rig/latest/rig/).
 ## Table of contents
 
 - [Rig](#rig)
@@ -29,23 +29,24 @@ cargo add rig-core
 
 ## Simple example
 ```rust
-use rig::{completion::Prompt, providers::openai};
+use rig::{client::{CompletionClient, ProviderClient}, completion::Prompt, providers::openai};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create OpenAI client and model
     // This requires the `OPENAI_API_KEY` environment variable to be set.
-    let openai_client = openai::Client::from_env();
+    let openai_client = openai::Client::from_env()?;
 
-    let gpt4 = openai_client.model("gpt-4").build();
+    let agent = openai_client.agent(openai::GPT_5_2).build();
 
     // Prompt the model and print its response
-    let response = gpt4
+    let response = agent
         .prompt("Who are you?")
-        .await
-        .expect("Failed to prompt GPT-4");
+        .await?;
 
-    println!("GPT-4: {response}");
+    println!("{response}");
+
+    Ok(())
 }
 ```
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
@@ -91,11 +92,15 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 - Milvus: [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus)
 - ScyllaDB: [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb)
 - AWS S3Vectors: [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors)
+- HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
+- Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
 
 The following providers are available as separate companion-crates:
 
-- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/rig-fastembed)
-- Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/rig-vertexai)
+- AWS Bedrock: [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock)
+- Fastembed: [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed)
+- Google Gemini gRPC: [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc)
+- Google Vertex: [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai)
 
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:

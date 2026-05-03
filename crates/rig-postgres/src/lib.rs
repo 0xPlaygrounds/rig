@@ -1,3 +1,13 @@
+//! PostgreSQL and pgvector integration for Rig.
+//!
+//! This crate provides [`PostgresVectorStore`], a Rig vector store backed by a
+//! PostgreSQL table with a `pgvector` embedding column. It supports the distance
+//! functions represented by [`PgVectorDistanceFunction`] and query filters via
+//! [`PgSearchFilter`].
+//!
+//! The root `rig` facade re-exports this crate as `rig::postgres` when the
+//! `postgres` feature is enabled.
+
 use std::{fmt::Display, ops::RangeInclusive};
 
 use rig_core::{

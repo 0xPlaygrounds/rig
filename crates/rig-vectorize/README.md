@@ -2,6 +2,16 @@
 
 Vector store integration for [Cloudflare Vectorize](https://developers.cloudflare.com/vectorize/). This integration supports vector similarity search and document insertion using Rig's embedding providers.
 
+## Installation
+
+```toml
+[dependencies]
+rig-vectorize = "0.2.5"
+rig-core = "0.36.0"
+```
+
+The root `rig` facade also exposes this crate behind the `vectorize` feature.
+
 You can find end-to-end examples [here](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize/examples).
 
 For Vectorize-specific questions, ask in the [Cloudflare Developers Discord](https://discord.com/channels/595317990191398933/1152193114522525726).

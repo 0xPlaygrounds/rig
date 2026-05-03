@@ -1,3 +1,12 @@
+//! ScyllaDB vector store integration for Rig.
+//!
+//! This crate provides [`ScyllaDbVectorStore`], a Rig vector store backed by a
+//! ScyllaDB keyspace and table. It stores document payloads and embeddings in
+//! ScyllaDB and performs application-level cosine similarity search.
+//!
+//! The root `rig` facade re-exports this crate as `rig::scylladb` when the
+//! `scylladb` feature is enabled.
+
 use rig_core::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingModel},

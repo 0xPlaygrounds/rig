@@ -1,3 +1,11 @@
+//! MongoDB vector store integration for Rig.
+//!
+//! This crate provides [`MongoDbVectorIndex`], a Rig vector store index backed
+//! by MongoDB Atlas Vector Search or compatible MongoDB vector search indexes.
+//!
+//! The root `rig` facade re-exports this crate as `rig::mongodb` when the
+//! `mongodb` feature is enabled.
+
 use futures::StreamExt;
 use mongodb::bson::{self, Bson, Document, doc, to_bson};
 

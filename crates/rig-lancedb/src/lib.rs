@@ -8,6 +8,15 @@
         clippy::unreachable
     )
 )]
+//! LanceDB vector store integration for Rig.
+//!
+//! This crate provides [`LanceDbVectorIndex`], a Rig vector store index backed
+//! by LanceDB tables. It supports exact and approximate vector search through
+//! [`SearchType`] and accepts LanceDB SQL filter expressions through
+//! [`LanceDBFilter`].
+//!
+//! The root `rig` facade re-exports this crate as `rig::lancedb` when the
+//! `lancedb` feature is enabled.
 
 use std::ops::Range;
 

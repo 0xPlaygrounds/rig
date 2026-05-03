@@ -1,3 +1,12 @@
+//! Qdrant vector store integration for Rig.
+//!
+//! This crate provides [`QdrantVectorStore`], a Rig vector store index backed
+//! by Qdrant collections. It supports dense vector search and Qdrant filter
+//! expressions.
+//!
+//! The root `rig` facade re-exports this crate as `rig::qdrant` when the
+//! `qdrant` feature is enabled.
+
 mod filter;
 
 use filter::*;
