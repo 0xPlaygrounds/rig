@@ -14,7 +14,6 @@ agents must follow while reading, editing, testing, and documenting code.
 - Do not add TODOs, stubs, placeholder implementations, or speculative APIs.
 - Do not make commits, stage changes, push branches, or open PRs unless the user explicitly asks.
 - Do not discard user changes.
-- Backward compatibility and breaking semver are not concerns unless the user specifically asks for compatibility.
 
 ## Repository Shape
 
