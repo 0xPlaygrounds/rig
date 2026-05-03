@@ -9056,7 +9056,7 @@ checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
 name = "rig"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -9116,7 +9116,7 @@ dependencies = [
 
 [[package]]
 name = "rig-bedrock"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9139,7 +9139,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "as-any",
@@ -9193,7 +9193,7 @@ dependencies = [
 
 [[package]]
 name = "rig-derive"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "anyhow",
  "convert_case",
@@ -9213,7 +9213,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -9227,7 +9227,7 @@ dependencies = [
 
 [[package]]
 name = "rig-gemini-grpc"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9248,7 +9248,7 @@ dependencies = [
 
 [[package]]
 name = "rig-helixdb"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "reqwest 0.13.3",
@@ -9261,7 +9261,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -9277,7 +9277,7 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "reqwest 0.13.3",
@@ -9291,7 +9291,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "anyhow",
  "futures",
@@ -9308,7 +9308,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.5.5"
+version = "0.5.6"
 dependencies = [
  "anyhow",
  "futures",
@@ -9327,7 +9327,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -9348,7 +9348,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -9363,7 +9363,7 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -9380,7 +9380,7 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9399,7 +9399,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9418,7 +9418,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "rig-core",
@@ -9433,7 +9433,7 @@ dependencies = [
 
 [[package]]
 name = "rig-vectorize"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "reqwest 0.13.3",
@@ -9448,7 +9448,7 @@ dependencies = [
 
 [[package]]
 name = "rig-vertexai"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "anyhow",
  "google-cloud-aiplatform-v1",
