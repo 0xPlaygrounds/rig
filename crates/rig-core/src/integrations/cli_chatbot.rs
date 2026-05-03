@@ -78,6 +78,7 @@ where
 
         loop {
             let Some(chunk) = response_stream.next().await else {
+                println!();
                 break Ok(acc);
             };
 
