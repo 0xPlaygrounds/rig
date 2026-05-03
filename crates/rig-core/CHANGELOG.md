@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.37.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.36.0...rig-core-v0.37.0) - 2026-05-03
+
+### Other
+
+- set doctest to true, and update doc comments ([#1716](https://github.com/0xPlaygrounds/rig/pull/1716)) (by @gold-silver-copper) - #1716
+- AGENTS.MD, CONTRIBUTING.MD, and docs ([#1714](https://github.com/0xPlaygrounds/rig/pull/1714)) (by @gold-silver-copper) - #1714
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @gold-silver-copper
 ## [0.36.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.35.0...rig-core-v0.36.0) - 2026-04-28
 
 ### Added
