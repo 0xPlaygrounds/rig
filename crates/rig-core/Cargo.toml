@@ -40,7 +40,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-rmcp = { version = "1", optional = true, features = ["client"] }
+rmcp = { version = "1.6.0", optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = "1.3.1"
 tracing-futures = { version = "0.2.5", features = ["futures-03"] }
@@ -71,7 +71,7 @@ assert_fs = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
-redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
+redis = { version = "1.2.1", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 reqwest-retry = { version = "0.9" }
@@ -85,7 +85,7 @@ reqwest-middleware = { version = "0.5", default-features = false, features = [
 
 # Required for `rmcp` example
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "1", features = [
+rmcp = { version = "1.6.0", features = [
   "client",
   "macros",
   "reqwest",                                  # required for some strange reason
