@@ -476,12 +476,13 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
 impl GetTokenUsage for CompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let api_usage = self.usage.clone()?;
+        let api_usage = self.usage.as_ref()?;
 
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = api_usage.prompt_tokens as u64;
         usage.output_tokens = api_usage.completion_tokens as u64;
         usage.total_tokens = api_usage.total_tokens as u64;
+        usage.cached_input_tokens = api_usage.cached_tokens();
 
         Some(usage)
     }
@@ -538,7 +539,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 input_tokens: usage.prompt_tokens as u64,
                 output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
                 total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: 0,
+                cached_input_tokens: usage.cached_tokens(),
                 cache_creation_input_tokens: 0,
             })
             .unwrap_or_default();
@@ -710,18 +711,103 @@ mod tests {
 
         assert_eq!(id, "cmpl-e5cc70bb28c444948073e77776eb30ef");
 
-        let Usage {
-            completion_tokens,
-            prompt_tokens,
-            total_tokens,
-        } = usage.unwrap();
-
-        assert_eq!(prompt_tokens, 16);
-        assert_eq!(completion_tokens, 34);
-        assert_eq!(total_tokens, 50);
+        let usage = usage.unwrap();
+        assert_eq!(usage.prompt_tokens, 16);
+        assert_eq!(usage.completion_tokens, 34);
+        assert_eq!(usage.total_tokens, 50);
+        assert_eq!(usage.cached_tokens(), 0);
+        assert!(usage.prompt_tokens_details.is_none());
+        assert!(usage.num_cached_tokens.is_none());
         assert_eq!(object, "chat.completion".to_string());
         assert_eq!(created, 1702256327);
         assert_eq!(choices.len(), 1);
+    }
+
+    #[test]
+    fn test_usage_deserializes_prompt_tokens_details_cached_tokens() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "prompt_tokens_details": { "cached_tokens": 42 }
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(
+            usage.prompt_tokens_details.as_ref().unwrap().cached_tokens,
+            42
+        );
+        assert_eq!(usage.cached_tokens(), 42);
+    }
+
+    #[test]
+    fn test_usage_accepts_singular_prompt_token_details_alias() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "prompt_token_details": { "cached_tokens": 7 }
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            usage.prompt_tokens_details.as_ref().unwrap().cached_tokens,
+            7
+        );
+        assert_eq!(usage.cached_tokens(), 7);
+    }
+
+    #[test]
+    fn test_usage_falls_back_to_num_cached_tokens() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "num_cached_tokens": 13
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.num_cached_tokens, Some(13));
+        assert!(usage.prompt_tokens_details.is_none());
+        assert_eq!(usage.cached_tokens(), 13);
+    }
+
+    #[test]
+    fn test_usage_prefers_prompt_tokens_details_over_num_cached_tokens() {
+        let json = r#"{
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "num_cached_tokens": 1,
+            "prompt_tokens_details": { "cached_tokens": 99 }
+        }"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.cached_tokens(), 99);
+    }
+
+    #[test]
+    fn test_token_usage_threads_cached_tokens_into_completion_usage() {
+        let json = r#"{
+            "id": "cmpl-x",
+            "object": "chat.completion",
+            "model": "mistral-small-latest",
+            "created": 1700000000,
+            "choices": [{
+                "index": 0,
+                "message": { "content": "hi", "role": "assistant", "prefix": false },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+                "prompt_tokens_details": { "cached_tokens": 42 }
+            }
+        }"#;
+        let response: CompletionResponse = serde_json::from_str(json).unwrap();
+        let usage = response.token_usage().unwrap();
+        assert_eq!(usage.input_tokens, 100);
+        assert_eq!(usage.output_tokens, 20);
+        assert_eq!(usage.total_tokens, 120);
+        assert_eq!(usage.cached_input_tokens, 42);
     }
 
     #[test]
