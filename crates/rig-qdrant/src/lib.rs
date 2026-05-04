@@ -7,7 +7,7 @@
 //! The root `rig` facade re-exports this crate as `rig::qdrant` when the
 //! `qdrant` feature is enabled.
 
-mod filter;
+pub mod filter;
 
 use filter::*;
 use qdrant_client::{
