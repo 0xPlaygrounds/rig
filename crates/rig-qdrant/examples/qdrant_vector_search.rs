@@ -16,10 +16,10 @@ use rig_core::{
     client::ProviderClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{self, Client},
-    vector_store::{InsertDocuments, VectorStoreIndex},
+    vector_store::{InsertDocuments, VectorStoreIndex, request::SearchFilter},
 };
 use rig_core::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
-use rig_qdrant::QdrantVectorStore;
+use rig_qdrant::{QdrantFilter, QdrantVectorStore};
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {
@@ -85,6 +85,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let results = vector_store.top_n::<Word>(req).await?;
 
     println!("Results: {results:?}");
+
+    let filtered_req = VectorSearchRequest::<QdrantFilter>::builder()
+        .query(query)
+        .samples(1)
+        .filter(QdrantFilter::eq(
+            "id",
+            serde_json::json!("f9e17d59-32e5-440c-be02-b2759a654824"),
+        ))
+        .build();
+
+    let filtered_results = vector_store.top_n::<Word>(filtered_req).await?;
+
+    println!("Filtered results: {filtered_results:?}");
 
     Ok(())
 }

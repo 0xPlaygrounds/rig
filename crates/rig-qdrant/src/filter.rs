@@ -6,6 +6,10 @@ use rig_core::vector_store::request::{FilterError, SearchFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+/// Qdrant-compatible metadata filter for vector search requests.
+///
+/// Use this as the filter type for [`rig_core::vector_store::request::VectorSearchRequest`]
+/// when querying [`crate::QdrantVectorStore`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QdrantFilter(serde_json::Value);
 

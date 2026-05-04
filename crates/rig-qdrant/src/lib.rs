@@ -2,14 +2,14 @@
 //!
 //! This crate provides [`QdrantVectorStore`], a Rig vector store index backed
 //! by Qdrant collections. It supports dense vector search and Qdrant filter
-//! expressions.
+//! expressions through [`QdrantFilter`].
 //!
 //! The root `rig` facade re-exports this crate as `rig::qdrant` when the
 //! `qdrant` feature is enabled.
 
 mod filter;
 
-use filter::*;
+pub use filter::QdrantFilter;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
