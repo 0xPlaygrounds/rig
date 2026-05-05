@@ -3,6 +3,7 @@ mod auth;
 mod embeddings;
 mod extractor;
 mod extractor_usage;
+mod models;
 mod multi_extract;
 mod permission_control;
 mod reasoning_roundtrip;
