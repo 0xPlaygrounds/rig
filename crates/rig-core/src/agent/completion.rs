@@ -292,18 +292,19 @@ where
     P: PromptHook<M> + 'static,
 {
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name()))]
-    async fn chat<I, T>(
+    async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> Result<String, PromptError>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        PromptRequest::from_agent(self, prompt)
-            .with_history(chat_history)
-            .await
+        chat_history: &mut Vec<Message>,
+    ) -> Result<String, PromptError> {
+        let response = PromptRequest::from_agent(self, prompt)
+            .with_history(chat_history.clone())
+            .extended_details()
+            .await?;
+        if let Some(messages) = response.messages {
+            chat_history.extend(messages);
+        }
+        Ok(response.output)
     }
 }
 

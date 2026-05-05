@@ -48,8 +48,8 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let empty_history: &[Message] = &[];
-        match self.0.chat(&args.prompt, empty_history).await {
+        let mut empty_history: Vec<Message> = Vec::new();
+        match self.0.chat(&args.prompt, &mut empty_history).await {
             Ok(response) => {
                 println!("Translated prompt: {response}");
                 Ok(response)

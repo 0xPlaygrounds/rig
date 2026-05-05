@@ -4,7 +4,8 @@
 use rig::OneOrMany;
 use rig::agent::AgentBuilder;
 use rig::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt, Usage,
+    Chat, CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
+    Usage,
 };
 use rig::message::{AssistantContent, Text, ToolCall, ToolFunction, UserContent};
 use rig::streaming::{StreamingCompletionResponse, StreamingResult};
@@ -438,6 +439,58 @@ async fn extended_details_works_without_with_history() {
     // Should have full multi-turn history
     assert_eq!(messages.len(), 4);
     assert_eq!(resp.output, "The answer is 5");
+}
+
+/// Test 10a: `Chat::chat` round-trips: it appends the prompt + assistant turn
+/// onto the caller's `&mut Vec<Message>`. This is the contract introduced by
+/// the new trait signature (issue #1556).
+#[tokio::test]
+async fn chat_appends_prompt_and_assistant_to_history() {
+    let agent = AgentBuilder::new(SimpleTextModel).build();
+
+    let mut history: Vec<Message> = Vec::new();
+
+    let output = agent
+        .chat("hi", &mut history)
+        .await
+        .expect("chat should succeed");
+
+    assert_eq!(output, "hello from mock");
+
+    // History should now contain the user prompt and the assistant reply.
+    assert_eq!(
+        history.len(),
+        2,
+        "expected chat to append [User, Assistant], got: {history:#?}"
+    );
+
+    match &history[0] {
+        Message::User { content } => match content.first() {
+            UserContent::Text(t) => assert_eq!(t.text, "hi"),
+            other => panic!("expected text user content, got: {other:?}"),
+        },
+        other => panic!("expected User message, got: {other:?}"),
+    }
+
+    match &history[1] {
+        Message::Assistant { content, .. } => match content.first() {
+            AssistantContent::Text(t) => assert_eq!(t.text, "hello from mock"),
+            other => panic!("expected text assistant content, got: {other:?}"),
+        },
+        other => panic!("expected Assistant message, got: {other:?}"),
+    }
+
+    // A second chat call extends the same history with the next turn.
+    let _ = agent
+        .chat("again", &mut history)
+        .await
+        .expect("second chat should succeed");
+
+    assert_eq!(
+        history.len(),
+        4,
+        "expected history to grow to 4 messages, got: {history:#?}"
+    );
 }
 
 /// Test 10: Multiple sequential prompts each return independent message histories.

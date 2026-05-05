@@ -1,9 +1,8 @@
 //! Integration for deploying your Rig agents (and more) as Discord bots.
 //! This feature is not WASM-compatible (and as such, is incompatible with the `worker` feature).
-use crate::OneOrMany;
 use crate::agent::Agent;
-use crate::completion::{AssistantContent, CompletionModel, request::Chat};
-use crate::message::{Message as RigMessage, UserContent};
+use crate::completion::{CompletionModel, request::Chat};
+use crate::message::Message as RigMessage;
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,
     GatewayIntents, Interaction, Message, Ready, async_trait,
@@ -159,30 +158,22 @@ where
     async fn handle_thread_message(&self, ctx: &Context, msg: &Message) {
         let thread_id = msg.channel_id.get();
 
-        // Add user message to history
-        {
-            let mut conversations = self.state.conversations.write().await;
-            if let Some(history) = conversations.get_mut(&thread_id) {
-                history.push(RigMessage::User {
-                    content: OneOrMany::one(UserContent::text(msg.content.clone())),
-                });
-            }
-        }
-
         // Show typing indicator
         let _ = msg.channel_id.broadcast_typing(&ctx.http).await;
 
-        // Get conversation history
+        // Get conversation history snapshot
         let conversations = self.state.conversations.read().await;
-        let history = if let Some(history) = conversations.get(&thread_id) {
+        let mut history = if let Some(history) = conversations.get(&thread_id) {
             history.clone()
         } else {
             vec![]
         };
         drop(conversations);
 
-        // Generate response using the agent with conversation history
-        let response = match self.state.agent.chat(&msg.content, history).await {
+        // Generate response using the agent with conversation history.
+        // `chat` appends the user prompt and any assistant/tool messages
+        // produced during the turn onto `history` for us.
+        let response = match self.state.agent.chat(&msg.content, &mut history).await {
             Ok(resp) => resp,
             Err(e) => {
                 eprintln!("Agent error: {}", e);
@@ -197,15 +188,10 @@ where
             }
         };
 
-        // Add assistant response to history
+        // Persist the round-tripped history back into the conversations map.
         {
             let mut conversations = self.state.conversations.write().await;
-            if let Some(history) = conversations.get_mut(&thread_id) {
-                history.push(RigMessage::Assistant {
-                    content: OneOrMany::one(AssistantContent::text(msg.content.clone())),
-                    id: None,
-                });
-            }
+            conversations.insert(thread_id, history);
         }
 
         // Send response (split if too long for Discord's 2000 char limit)
