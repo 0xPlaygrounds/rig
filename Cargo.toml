@@ -56,7 +56,7 @@ bytes = "1.10.1"
 chrono = "0.4"
 convert_case = "0.10.0"
 deluxe = "0.5.0"
-deranged = "=0.5.6"
+deranged = "=0.5.8"
 dotenvy = "0.15.7"
 epub = "2.1.4"
 ethers = "2.0.14"
@@ -105,9 +105,11 @@ tokio = "1.51.1"
 tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
-tonic = "0.12"
-tonic-build = "0.12"
-prost = "0.13"
+tonic = "0.14.5"
+tonic-build = "0.14.5"
+tonic-prost = "0.14.5"
+tonic-prost-build = "0.14.5"
+prost = "0.14.3"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
@@ -147,7 +149,7 @@ async-stream = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
-redis = { version = "1.0.2", features = ["tokio-comp", "aio", "vector-sets"] }
+redis = { version = "1.2.1", features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
@@ -175,7 +177,7 @@ testcontainers = { workspace = true }
 thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
 hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "1", features = [
+rmcp = { version = "1.6.0", features = [
   "client",
   "macros",
   "reqwest",
