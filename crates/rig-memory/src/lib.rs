@@ -39,7 +39,7 @@ pub use rig_core::memory::{ConversationMemory, InMemoryConversationMemory, Memor
 
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
 /// A transformation applied to messages loaded from a [`ConversationMemory`].
 ///
@@ -227,6 +227,83 @@ fn drop_leading_orphan_tool_result(window: &mut Vec<Message>) {
     }
 }
 
+/// Wrap a [`ConversationMemory`] backend with a [`MemoryPolicy`], propagating
+/// policy errors to the caller as [`MemoryError::Policy`].
+///
+/// This is the hard-fail counterpart to
+/// [`InMemoryConversationMemory::with_filter`] + [`IntoFilter::into_filter`].
+/// `with_filter` swallows policy errors and returns the unfiltered history;
+/// `PolicyMemory` surfaces them so callers can decide how to react.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig_memory::{InMemoryConversationMemory, PolicyMemory, SlidingWindowMemory};
+///
+/// let memory = PolicyMemory::new(
+///     InMemoryConversationMemory::new(),
+///     SlidingWindowMemory::last_messages(20),
+/// );
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct PolicyMemory<M, P> {
+    inner: M,
+    policy: P,
+}
+
+impl<M, P> PolicyMemory<M, P> {
+    /// Wrap `inner` so every loaded history is run through `policy`.
+    pub fn new(inner: M, policy: P) -> Self {
+        Self { inner, policy }
+    }
+
+    /// Return a reference to the wrapped backend.
+    pub fn inner(&self) -> &M {
+        &self.inner
+    }
+
+    /// Return a reference to the wrapped policy.
+    pub fn policy(&self) -> &P {
+        &self.policy
+    }
+
+    /// Consume the wrapper and return the underlying backend and policy.
+    pub fn into_inner(self) -> (M, P) {
+        (self.inner, self.policy)
+    }
+}
+
+impl<M, P> ConversationMemory for PolicyMemory<M, P>
+where
+    M: ConversationMemory,
+    P: MemoryPolicy,
+{
+    fn load<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+        Box::pin(async move {
+            let messages = self.inner.load(conversation_id).await?;
+            self.policy.apply(messages)
+        })
+    }
+
+    fn append<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        self.inner.append(conversation_id, messages)
+    }
+
+    fn clear<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        self.inner.clear(conversation_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,5 +443,53 @@ mod tests {
             input.len(),
             "history must be preserved on policy error"
         );
+    }
+
+    #[tokio::test]
+    async fn policy_memory_truncates_loaded_history() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+
+        let loaded = mem.load("c").await.unwrap();
+        assert_eq!(loaded.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn policy_memory_propagates_policy_errors() {
+        struct FailingPolicy;
+        impl MemoryPolicy for FailingPolicy {
+            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+                Err(MemoryError::Policy("intentional failure".into()))
+            }
+        }
+
+        let mem = PolicyMemory::new(InMemoryConversationMemory::new(), FailingPolicy);
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+
+        let result = mem.load("c").await;
+        assert!(matches!(result, Err(MemoryError::Policy(_))));
+    }
+
+    #[tokio::test]
+    async fn policy_memory_append_and_clear_delegate_to_inner() {
+        let mem = PolicyMemory::new(InMemoryConversationMemory::new(), NoopMemoryPolicy);
+        mem.append("c", vec![user("hi"), assistant("ok")])
+            .await
+            .unwrap();
+        assert_eq!(mem.load("c").await.unwrap().len(), 2);
+
+        mem.clear("c").await.unwrap();
+        assert!(mem.load("c").await.unwrap().is_empty());
     }
 }

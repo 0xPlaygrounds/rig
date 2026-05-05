@@ -30,3 +30,15 @@ use rig_memory::{MemoryPolicy, SlidingWindowMemory};
 let policy = SlidingWindowMemory::last_messages(20);
 let trimmed = policy.apply(loaded_messages)?;
 ```
+
+To wrap any backend with a policy and propagate policy errors to the caller
+(rather than silently degrading to identity on failure), use `PolicyMemory`:
+
+```rust,no_run
+use rig_memory::{InMemoryConversationMemory, PolicyMemory, SlidingWindowMemory};
+
+let memory = PolicyMemory::new(
+    InMemoryConversationMemory::new(),
+    SlidingWindowMemory::last_messages(20),
+);
+```

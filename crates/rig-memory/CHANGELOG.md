@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `PolicyMemory<M, P>` adapter — wrap any `ConversationMemory` with a
+  `MemoryPolicy` and propagate policy failures to the caller as
+  `MemoryError::Policy`. Hard-fail counterpart to
+  `InMemoryConversationMemory::with_filter` + `IntoFilter::into_filter`,
+  which degrade to identity on policy error.
+
 ## [0.1.0] - Initial release
 
 ### Added
