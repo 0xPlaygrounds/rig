@@ -230,7 +230,7 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
         .build();
 
     let result = agent
-        .chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
         .await
         .expect("reasoning tool chat should succeed");
 

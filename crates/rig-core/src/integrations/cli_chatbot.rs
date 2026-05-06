@@ -30,8 +30,11 @@ pub struct ChatBot<T>(T);
 /// Trait to abstract message behavior away from cli_chat/`run` loop
 #[allow(private_interfaces)]
 trait CliChat {
-    async fn request(&mut self, prompt: &str, history: Vec<Message>)
-    -> Result<String, PromptError>;
+    async fn request(
+        &mut self,
+        prompt: &str,
+        history: &mut Vec<Message>,
+    ) -> Result<String, PromptError>;
 
     fn show_usage(&self) -> bool {
         false
@@ -49,9 +52,9 @@ where
     async fn request(
         &mut self,
         prompt: &str,
-        history: Vec<Message>,
+        history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
-        let res = self.0.chat(prompt, &history).await?;
+        let res = self.0.chat(prompt, history).await?;
         println!("{res}");
 
         Ok(res)
@@ -65,18 +68,19 @@ where
     async fn request(
         &mut self,
         prompt: &str,
-        history: Vec<Message>,
+        history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
         let mut response_stream = self
             .agent
             .stream_prompt(prompt)
-            .with_history(&history)
+            .with_history(history.clone())
             .multi_turn(self.max_turns)
             .await;
 
         let mut acc = String::new();
+        let mut messages = None;
 
-        loop {
+        let result = loop {
             let Some(chunk) = response_stream.next().await else {
                 println!();
                 break Ok(acc);
@@ -91,6 +95,7 @@ where
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
                     self.usage = final_response.usage();
+                    messages = final_response.history().map(|history| history.to_vec());
                 }
                 Err(e) => {
                     break Err(PromptError::CompletionError(
@@ -99,7 +104,18 @@ where
                 }
                 _ => continue,
             }
+        };
+
+        if let Ok(response) = &result {
+            if let Some(messages) = messages {
+                history.extend(messages);
+            } else {
+                history.push(Message::user(prompt));
+                history.push(Message::assistant(response.as_str()));
+            }
         }
+
+        result
     }
 
     fn show_usage(&self) -> bool {
@@ -202,9 +218,7 @@ where
                     println!();
                     println!("========================== Response ============================");
 
-                    let response = self.0.request(input, history.clone()).await?;
-                    history.push(Message::user(input));
-                    history.push(Message::assistant(response));
+                    self.0.request(input, &mut history).await?;
 
                     println!("================================================================");
                     println!();

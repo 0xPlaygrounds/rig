@@ -1,6 +1,7 @@
 mod agent;
 #[cfg(feature = "audio")]
 mod audio_generation;
+mod chat_history;
 mod completions_api;
 mod extractor;
 mod extractor_usage;
