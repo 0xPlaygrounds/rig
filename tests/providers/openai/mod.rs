@@ -3,6 +3,7 @@ mod agent;
 mod audio_generation;
 mod chat_history;
 mod completions_api;
+mod document_file_id;
 mod extractor;
 mod extractor_usage;
 mod gpt_5_5;
