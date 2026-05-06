@@ -15,14 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   implement it without taking a `rig-memory` dependency; the composing
   adapter lives in this crate. `DemotingPolicyMemory` calls the hook
   with messages that the policy truncated out of active history,
-  turning eviction into demotion. Bridges `SlidingWindowMemory` /
+  turning eviction into demotion. It tracks per-conversation demotion
+  watermarks so repeated `load` calls do not replay the same demoted
+  messages into append-only long-tail stores. Concurrent loads on the
+  same `conversation_id` are serialised at the demotion seam via an
+  in-flight gate: only one load at a time delivers to the hook;
+  others observe the gate and return the truncated history without
+  re-firing. Watermarks are in-process only — `DemotionHook`
+  implementations must be idempotent on `(conversation_id, messages)`
+  to survive process restarts. Bridges `SlidingWindowMemory` /
   `TokenWindowMemory` to long-tail stores such as `MemvidPersistHook`
   without coupling either crate to the other.
-- `MemoryPolicy::apply_with_demoted` default method that returns
-  `(kept, demoted)`. `SlidingWindowMemory` and `TokenWindowMemory`
-  override it to return the actual demoted prefix; the default
-  implementation reports an empty demoted set so existing policies
-  continue to work unchanged.
+- `DemotingPolicyMemory::forget(conversation_id)` and
+  `tracked_conversations()` for explicit watermark-map cleanup and
+  leak diagnostics.
+- `MemoryPolicy::apply_with_demoted` is now the canonical method:
+  policies override it to report `(kept, demoted)` and the default
+  `apply` discards the demoted half. `NoopMemoryPolicy`,
+  `SlidingWindowMemory`, and `TokenWindowMemory` are migrated.
 - `HeuristicTokenCounter` — provider-agnostic, zero-dependency
   `TokenCounter` implementation that approximates token cost from
   character lengths. Ships `default` / `openai` / `anthropic` / `gemini`

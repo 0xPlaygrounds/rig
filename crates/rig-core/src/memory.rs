@@ -142,6 +142,19 @@ impl<F> MessageFilter for F where
 /// Hooks must be cheap and non-blocking: they run inline on every load.
 /// Push expensive work onto a background task or a buffered channel inside
 /// the implementation if needed.
+///
+/// # Idempotency contract
+///
+/// Implementations **must** be idempotent on the
+/// `(conversation_id, messages)` pair. Composing adapters such as the
+/// `DemotingPolicyMemory` in `rig-memory` track in-process delivery
+/// watermarks to avoid replaying the same demotion within a single
+/// process lifetime, but those watermarks are not persisted: across
+/// process restarts (or when a new adapter is constructed over an
+/// existing backend) the hook will receive previously-delivered
+/// messages again. Hooks that append to durable storage should
+/// deduplicate by content hash, by `(conversation_id, message_id)`,
+/// or by an equivalent stable key.
 pub trait DemotionHook: WasmCompatSend + WasmCompatSync {
     /// Receive `messages` that were demoted out of the active window for
     /// `conversation_id`.

@@ -35,7 +35,10 @@
 //!     .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
 //! ```
 
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 /// Re-exports of the core memory abstractions so callers only need a single
 /// dependency on `rig-memory` for both the trait/backend and the policies.
@@ -53,27 +56,31 @@ use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 /// pure, fallible message transformers: implementors that cannot fail should
 /// always return `Ok`.
 pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
-    /// Transform `messages` into the history that should be returned to the agent.
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
-
     /// Transform `messages` and report which messages were demoted (excluded
     /// from the returned history).
     ///
-    /// Returns `(kept, demoted)`. The default implementation calls
-    /// [`MemoryPolicy::apply`] and reports an empty `demoted` list, which is
-    /// safe but uninformative for any consumer that wants to feed evicted
-    /// turns into a long-tail store such as `MemvidPersistHook`. Truncating
-    /// policies (sliding window, token window, …) override this method to
-    /// return the actual demoted prefix.
+    /// Returns `(kept, demoted)`. Truncating policies (sliding window, token
+    /// window, …) populate `demoted` with the evicted prefix; non-truncating
+    /// policies (e.g. [`NoopMemoryPolicy`]) return an empty `demoted` list.
     ///
-    /// Implementors must guarantee that `kept ⊆ messages` in their iteration
-    /// order, otherwise [`DemotingPolicyMemory`] may return inconsistent
-    /// history. Order-preserving truncation policies satisfy this trivially.
+    /// Implementors must guarantee that `kept ⊆ messages` in their
+    /// iteration order, otherwise [`DemotingPolicyMemory`] may return
+    /// inconsistent history. Order-preserving truncation policies satisfy
+    /// this trivially.
+    ///
+    /// This is the canonical method — [`MemoryPolicy::apply`] is a thin
+    /// wrapper that discards the demoted half. Implementors only override
+    /// this method.
     fn apply_with_demoted(
         &self,
         messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
-        Ok((self.apply(messages)?, Vec::new()))
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError>;
+
+    /// Transform `messages` into the history that should be returned to the
+    /// agent. Equivalent to discarding the demoted half of
+    /// [`MemoryPolicy::apply_with_demoted`].
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
     }
 }
 
@@ -134,8 +141,11 @@ impl<P> IntoFilter for P where P: MemoryPolicy + 'static {}
 pub struct NoopMemoryPolicy;
 
 impl MemoryPolicy for NoopMemoryPolicy {
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(messages)
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+        Ok((messages, Vec::new()))
     }
 }
 
@@ -158,10 +168,6 @@ impl SlidingWindowMemory {
 }
 
 impl MemoryPolicy for SlidingWindowMemory {
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(self.apply_with_demoted(messages)?.0)
-    }
-
     fn apply_with_demoted(
         &self,
         messages: Vec<Message>,
@@ -392,10 +398,6 @@ impl std::fmt::Debug for TokenWindowMemory {
 }
 
 impl MemoryPolicy for TokenWindowMemory {
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(self.apply_with_demoted(messages)?.0)
-    }
-
     fn apply_with_demoted(
         &self,
         messages: Vec<Message>,
@@ -514,6 +516,22 @@ where
 /// [`MemoryPolicy::apply_with_demoted`]; policies that rely on the default
 /// implementation will still load correctly but will never demote anything.
 ///
+/// # Concurrency
+///
+/// Concurrent [`ConversationMemory::load`] calls on the same
+/// `conversation_id` are serialised at the demotion seam: only one call at
+/// a time delivers messages to the hook for a given conversation. Other
+/// concurrent loads for that conversation observe the in-flight delivery
+/// and return the truncated `kept` history immediately without firing the
+/// hook again. Pending demotions that were skipped this way are picked up
+/// by the next `load` after the in-flight delivery completes.
+///
+/// # Persistence
+///
+/// Delivery watermarks are kept in process memory only. Across process
+/// restarts, the hook will receive previously-delivered demotions again;
+/// see the [`DemotionHook`] idempotency contract.
+///
 /// # Example
 ///
 /// ```no_run
@@ -533,6 +551,18 @@ pub struct DemotingPolicyMemory<M, P, H> {
     inner: M,
     policy: P,
     hook: H,
+    state: StdMutex<HashMap<String, ConversationDemotionState>>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ConversationDemotionState {
+    /// Number of demoted messages already delivered to the hook within
+    /// this process lifetime. Advanced only on hook success.
+    delivered: usize,
+    /// True while a `load` is currently awaiting `hook.on_demote(...)`
+    /// for this conversation. Other concurrent loads observe this and
+    /// short-circuit without re-delivering the same messages.
+    in_flight: bool,
 }
 
 impl<M, P, H> DemotingPolicyMemory<M, P, H> {
@@ -543,6 +573,7 @@ impl<M, P, H> DemotingPolicyMemory<M, P, H> {
             inner,
             policy,
             hook,
+            state: StdMutex::new(HashMap::new()),
         }
     }
 
@@ -564,6 +595,24 @@ impl<M, P, H> DemotingPolicyMemory<M, P, H> {
     /// Consume the wrapper and return its three components.
     pub fn into_inner(self) -> (M, P, H) {
         (self.inner, self.policy, self.hook)
+    }
+
+    /// Drop the in-process delivery watermark for `conversation_id`.
+    ///
+    /// Call this when a conversation has ended to bound memory usage.
+    /// The watermark map is otherwise unbounded — entries persist for
+    /// the lifetime of the wrapper.
+    pub fn forget(&self, conversation_id: &str) -> Result<(), MemoryError> {
+        let mut guard = self.state.lock().map_err(poisoned)?;
+        guard.remove(conversation_id);
+        Ok(())
+    }
+
+    /// Number of conversations currently tracked in the watermark map.
+    /// Useful for telemetry and leak detection.
+    pub fn tracked_conversations(&self) -> Result<usize, MemoryError> {
+        let guard = self.state.lock().map_err(poisoned)?;
+        Ok(guard.len())
     }
 }
 
@@ -593,10 +642,48 @@ where
     ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
-            let (kept, demoted) = self.policy.apply_with_demoted(messages)?;
-            if !demoted.is_empty() {
-                self.hook.on_demote(conversation_id, demoted).await?;
+            let (kept, mut demoted) = self.policy.apply_with_demoted(messages)?;
+            let demoted_count = demoted.len();
+
+            // Reserve a delivery slot atomically. Decide-and-mark must
+            // happen under one short-lived lock so concurrent loads on
+            // the same conversation_id can't both observe the same
+            // delivered watermark and double-fire the hook.
+            let pending = {
+                let mut guard = self.state.lock().map_err(poisoned)?;
+                let entry = guard.entry(conversation_id.to_string()).or_default();
+                if entry.in_flight {
+                    // Another load is mid-delivery for this conversation;
+                    // skip and let the next load see whatever it leaves
+                    // behind.
+                    return Ok(kept);
+                }
+                if entry.delivered >= demoted_count {
+                    Vec::new()
+                } else {
+                    let split = entry.delivered;
+                    entry.in_flight = true;
+                    demoted.split_off(split)
+                }
+            };
+
+            if pending.is_empty() {
+                return Ok(kept);
             }
+
+            let result = self.hook.on_demote(conversation_id, pending).await;
+
+            // Reacquire briefly to advance the watermark on success and
+            // always clear the in-flight flag so a future load can retry.
+            {
+                let mut guard = self.state.lock().map_err(poisoned)?;
+                let entry = guard.entry(conversation_id.to_string()).or_default();
+                entry.in_flight = false;
+                if result.is_ok() {
+                    entry.delivered = demoted_count;
+                }
+            }
+            result?;
             Ok(kept)
         })
     }
@@ -613,8 +700,16 @@ where
         &'a self,
         conversation_id: &'a str,
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.clear(conversation_id)
+        Box::pin(async move {
+            self.inner.clear(conversation_id).await?;
+            self.forget(conversation_id)?;
+            Ok(())
+        })
     }
+}
+
+fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
+    MemoryError::backend(std::io::Error::other(err.to_string()))
 }
 
 #[cfg(test)]
@@ -796,7 +891,10 @@ mod tests {
     fn into_filter_returns_input_on_policy_error() {
         struct FailingPolicy;
         impl MemoryPolicy for FailingPolicy {
-            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+            fn apply_with_demoted(
+                &self,
+                _: Vec<Message>,
+            ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
                 Err(MemoryError::Policy("intentional failure".into()))
             }
         }
@@ -833,7 +931,10 @@ mod tests {
     async fn policy_memory_propagates_policy_errors() {
         struct FailingPolicy;
         impl MemoryPolicy for FailingPolicy {
-            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+            fn apply_with_demoted(
+                &self,
+                _: Vec<Message>,
+            ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
                 Err(MemoryError::Policy("intentional failure".into()))
             }
         }
@@ -971,6 +1072,110 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn demoting_policy_memory_does_not_replay_demotions() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+            hook.clone(),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+
+        mem.load("c").await.unwrap();
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.calls(), 1);
+        assert_eq!(hook.last_demoted_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_only_reports_newly_demoted_messages() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+            hook.clone(),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+        mem.load("c").await.unwrap();
+
+        mem.append("c", vec![user("5")]).await.unwrap();
+        mem.load("c").await.unwrap();
+
+        assert_eq!(hook.calls(), 2);
+        assert_eq!(hook.last_demoted_count(), 1);
+    }
+
+    #[derive(Default)]
+    struct FailingHook {
+        calls: Mutex<usize>,
+    }
+
+    impl DemotionHook for FailingHook {
+        fn on_demote<'a>(
+            &'a self,
+            _conversation_id: &'a str,
+            _messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            Box::pin(async move {
+                *self.calls.lock().unwrap() += 1;
+                Err(MemoryError::backend(std::io::Error::other("hook failed")))
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_does_not_advance_watermark_on_hook_failure() {
+        let hook = Arc::new(FailingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        );
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+
+        assert!(mem.load("c").await.is_err());
+        assert!(mem.load("c").await.is_err());
+        assert_eq!(*hook.calls.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_clear_resets_watermark() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        );
+
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+        mem.clear("c").await.unwrap();
+        mem.append("c", vec![user("3"), assistant("4")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+
+        assert_eq!(hook.calls(), 2);
+        assert_eq!(hook.last_demoted_count(), 1);
+    }
+
+    #[tokio::test]
     async fn demoting_policy_memory_skips_hook_when_nothing_evicted() {
         let hook = Arc::new(CountingHook::default());
         let mem = DemotingPolicyMemory::new(
@@ -997,5 +1202,104 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(mem.load("c").await.unwrap().len(), 1);
+    }
+
+    /// Hook that blocks until the test releases it. Used to provoke the
+    /// concurrent-load race against the in-flight gate.
+    struct GatedHook {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        rendezvous: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    impl DemotionHook for GatedHook {
+        fn on_demote<'a>(
+            &'a self,
+            _conversation_id: &'a str,
+            _messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            let calls = self.calls.clone();
+            let rendezvous = self.rendezvous.clone();
+            let release = self.release.clone();
+            Box::pin(async move {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                rendezvous.notify_one();
+                release.notified().await;
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_serialises_concurrent_loads() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let rendezvous = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let hook = GatedHook {
+            calls: calls.clone(),
+            rendezvous: rendezvous.clone(),
+            release: release.clone(),
+        };
+
+        let mem = Arc::new(DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook,
+        ));
+
+        mem.append("c", vec![user("1"), assistant("2"), user("3")])
+            .await
+            .unwrap();
+
+        let m1 = mem.clone();
+        let first = tokio::spawn(async move { m1.load("c").await });
+
+        // Wait until the first load has entered the hook.
+        rendezvous.notified().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Second concurrent load on the same conversation must skip the
+        // hook entirely (in-flight gate) and return the truncated view.
+        let kept = mem.load("c").await.unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "hook must not double-fire");
+
+        // Release the first load and confirm it completes successfully.
+        release.notify_one();
+        let kept_first = first.await.unwrap().unwrap();
+        assert_eq!(kept_first.len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Subsequent loads observe the watermark and don't re-fire.
+        mem.load("c").await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn forget_drops_in_process_watermark() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        );
+
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+        assert_eq!(mem.tracked_conversations().unwrap(), 1);
+        assert_eq!(hook.calls(), 1);
+
+        // After forgetting, the next load on the same (still-populated)
+        // backend re-delivers the demotion. This is the documented
+        // contract: forget()/restart re-fire the hook, hooks must be
+        // idempotent.
+        mem.forget("c").unwrap();
+        assert_eq!(mem.tracked_conversations().unwrap(), 0);
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.calls(), 2);
     }
 }
