@@ -17,6 +17,8 @@
 //! - [`NoopMemoryPolicy`] — identity, returns input unchanged.
 //! - [`SlidingWindowMemory`] — retains the most recent `N` messages.
 //! - [`TokenWindowMemory`] — retains messages that fit within a token budget.
+//! - [`HeuristicTokenCounter`] — provider-agnostic, zero-dependency
+//!   [`TokenCounter`] that approximates token cost from character lengths.
 //!
 //! All sliding policies drop a leading orphan tool-result message when the
 //! preceding assistant tool call has been truncated, since most providers
@@ -161,6 +163,155 @@ where
 {
     fn count(&self, message: &Message) -> usize {
         (self)(message)
+    }
+}
+
+/// A provider-agnostic [`TokenCounter`] that approximates token counts from
+/// character lengths.
+///
+/// This is intended as a zero-dependency default. It is **not** a substitute
+/// for a tokenizer and will under- or over-count by up to ~30 % on real
+/// content, but it is monotonic in message size and stable across runs, which
+/// is enough for [`TokenWindowMemory`] to enforce a budget that *trends*
+/// with provider billing.
+///
+/// # Strategy
+///
+/// For every text-bearing block (`Text`, reasoning text, tool-result text)
+/// the counter sums character lengths and divides by `chars_per_token`,
+/// rounded up. Tool calls are charged the JSON-serialised length of their
+/// `ToolFunction` payload. Each message is charged a flat
+/// `per_message_overhead` to model the per-turn role/separator tokens that
+/// providers add internally. Non-text blocks (images, audio, video,
+/// documents) are charged `per_attachment_tokens` each because their real
+/// cost is provider-specific and rarely text-derived.
+///
+/// # Presets
+///
+/// The defaults match OpenAI's published rule of thumb (~4 chars per token,
+/// ~4 tokens of per-message overhead). [`HeuristicTokenCounter::anthropic`]
+/// uses a slightly denser ratio that better fits Claude's tokenizer.
+///
+/// # Example
+///
+/// ```
+/// use rig_memory::{HeuristicTokenCounter, TokenWindowMemory};
+///
+/// let policy = TokenWindowMemory::new(2_000, HeuristicTokenCounter::default());
+/// # let _ = policy;
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct HeuristicTokenCounter {
+    chars_per_token: f32,
+    per_message_overhead: usize,
+    per_attachment_tokens: usize,
+}
+
+impl HeuristicTokenCounter {
+    /// Create a counter with explicit parameters.
+    ///
+    /// `chars_per_token` is clamped to a minimum of `1.0` so the counter
+    /// never panics or produces zero-cost messages on degenerate input.
+    pub fn new(
+        chars_per_token: f32,
+        per_message_overhead: usize,
+        per_attachment_tokens: usize,
+    ) -> Self {
+        let chars_per_token = if chars_per_token.is_finite() && chars_per_token >= 1.0 {
+            chars_per_token
+        } else {
+            1.0
+        };
+        Self {
+            chars_per_token,
+            per_message_overhead,
+            per_attachment_tokens,
+        }
+    }
+
+    /// Preset matching OpenAI's chat-completion token rule of thumb.
+    ///
+    /// Equivalent to [`HeuristicTokenCounter::default`].
+    pub fn openai() -> Self {
+        Self::new(4.0, 4, 256)
+    }
+
+    /// Preset tuned for Anthropic Claude's tokenizer.
+    pub fn anthropic() -> Self {
+        Self::new(3.5, 4, 256)
+    }
+
+    /// Preset tuned for Google Gemini.
+    pub fn gemini() -> Self {
+        Self::new(4.0, 4, 256)
+    }
+
+    fn chars_to_tokens(&self, chars: usize) -> usize {
+        // `chars_per_token` is clamped to >= 1.0 in the constructor, so the
+        // division is well-defined. We round up so a single non-empty
+        // character still costs at least one token.
+        let tokens = (chars as f32) / self.chars_per_token;
+        tokens.ceil() as usize
+    }
+
+    fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
+        use rig_core::message::UserContent;
+        match content {
+            UserContent::Text(text) => self.chars_to_tokens(text.text.chars().count()),
+            UserContent::ToolResult(result) => result
+                .content
+                .iter()
+                .map(|c| match c {
+                    rig_core::message::ToolResultContent::Text(t) => {
+                        self.chars_to_tokens(t.text.chars().count())
+                    }
+                    rig_core::message::ToolResultContent::Image(_) => self.per_attachment_tokens,
+                })
+                .sum(),
+            UserContent::Image(_)
+            | UserContent::Audio(_)
+            | UserContent::Video(_)
+            | UserContent::Document(_) => self.per_attachment_tokens,
+        }
+    }
+
+    fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
+        use rig_core::message::AssistantContent;
+        match content {
+            AssistantContent::Text(text) => self.chars_to_tokens(text.text.chars().count()),
+            AssistantContent::Reasoning(reasoning) => {
+                self.chars_to_tokens(reasoning.display_text().chars().count())
+            }
+            AssistantContent::ToolCall(call) => {
+                let name_chars = call.function.name.chars().count();
+                // `serde_json::Value::to_string` is the canonical compact JSON
+                // encoding and never fails, so we charge tool calls by the
+                // length of their serialised arguments without pulling in a
+                // direct `serde_json` dependency.
+                let args_chars = call.function.arguments.to_string().chars().count();
+                self.chars_to_tokens(name_chars + args_chars)
+            }
+            AssistantContent::Image(_) => self.per_attachment_tokens,
+        }
+    }
+}
+
+impl Default for HeuristicTokenCounter {
+    fn default() -> Self {
+        Self::openai()
+    }
+}
+
+impl TokenCounter for HeuristicTokenCounter {
+    fn count(&self, message: &Message) -> usize {
+        let content_tokens: usize = match message {
+            Message::User { content } => content.iter().map(|c| self.count_user(c)).sum(),
+            Message::Assistant { content, .. } => {
+                content.iter().map(|c| self.count_assistant(c)).sum()
+            }
+            Message::System { content } => self.chars_to_tokens(content.chars().count()),
+        };
+        content_tokens.saturating_add(self.per_message_overhead)
     }
 }
 
@@ -424,6 +575,58 @@ mod tests {
         let policy = TokenWindowMemory::new(5, |_: &Message| 10);
         let out = policy.apply(vec![user("anything")]).unwrap();
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn heuristic_counter_charges_overhead_per_message() {
+        let counter = HeuristicTokenCounter::default();
+        let empty = counter.count(&user(""));
+        assert!(
+            empty >= 4,
+            "default per-message overhead is at least 4 tokens"
+        );
+    }
+
+    #[test]
+    fn heuristic_counter_is_monotonic_in_text_length() {
+        let counter = HeuristicTokenCounter::default();
+        let small = counter.count(&user("hi"));
+        let big = counter.count(&user(&"x".repeat(400)));
+        assert!(big > small);
+    }
+
+    #[test]
+    fn heuristic_counter_handles_tool_calls() {
+        let counter = HeuristicTokenCounter::default();
+        let cost = counter.count(&tool_call_msg());
+        assert!(cost > 0);
+    }
+
+    #[test]
+    fn heuristic_counter_handles_system_messages() {
+        let counter = HeuristicTokenCounter::default();
+        let cost = counter.count(&Message::System {
+            content: "you are helpful".into(),
+        });
+        assert!(cost > 0);
+    }
+
+    #[test]
+    fn heuristic_counter_clamps_invalid_chars_per_token() {
+        // Zero/NaN/negative ratios fall back to 1.0 instead of panicking.
+        let counter = HeuristicTokenCounter::new(0.0, 0, 0);
+        assert!(counter.count(&user("abcd")) >= 4);
+        let nan = HeuristicTokenCounter::new(f32::NAN, 0, 0);
+        assert!(nan.count(&user("abcd")) >= 4);
+    }
+
+    #[test]
+    fn heuristic_counter_drives_token_window() {
+        let policy = TokenWindowMemory::new(100, HeuristicTokenCounter::default());
+        let msgs = vec![user(&"a".repeat(2_000)), user("short")];
+        let out = policy.apply(msgs).unwrap();
+        // The huge message must be evicted; the short one retained.
+        assert_eq!(out.len(), 1);
     }
 
     #[test]
