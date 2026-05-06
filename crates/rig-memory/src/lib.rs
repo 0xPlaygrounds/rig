@@ -19,6 +19,8 @@
 //! - [`TokenWindowMemory`] — retains messages that fit within a token budget.
 //! - [`HeuristicTokenCounter`] — provider-agnostic, zero-dependency
 //!   [`TokenCounter`] that approximates token cost from character lengths.
+//! - [`DemotionHook`] + [`DemotingPolicyMemory`] — bridge truncated turns
+//!   from a [`MemoryPolicy`] into a long-tail store.
 //!
 //! All sliding policies drop a leading orphan tool-result message when the
 //! preceding assistant tool call has been truncated, since most providers
@@ -37,7 +39,9 @@ use std::sync::Arc;
 
 /// Re-exports of the core memory abstractions so callers only need a single
 /// dependency on `rig-memory` for both the trait/backend and the policies.
-pub use rig_core::memory::{ConversationMemory, InMemoryConversationMemory, MemoryError};
+pub use rig_core::memory::{
+    ConversationMemory, DemotionHook, InMemoryConversationMemory, MemoryError, NoopDemotionHook,
+};
 
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
@@ -51,6 +55,26 @@ use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
     /// Transform `messages` into the history that should be returned to the agent.
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
+
+    /// Transform `messages` and report which messages were demoted (excluded
+    /// from the returned history).
+    ///
+    /// Returns `(kept, demoted)`. The default implementation calls
+    /// [`MemoryPolicy::apply`] and reports an empty `demoted` list, which is
+    /// safe but uninformative for any consumer that wants to feed evicted
+    /// turns into a long-tail store such as `MemvidPersistHook`. Truncating
+    /// policies (sliding window, token window, …) override this method to
+    /// return the actual demoted prefix.
+    ///
+    /// Implementors must guarantee that `kept ⊆ messages` in their iteration
+    /// order, otherwise [`DemotingPolicyMemory`] may return inconsistent
+    /// history. Order-preserving truncation policies satisfy this trivially.
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+        Ok((self.apply(messages)?, Vec::new()))
+    }
 }
 
 /// Adapt a [`MemoryPolicy`] into a closure suitable for
@@ -135,15 +159,32 @@ impl SlidingWindowMemory {
 
 impl MemoryPolicy for SlidingWindowMemory {
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
+    }
+
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
         if messages.len() <= self.max_messages {
-            return Ok(messages);
+            return Ok((messages, Vec::new()));
         }
 
         let start = messages.len() - self.max_messages;
-        let mut window: Vec<Message> = messages.into_iter().skip(start).collect();
+        let mut iter = messages.into_iter();
+        let mut demoted: Vec<Message> = (&mut iter).take(start).collect();
+        let mut window: Vec<Message> = iter.collect();
 
-        drop_leading_orphan_tool_result(&mut window);
-        Ok(window)
+        // The orphan tool-result, if any, becomes part of the demoted set so
+        // it is preserved end-to-end through the demotion hook even though
+        // the model never sees it again.
+        if let Some(Message::User { content }) = window.first()
+            && matches!(content.first(), UserContent::ToolResult(_))
+        {
+            demoted.push(window.remove(0));
+        }
+
+        Ok((window, demoted))
     }
 }
 
@@ -352,6 +393,13 @@ impl std::fmt::Debug for TokenWindowMemory {
 
 impl MemoryPolicy for TokenWindowMemory {
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
+    }
+
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
         let mut budget = self.max_tokens;
         let mut keep_from = messages.len();
 
@@ -364,17 +412,17 @@ impl MemoryPolicy for TokenWindowMemory {
             keep_from = idx;
         }
 
-        let mut window: Vec<Message> = messages.into_iter().skip(keep_from).collect();
-        drop_leading_orphan_tool_result(&mut window);
-        Ok(window)
-    }
-}
+        let mut iter = messages.into_iter();
+        let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
+        let mut window: Vec<Message> = iter.collect();
 
-fn drop_leading_orphan_tool_result(window: &mut Vec<Message>) {
-    if let Some(Message::User { content }) = window.first()
-        && matches!(content.first(), UserContent::ToolResult(_))
-    {
-        window.remove(0);
+        if let Some(Message::User { content }) = window.first()
+            && matches!(content.first(), UserContent::ToolResult(_))
+        {
+            demoted.push(window.remove(0));
+        }
+
+        Ok((window, demoted))
     }
 }
 
@@ -455,6 +503,120 @@ where
     }
 }
 
+/// A [`ConversationMemory`] adapter that wraps a backend with a
+/// [`MemoryPolicy`] **and** a [`DemotionHook`], so messages truncated by the
+/// policy flow into the hook before the active window is returned.
+///
+/// `DemotingPolicyMemory` is the bridge between the recent-turn store
+/// ([`InMemoryConversationMemory`] or any other [`ConversationMemory`]) and a
+/// long-tail store (`MemvidPersistHook`, vector RAG, archival storage, …).
+/// Compose it with any [`MemoryPolicy`] that overrides
+/// [`MemoryPolicy::apply_with_demoted`]; policies that rely on the default
+/// implementation will still load correctly but will never demote anything.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig_memory::{
+///     DemotingPolicyMemory, DemotionHook, InMemoryConversationMemory,
+///     MemoryError, NoopDemotionHook, SlidingWindowMemory,
+/// };
+///
+/// let memory = DemotingPolicyMemory::new(
+///     InMemoryConversationMemory::new(),
+///     SlidingWindowMemory::last_messages(20),
+///     NoopDemotionHook,
+/// );
+/// # let _ = memory;
+/// ```
+pub struct DemotingPolicyMemory<M, P, H> {
+    inner: M,
+    policy: P,
+    hook: H,
+}
+
+impl<M, P, H> DemotingPolicyMemory<M, P, H> {
+    /// Wrap `inner` so every load runs through `policy` and demoted messages
+    /// flow into `hook`.
+    pub fn new(inner: M, policy: P, hook: H) -> Self {
+        Self {
+            inner,
+            policy,
+            hook,
+        }
+    }
+
+    /// Return a reference to the wrapped backend.
+    pub fn inner(&self) -> &M {
+        &self.inner
+    }
+
+    /// Return a reference to the wrapped policy.
+    pub fn policy(&self) -> &P {
+        &self.policy
+    }
+
+    /// Return a reference to the demotion hook.
+    pub fn hook(&self) -> &H {
+        &self.hook
+    }
+
+    /// Consume the wrapper and return its three components.
+    pub fn into_inner(self) -> (M, P, H) {
+        (self.inner, self.policy, self.hook)
+    }
+}
+
+impl<M, P, H> std::fmt::Debug for DemotingPolicyMemory<M, P, H>
+where
+    M: std::fmt::Debug,
+    P: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DemotingPolicyMemory")
+            .field("inner", &self.inner)
+            .field("policy", &self.policy)
+            .field("hook", &"<hook>")
+            .finish()
+    }
+}
+
+impl<M, P, H> ConversationMemory for DemotingPolicyMemory<M, P, H>
+where
+    M: ConversationMemory,
+    P: MemoryPolicy,
+    H: DemotionHook,
+{
+    fn load<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+        Box::pin(async move {
+            let messages = self.inner.load(conversation_id).await?;
+            let (kept, demoted) = self.policy.apply_with_demoted(messages)?;
+            if !demoted.is_empty() {
+                self.hook.on_demote(conversation_id, demoted).await?;
+            }
+            Ok(kept)
+        })
+    }
+
+    fn append<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        self.inner.append(conversation_id, messages)
+    }
+
+    fn clear<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        self.inner.clear(conversation_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,6 +624,7 @@ mod tests {
     use rig_core::message::{
         AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
     };
+    use std::sync::Mutex;
 
     fn user(text: &str) -> Message {
         Message::user(text)
@@ -694,5 +857,145 @@ mod tests {
 
         mem.clear("c").await.unwrap();
         assert!(mem.load("c").await.unwrap().is_empty());
+    }
+
+    #[test]
+    fn sliding_window_reports_demoted_prefix() {
+        let policy = SlidingWindowMemory::last_messages(2);
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![
+                user("oldest"),
+                assistant("old"),
+                user("recent"),
+                assistant("latest"),
+            ])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(demoted.len(), 2);
+    }
+
+    #[test]
+    fn token_window_reports_demoted_prefix() {
+        let policy = TokenWindowMemory::new(2, |_: &Message| 1);
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![user("a"), assistant("b"), user("c"), assistant("d")])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(demoted.len(), 2);
+    }
+
+    #[test]
+    fn noop_policy_demotes_nothing() {
+        let (kept, demoted) = NoopMemoryPolicy
+            .apply_with_demoted(vec![user("a"), assistant("b")])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert!(demoted.is_empty());
+    }
+
+    #[test]
+    fn sliding_window_demotes_orphan_tool_result_with_prefix() {
+        // Window keeps the last 2 messages, but the leading message of that
+        // window is an orphan tool result; it must be moved into `demoted`
+        // so the hook can preserve it.
+        let policy = SlidingWindowMemory::last_messages(2);
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![
+                tool_call_msg(),
+                tool_result_msg(),
+                user("after"),
+                assistant("done"),
+            ])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert!(matches!(kept.first(), Some(Message::User { content })
+            if matches!(content.first(), UserContent::Text(_))));
+        assert_eq!(demoted.len(), 2);
+    }
+
+    #[derive(Default)]
+    struct CountingHook {
+        seen: Mutex<Vec<(String, Vec<Message>)>>,
+    }
+
+    impl CountingHook {
+        fn calls(&self) -> usize {
+            self.seen.lock().unwrap().len()
+        }
+        fn last_demoted_count(&self) -> usize {
+            self.seen
+                .lock()
+                .unwrap()
+                .last()
+                .map(|(_, m)| m.len())
+                .unwrap_or(0)
+        }
+    }
+
+    impl DemotionHook for CountingHook {
+        fn on_demote<'a>(
+            &'a self,
+            conversation_id: &'a str,
+            messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            Box::pin(async move {
+                self.seen
+                    .lock()
+                    .unwrap()
+                    .push((conversation_id.to_string(), messages));
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_invokes_hook_on_truncation() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+            hook.clone(),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+
+        let kept = mem.load("c").await.unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(hook.calls(), 1);
+        assert_eq!(hook.last_demoted_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_skips_hook_when_nothing_evicted() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(10),
+            hook.clone(),
+        );
+
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_with_noop_hook_behaves_like_policy_memory() {
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            NoopDemotionHook,
+        );
+        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+            .await
+            .unwrap();
+        assert_eq!(mem.load("c").await.unwrap().len(), 1);
     }
 }

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DemotionHook` trait + `DemotingPolicyMemory<M, P, H>` adapter and a
+  `NoopDemotionHook` no-op default. The trait itself lives in
+  `rig_core::memory` (re-exported here) so any memory backend can
+  implement it without taking a `rig-memory` dependency; the composing
+  adapter lives in this crate. `DemotingPolicyMemory` calls the hook
+  with messages that the policy truncated out of active history,
+  turning eviction into demotion. Bridges `SlidingWindowMemory` /
+  `TokenWindowMemory` to long-tail stores such as `MemvidPersistHook`
+  without coupling either crate to the other.
+- `MemoryPolicy::apply_with_demoted` default method that returns
+  `(kept, demoted)`. `SlidingWindowMemory` and `TokenWindowMemory`
+  override it to return the actual demoted prefix; the default
+  implementation reports an empty demoted set so existing policies
+  continue to work unchanged.
 - `HeuristicTokenCounter` — provider-agnostic, zero-dependency
   `TokenCounter` implementation that approximates token cost from
   character lengths. Ships `default` / `openai` / `anthropic` / `gemini`

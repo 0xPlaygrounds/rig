@@ -124,6 +124,68 @@ impl<F> MessageFilter for F where
 {
 }
 
+/// A side-channel for messages that a memory policy or adapter removes from
+/// active history during [`ConversationMemory::load`].
+///
+/// Truncating policies (sliding window, token budget, …) drop older turns
+/// once their limit is exceeded. Without a hook those messages are silently
+/// lost. A [`DemotionHook`] receives the demoted messages and can persist
+/// them into a long-tail store (semantic memory, episodic recall, archival
+/// storage, …), turning truncation into demotion.
+///
+/// The trait is defined here in `rig-core` so that *any* memory backend
+/// (in-memory, vector store, file archive, …) can implement it without
+/// taking on a `rig-memory` dependency. The composing adapter that actually
+/// wires a [`ConversationMemory`] backend, a policy, and a hook together
+/// lives in the `rig-memory` companion crate.
+///
+/// Hooks must be cheap and non-blocking: they run inline on every load.
+/// Push expensive work onto a background task or a buffered channel inside
+/// the implementation if needed.
+pub trait DemotionHook: WasmCompatSend + WasmCompatSync {
+    /// Receive `messages` that were demoted out of the active window for
+    /// `conversation_id`.
+    ///
+    /// `messages` are in original conversation order. Errors are propagated
+    /// as [`MemoryError::Backend`] by the composing adapter.
+    fn on_demote<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
+}
+
+/// A [`DemotionHook`] that does nothing. Useful as a default when an adapter
+/// requires a hook value but the caller has no long-tail store wired up yet.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopDemotionHook;
+
+impl DemotionHook for NoopDemotionHook {
+    fn on_demote<'a>(
+        &'a self,
+        _conversation_id: &'a str,
+        _messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        Box::pin(async move { Ok(()) })
+    }
+}
+
+/// Forwarding impl so callers can pass `Arc<H>` wherever a `DemotionHook`
+/// is expected (e.g. when sharing a single hook between multiple memory
+/// adapters).
+impl<H> DemotionHook for Arc<H>
+where
+    H: DemotionHook + ?Sized,
+{
+    fn on_demote<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        (**self).on_demote(conversation_id, messages)
+    }
+}
+
 /// A simple thread-safe in-memory [`ConversationMemory`] backed by a `HashMap`.
 ///
 /// Messages are stored in process memory only and lost on restart. Useful for
