@@ -13,7 +13,9 @@ use rig::OneOrMany;
 use rig::agent::{MultiTurnStreamItem, StreamingError};
 use rig::completion::request::ToolDefinition;
 use rig::completion::{self, CompletionModel};
-use rig::message::{AssistantContent, Message, Reasoning, ReasoningContent, UserContent};
+use rig::message::{
+    AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
+};
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use rig::wasm_compat::WasmCompatSend;
@@ -577,5 +579,123 @@ pub(crate) fn assert_nonstreaming_universal(
         references_tool_output,
         "[{provider}] Response does not reference tool output: {:?}",
         &trimmed[..trimmed.len().min(200)]
+    );
+}
+
+pub(crate) fn assert_chat_history_preserves_reasoning_tool_roundtrip(
+    chat_history: &[Message],
+    result: &str,
+    provider: &str,
+) {
+    assert!(
+        chat_history.len() >= 4,
+        "[{provider}] Chat history should contain at least user prompt, assistant tool call, tool result, and final assistant response. Got: {chat_history:#?}"
+    );
+
+    let result = result.trim();
+    let mut prompt_index = None;
+    let mut reasoning_index = None;
+    let mut tool_call_index = None;
+    let mut tool_result_index = None;
+    let mut final_response_index = None;
+    let mut tool_result_text = String::new();
+
+    for (index, message) in chat_history.iter().enumerate() {
+        match message {
+            Message::User { content } => {
+                for item in content.iter() {
+                    match item {
+                        UserContent::Text(text)
+                            if text.text.contains("Tokyo")
+                                || text.text.contains("get_weather")
+                                || text.text.contains("weather") =>
+                        {
+                            prompt_index.get_or_insert(index);
+                        }
+                        UserContent::ToolResult(tool_result) => {
+                            tool_result_index.get_or_insert(index);
+                            for content in tool_result.content.iter() {
+                                if let ToolResultContent::Text(text) = content {
+                                    tool_result_text.push_str(&text.text);
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Message::Assistant { content, .. } => {
+                let mut assistant_text = String::new();
+
+                for item in content.iter() {
+                    match item {
+                        AssistantContent::Reasoning(_) => {
+                            reasoning_index.get_or_insert(index);
+                        }
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.function.name == WeatherTool::NAME =>
+                        {
+                            tool_call_index.get_or_insert(index);
+                        }
+                        AssistantContent::Text(text) => {
+                            assistant_text.push_str(&text.text);
+                        }
+                        _ => {}
+                    }
+                }
+
+                let assistant_text = assistant_text.trim();
+                if !assistant_text.is_empty()
+                    && (assistant_text == result
+                        || assistant_text.contains(result)
+                        || result.contains(assistant_text))
+                {
+                    final_response_index.get_or_insert(index);
+                }
+            }
+            Message::System { .. } => {}
+        }
+    }
+
+    let prompt_index = prompt_index.unwrap_or_else(|| {
+        panic!("[{provider}] Chat history is missing the original user prompt: {chat_history:#?}")
+    });
+    let _reasoning_index = reasoning_index.unwrap_or_else(|| {
+        panic!(
+            "[{provider}] Chat history is missing assistant reasoning content: {chat_history:#?}"
+        )
+    });
+    let tool_call_index = tool_call_index.unwrap_or_else(|| {
+        panic!("[{provider}] Chat history is missing the get_weather tool call: {chat_history:#?}")
+    });
+    let tool_result_index = tool_result_index.unwrap_or_else(|| {
+        panic!(
+            "[{provider}] Chat history is missing the get_weather tool result: {chat_history:#?}"
+        )
+    });
+    let final_response_index = final_response_index.unwrap_or_else(|| {
+        panic!(
+            "[{provider}] Chat history is missing the returned final assistant response {result:?}: {chat_history:#?}"
+        )
+    });
+
+    assert!(
+        prompt_index < tool_call_index,
+        "[{provider}] Tool call should appear after the user prompt: {chat_history:#?}"
+    );
+    assert!(
+        tool_call_index < tool_result_index,
+        "[{provider}] Tool result should appear after the assistant tool call: {chat_history:#?}"
+    );
+    assert!(
+        tool_result_index < final_response_index,
+        "[{provider}] Final assistant response should appear after the tool result: {chat_history:#?}"
+    );
+
+    let tool_result_lower = tool_result_text.to_ascii_lowercase();
+    assert!(
+        tool_result_lower.contains("tokyo")
+            && (tool_result_lower.contains("72") || tool_result_lower.contains("sunny")),
+        "[{provider}] Tool result content was not preserved in chat history: {tool_result_text:?}"
     );
 }

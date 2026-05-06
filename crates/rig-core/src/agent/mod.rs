@@ -37,7 +37,7 @@
 //!
 //! // Use the agent for completions and prompts
 //! // Generate a chat completion response from a prompt and chat history
-//! let chat_response = agent.chat("Prompt", Vec::<rig_core::completion::Message>::new()).await?;
+//! let chat_response = agent.chat("Prompt", &mut Vec::<rig_core::completion::Message>::new()).await?;
 //!
 //! // Generate a prompt completion response from a simple prompt
 //! let prompt_response = agent.prompt("Prompt").await?;

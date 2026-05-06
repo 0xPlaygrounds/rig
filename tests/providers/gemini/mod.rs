@@ -1,4 +1,5 @@
 mod agent;
+mod chat_history;
 mod embeddings;
 mod extractor;
 mod interactions_api;

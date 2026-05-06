@@ -4,7 +4,8 @@
 use rig::OneOrMany;
 use rig::agent::AgentBuilder;
 use rig::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt, Usage,
+    Chat, CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
+    Usage,
 };
 use rig::message::{AssistantContent, Text, ToolCall, ToolFunction, UserContent};
 use rig::streaming::{StreamingCompletionResponse, StreamingResult};
@@ -440,7 +441,102 @@ async fn extended_details_works_without_with_history() {
     assert_eq!(resp.output, "The answer is 5");
 }
 
-/// Test 10: Multiple sequential prompts each return independent message histories.
+/// Test 10: `Chat::chat` appends the prompt and response messages to the
+/// caller-owned history.
+#[tokio::test]
+async fn chat_appends_prompt_and_assistant_to_history() {
+    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let mut history = Vec::<Message>::new();
+
+    let output = agent
+        .chat("hi", &mut history)
+        .await
+        .expect("chat should succeed");
+
+    assert_eq!(output, "hello from mock");
+    assert_eq!(
+        history.len(),
+        2,
+        "expected chat to append [User, Assistant], got: {history:#?}"
+    );
+
+    match &history[0] {
+        Message::User { content } => match content.first() {
+            UserContent::Text(text) => assert_eq!(text.text, "hi"),
+            other => panic!("expected text user content, got: {other:?}"),
+        },
+        other => panic!("expected User message, got: {other:?}"),
+    }
+
+    match &history[1] {
+        Message::Assistant { content, .. } => match content.first() {
+            AssistantContent::Text(text) => assert_eq!(text.text, "hello from mock"),
+            other => panic!("expected text assistant content, got: {other:?}"),
+        },
+        other => panic!("expected Assistant message, got: {other:?}"),
+    }
+
+    let _ = agent
+        .chat("again", &mut history)
+        .await
+        .expect("second chat should succeed");
+
+    assert_eq!(
+        history.len(),
+        4,
+        "expected history to grow to 4 messages, got: {history:#?}"
+    );
+}
+
+/// Test 11: `Chat::chat` appends every message produced by a tool roundtrip.
+#[tokio::test]
+async fn chat_appends_tool_roundtrip_to_history() {
+    let agent = AgentBuilder::new(ToolThenTextModel::new()).build();
+    let mut history = Vec::<Message>::new();
+
+    let output = agent
+        .chat("What is 2 + 3?", &mut history)
+        .await
+        .expect("chat should succeed");
+
+    assert_eq!(output, "The answer is 5");
+    assert_eq!(
+        history.len(),
+        4,
+        "expected chat to append [User, Assistant(tool), User(tool result), Assistant], got: {history:#?}"
+    );
+    assert!(matches!(&history[0], Message::User { .. }));
+
+    match &history[1] {
+        Message::Assistant { content, .. } => assert!(
+            content
+                .iter()
+                .any(|content| matches!(content, AssistantContent::ToolCall(_))),
+            "expected assistant tool call, got: {content:?}"
+        ),
+        other => panic!("expected Assistant with tool call, got: {other:?}"),
+    }
+
+    match &history[2] {
+        Message::User { content } => assert!(
+            content
+                .iter()
+                .any(|content| matches!(content, UserContent::ToolResult(_))),
+            "expected user tool result, got: {content:?}"
+        ),
+        other => panic!("expected User with tool result, got: {other:?}"),
+    }
+
+    match &history[3] {
+        Message::Assistant { content, .. } => match content.first() {
+            AssistantContent::Text(text) => assert_eq!(text.text, "The answer is 5"),
+            other => panic!("expected final assistant text, got: {other:?}"),
+        },
+        other => panic!("expected final Assistant, got: {other:?}"),
+    }
+}
+
+/// Test 12: Multiple sequential prompts each return independent message histories.
 #[tokio::test]
 async fn sequential_prompts_have_independent_histories() {
     let agent = AgentBuilder::new(SimpleTextModel).build();

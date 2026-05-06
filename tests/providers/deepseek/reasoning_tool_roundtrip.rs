@@ -60,7 +60,7 @@ async fn nonstreaming() {
         .build();
 
     let result = agent
-        .chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
         .await
         .expect("[deepseek] Non-streaming chat failed - likely 400 from dropped reasoning");
 

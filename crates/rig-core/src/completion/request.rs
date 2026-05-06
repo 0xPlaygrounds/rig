@@ -257,14 +257,16 @@ pub trait Chat: WasmCompatSend + WasmCompatSync {
     /// is returned as a string.
     ///
     /// If the tool does not exist, or the tool call fails, then an error is returned.
-    fn chat<I, T>(
+    ///
+    /// The prompt and any assistant or tool messages produced during the turn
+    /// are appended to `chat_history`. Callers should pass the current
+    /// conversation history and should not push the user prompt themselves
+    /// before calling this method.
+    fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend
-    where
-        I: IntoIterator<Item = T> + WasmCompatSend,
-        T: Into<Message>;
+        chat_history: &mut Vec<Message>,
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend;
 }
 
 /// Trait defining a high-level typed prompt interface for structured output.
