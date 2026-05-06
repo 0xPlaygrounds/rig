@@ -626,6 +626,9 @@ fn split_data_uri(
         message::DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
             "Raw content is not supported, encode as base64 first".to_string(),
         )),
+        message::DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+            "Provider file IDs are not supported for Gemini Interactions inputs".to_string(),
+        )),
         message::DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
             "Unknown content source".to_string(),
         )),

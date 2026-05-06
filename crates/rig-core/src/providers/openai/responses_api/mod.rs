@@ -327,6 +327,21 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             }
                         }
                         crate::message::UserContent::Document(Document {
+                            data: DocumentSourceKind::FileId(file_id),
+                            ..
+                        }) => items.push(InputItem {
+                            role: Some(Role::User),
+                            input: InputContent::Message(Message::User {
+                                content: OneOrMany::one(UserContent::InputFile {
+                                    file_id: Some(file_id),
+                                    file_data: None,
+                                    file_url: None,
+                                    filename: None,
+                                }),
+                                name: None,
+                            }),
+                        }),
+                        crate::message::UserContent::Document(Document {
                             data,
                             media_type: Some(DocumentMediaType::PDF),
                             ..
@@ -353,6 +368,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
                                     content: OneOrMany::one(UserContent::InputFile {
+                                        file_id: None,
                                         file_data,
                                         file_url,
                                         filename: Some("document.pdf".to_string()),
@@ -1613,6 +1629,8 @@ pub enum UserContent {
     },
     InputFile {
         #[serde(skip_serializing_if = "Option::is_none")]
+        file_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         file_url: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         file_data: Option<String>,
@@ -1718,6 +1736,15 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 })
                             }
                             message::UserContent::Document(message::Document {
+                                data: DocumentSourceKind::FileId(file_id),
+                                ..
+                            }) => Ok(UserContent::InputFile {
+                                file_id: Some(file_id),
+                                file_url: None,
+                                file_data: None,
+                                filename: None,
+                            }),
+                            message::UserContent::Document(message::Document {
                                 media_type: Some(DocumentMediaType::PDF),
                                 data,
                                 ..
@@ -1743,6 +1770,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 };
 
                                 Ok(UserContent::InputFile {
+                                    file_id: None,
                                     file_url,
                                     file_data,
                                     filename,
@@ -1859,5 +1887,55 @@ impl FromStr for UserContent {
         Ok(UserContent::InputText {
             text: s.to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message;
+
+    #[test]
+    fn file_id_document_serializes_as_input_file_content() {
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::Document(message::Document {
+                data: DocumentSourceKind::FileId("file_abc".to_string()),
+                media_type: None,
+                additional_params: None,
+            })),
+        };
+
+        let converted: Vec<Message> = message.try_into().expect("conversion should succeed");
+        let Message::User { content, .. } = &converted[0] else {
+            panic!("expected user message");
+        };
+
+        let json = serde_json::to_value(content.first_ref()).expect("serialize content");
+
+        assert_eq!(json["type"], "input_file");
+        assert_eq!(json["file_id"], "file_abc");
+        assert!(json.get("file_data").is_none());
+        assert!(json.get("file_url").is_none());
+    }
+
+    #[test]
+    fn file_id_document_serializes_as_input_item_content() {
+        let message = completion::Message::User {
+            content: OneOrMany::one(message::UserContent::Document(message::Document {
+                data: DocumentSourceKind::FileId("file_abc".to_string()),
+                media_type: None,
+                additional_params: None,
+            })),
+        };
+
+        let converted: Vec<InputItem> = message.try_into().expect("conversion should succeed");
+        let json = serde_json::to_value(&converted[0]).expect("serialize input item");
+
+        assert_eq!(json["type"], "message");
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"][0]["type"], "input_file");
+        assert_eq!(json["content"][0]["file_id"], "file_abc");
+        assert!(json["content"][0].get("file_data").is_none());
+        assert!(json["content"][0].get("file_url").is_none());
     }
 }

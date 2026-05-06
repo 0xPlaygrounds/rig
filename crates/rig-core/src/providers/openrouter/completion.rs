@@ -1036,6 +1036,11 @@ impl TryFrom<message::UserContent> for UserContent {
                             "Raw bytes not supported, encode as base64 first".into(),
                         ));
                     }
+                    DocumentSourceKind::FileId(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "File IDs are not supported for images".into(),
+                        ));
+                    }
                     DocumentSourceKind::String(_) => {
                         return Err(message::MessageError::ConversionError(
                             "String source not supported for images".into(),
@@ -1055,6 +1060,13 @@ impl TryFrom<message::UserContent> for UserContent {
             message::UserContent::Document(message::Document {
                 data, media_type, ..
             }) => match data {
+                DocumentSourceKind::FileId(file_id) => Ok(UserContent::File {
+                    file: FileContent {
+                        filename: None,
+                        file_data: None,
+                        file_id: Some(file_id),
+                    },
+                }),
                 DocumentSourceKind::Url(url) => {
                     let filename = media_type.as_ref().map(|mt| match mt {
                         DocumentMediaType::PDF => "document.pdf",
@@ -1126,6 +1138,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
                     "Raw bytes not supported for audio, encode as base64 first".into(),
                 )),
+                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                    "File IDs are not supported for audio".into(),
+                )),
                 DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
                     "String source not supported for audio".into(),
                 )),
@@ -1152,6 +1167,11 @@ impl TryFrom<message::UserContent> for UserContent {
                     DocumentSourceKind::Raw(_) => {
                         return Err(message::MessageError::ConversionError(
                             "Raw bytes not supported for video, encode as base64 first".into(),
+                        ));
+                    }
+                    DocumentSourceKind::FileId(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "File IDs are not supported for video".into(),
                         ));
                     }
                     DocumentSourceKind::String(_) => {
@@ -2819,6 +2839,39 @@ mod tests {
             }
             _ => panic!("Expected File variant"),
         }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_document_file_id() {
+        let rig_content = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::FileId("file_abc".to_string()),
+            media_type: None,
+            additional_params: None,
+        });
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let json = serde_json::to_value(&openrouter_content).unwrap();
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(json["file"]["file_id"], "file_abc");
+        assert!(json["file"].get("file_data").is_none());
+    }
+
+    #[test]
+    fn test_openai_file_id_content_round_trips_through_rig_to_openrouter_file() {
+        let openai_content = openai::UserContent::File {
+            file: openai::FileData {
+                file_data: None,
+                file_id: Some("file_abc".to_string()),
+                filename: None,
+            },
+        };
+        let rig_content: message::UserContent = openai_content.into();
+        let openrouter_content: UserContent = rig_content.try_into().unwrap();
+        let json = serde_json::to_value(&openrouter_content).unwrap();
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(json["file"]["file_id"], "file_abc");
+        assert!(json["file"].get("file_data").is_none());
     }
 
     #[test]
