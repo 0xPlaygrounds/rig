@@ -9319,6 +9319,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-memory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rig-core",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rig-milvus"
 version = "0.2.5"
 dependencies = [

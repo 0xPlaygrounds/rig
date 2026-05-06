@@ -4,6 +4,7 @@ use crate::{
     agent::prompt_request::{HookAction, hooks::PromptHook},
     completion::{Document, GetTokenUsage},
     json_utils,
+    memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResult, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent},
     tool::server::ToolServerHandle,
@@ -190,6 +191,15 @@ pub enum StreamingError {
     Tool(#[from] ToolSetError),
 }
 
+/// Surface [`crate::memory::ConversationMemory`] failures through the existing
+/// [`CompletionError::RequestError`] variant so adding memory support does not
+/// require a new top-level [`StreamingError`] arm.
+impl From<crate::memory::MemoryError> for StreamingError {
+    fn from(err: crate::memory::MemoryError) -> Self {
+        Self::Completion(CompletionError::RequestError(Box::new(err)))
+    }
+}
+
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 /// A builder for creating prompt requests with customizable options.
@@ -237,6 +247,10 @@ where
     output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
+    /// Optional conversation memory backend cloned from the agent.
+    memory: Option<Arc<dyn ConversationMemory>>,
+    /// Optional conversation id used for loading and saving memory.
+    conversation_id: Option<String>,
 }
 
 impl<M, P> StreamingPromptRequest<M, P>
@@ -264,6 +278,8 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: None,
+            memory: agent.memory.clone(),
+            conversation_id: agent.default_conversation_id.clone(),
         }
     }
 
@@ -291,6 +307,8 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: agent.hook.clone(),
+            memory: agent.memory.clone(),
+            conversation_id: agent.default_conversation_id.clone(),
         }
     }
 
@@ -348,7 +366,27 @@ where
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
             hook: Some(hook),
+            memory: self.memory,
+            conversation_id: self.conversation_id,
         }
+    }
+
+    /// Set the conversation id used to load and persist memory for this request.
+    ///
+    /// Overrides any default conversation id set on the agent. If memory is not
+    /// configured on the agent, this has no effect.
+    pub fn conversation(mut self, id: impl Into<String>) -> Self {
+        self.conversation_id = Some(id.into());
+        self
+    }
+
+    /// Disable conversation memory for this request.
+    ///
+    /// History will neither be loaded from nor saved to the agent's memory backend.
+    pub fn without_memory(mut self) -> Self {
+        self.memory = None;
+        self.conversation_id = None;
+        self
     }
 
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
@@ -385,8 +423,26 @@ where
         let dynamic_context = self.dynamic_context.clone();
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
-        let has_history = self.chat_history.is_some();
-        let chat_history = self.chat_history;
+        // When the caller passes explicit history, memory is fully bypassed for
+        // this request (no load AND no save). Otherwise, if a memory backend and
+        // conversation id are both configured, load prior history; if either is
+        // missing, behave as if no memory is configured.
+        let (chat_history, memory_handle) = match self.chat_history {
+            Some(history) => (Some(history), None),
+            None => match (self.memory, self.conversation_id) {
+                (Some(memory), Some(id)) => match memory.load(&id).await {
+                    Ok(loaded) => (Some(loaded), Some((memory, id))),
+                    Err(err) => {
+                        let stream = async_stream::stream! {
+                            yield Err(StreamingError::from(err));
+                        };
+                        return Box::pin(stream);
+                    }
+                },
+                _ => (None, None),
+            },
+        };
+        let has_history = chat_history.is_some();
         let mut new_messages: Vec<Message> = vec![prompt.clone()];
 
         let mut current_max_turns = 0;
@@ -718,6 +774,15 @@ where
                     current_span.record("gen_ai.usage.cache_read.input_tokens", aggregated_usage.cached_input_tokens);
                     current_span.record("gen_ai.usage.cache_creation.input_tokens", aggregated_usage.cache_creation_input_tokens);
                     tracing::info!("Agent multi-turn stream finished");
+                    if let Some((memory, id)) = memory_handle.as_ref()
+                        && let Err(err) = memory.append(id, new_messages.clone()).await
+                    {
+                        tracing::warn!(
+                            error = %err,
+                            conversation_id = %id,
+                            "conversation memory append failed; yielding final response anyway"
+                        );
+                    }
                     let final_messages: Option<Vec<Message>> = if has_history {
                         Some(new_messages.clone())
                     } else {
@@ -1457,5 +1522,279 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn streaming_appends_to_memory_after_final_response() {
+        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+
+        let memory = InMemoryConversationMemory::new();
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .memory(memory.clone())
+        .build();
+
+        let mut stream = agent
+            .stream_prompt("hi there")
+            .conversation("stream-thread")
+            .await;
+
+        let mut history_in_final = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    history_in_final = res.history().map(|h| h.to_vec());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let final_history = history_in_final
+            .expect("FinalResponse.history should be populated when memory is configured");
+        assert_eq!(
+            final_history.len(),
+            2,
+            "user prompt + assistant response in final history: {final_history:?}"
+        );
+
+        let stored = memory.load("stream-thread").await.unwrap();
+        assert_eq!(stored.len(), 2, "memory should contain user + assistant");
+    }
+
+    #[tokio::test]
+    async fn streaming_with_history_overrides_memory() {
+        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+
+        let memory = InMemoryConversationMemory::new();
+        memory
+            .append("t1", vec![Message::user("from-memory")])
+            .await
+            .unwrap();
+
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .memory(memory.clone())
+        .build();
+
+        let mut stream = agent
+            .stream_prompt("hi")
+            .conversation("t1")
+            .with_history(vec![Message::user("from-caller")])
+            .await;
+
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
+                break;
+            }
+        }
+
+        let stored = memory.load("t1").await.unwrap();
+        assert_eq!(
+            stored.len(),
+            1,
+            "with_history bypasses memory; only the pre-seeded entry remains: {stored:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_without_memory_disables_for_request() {
+        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+
+        let memory = InMemoryConversationMemory::new();
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .memory(memory.clone())
+        .conversation_id("default")
+        .build();
+
+        let mut stream = agent.stream_prompt("hi").without_memory().await;
+
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
+                break;
+            }
+        }
+
+        let stored = memory.load("default").await.unwrap();
+        assert!(stored.is_empty(), "without_memory disables save");
+    }
+
+    #[tokio::test]
+    async fn streaming_load_error_yields_memory_error() {
+        use crate::memory::{ConversationMemory, MemoryError};
+        use crate::wasm_compat::WasmBoxedFuture;
+
+        #[derive(Clone)]
+        struct FailingMemory;
+        impl ConversationMemory for FailingMemory {
+            fn load<'a>(
+                &'a self,
+                _id: &'a str,
+            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("load boom"))) })
+            }
+            fn append<'a>(
+                &'a self,
+                _id: &'a str,
+                _msgs: Vec<Message>,
+            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .memory(FailingMemory)
+        .build();
+
+        let mut stream = agent.stream_prompt("hi").conversation("t1").await;
+
+        let first = stream.next().await.expect("at least one item");
+        match first {
+            Err(err) => {
+                let msg = format!("{err:?}");
+                assert!(
+                    msg.contains("Memory") || msg.contains("memory") || msg.contains("load boom"),
+                    "expected memory error, got: {msg}"
+                );
+            }
+            Ok(other) => panic!("expected memory error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_with_filter_shapes_loaded_history() {
+        use crate::memory::{ConversationMemory, InMemoryConversationMemory};
+        use std::sync::Mutex;
+
+        #[derive(Clone, Default)]
+        struct RecordingStreamingMockModel {
+            last_history: Arc<Mutex<Vec<Message>>>,
+        }
+
+        #[allow(refining_impl_trait)]
+        impl CompletionModel for RecordingStreamingMockModel {
+            type Response = ();
+            type StreamingResponse = MockStreamingResponse;
+            type Client = ();
+
+            fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+                Self::default()
+            }
+
+            async fn completion(
+                &self,
+                _request: CompletionRequest,
+            ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+                Err(CompletionError::ProviderError(
+                    "completion is unused in this streaming test".to_string(),
+                ))
+            }
+
+            async fn stream(
+                &self,
+                request: CompletionRequest,
+            ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
+            {
+                *self.last_history.lock().unwrap() =
+                    request.chat_history.clone().into_iter().collect();
+                let stream = async_stream::stream! {
+                    yield Ok(RawStreamingChoice::Message("ok".to_string()));
+                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(1)));
+                };
+                let pinned: crate::streaming::StreamingResult<Self::StreamingResponse> =
+                    Box::pin(stream);
+                Ok(StreamingCompletionResponse::stream(pinned))
+            }
+        }
+
+        let memory = InMemoryConversationMemory::new()
+            .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());
+        memory
+            .append(
+                "t1",
+                vec![
+                    Message::user("1"),
+                    Message::assistant("2"),
+                    Message::user("3"),
+                    Message::assistant("4"),
+                ],
+            )
+            .await
+            .unwrap();
+
+        let model = RecordingStreamingMockModel::default();
+        let recorded = model.last_history.clone();
+        let agent = AgentBuilder::new(model).memory(memory).build();
+
+        let mut stream = agent.stream_prompt("ping").conversation("t1").await;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
+                break;
+            }
+        }
+
+        let received = recorded.lock().unwrap().clone();
+        assert_eq!(
+            received.len(),
+            3,
+            "window-truncated history (2) + current prompt: {received:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_append_error_does_not_suppress_final_response() {
+        use crate::memory::{ConversationMemory, MemoryError};
+        use crate::wasm_compat::WasmBoxedFuture;
+
+        #[derive(Clone)]
+        struct AppendFailingMemory;
+        impl ConversationMemory for AppendFailingMemory {
+            fn load<'a>(
+                &'a self,
+                _id: &'a str,
+            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+                Box::pin(async { Ok(Vec::new()) })
+            }
+            fn append<'a>(
+                &'a self,
+                _id: &'a str,
+                _msgs: Vec<Message>,
+            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
+            }
+            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                Box::pin(async { Ok(()) })
+            }
+        }
+
+        let agent = AgentBuilder::new(FinalResponseMockModel {
+            scenario: FinalResponseScenario::TextThenFinal,
+        })
+        .memory(AppendFailingMemory)
+        .build();
+
+        let mut stream = agent.stream_prompt("hi").conversation("t1").await;
+
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
+                saw_final = true;
+                break;
+            }
+        }
+        assert!(
+            saw_final,
+            "FinalResponse must be yielded even when memory.append fails"
+        );
     }
 }

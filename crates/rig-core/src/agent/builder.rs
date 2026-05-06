@@ -5,6 +5,7 @@ use schemars::{JsonSchema, Schema, schema_for};
 use crate::{
     agent::prompt_request::hooks::PromptHook,
     completion::{CompletionModel, Document},
+    memory::ConversationMemory,
     message::ToolChoice,
     tool::{
         Tool, ToolDyn, ToolSet,
@@ -106,6 +107,10 @@ where
     hook: Option<P>,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    /// Optional conversation memory backend that loads/saves history per conversation id.
+    memory: Option<Arc<dyn ConversationMemory>>,
+    /// Optional default conversation id used when none is set per-request.
+    default_conversation_id: Option<String>,
 }
 
 impl<M, P, ToolState> AgentBuilder<M, P, ToolState>
@@ -210,6 +215,30 @@ where
         self.output_schema = Some(schema);
         self
     }
+
+    /// Attach a [`ConversationMemory`] backend.
+    ///
+    /// When set, the agent will automatically load prior conversation history before
+    /// each prompt and append the new turn after a successful response. A
+    /// `conversation_id` must be supplied either via [`AgentBuilder::conversation_id`]
+    /// or per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
+    /// If neither is set, memory is silently bypassed.
+    pub fn memory<B>(mut self, memory: B) -> Self
+    where
+        B: ConversationMemory + 'static,
+    {
+        self.memory = Some(Arc::new(memory));
+        self
+    }
+
+    /// Set a default conversation id used when none is provided per-request.
+    ///
+    /// Most agents are reused across users or threads; prefer setting the id
+    /// per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
+    pub fn conversation_id(mut self, id: impl Into<String>) -> Self {
+        self.default_conversation_id = Some(id.into());
+        self
+    }
 }
 
 impl<M> AgentBuilder<M, (), NoToolConfig>
@@ -233,6 +262,8 @@ where
             tool_state: NoToolConfig,
             hook: None,
             output_schema: None,
+            memory: None,
+            default_conversation_id: None,
         }
     }
 }
@@ -266,6 +297,8 @@ where
             tool_state: WithToolServerHandle { handle },
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
         }
     }
 
@@ -294,6 +327,8 @@ where
             },
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
         }
     }
 
@@ -319,6 +354,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
@@ -354,6 +391,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools: vec![toolname],
                 tools,
@@ -399,6 +438,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
                 tools,
@@ -431,6 +472,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools: vec![],
                 tools: toolset,
@@ -462,6 +505,8 @@ where
             tool_state: self.tool_state,
             hook: Some(hook),
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
         }
     }
 
@@ -486,6 +531,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
         }
     }
 }
@@ -512,6 +559,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
         }
     }
 }
@@ -597,6 +646,8 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
         }
     }
 }

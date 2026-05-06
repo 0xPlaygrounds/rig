@@ -72,6 +72,19 @@
 //! Those can then be used as the knowledge base for a RAG enabled [Agent](crate::agent::Agent), or
 //! as a source of context documents in a custom architecture that use multiple LLMs or agents.
 //!
+//! ## Conversation memory
+//! Rig can transparently load and persist per-conversation history through the
+//! [ConversationMemory](crate::memory::ConversationMemory) trait. Attach a backend
+//! with [`AgentBuilder::memory`](crate::agent::AgentBuilder::memory) and identify the
+//! conversation per-request via
+//! [`PromptRequest::conversation`](crate::agent::prompt_request::PromptRequest::conversation).
+//! The default in-process backend
+//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
+//! for tests and single-process agents; reusable history-shaping policies (sliding
+//! window, token budget) live in the [`rig-memory`](https://crates.io/crates/rig-memory)
+//! companion crate. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
+//! for a runnable end-to-end example.
+//!
 //! # Integrations
 //! ## Model Providers
 //! Rig natively supports the following completion and embedding model provider integrations:
@@ -145,6 +158,7 @@ pub mod integrations;
 pub(crate) mod json_utils;
 pub mod loaders;
 pub mod markers;
+pub mod memory;
 pub mod model;
 pub mod one_or_many;
 pub mod pipeline;

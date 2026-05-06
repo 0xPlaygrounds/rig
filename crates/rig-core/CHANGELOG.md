@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Rig-managed conversation memory:
+  - New `rig::memory` module with the `ConversationMemory` trait,
+    `MemoryError` (with a `MemoryBackendError` source type),
+    `MessageFilter` trait, and a default `InMemoryConversationMemory` backend
+    with optional `with_filter` for shaping loaded history.
+  - `AgentBuilder::memory(...)` and `AgentBuilder::conversation_id(...)` to
+    attach a backend and an optional default conversation id to an agent.
+  - `PromptRequest::conversation(id)` and `PromptRequest::without_memory()`
+    (mirrored on the streaming builder) to control memory per-request.
+  - `From<MemoryError> for PromptError` and `From<MemoryError> for
+    StreamingError` so memory failures propagate via `?` through the existing
+    `CompletionError::RequestError(Box<dyn Error>)` variant — no new
+    top-level error variants, fully additive change.
+  - `memory.append(...)` failures after a successful completion are
+    best-effort: they emit `tracing::warn!` and the agent still returns the
+    model response (parity for streaming `FinalResponse`). `memory.load(...)`
+    failures remain fatal because the requested history is unavailable.
+  - Examples: `agent_with_memory.rs` and `agent_with_memory_streaming.rs`.
+  - Named history-shaping policies (sliding window, token budget) live in the
+    new companion crate `rig-memory`.
+
 ## [0.36.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.35.0...rig-core-v0.36.0) - 2026-04-28
 
 ### Added
