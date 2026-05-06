@@ -860,6 +860,7 @@ impl UserContent {
             file: FileContent {
                 filename,
                 file_data: Some(url.into()),
+                file_id: None,
             },
         }
     }
@@ -876,6 +877,7 @@ impl UserContent {
             file: FileContent {
                 filename,
                 file_data: Some(data_uri),
+                file_id: None,
             },
         }
     }
@@ -973,6 +975,7 @@ pub struct VideoUrlContent {
 /// which accepts either:
 /// - A publicly accessible URL to the file
 /// - A base64-encoded data URI (e.g., `data:application/pdf;base64,...`)
+/// - A provider file identifier
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct FileContent {
     /// Filename (e.g., "document.pdf")
@@ -981,6 +984,9 @@ pub struct FileContent {
     /// File data source - URL or base64-encoded data URI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_data: Option<String>,
+    /// Identifier of a previously uploaded file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
 }
 
 /// Serializes user content as a plain string when there's a single text item,
@@ -1063,6 +1069,7 @@ impl TryFrom<message::UserContent> for UserContent {
                         file: FileContent {
                             filename: filename.map(String::from),
                             file_data: Some(url),
+                            file_id: None,
                         },
                     })
                 }
@@ -1087,6 +1094,7 @@ impl TryFrom<message::UserContent> for UserContent {
                         file: FileContent {
                             filename: filename.map(String::from),
                             file_data: Some(data_uri),
+                            file_id: None,
                         },
                     })
                 }
@@ -1343,6 +1351,22 @@ impl From<openai::UserContent> for UserContent {
                 },
             },
             openai::UserContent::Audio { input_audio } => UserContent::InputAudio { input_audio },
+            openai::UserContent::File { file } => match file.file_data {
+                Some(file_data) => UserContent::File {
+                    file: FileContent {
+                        filename: file.filename,
+                        file_data: Some(file_data),
+                        file_id: file.file_id,
+                    },
+                },
+                None => UserContent::File {
+                    file: FileContent {
+                        filename: file.filename,
+                        file_data: None,
+                        file_id: file.file_id,
+                    },
+                },
+            },
         }
     }
 }
@@ -2567,6 +2591,23 @@ mod tests {
     }
 
     #[test]
+    fn test_user_content_file_id_serialization() {
+        let content = UserContent::File {
+            file: FileContent {
+                filename: Some("uploaded.pdf".to_string()),
+                file_data: None,
+                file_id: Some("file_abc".to_string()),
+            },
+        };
+        let json = serde_json::to_value(&content).unwrap();
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(json["file"]["filename"], "uploaded.pdf");
+        assert_eq!(json["file"]["file_id"], "file_abc");
+        assert!(json["file"].get("file_data").is_none());
+    }
+
+    #[test]
     fn test_user_content_text_deserialization() {
         let json = json!({
             "type": "text",
@@ -2608,7 +2649,8 @@ mod tests {
             "type": "file",
             "file": {
                 "filename": "doc.pdf",
-                "file_data": "https://example.com/doc.pdf"
+                "file_data": "https://example.com/doc.pdf",
+                "file_id": "file_abc"
             }
         });
 
@@ -2620,6 +2662,7 @@ mod tests {
                     file.file_data,
                     Some("https://example.com/doc.pdf".to_string())
                 );
+                assert_eq!(file.file_id, Some("file_abc".to_string()));
             }
             _ => panic!("Expected File variant"),
         }
@@ -3196,6 +3239,23 @@ mod tests {
                 assert_eq!(input_audio.format, AudioMediaType::FLAC);
             }
             _ => panic!("Expected InputAudio"),
+        }
+
+        let openai_file = openai::UserContent::File {
+            file: openai::FileData {
+                file_data: None,
+                file_id: Some("file_abc".to_string()),
+                filename: Some("uploaded.pdf".to_string()),
+            },
+        };
+        let converted: UserContent = openai_file.into();
+        match converted {
+            UserContent::File { file } => {
+                assert_eq!(file.filename, Some("uploaded.pdf".to_string()));
+                assert!(file.file_data.is_none());
+                assert_eq!(file.file_id, Some("file_abc".to_string()));
+            }
+            _ => panic!("Expected File"),
         }
     }
 
