@@ -590,11 +590,8 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        //FIXME: Must fix!
         if req.tool_choice.is_some() {
-            tracing::warn!(
-                "Tool choice is currently not supported in Azure OpenAI. This should be fixed by Rig 0.25."
-            );
+            tracing::warn!("Tool choice is currently not supported in Azure OpenAI.");
         }
 
         let mut full_history: Vec<openai::Message> = match &req.preamble {

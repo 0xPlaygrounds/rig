@@ -105,7 +105,7 @@ use rig::providers::openai;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env()?;
 
     // Create agent with a single context prompt
     let comedian_agent = client
@@ -154,8 +154,9 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 ```
 
 Available facade features include `bedrock`, `fastembed`, `gemini-grpc`,
-`helixdb`, `lancedb`, `milvus`, `mongodb`, `neo4j`, `postgres`, `qdrant`,
-`s3vectors`, `scylladb`, `sqlite`, `surrealdb`, `vectorize`, and `vertexai`.
+`helixdb`, `lancedb`, `memory`, `milvus`, `mongodb`, `neo4j`, `postgres`,
+`qdrant`, `s3vectors`, `scylladb`, `sqlite`, `surrealdb`, `vectorize`, and
+`vertexai`.
 With those features enabled, use the ergonomic root modules such as
 `rig::lancedb`, `rig::mongodb`, `rig::bedrock`, and `rig::fastembed`.
 

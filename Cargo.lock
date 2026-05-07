@@ -9125,6 +9125,7 @@ dependencies = [
  "rig-gemini-grpc",
  "rig-helixdb",
  "rig-lancedb",
+ "rig-memory",
  "rig-milvus",
  "rig-mongodb",
  "rig-neo4j",

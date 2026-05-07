@@ -48,6 +48,7 @@ arrow-array = "56"
 as-any = "0.3.2"
 assert_fs = "1.1.3"
 async-stream = "0.3.6"
+axum = "0.8.4"
 aws-config = { version = "1.8.5", default-features = false }
 aws-sdk-bedrockruntime = { version = "1.102.0", default-features = false }
 aws-smithy-types = "1.3.2"
@@ -60,24 +61,35 @@ deranged = "=0.5.8"
 dotenvy = "0.15.7"
 epub = "2.1.4"
 ethers = "2.0.14"
+eventsource-stream = "0.2.3"
 fastembed = { version = "4.9.1", default-features = false }
+fastrand = "2.3.0"
 futures = "0.3.32"
+futures-timer = "3.0.3"
+getrandom = "0.2"
 glob = "0.3.2"
 google-cloud-auth = "1.0"
 google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
     "prediction-service",
 ] }
+http = "1.3.1"
 httpmock = "0.8.3"
+hyper-util = "0.1.14"
 indoc = "2.0.6"
 lancedb = { version = "0.23", default-features = false }
 log = "0.4.27"
 lopdf = "0.36.0"
+mime = "0.3.17"
 mime_guess = "2.0.5"
 mongodb = "3.2.5"
 nanoid = "0.4"
 neo4rs = "0.8.0"
+opentelemetry = "0.31.0"
+opentelemetry-otlp = "0.31.0"
+opentelemetry_sdk = "0.31.0"
 ordered-float = "5.0.0"
 pgvector = "0.4"
+pin-project-lite = "0.2.16"
 proc-macro2 = "1.0.95"
 qdrant-client = { version = "1.14.0", default-features = false, features = [
     "serde",
@@ -85,7 +97,11 @@ qdrant-client = { version = "1.14.0", default-features = false, features = [
 quick-xml = "0.39.2"
 quote = "1.0.40"
 rayon = "1.10.0"
+redis = "1.2.1"
 reqwest = { version = "0.13", default-features = false }
+reqwest-middleware = { version = "0.5.1", default-features = false }
+reqwest-retry = "0.9"
+rmcp = "1.6.0"
 url = "2.5"
 rusqlite = "0.32"
 scylla = "1.2.0"
@@ -97,6 +113,7 @@ sqlite-vec = "0.1"
 sqlx = "0.8.6"
 surrealdb = "3.0.2"
 syn = "2.0.104"
+serenity = "0.12.4"
 term_size = "0.3.2"
 testcontainers = "0.27"
 textwrap = "0.16.2"
@@ -105,14 +122,18 @@ tokio = "1.51.1"
 tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
+tokio-tungstenite = { version = "0.23.1", default-features = false }
 tonic = "0.14.5"
 tonic-build = "0.14.5"
 tonic-prost = "0.14.5"
 tonic-prost-build = "0.14.5"
 prost = "0.14.3"
 tracing = "0.1.41"
+tracing-futures = "0.2.5"
+tracing-opentelemetry = "0.32.1"
 tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
+wasm-bindgen-futures = "0.4.54"
 zerocopy = "0.8.26"
 
 [workspace.metadata.cargo-autoinherit]
@@ -129,6 +150,7 @@ rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = t
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true, default-features = false }
+rig-memory = { path = "crates/rig-memory", version = "0.1.0", optional = true, default-features = false }
 rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true, default-features = false }
 rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true, default-features = false }
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true, default-features = false }
@@ -149,7 +171,7 @@ async-stream = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
-redis = { version = "1.2.1", features = ["tokio-comp", "aio", "vector-sets"] }
+redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
@@ -158,9 +180,9 @@ lancedb = { workspace = true }
 mongodb = { workspace = true }
 neo4rs = { workspace = true }
 qdrant-client = { workspace = true }
-reqwest-retry = { version = "0.9" }
+reqwest-retry = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
-reqwest-middleware = { version = "0.5", default-features = false, features = [
+reqwest-middleware = { workspace = true, features = [
   "json",
   "multipart",
   "charset",
@@ -176,8 +198,8 @@ sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "jso
 testcontainers = { workspace = true }
 thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
-hyper-util = { version = "0.1.14", features = ["service", "server"] }
-rmcp = { version = "1.6.0", features = [
+hyper-util = { workspace = true, features = ["service", "server"] }
+rmcp = { workspace = true, features = [
   "client",
   "macros",
   "reqwest",
@@ -187,12 +209,12 @@ rmcp = { version = "1.6.0", features = [
   "transport-streamable-http-server",
   "transport-worker",
 ] }
-axum = "0.8.4"
-opentelemetry = "0.31.0"
-opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
-opentelemetry-otlp = "0.31.0"
+axum = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { workspace = true }
 tracing = { workspace = true }
-tracing-opentelemetry = "0.32.1"
+tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
 
 [features]
@@ -209,6 +231,7 @@ fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-downl
 gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
+memory = ["dep:rig-memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]
