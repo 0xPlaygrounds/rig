@@ -28,7 +28,7 @@ use crate::one_or_many::string_or_one_or_many;
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 use tracing::{Instrument, Level, enabled, info_span};
 
@@ -1181,13 +1181,54 @@ impl Reasoning {
 }
 
 /// The billing service tier that will be used. On auto by default.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, Default)]
 pub enum OpenAIServiceTier {
+    /// Let OpenAI choose the service tier.
     #[default]
     Auto,
+    /// Use the default service tier.
     Default,
+    /// Use the flex service tier.
     Flex,
+    /// Use the priority service tier.
+    Priority,
+    /// Use the standard service tier returned by OpenAI-compatible providers.
+    Standard,
+    /// Preserve an unknown provider-specific service tier.
+    Other(String),
+}
+
+impl Serialize for OpenAIServiceTier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(match self {
+            Self::Auto => "auto",
+            Self::Default => "default",
+            Self::Flex => "flex",
+            Self::Priority => "priority",
+            Self::Standard => "standard",
+            Self::Other(value) => value,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for OpenAIServiceTier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.as_str() {
+            "auto" => Self::Auto,
+            "default" => Self::Default,
+            "flex" => Self::Flex,
+            "priority" => Self::Priority,
+            "standard" => Self::Standard,
+            _ => Self::Other(value),
+        })
+    }
 }
 
 /// The amount of reasoning effort that will be used by a given model.
@@ -1894,6 +1935,84 @@ impl FromStr for UserContent {
 mod tests {
     use super::*;
     use crate::message;
+    use serde_json::json;
+
+    fn response_with_service_tier(service_tier: &str) -> Value {
+        json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [],
+            "service_tier": service_tier,
+        })
+    }
+
+    #[test]
+    fn completion_response_deserializes_standard_service_tier() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_service_tier("standard"))
+                .expect("response should deserialize");
+
+        assert!(matches!(
+            response.additional_parameters.service_tier,
+            Some(OpenAIServiceTier::Standard)
+        ));
+    }
+
+    #[test]
+    fn completion_response_deserializes_priority_service_tier() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_service_tier("priority"))
+                .expect("response should deserialize");
+
+        assert!(matches!(
+            response.additional_parameters.service_tier,
+            Some(OpenAIServiceTier::Priority)
+        ));
+    }
+
+    #[test]
+    fn completion_response_preserves_unknown_service_tier() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_service_tier("provider_experimental"))
+                .expect("response should deserialize");
+
+        let Some(OpenAIServiceTier::Other(service_tier)) =
+            response.additional_parameters.service_tier
+        else {
+            panic!("expected provider-specific service tier");
+        };
+
+        assert_eq!(service_tier, "provider_experimental");
+    }
+
+    #[test]
+    fn service_tier_serializes_expected_strings() {
+        let cases = [
+            (OpenAIServiceTier::Auto, "auto"),
+            (OpenAIServiceTier::Default, "default"),
+            (OpenAIServiceTier::Flex, "flex"),
+            (OpenAIServiceTier::Priority, "priority"),
+            (OpenAIServiceTier::Standard, "standard"),
+        ];
+
+        for (service_tier, expected) in cases {
+            assert_eq!(
+                serde_json::to_value(service_tier).expect("service tier should serialize"),
+                json!(expected)
+            );
+        }
+
+        assert_eq!(
+            serde_json::to_value(OpenAIServiceTier::Other(
+                "provider_experimental".to_string()
+            ))
+            .expect("provider-specific service tier should serialize"),
+            json!("provider_experimental")
+        );
+    }
 
     #[test]
     fn file_id_document_serializes_as_input_file_content() {
