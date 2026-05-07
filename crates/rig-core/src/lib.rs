@@ -171,6 +171,9 @@ pub mod prelude;
 pub mod providers;
 
 pub mod streaming;
+#[cfg(any(test, feature = "test-utils"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
+pub mod test_utils;
 pub mod tool;
 pub mod tools;
 pub mod transcription;

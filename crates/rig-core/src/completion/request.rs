@@ -907,48 +907,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 mod tests {
 
     use super::*;
-    use crate::streaming::StreamingCompletionResponse;
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Clone)]
-    struct DummyModel;
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    struct DummyStreamingResponse;
-
-    impl GetTokenUsage for DummyStreamingResponse {
-        fn token_usage(&self) -> Option<Usage> {
-            None
-        }
-    }
-
-    impl CompletionModel for DummyModel {
-        type Response = serde_json::Value;
-        type StreamingResponse = DummyStreamingResponse;
-        type Client = ();
-
-        fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
-            Self
-        }
-
-        async fn completion(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-            Err(CompletionError::ProviderError(
-                "dummy completion model".to_string(),
-            ))
-        }
-
-        async fn stream(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-            Err(CompletionError::ProviderError(
-                "dummy completion model".to_string(),
-            ))
-        }
-    }
+    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn test_document_display_without_metadata() {
@@ -1047,10 +1006,11 @@ mod tests {
 
     #[test]
     fn preamble_builder_funnels_to_system_message() {
-        let request = CompletionRequestBuilder::new(DummyModel, Message::user("Prompt"))
-            .preamble("System prompt".to_string())
-            .message(Message::user("History"))
-            .build();
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .preamble("System prompt".to_string())
+                .message(Message::user("History"))
+                .build();
 
         assert_eq!(request.preamble, None);
 
@@ -1066,10 +1026,11 @@ mod tests {
 
     #[test]
     fn without_preamble_removes_legacy_preamble_injection() {
-        let request = CompletionRequestBuilder::new(DummyModel, Message::user("Prompt"))
-            .preamble("System prompt".to_string())
-            .without_preamble()
-            .build();
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .preamble("System prompt".to_string())
+                .without_preamble()
+                .build();
 
         assert_eq!(request.preamble, None);
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
