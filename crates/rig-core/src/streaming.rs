@@ -641,22 +641,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::test_utils::MockResponse;
     use async_stream::stream;
     use tokio::time::sleep;
-
-    #[derive(Debug, Clone)]
-    pub struct MockResponse {
-        #[allow(dead_code)]
-        token_count: u32,
-    }
-
-    impl GetTokenUsage for MockResponse {
-        fn token_usage(&self) -> Option<crate::completion::Usage> {
-            let mut usage = Usage::new();
-            usage.total_tokens = 15;
-            Some(usage)
-        }
-    }
 
     #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
     fn to_stream_result(
@@ -683,7 +670,7 @@ mod tests {
             sleep(Duration::from_millis(100)).await;
             yield Ok(RawStreamingChoice::Message("hello 3".to_string()));
             sleep(Duration::from_millis(100)).await;
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 15 }));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(15)));
         };
 
         StreamingCompletionResponse::stream(to_stream_result(stream))
@@ -699,7 +686,7 @@ mod tests {
                 },
             });
             yield Ok(RawStreamingChoice::Message("final answer".to_string()));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 5 }));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(5)));
         };
 
         StreamingCompletionResponse::stream(to_stream_result(stream))
@@ -711,7 +698,7 @@ mod tests {
                 id: Some("rs_only".to_string()),
                 content: ReasoningContent::Summary("hidden summary".to_string()),
             });
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 2 }));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(2)));
         };
 
         StreamingCompletionResponse::stream(to_stream_result(stream))
@@ -734,7 +721,7 @@ mod tests {
                     serde_json::json!({"arg": 1}),
                 ),
             ));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 3 }));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(3)));
         };
 
         StreamingCompletionResponse::stream(to_stream_result(stream))
@@ -751,7 +738,7 @@ mod tests {
                 ),
             ));
             yield Ok(RawStreamingChoice::Message("second".to_string()));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse { token_count: 3 }));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(3)));
         };
 
         StreamingCompletionResponse::stream(to_stream_result(stream))

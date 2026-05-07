@@ -22,6 +22,13 @@ impl MockResponse {
     pub fn with_usage(usage: Usage) -> Self {
         Self { usage: Some(usage) }
     }
+
+    /// Create a mock raw response whose usage has only `total_tokens` set.
+    pub fn with_total_tokens(total_tokens: u64) -> Self {
+        let mut usage = Usage::new();
+        usage.total_tokens = total_tokens;
+        Self::with_usage(usage)
+    }
 }
 
 impl GetTokenUsage for MockResponse {
@@ -129,9 +136,7 @@ impl MockStreamEvent {
 
     /// Create a final response event whose usage has only `total_tokens` set.
     pub fn final_response_with_total_tokens(total_tokens: u64) -> Self {
-        let mut usage = Usage::new();
-        usage.total_tokens = total_tokens;
-        Self::final_response(usage)
+        Self::FinalResponse(MockResponse::with_total_tokens(total_tokens))
     }
 
     /// Create a stream error event.
