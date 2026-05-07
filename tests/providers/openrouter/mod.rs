@@ -6,6 +6,7 @@ mod file_id;
 mod models;
 mod multi_extract;
 mod multimodal;
+mod openai_responses_compat;
 mod permission_control;
 mod provider_selection;
 mod reasoning_roundtrip;
