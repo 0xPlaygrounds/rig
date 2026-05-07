@@ -787,6 +787,11 @@ pub mod gemini_api_types {
                         "Raw files not supported, encode as base64 first".into(),
                     ));
                 }
+                DocumentSourceKind::FileId(_) => {
+                    return Err(message::MessageError::ConversionError(
+                        "Provider file IDs are not supported for Gemini image inputs".into(),
+                    ));
+                }
                 DocumentSourceKind::Unknown => {
                     return Err(message::MessageError::ConversionError(
                         "Can't convert an unknown document source".to_string(),
@@ -970,6 +975,12 @@ pub mod gemini_api_types {
                                     "Raw files not supported, encode as base64 first".to_string(),
                                 ));
                             }
+                            DocumentSourceKind::FileId(_) => {
+                                return Err(MessageError::ConversionError(
+                                    "Provider file IDs are not supported for Gemini documents"
+                                        .to_string(),
+                                ));
+                            }
                             DocumentSourceKind::Unknown => {
                                 return Err(MessageError::ConversionError(
                                     "Document has no body".to_string(),
@@ -1047,6 +1058,12 @@ pub mod gemini_api_types {
                                 "Raw files not supported, encode as base64 first".into(),
                             ));
                         }
+                        DocumentSourceKind::FileId(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Provider file IDs are not supported for Gemini audio inputs"
+                                    .into(),
+                            ));
+                        }
                         DocumentSourceKind::Unknown => {
                             return Err(message::MessageError::ConversionError(
                                 "Content has no body".to_string(),
@@ -1106,6 +1123,12 @@ pub mod gemini_api_types {
                         DocumentSourceKind::Raw(_) => {
                             return Err(message::MessageError::ConversionError(
                                 "Raw file data not supported, encode as base64 first".into(),
+                            ));
+                        }
+                        DocumentSourceKind::FileId(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "Provider file IDs are not supported for Gemini video inputs"
+                                    .into(),
                             ));
                         }
                         DocumentSourceKind::Unknown => {

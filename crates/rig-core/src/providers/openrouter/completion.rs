@@ -860,7 +860,6 @@ impl UserContent {
             file: FileContent {
                 filename,
                 file_data: Some(url.into()),
-                file_id: None,
             },
         }
     }
@@ -877,7 +876,6 @@ impl UserContent {
             file: FileContent {
                 filename,
                 file_data: Some(data_uri),
-                file_id: None,
             },
         }
     }
@@ -975,7 +973,6 @@ pub struct VideoUrlContent {
 /// which accepts either:
 /// - A publicly accessible URL to the file
 /// - A base64-encoded data URI (e.g., `data:application/pdf;base64,...`)
-/// - A provider file identifier
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct FileContent {
     /// Filename (e.g., "document.pdf")
@@ -984,9 +981,6 @@ pub struct FileContent {
     /// File data source - URL or base64-encoded data URI
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_data: Option<String>,
-    /// Identifier of a previously uploaded file.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_id: Option<String>,
 }
 
 /// Serializes user content as a plain string when there's a single text item,
@@ -1036,6 +1030,11 @@ impl TryFrom<message::UserContent> for UserContent {
                             "Raw bytes not supported, encode as base64 first".into(),
                         ));
                     }
+                    DocumentSourceKind::FileId(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "File IDs are not supported for images".into(),
+                        ));
+                    }
                     DocumentSourceKind::String(_) => {
                         return Err(message::MessageError::ConversionError(
                             "String source not supported for images".into(),
@@ -1055,6 +1054,9 @@ impl TryFrom<message::UserContent> for UserContent {
             message::UserContent::Document(message::Document {
                 data, media_type, ..
             }) => match data {
+                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                    "Provider file IDs are not supported for OpenRouter document inputs".into(),
+                )),
                 DocumentSourceKind::Url(url) => {
                     let filename = media_type.as_ref().map(|mt| match mt {
                         DocumentMediaType::PDF => "document.pdf",
@@ -1069,7 +1071,6 @@ impl TryFrom<message::UserContent> for UserContent {
                         file: FileContent {
                             filename: filename.map(String::from),
                             file_data: Some(url),
-                            file_id: None,
                         },
                     })
                 }
@@ -1094,7 +1095,6 @@ impl TryFrom<message::UserContent> for UserContent {
                         file: FileContent {
                             filename: filename.map(String::from),
                             file_data: Some(data_uri),
-                            file_id: None,
                         },
                     })
                 }
@@ -1126,6 +1126,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
                     "Raw bytes not supported for audio, encode as base64 first".into(),
                 )),
+                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                    "File IDs are not supported for audio".into(),
+                )),
                 DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
                     "String source not supported for audio".into(),
                 )),
@@ -1152,6 +1155,11 @@ impl TryFrom<message::UserContent> for UserContent {
                     DocumentSourceKind::Raw(_) => {
                         return Err(message::MessageError::ConversionError(
                             "Raw bytes not supported for video, encode as base64 first".into(),
+                        ));
+                    }
+                    DocumentSourceKind::FileId(_) => {
+                        return Err(message::MessageError::ConversionError(
+                            "File IDs are not supported for video".into(),
                         ));
                     }
                     DocumentSourceKind::String(_) => {
@@ -1339,10 +1347,12 @@ enum ToolCallAdditionalParams {
     },
 }
 
-/// Convert OpenAI's UserContent to OpenRouter's UserContent
-impl From<openai::UserContent> for UserContent {
-    fn from(value: openai::UserContent) -> Self {
-        match value {
+/// Convert OpenAI's user content to OpenRouter's user content.
+impl TryFrom<openai::UserContent> for UserContent {
+    type Error = message::MessageError;
+
+    fn try_from(value: openai::UserContent) -> Result<Self, Self::Error> {
+        Ok(match value {
             openai::UserContent::Text { text } => UserContent::Text { text },
             openai::UserContent::Image { image_url } => UserContent::ImageUrl {
                 image_url: ImageUrl {
@@ -1356,28 +1366,26 @@ impl From<openai::UserContent> for UserContent {
                     file: FileContent {
                         filename: file.filename,
                         file_data: Some(file_data),
-                        file_id: file.file_id,
                     },
                 },
-                None => UserContent::File {
-                    file: FileContent {
-                        filename: file.filename,
-                        file_data: None,
-                        file_id: file.file_id,
-                    },
-                },
+                None => {
+                    return Err(message::MessageError::ConversionError(
+                        "OpenRouter file inputs require URL or base64 file_data; provider file IDs are not supported".into(),
+                    ));
+                }
             },
-        }
+        })
     }
 }
 
-impl From<openai::Message> for Message {
-    fn from(value: openai::Message) -> Self {
-        match value {
+impl TryFrom<openai::Message> for Message {
+    type Error = message::MessageError;
+
+    fn try_from(value: openai::Message) -> Result<Self, Self::Error> {
+        Ok(match value {
             openai::Message::System { content, name } => Self::System { content, name },
             openai::Message::User { content, name } => {
-                // Convert OpenAI UserContent to OpenRouter UserContent
-                let converted_content = content.map(UserContent::from);
+                let converted_content = content.try_map(UserContent::try_from)?;
                 Self::User {
                     content: converted_content,
                     name,
@@ -1406,7 +1414,7 @@ impl From<openai::Message> for Message {
                 tool_call_id,
                 content: content.as_text(),
             },
-        }
+        })
     }
 }
 
@@ -2591,23 +2599,6 @@ mod tests {
     }
 
     #[test]
-    fn test_user_content_file_id_serialization() {
-        let content = UserContent::File {
-            file: FileContent {
-                filename: Some("uploaded.pdf".to_string()),
-                file_data: None,
-                file_id: Some("file_abc".to_string()),
-            },
-        };
-        let json = serde_json::to_value(&content).unwrap();
-
-        assert_eq!(json["type"], "file");
-        assert_eq!(json["file"]["filename"], "uploaded.pdf");
-        assert_eq!(json["file"]["file_id"], "file_abc");
-        assert!(json["file"].get("file_data").is_none());
-    }
-
-    #[test]
     fn test_user_content_text_deserialization() {
         let json = json!({
             "type": "text",
@@ -2649,8 +2640,7 @@ mod tests {
             "type": "file",
             "file": {
                 "filename": "doc.pdf",
-                "file_data": "https://example.com/doc.pdf",
-                "file_id": "file_abc"
+                "file_data": "https://example.com/doc.pdf"
             }
         });
 
@@ -2662,7 +2652,6 @@ mod tests {
                     file.file_data,
                     Some("https://example.com/doc.pdf".to_string())
                 );
-                assert_eq!(file.file_id, Some("file_abc".to_string()));
             }
             _ => panic!("Expected File variant"),
         }
@@ -2819,6 +2808,41 @@ mod tests {
             }
             _ => panic!("Expected File variant"),
         }
+    }
+
+    #[test]
+    fn test_user_content_from_rig_document_file_id() {
+        let rig_content = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::FileId("file_abc".to_string()),
+            media_type: None,
+            additional_params: None,
+        });
+
+        let result: Result<UserContent, _> = rig_content.try_into();
+        assert!(matches!(
+            result,
+            Err(message::MessageError::ConversionError(message))
+                if message.contains("Provider file IDs are not supported")
+        ));
+    }
+
+    #[test]
+    fn test_openai_file_id_content_round_trips_through_rig_to_openrouter_error() {
+        let openai_content = openai::UserContent::File {
+            file: openai::FileData {
+                file_data: None,
+                file_id: Some("file_abc".to_string()),
+                filename: None,
+            },
+        };
+        let rig_content: message::UserContent = openai_content.into();
+
+        let result: Result<UserContent, _> = rig_content.try_into();
+        assert!(matches!(
+            result,
+            Err(message::MessageError::ConversionError(message))
+                if message.contains("Provider file IDs are not supported")
+        ));
     }
 
     #[test]
@@ -3203,7 +3227,7 @@ mod tests {
         let openai_text = openai::UserContent::Text {
             text: "Hello".to_string(),
         };
-        let converted: UserContent = openai_text.into();
+        let converted: UserContent = openai_text.try_into().unwrap();
         assert_eq!(
             converted,
             UserContent::Text {
@@ -3217,7 +3241,7 @@ mod tests {
                 detail: ImageDetail::Auto,
             },
         };
-        let converted: UserContent = openai_image.into();
+        let converted: UserContent = openai_image.try_into().unwrap();
         match converted {
             UserContent::ImageUrl { image_url } => {
                 assert_eq!(image_url.url, "https://example.com/img.png");
@@ -3232,7 +3256,7 @@ mod tests {
                 format: AudioMediaType::FLAC,
             },
         };
-        let converted: UserContent = openai_audio.into();
+        let converted: UserContent = openai_audio.try_into().unwrap();
         match converted {
             UserContent::InputAudio { input_audio } => {
                 assert_eq!(input_audio.data, "audiodata");
@@ -3243,20 +3267,36 @@ mod tests {
 
         let openai_file = openai::UserContent::File {
             file: openai::FileData {
+                file_data: Some("data:application/pdf;base64,AAAA".to_string()),
+                file_id: None,
+                filename: Some("uploaded.pdf".to_string()),
+            },
+        };
+        let converted: UserContent = openai_file.try_into().unwrap();
+        match converted {
+            UserContent::File { file } => {
+                assert_eq!(file.filename, Some("uploaded.pdf".to_string()));
+                assert_eq!(
+                    file.file_data,
+                    Some("data:application/pdf;base64,AAAA".to_string())
+                );
+            }
+            _ => panic!("Expected File"),
+        }
+
+        let openai_file_id = openai::UserContent::File {
+            file: openai::FileData {
                 file_data: None,
                 file_id: Some("file_abc".to_string()),
                 filename: Some("uploaded.pdf".to_string()),
             },
         };
-        let converted: UserContent = openai_file.into();
-        match converted {
-            UserContent::File { file } => {
-                assert_eq!(file.filename, Some("uploaded.pdf".to_string()));
-                assert!(file.file_data.is_none());
-                assert_eq!(file.file_id, Some("file_abc".to_string()));
-            }
-            _ => panic!("Expected File"),
-        }
+        let result: Result<UserContent, _> = openai_file_id.try_into();
+        assert!(matches!(
+            result,
+            Err(message::MessageError::ConversionError(message))
+                if message.contains("provider file IDs are not supported")
+        ));
     }
 
     #[test]

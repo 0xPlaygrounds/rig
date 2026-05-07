@@ -377,6 +377,8 @@ pub enum DocumentSourceKind {
     Url(String),
     /// A base-64 encoded string.
     Base64(String),
+    /// A provider-side uploaded file identifier.
+    FileId(String),
     /// Raw bytes
     Raw(Vec<u8>),
     /// A string (or a string literal).
@@ -397,6 +399,11 @@ impl DocumentSourceKind {
         Self::Base64(base64_string.to_string())
     }
 
+    /// Create a provider file ID-backed source.
+    pub fn file_id(file_id: &str) -> Self {
+        Self::FileId(file_id.to_string())
+    }
+
     /// Create a raw byte source.
     pub fn raw(bytes: impl Into<Vec<u8>>) -> Self {
         Self::Raw(bytes.into())
@@ -412,10 +419,10 @@ impl DocumentSourceKind {
         Self::Unknown
     }
 
-    /// Return the contained URL or base64 string, if this source stores one.
+    /// Return the contained URL, base64 string, or file ID, if this source stores one.
     pub fn try_into_inner(self) -> Option<String> {
         match self {
-            Self::Url(s) | Self::Base64(s) => Some(s),
+            Self::Url(s) | Self::Base64(s) | Self::FileId(s) => Some(s),
             _ => None,
         }
     }
@@ -426,6 +433,7 @@ impl std::fmt::Display for DocumentSourceKind {
         match self {
             Self::Url(string) => write!(f, "{string}"),
             Self::Base64(string) => write!(f, "{string}"),
+            Self::FileId(string) => write!(f, "{string}"),
             Self::String(string) => write!(f, "{string}"),
             Self::Raw(_) => write!(f, "<binary data>"),
             Self::Unknown => write!(f, "<unknown>"),

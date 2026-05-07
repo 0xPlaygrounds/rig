@@ -356,14 +356,11 @@ pub enum ImageSource {
 
 /// The source of a document content block.
 ///
-/// Anthropic supports multiple source types for documents. Currently implemented:
+/// Anthropic supports multiple source types for documents:
 /// - `Base64`: Base64-encoded document data (used for PDFs)
 /// - `Text`: Plain text document data
-///
-/// Future variants (not yet implemented):
-/// - URL-based PDF sources
-/// - Content block sources
-/// - File API sources
+/// - `Url`: URL reference to a document
+/// - `File`: Provider-side uploaded file reference from the Files API
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DocumentSource {
@@ -377,6 +374,9 @@ pub enum DocumentSource {
     },
     Url {
         url: String,
+    },
+    File {
+        file_id: String,
     },
 }
 
@@ -657,6 +657,13 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Document(message::Document {
                         data, media_type, ..
                     }) => {
+                        if let DocumentSourceKind::FileId(file_id) = data {
+                            return Ok(Content::Document {
+                                source: DocumentSource::File { file_id },
+                                cache_control: None,
+                            });
+                        }
+
                         let media_type = media_type.ok_or(MessageError::ConversionError(
                             "Document media type is required".to_string(),
                         ))?;
@@ -835,6 +842,13 @@ impl TryFrom<Message> for message::Message {
                             ),
                             DocumentSource::Url { url } => {
                                 message::UserContent::document_url(url, None)
+                            }
+                            DocumentSource::File { file_id } => {
+                                message::UserContent::Document(message::Document {
+                                    data: DocumentSourceKind::FileId(file_id),
+                                    media_type: None,
+                                    additional_params: None,
+                                })
                             }
                         },
                         _ => {
@@ -2021,6 +2035,108 @@ mod tests {
                 );
             }
             _ => panic!("Expected Document content"),
+        }
+    }
+
+    #[test]
+    fn test_file_id_document_serialization() {
+        let content = Content::Document {
+            source: DocumentSource::File {
+                file_id: "file_abc".to_string(),
+            },
+            cache_control: None,
+        };
+
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "document");
+        assert_eq!(json["source"]["type"], "file");
+        assert_eq!(json["source"]["file_id"], "file_abc");
+    }
+
+    #[test]
+    fn test_file_id_document_deserialization() {
+        let json = r#"
+        {
+            "type": "document",
+            "source": {
+                "type": "file",
+                "file_id": "file_abc"
+            }
+        }
+        "#;
+
+        let content: Content = serde_json::from_str(json).unwrap();
+        match content {
+            Content::Document { source, .. } => {
+                assert_eq!(
+                    source,
+                    DocumentSource::File {
+                        file_id: "file_abc".to_string(),
+                    }
+                );
+            }
+            _ => panic!("Expected Document content"),
+        }
+    }
+
+    #[test]
+    fn test_file_id_rig_to_anthropic_conversion() {
+        use crate::completion::message as msg;
+
+        let rig_message = msg::Message::User {
+            content: OneOrMany::one(msg::UserContent::Document(msg::Document {
+                data: DocumentSourceKind::FileId("file_abc".to_string()),
+                media_type: None,
+                additional_params: None,
+            })),
+        };
+
+        let anthropic_message: Message = rig_message.try_into().unwrap();
+        assert_eq!(anthropic_message.role, Role::User);
+
+        let mut iter = anthropic_message.content.into_iter();
+        match iter.next().unwrap() {
+            Content::Document { source, .. } => {
+                assert_eq!(
+                    source,
+                    DocumentSource::File {
+                        file_id: "file_abc".to_string(),
+                    }
+                );
+            }
+            other => panic!("Expected Document content, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_file_id_anthropic_to_rig_conversion() {
+        use crate::completion::message as msg;
+
+        let anthropic_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::File {
+                    file_id: "file_abc".to_string(),
+                },
+                cache_control: None,
+            }),
+        };
+
+        let rig_message: msg::Message = anthropic_message.try_into().unwrap();
+        match rig_message {
+            msg::Message::User { content } => {
+                let mut iter = content.into_iter();
+                match iter.next().unwrap() {
+                    msg::UserContent::Document(msg::Document {
+                        data, media_type, ..
+                    }) => {
+                        assert_eq!(data, DocumentSourceKind::FileId("file_abc".to_string()));
+                        assert_eq!(media_type, None);
+                    }
+                    other => panic!("Expected Document content, got: {other:?}"),
+                }
+            }
+            _ => panic!("Expected User message"),
         }
     }
 

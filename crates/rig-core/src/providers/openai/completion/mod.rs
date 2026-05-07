@@ -514,6 +514,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
                     "Raw files not supported, encode as base64 first".into(),
                 )),
+                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                    "File IDs are not supported for images".into(),
+                )),
                 DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
                     "Document has no body".into(),
                 )),
@@ -521,6 +524,16 @@ impl TryFrom<message::UserContent> for UserContent {
                     "Unsupported document type: {doc:?}"
                 ))),
             },
+            message::UserContent::Document(message::Document {
+                data: DocumentSourceKind::FileId(file_id),
+                ..
+            }) => Ok(UserContent::File {
+                file: FileData {
+                    file_data: None,
+                    file_id: Some(file_id),
+                    filename: None,
+                },
+            }),
             message::UserContent::Document(message::Document {
                 data,
                 media_type: Some(message::DocumentMediaType::PDF),
@@ -541,6 +554,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 )),
                 DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
                     "PDF documents must be base64-encoded, not raw strings".into(),
+                )),
+                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                    "File ID documents should be converted without media type constraints".into(),
                 )),
                 DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
                     "Document has no body".into(),
@@ -572,6 +588,9 @@ impl TryFrom<message::UserContent> for UserContent {
                 )),
                 DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
                     "Raw files are not supported for audio".into(),
+                )),
+                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+                    "File IDs are not supported for audio".into(),
                 )),
                 DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
                     "Audio has no body".into(),
@@ -811,10 +830,12 @@ impl From<UserContent> for message::UserContent {
                         additional_params: None,
                     })
                 }
-                // `DocumentSourceKind` cannot model a remote file handle today,
-                // so a `file_id`-only payload is preserved as a text breadcrumb.
                 None => match file_id {
-                    Some(id) => message::UserContent::text(format!("[file_id: {id}]")),
+                    Some(id) => message::UserContent::Document(message::Document {
+                        data: DocumentSourceKind::FileId(id),
+                        media_type: None,
+                        additional_params: None,
+                    }),
                     None => message::UserContent::text(String::new()),
                 },
             },
@@ -2066,6 +2087,21 @@ mod tests {
         assert!(json["file"].get("file_id").is_none());
     }
 
+    #[test]
+    fn file_id_document_serializes_as_file_content_part() {
+        let doc = message::UserContent::Document(message::Document {
+            data: DocumentSourceKind::FileId("file_abc".into()),
+            media_type: None,
+            additional_params: None,
+        });
+        let converted: UserContent = doc.try_into().expect("conversion should succeed");
+        let json = serde_json::to_value(&converted).expect("serialize");
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(json["file"]["file_id"], "file_abc");
+        assert!(json["file"].get("file_data").is_none());
+    }
+
     // Regression guard: callers passing markdown/plain text wrapped in
     // `UserContent::Document` should keep getting flattened to `text`.
     #[test]
@@ -2143,7 +2179,7 @@ mod tests {
     }
 
     #[test]
-    fn file_variant_with_file_id_only_falls_back_to_text() {
+    fn file_variant_with_file_id_only_round_trips_to_document_file_id() {
         let wire = UserContent::File {
             file: FileData {
                 file_data: None,
@@ -2152,10 +2188,20 @@ mod tests {
             },
         };
         let rig: message::UserContent = wire.into();
-        let message::UserContent::Text(text) = rig else {
-            panic!("expected Text");
+        let message::UserContent::Document(doc) = rig else {
+            panic!("expected Document");
         };
-        assert_eq!(text.text, "[file_id: file_abc]");
+        assert_eq!(doc.media_type, None);
+        assert!(matches!(doc.data, DocumentSourceKind::FileId(ref id) if id == "file_abc"));
+
+        let converted: UserContent = message::UserContent::Document(doc)
+            .try_into()
+            .expect("conversion should succeed");
+        let json = serde_json::to_value(&converted).expect("serialize");
+
+        assert_eq!(json["type"], "file");
+        assert_eq!(json["file"]["file_id"], "file_abc");
+        assert!(json["file"].get("file_data").is_none());
     }
 
     // Guards against `OneOrMany::many` flattening at the User content site:
