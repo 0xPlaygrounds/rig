@@ -153,6 +153,7 @@ pub(crate) fn create_grpc_request(
             .map(|tool| proto::FunctionDeclaration {
                 name: tool.name,
                 description: tool.description,
+                parameters: json_value_to_proto_schema(&tool.parameters),
                 ..Default::default()
             })
             .collect();
@@ -175,6 +176,120 @@ pub(crate) fn create_grpc_request(
         system_instruction,
         cached_content: String::new(),
     })
+}
+
+/// Convert a JSON Schema value (as carried by `ToolDefinition.parameters`)
+/// into the proto-typed `Schema` Gemini expects in `FunctionDeclaration.parameters`.
+///
+/// Returns `None` for the empty-object placeholder schema or values that
+/// don't describe a JSON Schema object.
+fn json_value_to_proto_schema(value: &serde_json::Value) -> Option<proto::Schema> {
+    let obj = value.as_object()?;
+    if obj.is_empty() {
+        return None;
+    }
+    if obj.get("type").and_then(serde_json::Value::as_str) == Some("object")
+        && obj
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .map(serde_json::Map::is_empty)
+            .unwrap_or(true)
+        && obj.get("required").is_none()
+    {
+        return None;
+    }
+
+    Some(json_object_to_proto_schema(obj))
+}
+
+fn json_object_to_proto_schema(obj: &serde_json::Map<String, serde_json::Value>) -> proto::Schema {
+    let r#type = obj
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .map(json_type_to_proto_type)
+        .unwrap_or(proto::Type::Unspecified);
+
+    let format = obj
+        .get("format")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .unwrap_or_default();
+
+    let description = obj
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .unwrap_or_default();
+
+    let nullable = obj
+        .get("nullable")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    let r#enum = obj
+        .get("enum")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let items = obj
+        .get("items")
+        .and_then(serde_json::Value::as_object)
+        .map(|item_obj| Box::new(json_object_to_proto_schema(item_obj)));
+
+    let properties = obj
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .map(|props| {
+            props
+                .iter()
+                .filter_map(|(name, prop)| {
+                    prop.as_object()
+                        .map(|p| (name.clone(), json_object_to_proto_schema(p)))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let required = obj
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    proto::Schema {
+        r#type: r#type as i32,
+        format,
+        description,
+        nullable,
+        r#enum,
+        items,
+        properties,
+        required,
+    }
+}
+
+fn json_type_to_proto_type(t: &str) -> proto::Type {
+    match t {
+        "string" => proto::Type::String,
+        "number" => proto::Type::Number,
+        "integer" => proto::Type::Integer,
+        "boolean" => proto::Type::Boolean,
+        "array" => proto::Type::Array,
+        "object" => proto::Type::Object,
+        "null" => proto::Type::Null,
+        _ => proto::Type::Unspecified,
+    }
 }
 
 // Convert Rig message to gRPC Content
