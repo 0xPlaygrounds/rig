@@ -506,9 +506,23 @@ mod tests {
 
     use super::PdfFileLoader;
 
+    fn fixture_path(filename: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/data")
+            .join(filename)
+    }
+
+    fn fixture_glob() -> String {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/data/*.pdf")
+            .to_string_lossy()
+            .into_owned()
+    }
+
     #[test]
     fn test_pdf_loader() {
-        let loader = PdfFileLoader::with_glob("tests/data/*.pdf").unwrap();
+        let glob = fixture_glob();
+        let loader = PdfFileLoader::with_glob(&glob).unwrap();
         let actual = loader
             .load_with_path()
             .ignore_errors()
@@ -530,11 +544,19 @@ mod tests {
 
         let mut expected = vec![
             (
-                PathBuf::from("tests/data/dummy.pdf"),
+                fixture_path("dummy.pdf"),
                 vec![(0, "Test\nPDF\nDocument\n".to_string())],
             ),
             (
-                PathBuf::from("tests/data/pages.pdf"),
+                fixture_path("file-id-verifiers.pdf"),
+                vec![
+                    (0, "rig-file-id-page-one-verifier-3a91\n".to_string()),
+                    (1, "rig-file-id-page-two-verifier-8c27\n".to_string()),
+                    (2, "rig-file-id-page-three-verifier-f54e\n".to_string()),
+                ],
+            ),
+            (
+                fixture_path("pages.pdf"),
                 vec![
                     (0, "Page\n1\n".to_string()),
                     (1, "Page\n2\n".to_string()),
@@ -553,7 +575,7 @@ mod tests {
     #[test]
     fn test_pdf_loader_bytes() {
         // this should never fail!
-        let bytes = std::fs::read("tests/data/dummy.pdf").unwrap();
+        let bytes = std::fs::read(fixture_path("dummy.pdf")).unwrap();
 
         let loader = PdfFileLoader::from_bytes(bytes);
 
@@ -569,7 +591,7 @@ mod tests {
         assert_eq!(actual, vec!["Test\nPDF\nDocument\n".to_string()]);
 
         // this should never fail!
-        let bytes = std::fs::read("tests/data/pages.pdf").unwrap();
+        let bytes = std::fs::read(fixture_path("pages.pdf")).unwrap();
 
         let loader = PdfFileLoader::from_bytes(bytes);
 
