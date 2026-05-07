@@ -2,6 +2,13 @@
 
 pub use rig_core::*;
 
+pub mod memory {
+    pub use rig_core::memory::*;
+
+    #[cfg(feature = "memory")]
+    pub use rig_memory::*;
+}
+
 #[cfg(feature = "bedrock")]
 pub mod bedrock {
     pub use rig_bedrock::*;

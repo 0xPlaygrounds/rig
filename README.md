@@ -154,8 +154,9 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 ```
 
 Available facade features include `bedrock`, `fastembed`, `gemini-grpc`,
-`helixdb`, `lancedb`, `milvus`, `mongodb`, `neo4j`, `postgres`, `qdrant`,
-`s3vectors`, `scylladb`, `sqlite`, `surrealdb`, `vectorize`, and `vertexai`.
+`helixdb`, `lancedb`, `memory`, `milvus`, `mongodb`, `neo4j`, `postgres`,
+`qdrant`, `s3vectors`, `scylladb`, `sqlite`, `surrealdb`, `vectorize`, and
+`vertexai`.
 With those features enabled, use the ergonomic root modules such as
 `rig::lancedb`, `rig::mongodb`, `rig::bedrock`, and `rig::fastembed`.
 

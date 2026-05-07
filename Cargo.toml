@@ -129,6 +129,7 @@ rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = t
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true, default-features = false }
+rig-memory = { path = "crates/rig-memory", version = "0.1.0", optional = true, default-features = false }
 rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true, default-features = false }
 rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true, default-features = false }
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true, default-features = false }
@@ -209,6 +210,7 @@ fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-downl
 gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
+memory = ["dep:rig-memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]
