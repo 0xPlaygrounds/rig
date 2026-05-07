@@ -11,10 +11,10 @@
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig::client::{CompletionClient, ProviderClient};
-//! use rig::completion::Prompt;
-//! use rig::memory::InMemoryConversationMemory;
-//! use rig::providers::openai;
+//! use rig_core::client::{CompletionClient, ProviderClient};
+//! use rig_core::completion::Prompt;
+//! use rig_core::memory::InMemoryConversationMemory;
+//! use rig_core::providers::openai;
 //!
 //! let memory = InMemoryConversationMemory::new();
 //!

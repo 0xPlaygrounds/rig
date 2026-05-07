@@ -105,7 +105,7 @@ use rig::providers::openai;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let client = openai::Client::from_env();
+    let client = openai::Client::from_env()?;
 
     // Create agent with a single context prompt
     let comedian_agent = client

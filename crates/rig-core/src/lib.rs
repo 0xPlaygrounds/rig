@@ -89,24 +89,29 @@
 //! ## Model Providers
 //! Rig natively supports the following completion and embedding model provider integrations:
 //! - Anthropic
-//! - Azure
+//! - Azure OpenAI
+//! - ChatGPT and GitHub Copilot auth-backed clients
 //! - Cohere
-//! - Deepseek
+//! - DeepSeek
 //! - Galadriel
 //! - Gemini
 //! - Groq
-//! - Huggingface
+//! - Hugging Face
 //! - Hyperbolic
+//! - Llamafile
+//! - MiniMax
 //! - Mira
 //! - Mistral
 //! - Moonshot
 //! - Ollama
-//! - Openai
+//! - OpenAI
 //! - OpenRouter
 //! - Perplexity
 //! - Together
 //! - Voyage AI
 //! - xAI
+//! - Xiaomi MiMo
+//! - Z.ai
 //!
 //! You can also implement your own model provider integration by defining types that
 //! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
