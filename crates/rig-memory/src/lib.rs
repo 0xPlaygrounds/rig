@@ -56,31 +56,28 @@ use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 /// pure, fallible message transformers: implementors that cannot fail should
 /// always return `Ok`.
 pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
+    /// Transform `messages` into the history that should be returned to the
+    /// agent. This is the required method — every policy must implement it.
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
+
     /// Transform `messages` and report which messages were demoted (excluded
     /// from the returned history).
     ///
-    /// Returns `(kept, demoted)`. Truncating policies (sliding window, token
-    /// window, …) populate `demoted` with the evicted prefix; non-truncating
-    /// policies (e.g. [`NoopMemoryPolicy`]) return an empty `demoted` list.
+    /// Returns `(kept, demoted)`. The default implementation returns
+    /// `(self.apply(messages)?, Vec::new())`, which is correct for
+    /// non-truncating policies. Truncating policies (sliding window, token
+    /// window, …) override this method to populate `demoted` with the
+    /// messages they evicted.
     ///
-    /// Implementors must guarantee that `kept ⊆ messages` in their
-    /// iteration order, otherwise [`DemotingPolicyMemory`] may return
-    /// inconsistent history. Order-preserving truncation policies satisfy
-    /// this trivially.
-    ///
-    /// This is the canonical method — [`MemoryPolicy::apply`] is a thin
-    /// wrapper that discards the demoted half. Implementors only override
-    /// this method.
+    /// Implementors must guarantee that `demoted` is the prefix of the
+    /// original input not retained in `kept`, in original order. Composing
+    /// adapters such as [`DemotingPolicyMemory`] rely on this contract to
+    /// track delivery watermarks correctly.
     fn apply_with_demoted(
         &self,
         messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError>;
-
-    /// Transform `messages` into the history that should be returned to the
-    /// agent. Equivalent to discarding the demoted half of
-    /// [`MemoryPolicy::apply_with_demoted`].
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(self.apply_with_demoted(messages)?.0)
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+        Ok((self.apply(messages)?, Vec::new()))
     }
 }
 
@@ -141,11 +138,8 @@ impl<P> IntoFilter for P where P: MemoryPolicy + 'static {}
 pub struct NoopMemoryPolicy;
 
 impl MemoryPolicy for NoopMemoryPolicy {
-    fn apply_with_demoted(
-        &self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
-        Ok((messages, Vec::new()))
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(messages)
     }
 }
 
@@ -168,6 +162,10 @@ impl SlidingWindowMemory {
 }
 
 impl MemoryPolicy for SlidingWindowMemory {
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
+    }
+
     fn apply_with_demoted(
         &self,
         messages: Vec<Message>,
@@ -398,6 +396,10 @@ impl std::fmt::Debug for TokenWindowMemory {
 }
 
 impl MemoryPolicy for TokenWindowMemory {
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
+    }
+
     fn apply_with_demoted(
         &self,
         messages: Vec<Message>,
@@ -602,17 +604,21 @@ impl<M, P, H> DemotingPolicyMemory<M, P, H> {
     /// Call this when a conversation has ended to bound memory usage.
     /// The watermark map is otherwise unbounded — entries persist for
     /// the lifetime of the wrapper.
-    pub fn forget(&self, conversation_id: &str) -> Result<(), MemoryError> {
-        let mut guard = self.state.lock().map_err(poisoned)?;
-        guard.remove(conversation_id);
-        Ok(())
+    ///
+    /// If the internal state lock has been poisoned by a panic in another
+    /// thread, this is a no-op (the watermark will be dropped naturally
+    /// when the wrapper itself is dropped).
+    pub fn forget(&self, conversation_id: &str) {
+        if let Ok(mut guard) = self.state.lock() {
+            guard.remove(conversation_id);
+        }
     }
 
     /// Number of conversations currently tracked in the watermark map.
-    /// Useful for telemetry and leak detection.
-    pub fn tracked_conversations(&self) -> Result<usize, MemoryError> {
-        let guard = self.state.lock().map_err(poisoned)?;
-        Ok(guard.len())
+    /// Useful for telemetry and leak detection. Returns `0` if the internal
+    /// state lock is poisoned.
+    pub fn tracked_conversations(&self) -> usize {
+        self.state.lock().map(|g| g.len()).unwrap_or(0)
     }
 }
 
@@ -675,12 +681,20 @@ where
 
             // Reacquire briefly to advance the watermark on success and
             // always clear the in-flight flag so a future load can retry.
+            //
+            // Only update if the entry still exists: a concurrent `clear`
+            // (and matching `forget`) for this `conversation_id` may have
+            // dropped the watermark entry while the hook was awaiting. In
+            // that case we must not resurrect it with a stale `delivered`
+            // count — the next load on a freshly-populated backend would
+            // then skip a real demotion.
             {
                 let mut guard = self.state.lock().map_err(poisoned)?;
-                let entry = guard.entry(conversation_id.to_string()).or_default();
-                entry.in_flight = false;
-                if result.is_ok() {
-                    entry.delivered = demoted_count;
+                if let Some(entry) = guard.get_mut(conversation_id) {
+                    entry.in_flight = false;
+                    if result.is_ok() {
+                        entry.delivered = demoted_count;
+                    }
                 }
             }
             result?;
@@ -702,14 +716,14 @@ where
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
         Box::pin(async move {
             self.inner.clear(conversation_id).await?;
-            self.forget(conversation_id)?;
+            self.forget(conversation_id);
             Ok(())
         })
     }
 }
 
 fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
-    MemoryError::backend(std::io::Error::other(err.to_string()))
+    MemoryError::Internal(err.to_string())
 }
 
 #[cfg(test)]
@@ -891,10 +905,7 @@ mod tests {
     fn into_filter_returns_input_on_policy_error() {
         struct FailingPolicy;
         impl MemoryPolicy for FailingPolicy {
-            fn apply_with_demoted(
-                &self,
-                _: Vec<Message>,
-            ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
                 Err(MemoryError::Policy("intentional failure".into()))
             }
         }
@@ -931,10 +942,7 @@ mod tests {
     async fn policy_memory_propagates_policy_errors() {
         struct FailingPolicy;
         impl MemoryPolicy for FailingPolicy {
-            fn apply_with_demoted(
-                &self,
-                _: Vec<Message>,
-            ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
                 Err(MemoryError::Policy("intentional failure".into()))
             }
         }
@@ -1290,15 +1298,15 @@ mod tests {
             .await
             .unwrap();
         mem.load("c").await.unwrap();
-        assert_eq!(mem.tracked_conversations().unwrap(), 1);
+        assert_eq!(mem.tracked_conversations(), 1);
         assert_eq!(hook.calls(), 1);
 
         // After forgetting, the next load on the same (still-populated)
         // backend re-delivers the demotion. This is the documented
         // contract: forget()/restart re-fire the hook, hooks must be
         // idempotent.
-        mem.forget("c").unwrap();
-        assert_eq!(mem.tracked_conversations().unwrap(), 0);
+        mem.forget("c");
+        assert_eq!(mem.tracked_conversations(), 0);
         mem.load("c").await.unwrap();
         assert_eq!(hook.calls(), 2);
     }

@@ -28,11 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without coupling either crate to the other.
 - `DemotingPolicyMemory::forget(conversation_id)` and
   `tracked_conversations()` for explicit watermark-map cleanup and
-  leak diagnostics.
-- `MemoryPolicy::apply_with_demoted` is now the canonical method:
-  policies override it to report `(kept, demoted)` and the default
-  `apply` discards the demoted half. `NoopMemoryPolicy`,
-  `SlidingWindowMemory`, and `TokenWindowMemory` are migrated.
+  leak diagnostics. Both are infallible: a poisoned internal lock
+  is treated as "nothing to forget / zero tracked" rather than a
+  caller-visible error.
+- `MemoryPolicy::apply_with_demoted` companion method that reports
+  `(kept, demoted)`. `apply` remains the required method; the default
+  `apply_with_demoted` returns `(apply(...)?, Vec::new())` so existing
+  policies keep compiling unchanged. `SlidingWindowMemory` and
+  `TokenWindowMemory` override it to populate the demoted prefix that
+  `DemotingPolicyMemory` hands to the hook.
 - `HeuristicTokenCounter` — provider-agnostic, zero-dependency
   `TokenCounter` implementation that approximates token cost from
   character lengths. Ships `default` / `openai` / `anthropic` / `gemini`
