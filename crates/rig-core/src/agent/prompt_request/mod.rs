@@ -923,14 +923,12 @@ mod tests {
             Usage,
         },
         message::UserContent,
-        test_utils::{MockCompletionModel, MockTurn},
+        test_utils::{
+            AppendFailingMemory, CountingMemory, FailingMemory, MockCompletionModel, MockTurn,
+        },
     };
     use serde::{Deserialize, Serialize};
     use serde_json::json;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
 
     #[derive(Serialize)]
     struct SerializeOnly {
@@ -1100,42 +1098,7 @@ mod tests {
 
     // ----- Conversation memory integration tests -----
 
-    use crate::memory::{ConversationMemory, InMemoryConversationMemory, MemoryError};
-    use crate::wasm_compat::WasmBoxedFuture;
-
-    /// Memory backend that counts calls; backed by InMemoryConversationMemory for storage.
-    #[derive(Clone, Default)]
-    struct CountingMemory {
-        inner: InMemoryConversationMemory,
-        loads: Arc<AtomicUsize>,
-        appends: Arc<AtomicUsize>,
-    }
-
-    impl ConversationMemory for CountingMemory {
-        fn load<'a>(
-            &'a self,
-            conversation_id: &'a str,
-        ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-            self.loads.fetch_add(1, Ordering::SeqCst);
-            self.inner.load(conversation_id)
-        }
-
-        fn append<'a>(
-            &'a self,
-            conversation_id: &'a str,
-            messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            self.appends.fetch_add(1, Ordering::SeqCst);
-            self.inner.append(conversation_id, messages)
-        }
-
-        fn clear<'a>(
-            &'a self,
-            conversation_id: &'a str,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            self.inner.clear(conversation_id)
-        }
-    }
+    use crate::memory::{ConversationMemory, InMemoryConversationMemory};
 
     #[tokio::test]
     async fn memory_loads_into_request_history() {
@@ -1190,7 +1153,7 @@ mod tests {
     async fn explicit_with_history_overrides_memory() {
         let memory = CountingMemory::default();
         memory
-            .inner
+            .inner()
             .append("t1", vec![Message::user("from-memory")])
             .await
             .unwrap();
@@ -1206,8 +1169,8 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        assert_eq!(memory.loads.load(Ordering::SeqCst), 0, "load skipped");
-        let appends = memory.appends.load(Ordering::SeqCst);
+        assert_eq!(memory.load_count(), 0, "load skipped");
+        let appends = memory.append_count();
         assert_eq!(appends, 0, "append skipped");
 
         let received = recorded.requests()[0]
@@ -1244,8 +1207,8 @@ mod tests {
 
         let _ = agent.prompt("hello").await.expect("prompt should succeed");
 
-        assert_eq!(memory.loads.load(Ordering::SeqCst), 0);
-        assert_eq!(memory.appends.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.load_count(), 0);
+        assert_eq!(memory.append_count(), 0);
     }
 
     #[tokio::test]
@@ -1316,35 +1279,16 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        assert_eq!(memory.loads.load(Ordering::SeqCst), 0);
-        assert_eq!(memory.appends.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.load_count(), 0);
+        assert_eq!(memory.append_count(), 0);
     }
 
     #[tokio::test]
     async fn memory_load_error_surfaces_as_prompt_error() {
-        #[derive(Clone)]
-        struct FailingMemory;
-        impl ConversationMemory for FailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("load boom"))) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model).memory(FailingMemory).build();
+        let agent = AgentBuilder::new(model)
+            .memory(FailingMemory::default())
+            .build();
         let result = agent.prompt("hello").conversation("t1").await;
 
         match result {
@@ -1358,29 +1302,10 @@ mod tests {
 
     #[tokio::test]
     async fn memory_append_error_does_not_drop_response() {
-        #[derive(Clone)]
-        struct AppendFailingMemory;
-        impl ConversationMemory for AppendFailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Ok(Vec::new()) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model).memory(AppendFailingMemory).build();
+        let agent = AgentBuilder::new(model)
+            .memory(AppendFailingMemory::default())
+            .build();
         let response: String = agent
             .prompt("hello")
             .conversation("t1")

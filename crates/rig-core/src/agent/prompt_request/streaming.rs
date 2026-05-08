@@ -872,7 +872,9 @@ mod tests {
     };
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
-    use crate::test_utils::{MockCompletionModel, MockStreamEvent};
+    use crate::test_utils::{
+        AppendFailingMemory, FailingMemory, MockCompletionModel, MockStreamEvent,
+    };
     use futures::StreamExt;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1511,32 +1513,8 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_load_error_yields_memory_error() {
-        use crate::memory::{ConversationMemory, MemoryError};
-        use crate::wasm_compat::WasmBoxedFuture;
-
-        #[derive(Clone)]
-        struct FailingMemory;
-        impl ConversationMemory for FailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("load boom"))) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
         let agent = AgentBuilder::new(streaming_text_then_final_model())
-            .memory(FailingMemory)
+            .memory(FailingMemory::default())
             .build();
 
         let mut stream = agent.stream_prompt("hi").conversation("t1").await;
@@ -1601,32 +1579,8 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_append_error_does_not_suppress_final_response() {
-        use crate::memory::{ConversationMemory, MemoryError};
-        use crate::wasm_compat::WasmBoxedFuture;
-
-        #[derive(Clone)]
-        struct AppendFailingMemory;
-        impl ConversationMemory for AppendFailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Ok(Vec::new()) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
         let agent = AgentBuilder::new(streaming_text_then_final_model())
-            .memory(AppendFailingMemory)
+            .memory(AppendFailingMemory::default())
             .build();
 
         let mut stream = agent.stream_prompt("hi").conversation("t1").await;

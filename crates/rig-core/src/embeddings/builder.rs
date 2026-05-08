@@ -159,84 +159,43 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        Embed,
-        embeddings::embed::{EmbedError, TextEmbedder},
-        test_utils::MockEmbeddingModel,
-    };
+    use crate::test_utils::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 
     use super::EmbeddingsBuilder;
 
-    #[derive(Clone, Debug)]
-    struct WordDefinition {
-        id: String,
-        definitions: Vec<String>,
-    }
-
-    impl Embed for WordDefinition {
-        fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-            for definition in &self.definitions {
-                embedder.embed(definition.clone());
-            }
-            Ok(())
-        }
-    }
-
-    fn definitions_multiple_text() -> Vec<WordDefinition> {
+    fn definitions_multiple_text() -> Vec<MockMultiTextDocument> {
         vec![
-            WordDefinition {
-                id: "doc0".to_string(),
-                definitions: vec![
-                    "A green alien that lives on cold planets.".to_string(),
-                    "A fictional digital currency that originated in the animated series Rick and Morty.".to_string()
-                ]
-            },
-            WordDefinition {
-                id: "doc1".to_string(),
-                definitions: vec![
-                    "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-                    "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
-                ]
-            }
+            MockMultiTextDocument::new(
+                "doc0",
+                [
+                    "A green alien that lives on cold planets.",
+                    "A fictional digital currency that originated in the animated series Rick and Morty.",
+                ],
+            ),
+            MockMultiTextDocument::new(
+                "doc1",
+                [
+                    "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.",
+                ],
+            ),
         ]
     }
 
-    fn definitions_multiple_text_2() -> Vec<WordDefinition> {
+    fn definitions_multiple_text_2() -> Vec<MockMultiTextDocument> {
         vec![
-            WordDefinition {
-                id: "doc2".to_string(),
-                definitions: vec!["Another fake definitions".to_string()],
-            },
-            WordDefinition {
-                id: "doc3".to_string(),
-                definitions: vec!["Some fake definition".to_string()],
-            },
+            MockMultiTextDocument::new("doc2", ["Another fake definitions"]),
+            MockMultiTextDocument::new("doc3", ["Some fake definition"]),
         ]
     }
 
-    #[derive(Clone, Debug)]
-    struct WordDefinitionSingle {
-        id: String,
-        definition: String,
-    }
-
-    impl Embed for WordDefinitionSingle {
-        fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-            embedder.embed(self.definition.clone());
-            Ok(())
-        }
-    }
-
-    fn definitions_single_text() -> Vec<WordDefinitionSingle> {
+    fn definitions_single_text() -> Vec<MockTextDocument> {
         vec![
-            WordDefinitionSingle {
-                id: "doc0".to_string(),
-                definition: "A green alien that lives on cold planets.".to_string(),
-            },
-            WordDefinitionSingle {
-                id: "doc1".to_string(),
-                definition: "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-            }
+            MockTextDocument::new("doc0", "A green alien that lives on cold planets."),
+            MockTextDocument::new(
+                "doc1",
+                "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+            ),
         ]
     }
 
@@ -348,7 +307,7 @@ mod tests {
     #[tokio::test]
     async fn test_build_string() {
         let bindings = definitions_multiple_text();
-        let fake_definitions = bindings.iter().map(|def| def.definitions.clone());
+        let fake_definitions = bindings.iter().map(|def| def.texts.clone());
 
         let fake_model = MockEmbeddingModel;
         let mut result = EmbeddingsBuilder::new(fake_model)

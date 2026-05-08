@@ -265,9 +265,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http_client::mock::MockStreamingClient;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
     use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
     use serde_json::json;
 

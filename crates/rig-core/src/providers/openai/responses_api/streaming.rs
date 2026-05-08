@@ -916,7 +916,6 @@ where
 mod tests {
     use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
     use crate::completion::CompletionModel;
-    use crate::http_client::mock::MockStreamingClient;
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::{
@@ -924,6 +923,7 @@ mod tests {
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
     };
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
+    use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
     use serde_json::{self, json};
 
