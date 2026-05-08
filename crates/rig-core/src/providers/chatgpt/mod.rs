@@ -158,6 +158,8 @@ impl Provider for ChatGPTExt {
     }
 }
 
+impl responses_api::ResponsesProviderProfile for ChatGPTExt {}
+
 impl<H> Capabilities<H> for ChatGPTExt {
     type Completion = Capable<ResponsesCompletionModel<H>>;
     type Embeddings = Nothing;

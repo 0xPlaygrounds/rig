@@ -52,6 +52,8 @@ impl Provider for OpenAIResponsesExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
+impl super::responses_api::ResponsesProviderProfile for OpenAIResponsesExt {}
+
 impl Provider for OpenAICompletionsExt {
     type Builder = OpenAICompletionsExtBuilder;
     const VERIFY_PATH: &'static str = "/models";

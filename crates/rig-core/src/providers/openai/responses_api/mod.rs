@@ -109,8 +109,16 @@ impl CompletionRequest {
     }
 }
 
+/// Provider-specific OpenAI Responses request behavior.
+#[doc(hidden)]
+pub trait ResponsesProviderProfile {
+    /// Controls how Rig maps [`crate::completion::CompletionRequest::preamble`].
+    const PREAMBLE_BEHAVIOR: ResponsesPreambleBehavior = ResponsesPreambleBehavior::Instructions;
+}
+
 /// Controls how Rig maps [`crate::completion::CompletionRequest::preamble`] into
 /// an OpenAI Responses request.
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ResponsesPreambleBehavior {
     /// Use OpenAI's canonical top-level `instructions` field.
@@ -981,7 +989,7 @@ pub type ResponsesCompletionModel<H = reqwest::Client> =
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    Ext: crate::client::Provider + ResponsesProviderProfile + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
@@ -990,7 +998,7 @@ where
             client,
             model: model.into(),
             tools: Vec::new(),
-            preamble_behavior: ResponsesPreambleBehavior::default(),
+            preamble_behavior: Ext::PREAMBLE_BEHAVIOR,
         }
     }
 
@@ -999,17 +1007,8 @@ where
             client,
             model: model.to_string(),
             tools: Vec::new(),
-            preamble_behavior: ResponsesPreambleBehavior::default(),
+            preamble_behavior: Ext::PREAMBLE_BEHAVIOR,
         }
-    }
-
-    /// Uses an input system message instead of top-level `instructions`.
-    ///
-    /// OpenAI itself supports `instructions`; this is only for compatibility
-    /// providers that reject that field.
-    pub fn with_preamble_as_input_system_message(mut self) -> Self {
-        self.preamble_behavior = ResponsesPreambleBehavior::InputSystemMessage;
-        self
     }
 
     /// Adds a default tool to all requests from this model.
@@ -1437,6 +1436,7 @@ where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
+        + ResponsesProviderProfile
         + crate::client::DebugExt
         + Clone
         + WasmCompatSend

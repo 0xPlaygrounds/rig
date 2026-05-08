@@ -171,6 +171,11 @@ impl Provider for CopilotExt {
     const VERIFY_PATH: &'static str = "";
 }
 
+impl responses_api::ResponsesProviderProfile for CopilotExt {
+    const PREAMBLE_BEHAVIOR: responses_api::ResponsesPreambleBehavior =
+        responses_api::ResponsesPreambleBehavior::InputSystemMessage;
+}
+
 impl<H> Capabilities<H> for CopilotExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
@@ -684,7 +689,6 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
         responses_api::GenericResponsesCompletionModel::new(self.client.clone(), self.model.clone())
-            .with_preamble_as_input_system_message()
             .create_completion_request(completion_request)
     }
 
