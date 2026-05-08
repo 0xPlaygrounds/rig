@@ -9,6 +9,7 @@ mod extractor_usage;
 mod gpt_5_5;
 #[cfg(feature = "image")]
 mod image_generation;
+mod instructions;
 mod models;
 mod multi_extract;
 mod permission_control;

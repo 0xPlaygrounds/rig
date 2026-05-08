@@ -3,6 +3,7 @@ mod auth;
 mod completion;
 mod extractor;
 mod extractor_usage;
+mod instructions;
 mod multi_extract;
 mod permission_control;
 mod reasoning_roundtrip;

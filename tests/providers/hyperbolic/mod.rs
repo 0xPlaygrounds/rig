@@ -3,3 +3,4 @@ mod agent;
 mod audio_generation;
 #[cfg(feature = "image")]
 mod image_generation;
+mod instructions;

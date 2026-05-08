@@ -739,7 +739,41 @@ data: [DONE]"#;
             .expect("normalize")
             .expect("instructions");
 
-        assert_eq!(instructions, "System one\n\nSystem two");
+        assert_eq!(instructions, "System two");
+        assert_eq!(request.input.len(), 1);
+    }
+
+    #[test]
+    fn test_create_request_lifts_chat_history_system_messages_into_instructions() {
+        let client = crate::providers::chatgpt::Client::builder()
+            .oauth()
+            .build()
+            .expect("client");
+        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
+
+        let request = model
+            .create_request(completion::CompletionRequest {
+                model: Some("gpt-5.4".to_string()),
+                preamble: Some("System one".to_string()),
+                chat_history: OneOrMany::many(vec![
+                    completion::Message::system("System two"),
+                    completion::Message::user("hi"),
+                ])
+                .expect("history"),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .expect("request");
+
+        let instructions = request.instructions.expect("instructions");
+        assert!(instructions.contains(DEFAULT_INSTRUCTIONS));
+        assert!(instructions.contains("System two"));
+        assert!(instructions.contains("System one"));
         assert_eq!(request.input.len(), 1);
     }
 

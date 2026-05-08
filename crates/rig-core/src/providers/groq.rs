@@ -750,12 +750,15 @@ mod tests {
             tool_choice: None,
             stream_options: None,
             tools: Vec::new(),
-            messages: vec![Message::User {
-                content: OneOrMany::one(UserContent::Text {
-                    text: "Hello world!".to_string(),
-                }),
-                name: None,
-            }],
+            messages: vec![
+                Message::system("You are concise."),
+                Message::User {
+                    content: OneOrMany::one(UserContent::Text {
+                        text: "Hello world!".to_string(),
+                    }),
+                    name: None,
+                },
+            ],
             stream: false,
             additional_params: Some(additional_params),
         };
@@ -767,6 +770,10 @@ mod tests {
             serde_json::json!({
                 "model": "openai/gpt-120b-oss",
                 "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are concise."
+                    },
                     {
                         "role": "user",
                         "content": "Hello world!"

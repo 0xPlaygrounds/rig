@@ -15,6 +15,11 @@ use serde_json::json;
 
 pub(crate) const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 pub(crate) const BASIC_PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
+pub(crate) const INSTRUCTIONS_EXPECTED_MARKER: &str = "cedar-harbor-4192";
+pub(crate) const INSTRUCTIONS_PREAMBLE: &str = "This is an instruction routing test. Reply with exactly the text `cedar-harbor-4192` \
+    and no other text.";
+pub(crate) const INSTRUCTIONS_CONFLICT_PROMPT: &str =
+    "Reply with the exact text required by the instruction-routing test.";
 pub(crate) const RAW_TEXT_RESPONSE_PREAMBLE: &str =
     "Return exactly the requested text as plain text with no bullets, quotes, or extra commentary.";
 pub(crate) const RAW_TEXT_RESPONSE_PROMPT: &str =
