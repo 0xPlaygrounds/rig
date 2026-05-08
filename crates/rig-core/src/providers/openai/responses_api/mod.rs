@@ -1981,6 +1981,8 @@ impl FromStr for UserContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::{Completion as _, CompletionModel as _};
     use crate::message;
     use serde_json::json;
 
@@ -2085,6 +2087,56 @@ mod tests {
         .expect("request");
 
         assert_eq!(request.instructions.as_deref(), Some("Follow the policy."));
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn openai_responses_builder_preamble_serializes_to_top_level_instructions() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = client.completion_model("gpt-5.4");
+        let user_request = model
+            .completion_request(completion::Message::user("hello"))
+            .preamble("Builder instructions.".to_string())
+            .build();
+
+        let request = model
+            .create_completion_request(user_request)
+            .expect("request");
+
+        assert_eq!(
+            request.instructions.as_deref(),
+            Some("Builder instructions.")
+        );
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[tokio::test]
+    async fn openai_responses_agent_preamble_serializes_to_top_level_instructions() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = client.completion_model("gpt-5.4");
+        let agent = crate::agent::AgentBuilder::new(model.clone())
+            .preamble("Agent instructions.")
+            .build();
+
+        let user_request = agent
+            .completion(
+                completion::Message::user("hello"),
+                Vec::<completion::Message>::new(),
+            )
+            .await
+            .expect("completion request")
+            .build();
+        let request = model
+            .create_completion_request(user_request)
+            .expect("request");
+
+        assert_eq!(request.instructions.as_deref(), Some("Agent instructions."));
         let input = serde_json::to_value(&request.input).expect("serialize input");
         let input = input.as_array().expect("input array");
         assert_eq!(input.len(), 1);

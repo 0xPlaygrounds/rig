@@ -496,10 +496,7 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// Legacy preamble field preserved for backwards compatibility.
-    ///
-    /// New code should prefer a leading [`Message::System`]
-    /// in `chat_history` as the canonical representation of system instructions.
+    /// Optional system instructions for this request.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message will always be the prompt (hence why there is *always* one)
@@ -698,7 +695,6 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Sets the preamble for the completion request.
     pub fn preamble(mut self, preamble: String) -> Self {
-        // Legacy public API: funnel preamble into canonical system messages at build-time.
         self.preamble = Some(preamble);
         self
     }
@@ -855,12 +851,8 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
-        // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
         let prompt = self.prompt;
-        if let Some(preamble) = self.preamble {
-            chat_history.insert(0, Message::system(preamble));
-        }
         chat_history.push(prompt.clone());
 
         let chat_history =
@@ -872,7 +864,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
         CompletionRequest {
             model: self.request_model,
-            preamble: None,
+            preamble: self.preamble,
             chat_history,
             documents: self.documents,
             tools: self.tools,
@@ -1005,27 +997,23 @@ mod tests {
     }
 
     #[test]
-    fn preamble_builder_funnels_to_system_message() {
+    fn preamble_builder_preserves_request_preamble() {
         let request =
             CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
                 .preamble("System prompt".to_string())
                 .message(Message::user("History"))
                 .build();
 
-        assert_eq!(request.preamble, None);
+        assert_eq!(request.preamble.as_deref(), Some("System prompt"));
 
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 3);
-        assert!(matches!(
-            &history[0],
-            Message::System { content } if content == "System prompt"
-        ));
+        assert_eq!(history.len(), 2);
+        assert!(matches!(&history[0], Message::User { .. }));
         assert!(matches!(&history[1], Message::User { .. }));
-        assert!(matches!(&history[2], Message::User { .. }));
     }
 
     #[test]
-    fn without_preamble_removes_legacy_preamble_injection() {
+    fn without_preamble_removes_request_preamble() {
         let request =
             CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
                 .preamble("System prompt".to_string())

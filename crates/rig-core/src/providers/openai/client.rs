@@ -34,7 +34,9 @@ pub struct OpenAIResponsesExtBuilder {
 // OpenAI Completions API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAICompletionsExt;
+pub struct OpenAICompletionsExt {
+    responses_preamble_behavior: super::responses_api::ResponsesPreambleBehavior,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OpenAICompletionsExtBuilder;
@@ -146,7 +148,7 @@ impl ProviderBuilder for OpenAICompletionsExtBuilder {
     where
         H: HttpClientExt,
     {
-        Ok(OpenAICompletionsExt)
+        Ok(OpenAICompletionsExt::default())
     }
 }
 
@@ -175,7 +177,10 @@ where
     /// Create a Completions API client from this Responses API client.
     /// Useful for switching to the traditional Chat Completions API.
     pub fn completions_api(self) -> CompletionsClient<H> {
-        self.with_ext(OpenAICompletionsExt)
+        let responses_preamble_behavior = self.ext().responses_preamble_behavior;
+        self.with_ext(OpenAICompletionsExt {
+            responses_preamble_behavior,
+        })
     }
 }
 
@@ -230,7 +235,10 @@ where
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API.
     pub fn responses_api(self) -> Client<H> {
-        self.with_ext(OpenAIResponsesExt::default())
+        let responses_preamble_behavior = self.ext().responses_preamble_behavior;
+        self.with_ext(OpenAIResponsesExt {
+            responses_preamble_behavior,
+        })
     }
 }
 
@@ -698,6 +706,26 @@ mod tests {
             input[0]["content"][0]["text"],
             "Use compatible system input."
         );
+    }
+
+    #[test]
+    fn test_responses_preamble_behavior_survives_completions_round_trip() {
+        let client = crate::providers::openai::Client::builder()
+            .api_key("dummy-key")
+            .base_url("https://some-provider.example/v1")
+            .responses_preamble_behavior(
+                crate::providers::openai::ResponsesPreambleBehavior::InputSystemMessage,
+            )
+            .build()
+            .expect("Client::builder() failed");
+
+        let client = client.completions_api().responses_api();
+
+        assert_eq!(
+            client.ext().responses_preamble_behavior(),
+            crate::providers::openai::ResponsesPreambleBehavior::InputSystemMessage
+        );
+        assert_eq!(client.base_url(), "https://some-provider.example/v1");
     }
 
     #[test]
