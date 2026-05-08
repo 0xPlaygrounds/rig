@@ -161,44 +161,11 @@ where
 mod tests {
     use crate::{
         Embed,
-        client::Nothing,
-        embeddings::{
-            Embedding, EmbeddingModel,
-            embed::{EmbedError, TextEmbedder},
-        },
+        embeddings::embed::{EmbedError, TextEmbedder},
+        test_utils::MockEmbeddingModel,
     };
 
     use super::EmbeddingsBuilder;
-
-    #[derive(Clone)]
-    struct MockEmbeddingModel;
-
-    impl EmbeddingModel for MockEmbeddingModel {
-        const MAX_DOCUMENTS: usize = 5;
-
-        type Client = Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self {}
-        }
-
-        fn ndims(&self) -> usize {
-            10
-        }
-
-        async fn embed_texts(
-            &self,
-            documents: impl IntoIterator<Item = String> + Send,
-        ) -> Result<Vec<crate::embeddings::Embedding>, crate::embeddings::EmbeddingError> {
-            Ok(documents
-                .into_iter()
-                .map(|doc| Embedding {
-                    document: doc.to_string(),
-                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-                })
-                .collect())
-        }
-    }
 
     #[derive(Clone, Debug)]
     struct WordDefinition {

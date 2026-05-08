@@ -315,12 +315,12 @@ pub fn with_error<E>() -> PipelineBuilder<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_ops::tests::{Foo, MockIndex, MockModel};
+    use crate::test_utils::{Foo, MockPromptModel, MockVectorStoreIndex};
     use parallel::parallel;
 
     #[tokio::test]
     async fn test_prompt_pipeline() {
-        let model = MockModel;
+        let model = MockPromptModel;
 
         let chain = super::new()
             .map(|input| format!("User query: {input}"))
@@ -336,7 +336,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_prompt_pipeline_error() {
-        let model = MockModel;
+        let model = MockPromptModel;
 
         let chain = super::with_error::<()>()
             .map(|input| format!("User query: {input}"))
@@ -352,7 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_lookup_pipeline() {
-        let index = MockIndex;
+        let index = MockVectorStoreIndex;
 
         let chain = super::new()
             .lookup::<_, _, Foo>(index, 1)
@@ -368,7 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rag_pipeline() {
-        let index = MockIndex;
+        let index = MockVectorStoreIndex;
 
         let chain = super::new()
             .chain(parallel!(
@@ -379,7 +379,7 @@ mod tests {
                 Ok(docs) => format!("User query: {}\n\nTop documents:\n{}", query, docs[0].2.foo),
                 Err(err) => format!("Error: {err}"),
             })
-            .prompt(MockModel);
+            .prompt(MockPromptModel);
 
         let result = chain
             .call("What is a flurbo?")

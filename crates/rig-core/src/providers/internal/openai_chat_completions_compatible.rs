@@ -599,31 +599,14 @@ mod tests {
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleToolCallChunk, finalize_pending_tool_call, send_compatible_streaming_request,
     };
-    use crate::completion::{CompletionError, GetTokenUsage};
+    use crate::completion::CompletionError;
     use crate::http_client::mock::MockStreamingClient;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockResponse;
     use futures::StreamExt;
 
-    #[derive(Clone, Default)]
-    struct TestUsage;
-
-    impl GetTokenUsage for TestUsage {
-        fn token_usage(&self) -> Option<crate::completion::Usage> {
-            None
-        }
-    }
-
-    #[derive(Clone, Default, Debug)]
-    struct TestFinalResponse;
-
-    impl GetTokenUsage for TestFinalResponse {
-        fn token_usage(&self) -> Option<crate::completion::Usage> {
-            None
-        }
-    }
-
-    fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<TestUsage, ()> {
+    fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<MockResponse, ()> {
         CompatibleChunk {
             response_id: None,
             response_model: None,
@@ -663,9 +646,9 @@ mod tests {
     struct ErrorAfterPendingToolCallProfile;
 
     impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
-        type Usage = TestUsage;
+        type Usage = MockResponse;
         type Detail = ();
-        type FinalResponse = TestFinalResponse;
+        type FinalResponse = MockResponse;
 
         fn normalize_chunk(
             &self,
@@ -684,7 +667,7 @@ mod tests {
         }
 
         fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-            TestFinalResponse
+            MockResponse::new()
         }
     }
 
@@ -692,9 +675,9 @@ mod tests {
     struct DistinctToolCallEvictionProfile;
 
     impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
-        type Usage = TestUsage;
+        type Usage = MockResponse;
         type Detail = ();
-        type FinalResponse = TestFinalResponse;
+        type FinalResponse = MockResponse;
 
         fn normalize_chunk(
             &self,
@@ -738,7 +721,7 @@ mod tests {
         }
 
         fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-            TestFinalResponse
+            MockResponse::new()
         }
 
         fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -750,9 +733,9 @@ mod tests {
     struct FinishReasonCleanupProfile;
 
     impl CompatibleStreamProfile for FinishReasonCleanupProfile {
-        type Usage = TestUsage;
+        type Usage = MockResponse;
         type Detail = ();
-        type FinalResponse = TestFinalResponse;
+        type FinalResponse = MockResponse;
 
         fn normalize_chunk(
             &self,
@@ -779,7 +762,7 @@ mod tests {
         }
 
         fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-            TestFinalResponse
+            MockResponse::new()
         }
     }
 
