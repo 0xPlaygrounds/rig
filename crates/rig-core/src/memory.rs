@@ -55,6 +55,7 @@ pub type MemoryBackendError = Box<dyn std::error::Error + 'static>;
 
 /// Errors produced by a [`ConversationMemory`] backend.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum MemoryError {
     /// The backing store failed to load, append, or clear messages.
     #[error("Memory backend error: {0}")]
@@ -63,6 +64,12 @@ pub enum MemoryError {
     /// A history-shaping filter or policy rejected the loaded history.
     #[error("Memory policy error: {0}")]
     Policy(String),
+
+    /// An internal invariant was violated (e.g. a poisoned in-process lock).
+    /// Distinct from [`MemoryError::Backend`], which is reserved for failures
+    /// of the underlying conversation store.
+    #[error("Memory internal error: {0}")]
+    Internal(String),
 }
 
 impl MemoryError {
@@ -124,6 +131,82 @@ impl<F> MessageFilter for F where
 {
 }
 
+/// A side-channel for messages that a memory policy or adapter removes from
+/// active history during [`ConversationMemory::load`].
+///
+/// Truncating policies (sliding window, token budget, …) drop older turns
+/// once their limit is exceeded. Without a hook those messages are silently
+/// lost. A [`DemotionHook`] receives the demoted messages and can persist
+/// them into a long-tail store (semantic memory, episodic recall, archival
+/// storage, …), turning truncation into demotion.
+///
+/// The trait is defined here in `rig-core` so that *any* memory backend
+/// (in-memory, vector store, file archive, …) can implement it without
+/// taking on a `rig-memory` dependency. The composing adapter that actually
+/// wires a [`ConversationMemory`] backend, a policy, and a hook together
+/// lives in the `rig-memory` companion crate.
+///
+/// Hooks should be inexpensive: their future is awaited inline on every
+/// `load` that produces demoted messages, so a slow hook delays the agent's
+/// next turn. Offload heavy I/O (network writes, disk fsyncs, …) to a
+/// background task or a buffered channel inside the implementation.
+///
+/// # Idempotency contract
+///
+/// Implementations **must** be idempotent on the
+/// `(conversation_id, messages)` pair. Composing adapters such as the
+/// `DemotingPolicyMemory` in `rig-memory` track in-process delivery
+/// watermarks to avoid replaying the same demotion within a single
+/// process lifetime, but those watermarks are not persisted: across
+/// process restarts (or when a new adapter is constructed over an
+/// existing backend) the hook will receive previously-delivered
+/// messages again. Hooks that append to durable storage should
+/// deduplicate by content hash, by `(conversation_id, message_id)`,
+/// or by an equivalent stable key.
+pub trait DemotionHook: WasmCompatSend + WasmCompatSync {
+    /// Receive `messages` that were demoted out of the active window for
+    /// `conversation_id`.
+    ///
+    /// `messages` are in original conversation order. Errors are propagated
+    /// as [`MemoryError::Backend`] by the composing adapter.
+    fn on_demote<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
+}
+
+/// A [`DemotionHook`] that does nothing. Useful as a default when an adapter
+/// requires a hook value but the caller has no long-tail store wired up yet.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopDemotionHook;
+
+impl DemotionHook for NoopDemotionHook {
+    fn on_demote<'a>(
+        &'a self,
+        _conversation_id: &'a str,
+        _messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        Box::pin(async move { Ok(()) })
+    }
+}
+
+/// Forwarding impl so callers can pass `Arc<H>` wherever a `DemotionHook`
+/// is expected (e.g. when sharing a single hook between multiple memory
+/// adapters).
+impl<H> DemotionHook for Arc<H>
+where
+    H: DemotionHook + ?Sized,
+{
+    fn on_demote<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        (**self).on_demote(conversation_id, messages)
+    }
+}
+
 /// A simple thread-safe in-memory [`ConversationMemory`] backed by a `HashMap`.
 ///
 /// Messages are stored in process memory only and lost on restart. Useful for
@@ -161,7 +244,7 @@ impl InMemoryConversationMemory {
     ) -> Result<std::sync::MutexGuard<'_, HashMap<String, Vec<Message>>>, MemoryError> {
         self.inner
             .lock()
-            .map_err(|e| MemoryError::backend(std::io::Error::other(e.to_string())))
+            .map_err(|e| MemoryError::Internal(e.to_string()))
     }
 }
 

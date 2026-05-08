@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DemotionHook` trait + `DemotingPolicyMemory<M, P, H>` adapter and a
+  `NoopDemotionHook` no-op default. The trait itself lives in
+  `rig_core::memory` (re-exported here) so any memory backend can
+  implement it without taking a `rig-memory` dependency; the composing
+  adapter lives in this crate. `DemotingPolicyMemory` calls the hook
+  with messages that the policy truncated out of active history,
+  turning eviction into demotion. It tracks per-conversation demotion
+  watermarks so repeated `load` calls do not replay the same demoted
+  messages into append-only long-tail stores. Concurrent loads on the
+  same `conversation_id` are serialised at the demotion seam via an
+  in-flight gate: only one load at a time delivers to the hook;
+  others observe the gate and return the truncated history without
+  re-firing. Watermarks are in-process only — `DemotionHook`
+  implementations must be idempotent on `(conversation_id, messages)`
+  to survive process restarts. Bridges `SlidingWindowMemory` /
+  `TokenWindowMemory` to long-tail stores such as `MemvidPersistHook`
+  without coupling either crate to the other.
+- `DemotingPolicyMemory::forget(conversation_id)` and
+  `tracked_conversations()` for explicit watermark-map cleanup and
+  leak diagnostics. Both are infallible: a poisoned internal lock
+  is treated as "nothing to forget / zero tracked" rather than a
+  caller-visible error.
+- `MemoryPolicy::apply_with_demoted` companion method that reports
+  `(kept, demoted)`. `apply` remains the required method; the default
+  `apply_with_demoted` returns `(apply(...)?, Vec::new())` so existing
+  policies keep compiling unchanged. `SlidingWindowMemory` and
+  `TokenWindowMemory` override it to populate the demoted prefix that
+  `DemotingPolicyMemory` hands to the hook.
+- `HeuristicTokenCounter` — provider-agnostic, zero-dependency
+  `TokenCounter` implementation that approximates token cost from
+  UTF-8 byte lengths (`str::len`, O(1)). Ships `default` / `openai` /
+  `anthropic` / `gemini` presets so
+  `TokenWindowMemory::new(budget, HeuristicTokenCounter::default())`
+  works out of the box without a tokenizer dependency. Also handles the
+  `Message::System` variant and tool-call argument payloads. The
+  configurable ratio is named `bytes_per_token` to match the
+  implementation; for ASCII text bytes and characters coincide, and
+  for non-ASCII text the counter slightly over-estimates, which is the
+  safe direction for a hard budget.
 - `PolicyMemory<M, P>` adapter — wrap any `ConversationMemory` with a
   `MemoryPolicy` and propagate policy failures to the caller as
   `MemoryError::Policy`. Hard-fail counterpart to

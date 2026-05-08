@@ -17,6 +17,10 @@
 //! - [`NoopMemoryPolicy`] — identity, returns input unchanged.
 //! - [`SlidingWindowMemory`] — retains the most recent `N` messages.
 //! - [`TokenWindowMemory`] — retains messages that fit within a token budget.
+//! - [`HeuristicTokenCounter`] — provider-agnostic, zero-dependency
+//!   [`TokenCounter`] that approximates token cost from character lengths.
+//! - [`DemotionHook`] + [`DemotingPolicyMemory`] — bridge truncated turns
+//!   from a [`MemoryPolicy`] into a long-tail store.
 //!
 //! All sliding policies drop a leading orphan tool-result message when the
 //! preceding assistant tool call has been truncated, since most providers
@@ -31,11 +35,16 @@
 //!     .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
 //! ```
 
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex},
+};
 
 /// Re-exports of the core memory abstractions so callers only need a single
 /// dependency on `rig-memory` for both the trait/backend and the policies.
-pub use rig_core::memory::{ConversationMemory, InMemoryConversationMemory, MemoryError};
+pub use rig_core::memory::{
+    ConversationMemory, DemotionHook, InMemoryConversationMemory, MemoryError, NoopDemotionHook,
+};
 
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
@@ -47,8 +56,29 @@ use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 /// pure, fallible message transformers: implementors that cannot fail should
 /// always return `Ok`.
 pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
-    /// Transform `messages` into the history that should be returned to the agent.
+    /// Transform `messages` into the history that should be returned to the
+    /// agent. This is the required method — every policy must implement it.
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
+
+    /// Transform `messages` and report which messages were demoted (excluded
+    /// from the returned history).
+    ///
+    /// Returns `(kept, demoted)`. The default implementation returns
+    /// `(self.apply(messages)?, Vec::new())`, which is correct for
+    /// non-truncating policies. Truncating policies (sliding window, token
+    /// window, …) override this method to populate `demoted` with the
+    /// messages they evicted.
+    ///
+    /// Implementors must guarantee that `demoted` is the prefix of the
+    /// original input not retained in `kept`, in original order. Composing
+    /// adapters such as [`DemotingPolicyMemory`] rely on this contract to
+    /// track delivery watermarks correctly.
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+        Ok((self.apply(messages)?, Vec::new()))
+    }
 }
 
 /// Adapt a [`MemoryPolicy`] into a closure suitable for
@@ -133,15 +163,32 @@ impl SlidingWindowMemory {
 
 impl MemoryPolicy for SlidingWindowMemory {
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
+    }
+
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
         if messages.len() <= self.max_messages {
-            return Ok(messages);
+            return Ok((messages, Vec::new()));
         }
 
         let start = messages.len() - self.max_messages;
-        let mut window: Vec<Message> = messages.into_iter().skip(start).collect();
+        let mut iter = messages.into_iter();
+        let mut demoted: Vec<Message> = (&mut iter).take(start).collect();
+        let mut window: Vec<Message> = iter.collect();
 
-        drop_leading_orphan_tool_result(&mut window);
-        Ok(window)
+        // The orphan tool-result, if any, becomes part of the demoted set so
+        // it is preserved end-to-end through the demotion hook even though
+        // the model never sees it again.
+        if let Some(Message::User { content }) = window.first()
+            && matches!(content.first_ref(), UserContent::ToolResult(_))
+        {
+            demoted.push(window.remove(0));
+        }
+
+        Ok((window, demoted))
     }
 }
 
@@ -161,6 +208,162 @@ where
 {
     fn count(&self, message: &Message) -> usize {
         (self)(message)
+    }
+}
+
+/// A provider-agnostic [`TokenCounter`] that approximates token counts from
+/// UTF-8 byte lengths.
+///
+/// This is intended as a zero-dependency default. It is **not** a substitute
+/// for a tokenizer and will under- or over-count by up to ~30 % on real
+/// content, but it is monotonic in message size and stable across runs, which
+/// is enough for [`TokenWindowMemory`] to enforce a budget that *trends*
+/// with provider billing.
+///
+/// # Strategy
+///
+/// For every text-bearing block (`Text`, reasoning text, tool-result text)
+/// the counter sums UTF-8 byte lengths (`str::len`, an O(1) call) and divides
+/// by `bytes_per_token`, rounded up. Bytes are used instead of Unicode
+/// scalars because the cost is O(1), modern BPE tokenizers operate on byte
+/// sequences, and per-message budgeting only needs the rough order of
+/// magnitude. For ASCII text bytes and characters coincide; for non-ASCII
+/// text the counter slightly over-estimates, which is the safe direction
+/// for a hard budget.
+///
+/// Tool calls are charged the JSON-serialised length of their `ToolFunction`
+/// payload. Each message is charged a flat `per_message_overhead` to model
+/// the per-turn role/separator tokens that providers add internally. Non-text
+/// blocks (images, audio, video, documents) are charged
+/// `per_attachment_tokens` each because their real cost is provider-specific
+/// and rarely text-derived.
+///
+/// # Presets
+///
+/// The defaults match OpenAI's published rule of thumb (~4 bytes per token,
+/// ~4 tokens of per-message overhead). [`HeuristicTokenCounter::anthropic`]
+/// uses a slightly denser ratio that better fits Claude's tokenizer.
+///
+/// # Example
+///
+/// ```
+/// use rig_memory::{HeuristicTokenCounter, TokenWindowMemory};
+///
+/// let policy = TokenWindowMemory::new(2_000, HeuristicTokenCounter::default());
+/// # let _ = policy;
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct HeuristicTokenCounter {
+    bytes_per_token: f32,
+    per_message_overhead: usize,
+    per_attachment_tokens: usize,
+}
+
+impl HeuristicTokenCounter {
+    /// Create a counter with explicit parameters.
+    ///
+    /// `bytes_per_token` is clamped to a minimum of `1.0` so the counter
+    /// never panics or produces zero-cost messages on degenerate input.
+    pub fn new(
+        bytes_per_token: f32,
+        per_message_overhead: usize,
+        per_attachment_tokens: usize,
+    ) -> Self {
+        let bytes_per_token = if bytes_per_token.is_finite() && bytes_per_token >= 1.0 {
+            bytes_per_token
+        } else {
+            1.0
+        };
+        Self {
+            bytes_per_token,
+            per_message_overhead,
+            per_attachment_tokens,
+        }
+    }
+
+    /// Preset matching OpenAI's chat-completion token rule of thumb.
+    ///
+    /// Equivalent to [`HeuristicTokenCounter::default`].
+    pub fn openai() -> Self {
+        Self::new(4.0, 4, 256)
+    }
+
+    /// Preset tuned for Anthropic Claude's tokenizer.
+    pub fn anthropic() -> Self {
+        Self::new(3.5, 4, 256)
+    }
+
+    /// Preset tuned for Google Gemini.
+    pub fn gemini() -> Self {
+        Self::new(4.0, 4, 256)
+    }
+
+    fn bytes_to_tokens(&self, bytes: usize) -> usize {
+        // `bytes_per_token` is clamped to >= 1.0 in the constructor, so the
+        // division is well-defined. We round up so a single non-empty
+        // input still costs at least one token.
+        let tokens = (bytes as f32) / self.bytes_per_token;
+        tokens.ceil() as usize
+    }
+
+    fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
+        use rig_core::message::UserContent;
+        match content {
+            UserContent::Text(text) => self.bytes_to_tokens(text.text.len()),
+            UserContent::ToolResult(result) => result
+                .content
+                .iter()
+                .map(|c| match c {
+                    rig_core::message::ToolResultContent::Text(t) => {
+                        self.bytes_to_tokens(t.text.len())
+                    }
+                    rig_core::message::ToolResultContent::Image(_) => self.per_attachment_tokens,
+                })
+                .sum(),
+            UserContent::Image(_)
+            | UserContent::Audio(_)
+            | UserContent::Video(_)
+            | UserContent::Document(_) => self.per_attachment_tokens,
+        }
+    }
+
+    fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
+        use rig_core::message::AssistantContent;
+        match content {
+            AssistantContent::Text(text) => self.bytes_to_tokens(text.text.len()),
+            AssistantContent::Reasoning(reasoning) => {
+                self.bytes_to_tokens(reasoning.display_text().len())
+            }
+            AssistantContent::ToolCall(call) => {
+                let name_bytes = call.function.name.len();
+                // `serde_json::Value::to_string` is the canonical compact JSON
+                // encoding and never fails, so we charge tool calls by the
+                // length of their serialised arguments without pulling in a
+                // direct `serde_json` dependency.
+                let args_bytes = call.function.arguments.to_string().len();
+                self.bytes_to_tokens(name_bytes + args_bytes)
+            }
+            AssistantContent::Image(_) => self.per_attachment_tokens,
+        }
+    }
+}
+
+impl Default for HeuristicTokenCounter {
+    fn default() -> Self {
+        Self::openai()
+    }
+}
+
+impl TokenCounter for HeuristicTokenCounter {
+    fn count(&self, message: &Message) -> usize {
+        let content_tokens: usize = match message {
+            Message::User { content } => content.iter().map(|c| self.count_user(c)).sum(),
+            Message::Assistant { content, .. } => {
+                content.iter().map(|c| self.count_assistant(c)).sum()
+            }
+            Message::System { content } => self.bytes_to_tokens(content.len()),
+        };
+        content_tokens.saturating_add(self.per_message_overhead)
     }
 }
 
@@ -201,6 +404,13 @@ impl std::fmt::Debug for TokenWindowMemory {
 
 impl MemoryPolicy for TokenWindowMemory {
     fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.apply_with_demoted(messages)?.0)
+    }
+
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
         let mut budget = self.max_tokens;
         let mut keep_from = messages.len();
 
@@ -213,17 +423,17 @@ impl MemoryPolicy for TokenWindowMemory {
             keep_from = idx;
         }
 
-        let mut window: Vec<Message> = messages.into_iter().skip(keep_from).collect();
-        drop_leading_orphan_tool_result(&mut window);
-        Ok(window)
-    }
-}
+        let mut iter = messages.into_iter();
+        let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
+        let mut window: Vec<Message> = iter.collect();
 
-fn drop_leading_orphan_tool_result(window: &mut Vec<Message>) {
-    if let Some(Message::User { content }) = window.first()
-        && matches!(content.first(), UserContent::ToolResult(_))
-    {
-        window.remove(0);
+        if let Some(Message::User { content }) = window.first()
+            && matches!(content.first_ref(), UserContent::ToolResult(_))
+        {
+            demoted.push(window.remove(0));
+        }
+
+        Ok((window, demoted))
     }
 }
 
@@ -304,6 +514,253 @@ where
     }
 }
 
+/// A [`ConversationMemory`] adapter that wraps a backend with a
+/// [`MemoryPolicy`] **and** a [`DemotionHook`], so messages truncated by the
+/// policy flow into the hook before the active window is returned.
+///
+/// `DemotingPolicyMemory` is the bridge between the recent-turn store
+/// ([`InMemoryConversationMemory`] or any other [`ConversationMemory`]) and a
+/// long-tail store (`MemvidPersistHook`, vector RAG, archival storage, …).
+/// Compose it with any [`MemoryPolicy`] that overrides
+/// [`MemoryPolicy::apply_with_demoted`]; policies that rely on the default
+/// implementation will still load correctly but will never demote anything.
+///
+/// # Concurrency
+///
+/// Concurrent [`ConversationMemory::load`] calls on the same
+/// `conversation_id` are serialised at the demotion seam: only one call at
+/// a time delivers messages to the hook for a given conversation. Other
+/// concurrent loads for that conversation observe the in-flight delivery
+/// and return the truncated `kept` history immediately without firing the
+/// hook again. Pending demotions that were skipped this way are picked up
+/// by the next `load` after the in-flight delivery completes.
+///
+/// **Failure visibility.** A hook error is returned only to the caller
+/// whose `load` actually drove the delivery. Concurrent callers that
+/// short-circuited on `in_flight` see `Ok(kept)` even if the in-flight
+/// delivery ultimately failed; the watermark stays unchanged so the next
+/// `load` retries. Callers that rely on the hook for durability should
+/// treat a successful `load` as best-effort with respect to demotion and
+/// surface hook failures through the hook's own observability (logs,
+/// metrics, dead-letter buffer) rather than the `load` return value.
+///
+/// # Persistence
+///
+/// Delivery watermarks are kept in process memory only. Across process
+/// restarts, the hook will receive previously-delivered demotions again;
+/// see the [`DemotionHook`] idempotency contract.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig_memory::{
+///     DemotingPolicyMemory, DemotionHook, InMemoryConversationMemory,
+///     MemoryError, NoopDemotionHook, SlidingWindowMemory,
+/// };
+///
+/// let memory = DemotingPolicyMemory::new(
+///     InMemoryConversationMemory::new(),
+///     SlidingWindowMemory::last_messages(20),
+///     NoopDemotionHook,
+/// );
+/// # let _ = memory;
+/// ```
+pub struct DemotingPolicyMemory<M, P, H> {
+    inner: M,
+    policy: P,
+    hook: H,
+    state: StdMutex<HashMap<String, ConversationDemotionState>>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ConversationDemotionState {
+    /// Number of demoted messages already delivered to the hook within
+    /// this process lifetime. Advanced only on hook success.
+    delivered: usize,
+    /// True while a `load` is currently awaiting `hook.on_demote(...)`
+    /// for this conversation. Other concurrent loads observe this and
+    /// short-circuit without re-delivering the same messages.
+    in_flight: bool,
+}
+
+impl<M, P, H> DemotingPolicyMemory<M, P, H> {
+    /// Wrap `inner` so every load runs through `policy` and demoted messages
+    /// flow into `hook`.
+    pub fn new(inner: M, policy: P, hook: H) -> Self {
+        Self {
+            inner,
+            policy,
+            hook,
+            state: StdMutex::new(HashMap::new()),
+        }
+    }
+
+    /// Return a reference to the wrapped backend.
+    pub fn inner(&self) -> &M {
+        &self.inner
+    }
+
+    /// Return a reference to the wrapped policy.
+    pub fn policy(&self) -> &P {
+        &self.policy
+    }
+
+    /// Return a reference to the demotion hook.
+    pub fn hook(&self) -> &H {
+        &self.hook
+    }
+
+    /// Consume the wrapper and return its three components.
+    pub fn into_inner(self) -> (M, P, H) {
+        (self.inner, self.policy, self.hook)
+    }
+
+    /// Drop the in-process delivery watermark for `conversation_id`.
+    ///
+    /// Call this when a conversation has ended to bound memory usage.
+    /// The watermark map is otherwise unbounded — entries persist for
+    /// the lifetime of the wrapper.
+    ///
+    /// If the internal state lock has been poisoned by a panic in another
+    /// thread, this is a no-op (the watermark will be dropped naturally
+    /// when the wrapper itself is dropped).
+    pub fn forget(&self, conversation_id: &str) {
+        if let Ok(mut guard) = self.state.lock() {
+            guard.remove(conversation_id);
+        }
+    }
+
+    /// Number of conversations currently tracked in the watermark map.
+    /// Useful for telemetry and leak detection. Returns `0` if the internal
+    /// state lock is poisoned.
+    pub fn tracked_conversations(&self) -> usize {
+        self.state.lock().map(|g| g.len()).unwrap_or(0)
+    }
+}
+
+impl<M, P, H> std::fmt::Debug for DemotingPolicyMemory<M, P, H>
+where
+    M: std::fmt::Debug,
+    P: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DemotingPolicyMemory")
+            .field("inner", &self.inner)
+            .field("policy", &self.policy)
+            .field("hook", &"<hook>")
+            .finish()
+    }
+}
+
+impl<M, P, H> ConversationMemory for DemotingPolicyMemory<M, P, H>
+where
+    M: ConversationMemory,
+    P: MemoryPolicy,
+    H: DemotionHook,
+{
+    fn load<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+        Box::pin(async move {
+            let messages = self.inner.load(conversation_id).await?;
+            let (kept, mut demoted) = self.policy.apply_with_demoted(messages)?;
+            let demoted_count = demoted.len();
+
+            // Reserve a delivery slot atomically. Decide-and-mark must
+            // happen under one short-lived lock so concurrent loads on
+            // the same conversation_id can't both observe the same
+            // delivered watermark and double-fire the hook.
+            //
+            // Fast path: if the conversation is already tracked, mutate in
+            // place. Only allocate a new `String` key when we are about to
+            // record state for a conversation we have not seen before *and*
+            // there is actually demotion work to track.
+            let pending = {
+                let mut guard = self.state.lock().map_err(poisoned)?;
+                if let Some(entry) = guard.get_mut(conversation_id) {
+                    if entry.in_flight {
+                        // Another load is mid-delivery for this conversation;
+                        // skip and let the next load see whatever it leaves
+                        // behind.
+                        return Ok(kept);
+                    }
+                    if entry.delivered >= demoted_count {
+                        Vec::new()
+                    } else {
+                        let split = entry.delivered;
+                        entry.in_flight = true;
+                        demoted.split_off(split)
+                    }
+                } else if demoted_count == 0 {
+                    // First load for this conversation and nothing was
+                    // demoted: no need to allocate a tracking entry yet.
+                    Vec::new()
+                } else {
+                    guard.insert(
+                        conversation_id.to_string(),
+                        ConversationDemotionState {
+                            delivered: 0,
+                            in_flight: true,
+                        },
+                    );
+                    std::mem::take(&mut demoted)
+                }
+            };
+
+            if pending.is_empty() {
+                return Ok(kept);
+            }
+
+            let result = self.hook.on_demote(conversation_id, pending).await;
+
+            // Reacquire briefly to advance the watermark on success and
+            // always clear the in-flight flag so a future load can retry.
+            //
+            // Only update if the entry still exists: a concurrent `clear`
+            // (and matching `forget`) for this `conversation_id` may have
+            // dropped the watermark entry while the hook was awaiting. In
+            // that case we must not resurrect it with a stale `delivered`
+            // count — the next load on a freshly-populated backend would
+            // then skip a real demotion.
+            {
+                let mut guard = self.state.lock().map_err(poisoned)?;
+                if let Some(entry) = guard.get_mut(conversation_id) {
+                    entry.in_flight = false;
+                    if result.is_ok() {
+                        entry.delivered = demoted_count;
+                    }
+                }
+            }
+            result?;
+            Ok(kept)
+        })
+    }
+
+    fn append<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        self.inner.append(conversation_id, messages)
+    }
+
+    fn clear<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        Box::pin(async move {
+            self.inner.clear(conversation_id).await?;
+            self.forget(conversation_id);
+            Ok(())
+        })
+    }
+}
+
+fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
+    MemoryError::Internal(err.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,6 +768,7 @@ mod tests {
     use rig_core::message::{
         AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
     };
+    use std::sync::Mutex;
 
     fn user(text: &str) -> Message {
         Message::user(text)
@@ -427,6 +885,58 @@ mod tests {
     }
 
     #[test]
+    fn heuristic_counter_charges_overhead_per_message() {
+        let counter = HeuristicTokenCounter::default();
+        let empty = counter.count(&user(""));
+        assert!(
+            empty >= 4,
+            "default per-message overhead is at least 4 tokens"
+        );
+    }
+
+    #[test]
+    fn heuristic_counter_is_monotonic_in_text_length() {
+        let counter = HeuristicTokenCounter::default();
+        let small = counter.count(&user("hi"));
+        let big = counter.count(&user(&"x".repeat(400)));
+        assert!(big > small);
+    }
+
+    #[test]
+    fn heuristic_counter_handles_tool_calls() {
+        let counter = HeuristicTokenCounter::default();
+        let cost = counter.count(&tool_call_msg());
+        assert!(cost > 0);
+    }
+
+    #[test]
+    fn heuristic_counter_handles_system_messages() {
+        let counter = HeuristicTokenCounter::default();
+        let cost = counter.count(&Message::System {
+            content: "you are helpful".into(),
+        });
+        assert!(cost > 0);
+    }
+
+    #[test]
+    fn heuristic_counter_clamps_invalid_bytes_per_token() {
+        // Zero/NaN/negative ratios fall back to 1.0 instead of panicking.
+        let counter = HeuristicTokenCounter::new(0.0, 0, 0);
+        assert!(counter.count(&user("abcd")) >= 4);
+        let nan = HeuristicTokenCounter::new(f32::NAN, 0, 0);
+        assert!(nan.count(&user("abcd")) >= 4);
+    }
+
+    #[test]
+    fn heuristic_counter_drives_token_window() {
+        let policy = TokenWindowMemory::new(100, HeuristicTokenCounter::default());
+        let msgs = vec![user(&"a".repeat(2_000)), user("short")];
+        let out = policy.apply(msgs).unwrap();
+        // The huge message must be evicted; the short one retained.
+        assert_eq!(out.len(), 1);
+    }
+
+    #[test]
     fn into_filter_returns_input_on_policy_error() {
         struct FailingPolicy;
         impl MemoryPolicy for FailingPolicy {
@@ -491,5 +1001,348 @@ mod tests {
 
         mem.clear("c").await.unwrap();
         assert!(mem.load("c").await.unwrap().is_empty());
+    }
+
+    #[test]
+    fn sliding_window_reports_demoted_prefix() {
+        let policy = SlidingWindowMemory::last_messages(2);
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![
+                user("oldest"),
+                assistant("old"),
+                user("recent"),
+                assistant("latest"),
+            ])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(demoted.len(), 2);
+    }
+
+    #[test]
+    fn token_window_reports_demoted_prefix() {
+        let policy = TokenWindowMemory::new(2, |_: &Message| 1);
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![user("a"), assistant("b"), user("c"), assistant("d")])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(demoted.len(), 2);
+    }
+
+    #[test]
+    fn noop_policy_demotes_nothing() {
+        let (kept, demoted) = NoopMemoryPolicy
+            .apply_with_demoted(vec![user("a"), assistant("b")])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert!(demoted.is_empty());
+    }
+
+    #[test]
+    fn sliding_window_demotes_orphan_tool_result_with_prefix() {
+        // Window keeps the last 2 messages, but the leading message of that
+        // window is an orphan tool result; it must be moved into `demoted`
+        // so the hook can preserve it.
+        let policy = SlidingWindowMemory::last_messages(2);
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![
+                tool_call_msg(),
+                tool_result_msg(),
+                user("after"),
+                assistant("done"),
+            ])
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert!(matches!(kept.first(), Some(Message::User { content })
+            if matches!(content.first(), UserContent::Text(_))));
+        assert_eq!(demoted.len(), 2);
+    }
+
+    #[derive(Default)]
+    struct CountingHook {
+        seen: Mutex<Vec<(String, Vec<Message>)>>,
+    }
+
+    impl CountingHook {
+        fn calls(&self) -> usize {
+            self.seen.lock().unwrap().len()
+        }
+        fn last_demoted_count(&self) -> usize {
+            self.seen
+                .lock()
+                .unwrap()
+                .last()
+                .map(|(_, m)| m.len())
+                .unwrap_or(0)
+        }
+    }
+
+    impl DemotionHook for CountingHook {
+        fn on_demote<'a>(
+            &'a self,
+            conversation_id: &'a str,
+            messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            Box::pin(async move {
+                self.seen
+                    .lock()
+                    .unwrap()
+                    .push((conversation_id.to_string(), messages));
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_invokes_hook_on_truncation() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+            hook.clone(),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+
+        let kept = mem.load("c").await.unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(hook.calls(), 1);
+        assert_eq!(hook.last_demoted_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_does_not_replay_demotions() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+            hook.clone(),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+
+        mem.load("c").await.unwrap();
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.calls(), 1);
+        assert_eq!(hook.last_demoted_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_only_reports_newly_demoted_messages() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(2),
+            hook.clone(),
+        );
+
+        mem.append(
+            "c",
+            vec![user("1"), assistant("2"), user("3"), assistant("4")],
+        )
+        .await
+        .unwrap();
+        mem.load("c").await.unwrap();
+
+        mem.append("c", vec![user("5")]).await.unwrap();
+        mem.load("c").await.unwrap();
+
+        assert_eq!(hook.calls(), 2);
+        assert_eq!(hook.last_demoted_count(), 1);
+    }
+
+    #[derive(Default)]
+    struct FailingHook {
+        calls: Mutex<usize>,
+    }
+
+    impl DemotionHook for FailingHook {
+        fn on_demote<'a>(
+            &'a self,
+            _conversation_id: &'a str,
+            _messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            Box::pin(async move {
+                *self.calls.lock().unwrap() += 1;
+                Err(MemoryError::backend(std::io::Error::other("hook failed")))
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_does_not_advance_watermark_on_hook_failure() {
+        let hook = Arc::new(FailingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        );
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+
+        assert!(mem.load("c").await.is_err());
+        assert!(mem.load("c").await.is_err());
+        assert_eq!(*hook.calls.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_clear_resets_watermark() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        );
+
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+        mem.clear("c").await.unwrap();
+        mem.append("c", vec![user("3"), assistant("4")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+
+        assert_eq!(hook.calls(), 2);
+        assert_eq!(hook.last_demoted_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_skips_hook_when_nothing_evicted() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(10),
+            hook.clone(),
+        );
+
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_with_noop_hook_behaves_like_policy_memory() {
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            NoopDemotionHook,
+        );
+        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+            .await
+            .unwrap();
+        assert_eq!(mem.load("c").await.unwrap().len(), 1);
+    }
+
+    /// Hook that blocks until the test releases it. Used to provoke the
+    /// concurrent-load race against the in-flight gate.
+    struct GatedHook {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+        rendezvous: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    impl DemotionHook for GatedHook {
+        fn on_demote<'a>(
+            &'a self,
+            _conversation_id: &'a str,
+            _messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            let calls = self.calls.clone();
+            let rendezvous = self.rendezvous.clone();
+            let release = self.release.clone();
+            Box::pin(async move {
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                rendezvous.notify_one();
+                release.notified().await;
+                Ok(())
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_serialises_concurrent_loads() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let rendezvous = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let hook = GatedHook {
+            calls: calls.clone(),
+            rendezvous: rendezvous.clone(),
+            release: release.clone(),
+        };
+
+        let mem = Arc::new(DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook,
+        ));
+
+        mem.append("c", vec![user("1"), assistant("2"), user("3")])
+            .await
+            .unwrap();
+
+        let m1 = mem.clone();
+        let first = tokio::spawn(async move { m1.load("c").await });
+
+        // Wait until the first load has entered the hook.
+        rendezvous.notified().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Second concurrent load on the same conversation must skip the
+        // hook entirely (in-flight gate) and return the truncated view.
+        let kept = mem.load("c").await.unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "hook must not double-fire");
+
+        // Release the first load and confirm it completes successfully.
+        release.notify_one();
+        let kept_first = first.await.unwrap().unwrap();
+        assert_eq!(kept_first.len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Subsequent loads observe the watermark and don't re-fire.
+        mem.load("c").await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn forget_drops_in_process_watermark() {
+        let hook = Arc::new(CountingHook::default());
+        let mem = DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        );
+
+        mem.append("c", vec![user("1"), assistant("2")])
+            .await
+            .unwrap();
+        mem.load("c").await.unwrap();
+        assert_eq!(mem.tracked_conversations(), 1);
+        assert_eq!(hook.calls(), 1);
+
+        // After forgetting, the next load on the same (still-populated)
+        // backend re-delivers the demotion. This is the documented
+        // contract: forget()/restart re-fire the hook, hooks must be
+        // idempotent.
+        mem.forget("c");
+        assert_eq!(mem.tracked_conversations(), 0);
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.calls(), 2);
     }
 }

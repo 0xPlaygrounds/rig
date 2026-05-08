@@ -29,6 +29,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Examples: `agent_with_memory.rs` and `agent_with_memory_streaming.rs`.
   - Named history-shaping policies (sliding window, token budget) live in the
     new companion crate `rig-memory`.
+- `rig::memory::DemotionHook` trait and `NoopDemotionHook` no-op default.
+  Side-channel for messages that a memory policy or adapter removes from
+  active history. Defined in `rig-core` so any memory backend can implement
+  it without a `rig-memory` dependency; the composing
+  `DemotingPolicyMemory<M, P, H>` adapter lives in `rig-memory`. Includes a
+  forwarding `impl<H: DemotionHook + ?Sized> DemotionHook for Arc<H>` so
+  hooks can be shared across multiple adapters.
+- `MemoryError::Internal(String)` variant for in-process invariant
+  violations (e.g. poisoned mutex guards), distinct from
+  `MemoryError::Backend` which is reserved for failures of the underlying
+  conversation store. `MemoryError` is now `#[non_exhaustive]` so future
+  variants are not breaking changes.
+
+  **Note for downstream crates:** `MemoryError` was previously a plain
+  enum, so any existing `match` against it without a wildcard arm will
+  now warn (and may need a wildcard arm if it was upgraded to a hard
+  error elsewhere). Adding `_ => ...` is forward-compatible with future
+  variants.
 
 ## [0.36.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.35.0...rig-core-v0.36.0) - 2026-04-28
 
