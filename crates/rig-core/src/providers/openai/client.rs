@@ -21,10 +21,14 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 // OpenAI Responses API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExt;
+pub struct OpenAIResponsesExt {
+    responses_preamble_behavior: super::responses_api::ResponsesPreambleBehavior,
+}
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExtBuilder;
+pub struct OpenAIResponsesExtBuilder {
+    responses_preamble_behavior: super::responses_api::ResponsesPreambleBehavior,
+}
 
 // ================================================================
 // OpenAI Completions API Extension
@@ -47,12 +51,33 @@ pub type CompletionsClient<H = reqwest::Client> = client::Client<OpenAICompletio
 pub type CompletionsClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
 
+impl<ApiKey, H> client::ClientBuilder<OpenAIResponsesExtBuilder, ApiKey, H> {
+    /// Set how OpenAI Responses requests map Rig preambles.
+    ///
+    /// The default is [`super::responses_api::ResponsesPreambleBehavior::Instructions`],
+    /// which matches OpenAI's official Responses API. Use
+    /// [`super::responses_api::ResponsesPreambleBehavior::InputSystemMessage`] only
+    /// when targeting an OpenAI-compatible backend that rejects top-level
+    /// `instructions`.
+    pub fn responses_preamble_behavior(
+        mut self,
+        behavior: super::responses_api::ResponsesPreambleBehavior,
+    ) -> Self {
+        self.ext_mut().responses_preamble_behavior = behavior;
+        self
+    }
+}
+
 impl Provider for OpenAIResponsesExt {
     type Builder = OpenAIResponsesExtBuilder;
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl super::responses_api::ResponsesProviderProfile for OpenAIResponsesExt {}
+impl super::responses_api::ResponsesProviderProfile for OpenAIResponsesExt {
+    fn responses_preamble_behavior(&self) -> super::responses_api::ResponsesPreambleBehavior {
+        self.responses_preamble_behavior
+    }
+}
 
 impl Provider for OpenAICompletionsExt {
     type Builder = OpenAICompletionsExtBuilder;
@@ -95,12 +120,14 @@ impl ProviderBuilder for OpenAIResponsesExtBuilder {
     const BASE_URL: &'static str = OPENAI_API_BASE_URL;
 
     fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
     ) -> http_client::Result<Self::Extension<H>>
     where
         H: HttpClientExt,
     {
-        Ok(OpenAIResponsesExt)
+        Ok(OpenAIResponsesExt {
+            responses_preamble_behavior: builder.ext().responses_preamble_behavior,
+        })
     }
 }
 
@@ -203,7 +230,7 @@ where
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API.
     pub fn responses_api(self) -> Client<H> {
-        self.with_ext(OpenAIResponsesExt)
+        self.with_ext(OpenAIResponsesExt::default())
     }
 }
 
@@ -268,7 +295,9 @@ pub(crate) enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use crate::client::{CompletionClient, EmbeddingsClient};
+    use crate::completion;
     use crate::message::ImageDetail;
+    use crate::providers::openai::responses_api::ResponsesProviderProfile;
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
@@ -628,6 +657,47 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn test_responses_preamble_behavior_builder_sets_compat_mode() {
+        let client = crate::providers::openai::Client::builder()
+            .api_key("dummy-key")
+            .base_url("https://some-provider.example/v1")
+            .responses_preamble_behavior(
+                crate::providers::openai::ResponsesPreambleBehavior::InputSystemMessage,
+            )
+            .build()
+            .expect("Client::builder() failed");
+
+        assert_eq!(
+            client.ext().responses_preamble_behavior(),
+            crate::providers::openai::ResponsesPreambleBehavior::InputSystemMessage
+        );
+
+        let model = client.completion_model("compatible-model");
+        let request = model
+            .create_completion_request(completion::CompletionRequest {
+                model: None,
+                preamble: Some("Use compatible system input.".to_string()),
+                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            })
+            .expect("request");
+
+        assert_eq!(request.instructions, None);
+        let input = serde_json::to_value(&request.input).expect("input");
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(
+            input[0]["content"][0]["text"],
+            "Use compatible system input."
+        );
     }
 
     #[test]

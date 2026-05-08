@@ -172,8 +172,9 @@ impl Provider for CopilotExt {
 }
 
 impl responses_api::ResponsesProviderProfile for CopilotExt {
-    const PREAMBLE_BEHAVIOR: responses_api::ResponsesPreambleBehavior =
-        responses_api::ResponsesPreambleBehavior::InputSystemMessage;
+    fn responses_preamble_behavior(&self) -> responses_api::ResponsesPreambleBehavior {
+        responses_api::ResponsesPreambleBehavior::InputSystemMessage
+    }
 }
 
 impl<H> Capabilities<H> for CopilotExt {

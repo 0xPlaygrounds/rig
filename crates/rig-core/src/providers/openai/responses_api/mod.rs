@@ -113,12 +113,13 @@ impl CompletionRequest {
 #[doc(hidden)]
 pub trait ResponsesProviderProfile {
     /// Controls how Rig maps [`crate::completion::CompletionRequest::preamble`].
-    const PREAMBLE_BEHAVIOR: ResponsesPreambleBehavior = ResponsesPreambleBehavior::Instructions;
+    fn responses_preamble_behavior(&self) -> ResponsesPreambleBehavior {
+        ResponsesPreambleBehavior::Instructions
+    }
 }
 
 /// Controls how Rig maps [`crate::completion::CompletionRequest::preamble`] into
 /// an OpenAI Responses request.
-#[doc(hidden)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ResponsesPreambleBehavior {
     /// Use OpenAI's canonical top-level `instructions` field.
@@ -994,20 +995,22 @@ where
 {
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
+        let preamble_behavior = client.ext().responses_preamble_behavior();
         Self {
             client,
             model: model.into(),
             tools: Vec::new(),
-            preamble_behavior: Ext::PREAMBLE_BEHAVIOR,
+            preamble_behavior,
         }
     }
 
     pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
+        let preamble_behavior = client.ext().responses_preamble_behavior();
         Self {
             client,
             model: model.to_string(),
             tools: Vec::new(),
-            preamble_behavior: Ext::PREAMBLE_BEHAVIOR,
+            preamble_behavior,
         }
     }
 
