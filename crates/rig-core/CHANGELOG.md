@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conversation store. `MemoryError` is now `#[non_exhaustive]` so future
   variants are not breaking changes.
 
+  **Note for downstream crates:** `MemoryError` was previously a plain
+  enum, so any existing `match` against it without a wildcard arm will
+  now warn (and may need a wildcard arm if it was upgraded to a hard
+  error elsewhere). Adding `_ => ...` is forward-compatible with future
+  variants.
+
 ## [0.36.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.35.0...rig-core-v0.36.0) - 2026-04-28
 
 ### Added

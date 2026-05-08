@@ -39,10 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DemotingPolicyMemory` hands to the hook.
 - `HeuristicTokenCounter` — provider-agnostic, zero-dependency
   `TokenCounter` implementation that approximates token cost from
-  character lengths. Ships `default` / `openai` / `anthropic` / `gemini`
-  presets so `TokenWindowMemory::new(budget, HeuristicTokenCounter::default())`
+  UTF-8 byte lengths (`str::len`, O(1)). Ships `default` / `openai` /
+  `anthropic` / `gemini` presets so
+  `TokenWindowMemory::new(budget, HeuristicTokenCounter::default())`
   works out of the box without a tokenizer dependency. Also handles the
-  `Message::System` variant and tool-call argument payloads.
+  `Message::System` variant and tool-call argument payloads. The
+  configurable ratio is named `bytes_per_token` to match the
+  implementation; for ASCII text bytes and characters coincide, and
+  for non-ASCII text the counter slightly over-estimates, which is the
+  safe direction for a hard budget.
 - `PolicyMemory<M, P>` adapter — wrap any `ConversationMemory` with a
   `MemoryPolicy` and propagate policy failures to the caller as
   `MemoryError::Policy`. Hard-fail counterpart to

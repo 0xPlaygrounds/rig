@@ -183,7 +183,7 @@ impl MemoryPolicy for SlidingWindowMemory {
         // it is preserved end-to-end through the demotion hook even though
         // the model never sees it again.
         if let Some(Message::User { content }) = window.first()
-            && matches!(content.first(), UserContent::ToolResult(_))
+            && matches!(content.first_ref(), UserContent::ToolResult(_))
         {
             demoted.push(window.remove(0));
         }
@@ -212,7 +212,7 @@ where
 }
 
 /// A provider-agnostic [`TokenCounter`] that approximates token counts from
-/// character lengths.
+/// UTF-8 byte lengths.
 ///
 /// This is intended as a zero-dependency default. It is **not** a substitute
 /// for a tokenizer and will under- or over-count by up to ~30 % on real
@@ -223,17 +223,24 @@ where
 /// # Strategy
 ///
 /// For every text-bearing block (`Text`, reasoning text, tool-result text)
-/// the counter sums character lengths and divides by `chars_per_token`,
-/// rounded up. Tool calls are charged the JSON-serialised length of their
-/// `ToolFunction` payload. Each message is charged a flat
-/// `per_message_overhead` to model the per-turn role/separator tokens that
-/// providers add internally. Non-text blocks (images, audio, video,
-/// documents) are charged `per_attachment_tokens` each because their real
-/// cost is provider-specific and rarely text-derived.
+/// the counter sums UTF-8 byte lengths (`str::len`, an O(1) call) and divides
+/// by `bytes_per_token`, rounded up. Bytes are used instead of Unicode
+/// scalars because the cost is O(1), modern BPE tokenizers operate on byte
+/// sequences, and per-message budgeting only needs the rough order of
+/// magnitude. For ASCII text bytes and characters coincide; for non-ASCII
+/// text the counter slightly over-estimates, which is the safe direction
+/// for a hard budget.
+///
+/// Tool calls are charged the JSON-serialised length of their `ToolFunction`
+/// payload. Each message is charged a flat `per_message_overhead` to model
+/// the per-turn role/separator tokens that providers add internally. Non-text
+/// blocks (images, audio, video, documents) are charged
+/// `per_attachment_tokens` each because their real cost is provider-specific
+/// and rarely text-derived.
 ///
 /// # Presets
 ///
-/// The defaults match OpenAI's published rule of thumb (~4 chars per token,
+/// The defaults match OpenAI's published rule of thumb (~4 bytes per token,
 /// ~4 tokens of per-message overhead). [`HeuristicTokenCounter::anthropic`]
 /// uses a slightly denser ratio that better fits Claude's tokenizer.
 ///
@@ -247,7 +254,7 @@ where
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct HeuristicTokenCounter {
-    chars_per_token: f32,
+    bytes_per_token: f32,
     per_message_overhead: usize,
     per_attachment_tokens: usize,
 }
@@ -255,20 +262,20 @@ pub struct HeuristicTokenCounter {
 impl HeuristicTokenCounter {
     /// Create a counter with explicit parameters.
     ///
-    /// `chars_per_token` is clamped to a minimum of `1.0` so the counter
+    /// `bytes_per_token` is clamped to a minimum of `1.0` so the counter
     /// never panics or produces zero-cost messages on degenerate input.
     pub fn new(
-        chars_per_token: f32,
+        bytes_per_token: f32,
         per_message_overhead: usize,
         per_attachment_tokens: usize,
     ) -> Self {
-        let chars_per_token = if chars_per_token.is_finite() && chars_per_token >= 1.0 {
-            chars_per_token
+        let bytes_per_token = if bytes_per_token.is_finite() && bytes_per_token >= 1.0 {
+            bytes_per_token
         } else {
             1.0
         };
         Self {
-            chars_per_token,
+            bytes_per_token,
             per_message_overhead,
             per_attachment_tokens,
         }
@@ -291,24 +298,24 @@ impl HeuristicTokenCounter {
         Self::new(4.0, 4, 256)
     }
 
-    fn chars_to_tokens(&self, chars: usize) -> usize {
-        // `chars_per_token` is clamped to >= 1.0 in the constructor, so the
+    fn bytes_to_tokens(&self, bytes: usize) -> usize {
+        // `bytes_per_token` is clamped to >= 1.0 in the constructor, so the
         // division is well-defined. We round up so a single non-empty
-        // character still costs at least one token.
-        let tokens = (chars as f32) / self.chars_per_token;
+        // input still costs at least one token.
+        let tokens = (bytes as f32) / self.bytes_per_token;
         tokens.ceil() as usize
     }
 
     fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
         use rig_core::message::UserContent;
         match content {
-            UserContent::Text(text) => self.chars_to_tokens(text.text.chars().count()),
+            UserContent::Text(text) => self.bytes_to_tokens(text.text.len()),
             UserContent::ToolResult(result) => result
                 .content
                 .iter()
                 .map(|c| match c {
                     rig_core::message::ToolResultContent::Text(t) => {
-                        self.chars_to_tokens(t.text.chars().count())
+                        self.bytes_to_tokens(t.text.len())
                     }
                     rig_core::message::ToolResultContent::Image(_) => self.per_attachment_tokens,
                 })
@@ -323,18 +330,18 @@ impl HeuristicTokenCounter {
     fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
         use rig_core::message::AssistantContent;
         match content {
-            AssistantContent::Text(text) => self.chars_to_tokens(text.text.chars().count()),
+            AssistantContent::Text(text) => self.bytes_to_tokens(text.text.len()),
             AssistantContent::Reasoning(reasoning) => {
-                self.chars_to_tokens(reasoning.display_text().chars().count())
+                self.bytes_to_tokens(reasoning.display_text().len())
             }
             AssistantContent::ToolCall(call) => {
-                let name_chars = call.function.name.chars().count();
+                let name_bytes = call.function.name.len();
                 // `serde_json::Value::to_string` is the canonical compact JSON
                 // encoding and never fails, so we charge tool calls by the
                 // length of their serialised arguments without pulling in a
                 // direct `serde_json` dependency.
-                let args_chars = call.function.arguments.to_string().chars().count();
-                self.chars_to_tokens(name_chars + args_chars)
+                let args_bytes = call.function.arguments.to_string().len();
+                self.bytes_to_tokens(name_bytes + args_bytes)
             }
             AssistantContent::Image(_) => self.per_attachment_tokens,
         }
@@ -354,7 +361,7 @@ impl TokenCounter for HeuristicTokenCounter {
             Message::Assistant { content, .. } => {
                 content.iter().map(|c| self.count_assistant(c)).sum()
             }
-            Message::System { content } => self.chars_to_tokens(content.chars().count()),
+            Message::System { content } => self.bytes_to_tokens(content.len()),
         };
         content_tokens.saturating_add(self.per_message_overhead)
     }
@@ -421,7 +428,7 @@ impl MemoryPolicy for TokenWindowMemory {
         let mut window: Vec<Message> = iter.collect();
 
         if let Some(Message::User { content }) = window.first()
-            && matches!(content.first(), UserContent::ToolResult(_))
+            && matches!(content.first_ref(), UserContent::ToolResult(_))
         {
             demoted.push(window.remove(0));
         }
@@ -527,6 +534,15 @@ where
 /// and return the truncated `kept` history immediately without firing the
 /// hook again. Pending demotions that were skipped this way are picked up
 /// by the next `load` after the in-flight delivery completes.
+///
+/// **Failure visibility.** A hook error is returned only to the caller
+/// whose `load` actually drove the delivery. Concurrent callers that
+/// short-circuited on `in_flight` see `Ok(kept)` even if the in-flight
+/// delivery ultimately failed; the watermark stays unchanged so the next
+/// `load` retries. Callers that rely on the hook for durability should
+/// treat a successful `load` as best-effort with respect to demotion and
+/// surface hook failures through the hook's own observability (logs,
+/// metrics, dead-letter buffer) rather than the `load` return value.
 ///
 /// # Persistence
 ///
@@ -655,21 +671,40 @@ where
             // happen under one short-lived lock so concurrent loads on
             // the same conversation_id can't both observe the same
             // delivered watermark and double-fire the hook.
+            //
+            // Fast path: if the conversation is already tracked, mutate in
+            // place. Only allocate a new `String` key when we are about to
+            // record state for a conversation we have not seen before *and*
+            // there is actually demotion work to track.
             let pending = {
                 let mut guard = self.state.lock().map_err(poisoned)?;
-                let entry = guard.entry(conversation_id.to_string()).or_default();
-                if entry.in_flight {
-                    // Another load is mid-delivery for this conversation;
-                    // skip and let the next load see whatever it leaves
-                    // behind.
-                    return Ok(kept);
-                }
-                if entry.delivered >= demoted_count {
+                if let Some(entry) = guard.get_mut(conversation_id) {
+                    if entry.in_flight {
+                        // Another load is mid-delivery for this conversation;
+                        // skip and let the next load see whatever it leaves
+                        // behind.
+                        return Ok(kept);
+                    }
+                    if entry.delivered >= demoted_count {
+                        Vec::new()
+                    } else {
+                        let split = entry.delivered;
+                        entry.in_flight = true;
+                        demoted.split_off(split)
+                    }
+                } else if demoted_count == 0 {
+                    // First load for this conversation and nothing was
+                    // demoted: no need to allocate a tracking entry yet.
                     Vec::new()
                 } else {
-                    let split = entry.delivered;
-                    entry.in_flight = true;
-                    demoted.split_off(split)
+                    guard.insert(
+                        conversation_id.to_string(),
+                        ConversationDemotionState {
+                            delivered: 0,
+                            in_flight: true,
+                        },
+                    );
+                    std::mem::take(&mut demoted)
                 }
             };
 
@@ -884,7 +919,7 @@ mod tests {
     }
 
     #[test]
-    fn heuristic_counter_clamps_invalid_chars_per_token() {
+    fn heuristic_counter_clamps_invalid_bytes_per_token() {
         // Zero/NaN/negative ratios fall back to 1.0 instead of panicking.
         let counter = HeuristicTokenCounter::new(0.0, 0, 0);
         assert!(counter.count(&user("abcd")) >= 4);
