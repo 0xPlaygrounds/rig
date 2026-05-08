@@ -1275,7 +1275,11 @@ pub enum Message {
         name: Option<String>,
     },
     Assistant {
-        #[serde(default, deserialize_with = "json_utils::string_or_vec")]
+        #[serde(
+            default,
+            deserialize_with = "json_utils::string_or_vec",
+            skip_serializing_if = "Vec::is_empty"
+        )]
         content: Vec<openai::AssistantContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
