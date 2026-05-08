@@ -460,99 +460,15 @@ impl ToolSetBuilder {
 #[cfg(test)]
 mod tests {
     use crate::message::{DocumentSourceKind, ToolResultContent};
+    use crate::test_utils::{
+        MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool, mock_math_toolset,
+    };
     use serde_json::json;
 
     use super::*;
 
     fn get_test_toolset() -> ToolSet {
-        let mut toolset = ToolSet::default();
-
-        #[derive(Deserialize)]
-        struct OperationArgs {
-            x: i32,
-            y: i32,
-        }
-
-        #[derive(Debug, thiserror::Error)]
-        #[error("Math error")]
-        struct MathError;
-
-        #[derive(Deserialize, Serialize)]
-        struct Adder;
-
-        impl Tool for Adder {
-            const NAME: &'static str = "add";
-            type Error = MathError;
-            type Args = OperationArgs;
-            type Output = i32;
-
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
-                ToolDefinition {
-                    name: "add".to_string(),
-                    description: "Add x and y together".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "x": {
-                                "type": "number",
-                                "description": "The first number to add"
-                            },
-                            "y": {
-                                "type": "number",
-                                "description": "The second number to add"
-                            }
-                        },
-                        "required": ["x", "y"]
-                    }),
-                }
-            }
-
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                let result = args.x + args.y;
-                Ok(result)
-            }
-        }
-
-        #[derive(Deserialize, Serialize)]
-        struct Subtract;
-
-        impl Tool for Subtract {
-            const NAME: &'static str = "subtract";
-            type Error = MathError;
-            type Args = OperationArgs;
-            type Output = i32;
-
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
-                serde_json::from_value(json!({
-                    "name": "subtract",
-                    "description": "Subtract y from x (i.e.: x - y)",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "x": {
-                                "type": "number",
-                                "description": "The number to subtract from"
-                            },
-                            "y": {
-                                "type": "number",
-                                "description": "The number to subtract"
-                            }
-                        },
-                        "required": ["x", "y"]
-                    }
-                }))
-                .expect("Tool Definition")
-            }
-
-            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-                let result = args.x - args.y;
-                Ok(result)
-            }
-        }
-
-        toolset.add_tool(Adder);
-        toolset.add_tool(Subtract);
-        toolset
+        mock_math_toolset()
     }
 
     #[tokio::test]
@@ -571,39 +487,10 @@ mod tests {
         assert_eq!(toolset.tools.len(), 1);
     }
 
-    #[derive(Debug, thiserror::Error)]
-    #[error("Test tool error")]
-    struct TestToolError;
-
-    #[derive(Deserialize, Serialize)]
-    struct StringOutputTool;
-
-    impl Tool for StringOutputTool {
-        const NAME: &'static str = "string_output";
-        type Error = TestToolError;
-        type Args = serde_json::Value;
-        type Output = String;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: Self::NAME.to_string(),
-                description: "Returns a multiline string".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            }
-        }
-
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            Ok("Hello\nWorld".to_string())
-        }
-    }
-
     #[tokio::test]
     async fn string_tool_outputs_are_preserved_verbatim() {
         let mut toolset = ToolSet::default();
-        toolset.add_tool(StringOutputTool);
+        toolset.add_tool(MockStringOutputTool);
 
         let output = toolset
             .call("string_output", "{}".to_string())
@@ -613,40 +500,10 @@ mod tests {
         assert_eq!(output, "Hello\nWorld");
     }
 
-    #[derive(Deserialize, Serialize)]
-    struct ImageOutputTool;
-
-    impl Tool for ImageOutputTool {
-        const NAME: &'static str = "image_output";
-        type Error = TestToolError;
-        type Args = serde_json::Value;
-        type Output = String;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: Self::NAME.to_string(),
-                description: "Returns image JSON".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            }
-        }
-
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            Ok(json!({
-                "type": "image",
-                "data": "base64data==",
-                "mimeType": "image/png"
-            })
-            .to_string())
-        }
-    }
-
     #[tokio::test]
     async fn structured_string_tool_outputs_remain_parseable() {
         let mut toolset = ToolSet::default();
-        toolset.add_tool(ImageOutputTool);
+        toolset.add_tool(MockImageOutputTool);
 
         let output = toolset
             .call("image_output", "{}".to_string())
@@ -664,38 +521,10 @@ mod tests {
         }
     }
 
-    #[derive(Deserialize, Serialize)]
-    struct ObjectOutputTool;
-
-    impl Tool for ObjectOutputTool {
-        const NAME: &'static str = "object_output";
-        type Error = TestToolError;
-        type Args = serde_json::Value;
-        type Output = serde_json::Value;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: Self::NAME.to_string(),
-                description: "Returns an object".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {}
-                }),
-            }
-        }
-
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            Ok(json!({
-                "status": "ok",
-                "count": 42
-            }))
-        }
-    }
-
     #[tokio::test]
     async fn object_tool_outputs_still_serialize_as_json() {
         let mut toolset = ToolSet::default();
-        toolset.add_tool(ObjectOutputTool);
+        toolset.add_tool(MockObjectOutputTool);
 
         let output = toolset
             .call("object_output", "{}".to_string())

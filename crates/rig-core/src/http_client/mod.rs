@@ -409,7 +409,7 @@ pub(crate) mod mock {
     /// A mock HTTP client that returns pre-built SSE bytes from `send_streaming`.
     ///
     /// `send` and `send_multipart` always return `NOT_IMPLEMENTED`.
-    #[derive(Clone)]
+    #[derive(Clone, Debug, Default)]
     pub struct MockStreamingClient {
         pub sse_bytes: Bytes,
     }
