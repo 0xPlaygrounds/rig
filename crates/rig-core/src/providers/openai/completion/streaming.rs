@@ -401,7 +401,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_usage_only_chunk_is_not_ignored() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Some providers emit a final "usage-only" chunk where `choices` is empty.
@@ -438,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_cached_input_tokens_populated() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Usage chunk includes prompt_tokens_details with cached_tokens.
@@ -492,7 +492,7 @@ mod tests {
     /// the fix, rig merges both calls into one corrupted entry.
     #[tokio::test]
     async fn test_duplicate_index_different_id_tool_calls() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Simulate a gateway that sends two tool calls both at index 0.
@@ -560,7 +560,7 @@ mod tests {
     /// yielding incomplete fragments as "completed" tool calls.
     #[tokio::test]
     async fn test_unique_id_per_chunk_single_tool_call() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Each chunk carries a different id but they all represent delta
@@ -617,7 +617,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_zero_arg_tool_call_normalized_on_finish_reason() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
 
         let client = MockStreamingClient {
             sse_bytes: sse_bytes_from_data_lines([
@@ -642,7 +642,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_zero_arg_tool_call_is_preserved_at_eof() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
 
         let client = MockStreamingClient {
             sse_bytes: sse_bytes_from_data_lines([

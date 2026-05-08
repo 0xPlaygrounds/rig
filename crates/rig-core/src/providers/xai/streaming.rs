@@ -140,7 +140,7 @@ mod tests {
 
     #[tokio::test]
     async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
-        use crate::http_client::mock::MockStreamingClient;
+        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
         use serde_json::json;
 

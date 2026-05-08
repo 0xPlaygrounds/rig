@@ -168,6 +168,9 @@ anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
+rig_core = { package = "rig-core", path = "crates/rig-core", version = "0.36.0", default-features = false, features = [
+  "test-utils",
+] }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
@@ -220,6 +223,7 @@ url = { workspace = true }
 [features]
 default = ["rig_core/default", "rustls"]
 all = ["rig_core/all"]
+test-utils = ["rig_core/test-utils"]
 bedrock = ["dep:rig-bedrock"]
 fastembed = [
   "dep:rig-fastembed",

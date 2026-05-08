@@ -917,21 +917,18 @@ where
 mod tests {
     use super::TypedPromptResponse;
     use crate::{
-        OneOrMany,
         agent::AgentBuilder,
         completion::{
-            AssistantContent, CompletionError, CompletionModel, CompletionRequest,
-            CompletionResponse, Message, Prompt, PromptError, Usage,
+            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
+            Usage,
         },
         message::UserContent,
-        streaming::StreamingCompletionResponse,
+        test_utils::{
+            AppendFailingMemory, CountingMemory, FailingMemory, MockCompletionModel, MockTurn,
+        },
     };
     use serde::{Deserialize, Serialize};
     use serde_json::json;
-    use std::sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    };
 
     #[derive(Serialize)]
     struct SerializeOnly {
@@ -1013,67 +1010,26 @@ mod tests {
         ));
     }
 
-    #[derive(Clone, Default)]
-    struct EmptyFinalTurnMockModel {
-        turn_counter: Arc<AtomicUsize>,
-    }
-
-    #[allow(refining_impl_trait)]
-    impl CompletionModel for EmptyFinalTurnMockModel {
-        type Response = ();
-        type StreamingResponse = ();
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::default()
-        }
-
-        async fn completion(
-            &self,
-            request: CompletionRequest,
-        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-            let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
-
-            let choice = if turn == 0 {
-                OneOrMany::one(AssistantContent::tool_call_with_call_id(
-                    "tool_call_1",
-                    "call_1".to_string(),
-                    "missing_tool",
-                    json!({"input": "value"}),
-                ))
-            } else {
-                validate_follow_up_tool_history(&request);
-                OneOrMany::one(AssistantContent::text(""))
-            };
-
-            Ok(CompletionResponse {
-                choice,
-                usage: Usage {
+    #[tokio::test]
+    async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "missing_tool", json!({"input": "value"}))
+                .with_call_id("call_1")
+                .with_usage(Usage {
                     input_tokens: 1,
                     output_tokens: 1,
                     total_tokens: 2,
                     cached_input_tokens: 0,
                     cache_creation_input_tokens: 0,
-                },
-                raw_response: (),
-                message_id: None,
-            })
-        }
-
-        async fn stream(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-            Err(CompletionError::ProviderError(
-                "stream is unused in this non-streaming test".to_string(),
-            ))
-        }
-    }
-
-    #[tokio::test]
-    async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
-        let model = EmptyFinalTurnMockModel::default();
-        let turn_counter = model.turn_counter.clone();
+                }),
+            MockTurn::text("").with_usage(Usage {
+                input_tokens: 1,
+                output_tokens: 1,
+                total_tokens: 2,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+            }),
+        ]);
         let agent = AgentBuilder::new(model).build();
 
         let response = agent
@@ -1135,99 +1091,14 @@ mod tests {
                     AssistantContent::Text(text) if text.text.is_empty()
                 ))
         )));
-        assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
+        let requests = agent.model.requests();
+        assert_eq!(requests.len(), 2);
+        validate_follow_up_tool_history(&requests[1]);
     }
 
     // ----- Conversation memory integration tests -----
 
-    use crate::memory::{ConversationMemory, InMemoryConversationMemory, MemoryError};
-    use crate::wasm_compat::WasmBoxedFuture;
-
-    /// Mock model that records the chat history it received and returns a fixed response.
-    #[derive(Clone, Default)]
-    struct RecordingMockModel {
-        last_history: Arc<std::sync::Mutex<Vec<Message>>>,
-        fail_with: Arc<std::sync::Mutex<Option<String>>>,
-    }
-
-    #[allow(refining_impl_trait)]
-    impl CompletionModel for RecordingMockModel {
-        type Response = ();
-        type StreamingResponse = ();
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::default()
-        }
-
-        async fn completion(
-            &self,
-            request: CompletionRequest,
-        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-            let mut guard = self.last_history.lock().expect("recording mock poisoned");
-            *guard = request.chat_history.iter().cloned().collect();
-            drop(guard);
-
-            if let Some(err) = self
-                .fail_with
-                .lock()
-                .expect("recording mock poisoned")
-                .clone()
-            {
-                return Err(CompletionError::ProviderError(err));
-            }
-
-            Ok(CompletionResponse {
-                choice: OneOrMany::one(AssistantContent::text("ack")),
-                usage: Usage::new(),
-                raw_response: (),
-                message_id: None,
-            })
-        }
-
-        async fn stream(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-            Err(CompletionError::ProviderError(
-                "stream is unused in this non-streaming test".to_string(),
-            ))
-        }
-    }
-
-    /// Memory backend that counts calls; backed by InMemoryConversationMemory for storage.
-    #[derive(Clone, Default)]
-    struct CountingMemory {
-        inner: InMemoryConversationMemory,
-        loads: Arc<AtomicUsize>,
-        appends: Arc<AtomicUsize>,
-    }
-
-    impl ConversationMemory for CountingMemory {
-        fn load<'a>(
-            &'a self,
-            conversation_id: &'a str,
-        ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-            self.loads.fetch_add(1, Ordering::SeqCst);
-            self.inner.load(conversation_id)
-        }
-
-        fn append<'a>(
-            &'a self,
-            conversation_id: &'a str,
-            messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            self.appends.fetch_add(1, Ordering::SeqCst);
-            self.inner.append(conversation_id, messages)
-        }
-
-        fn clear<'a>(
-            &'a self,
-            conversation_id: &'a str,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            self.inner.clear(conversation_id)
-        }
-    }
+    use crate::memory::{ConversationMemory, InMemoryConversationMemory};
 
     #[tokio::test]
     async fn memory_loads_into_request_history() {
@@ -1240,8 +1111,8 @@ mod tests {
             .await
             .unwrap();
 
-        let model = RecordingMockModel::default();
-        let recorded = model.last_history.clone();
+        let model = MockCompletionModel::text("ack");
+        let recorded = model.clone();
 
         let agent = AgentBuilder::new(model).memory(memory).build();
         let _ = agent
@@ -1250,7 +1121,11 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.lock().unwrap().clone();
+        let received = recorded.requests()[0]
+            .chat_history
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
         assert_eq!(
             received.len(),
             3,
@@ -1261,7 +1136,7 @@ mod tests {
     #[tokio::test]
     async fn memory_appends_full_turn_after_success() {
         let memory = InMemoryConversationMemory::new();
-        let model = RecordingMockModel::default();
+        let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model).memory(memory.clone()).build();
 
         let _ = agent
@@ -1278,13 +1153,13 @@ mod tests {
     async fn explicit_with_history_overrides_memory() {
         let memory = CountingMemory::default();
         memory
-            .inner
+            .inner()
             .append("t1", vec![Message::user("from-memory")])
             .await
             .unwrap();
 
-        let model = RecordingMockModel::default();
-        let recorded = model.last_history.clone();
+        let model = MockCompletionModel::text("ack");
+        let recorded = model.clone();
 
         let agent = AgentBuilder::new(model).memory(memory.clone()).build();
         let _ = agent
@@ -1294,11 +1169,15 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        assert_eq!(memory.loads.load(Ordering::SeqCst), 0, "load skipped");
-        let appends = memory.appends.load(Ordering::SeqCst);
+        assert_eq!(memory.load_count(), 0, "load skipped");
+        let appends = memory.append_count();
         assert_eq!(appends, 0, "append skipped");
 
-        let received = recorded.lock().unwrap().clone();
+        let received = recorded.requests()[0]
+            .chat_history
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
         assert_eq!(received.len(), 2, "caller history (1) + current prompt");
         assert!(matches!(
             received.first(),
@@ -1310,8 +1189,7 @@ mod tests {
     #[tokio::test]
     async fn memory_unchanged_on_provider_error() {
         let memory = InMemoryConversationMemory::new();
-        let model = RecordingMockModel::default();
-        *model.fail_with.lock().unwrap() = Some("boom".to_string());
+        let model = MockCompletionModel::new([MockTurn::error("boom")]);
 
         let agent = AgentBuilder::new(model).memory(memory.clone()).build();
         let result = agent.prompt("hello").conversation("t1").await;
@@ -1324,19 +1202,19 @@ mod tests {
     #[tokio::test]
     async fn missing_conversation_id_behaves_as_no_memory() {
         let memory = CountingMemory::default();
-        let model = RecordingMockModel::default();
+        let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model).memory(memory.clone()).build();
 
         let _ = agent.prompt("hello").await.expect("prompt should succeed");
 
-        assert_eq!(memory.loads.load(Ordering::SeqCst), 0);
-        assert_eq!(memory.appends.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.load_count(), 0);
+        assert_eq!(memory.append_count(), 0);
     }
 
     #[tokio::test]
     async fn default_conversation_id_is_used_when_none_per_request() {
         let memory = InMemoryConversationMemory::new();
-        let model = RecordingMockModel::default();
+        let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model)
             .memory(memory.clone())
             .conversation_id("default-thread")
@@ -1364,8 +1242,8 @@ mod tests {
             .await
             .unwrap();
 
-        let model = RecordingMockModel::default();
-        let recorded = model.last_history.clone();
+        let model = MockCompletionModel::text("ack");
+        let recorded = model.clone();
         let agent = AgentBuilder::new(model).memory(memory).build();
 
         let _ = agent
@@ -1374,7 +1252,11 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.lock().unwrap().clone();
+        let received = recorded.requests()[0]
+            .chat_history
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
         assert_eq!(
             received.len(),
             3,
@@ -1385,7 +1267,7 @@ mod tests {
     #[tokio::test]
     async fn without_memory_disables_for_request() {
         let memory = CountingMemory::default();
-        let model = RecordingMockModel::default();
+        let model = MockCompletionModel::text("ack");
         let agent = AgentBuilder::new(model)
             .memory(memory.clone())
             .conversation_id("t1")
@@ -1397,35 +1279,16 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        assert_eq!(memory.loads.load(Ordering::SeqCst), 0);
-        assert_eq!(memory.appends.load(Ordering::SeqCst), 0);
+        assert_eq!(memory.load_count(), 0);
+        assert_eq!(memory.append_count(), 0);
     }
 
     #[tokio::test]
     async fn memory_load_error_surfaces_as_prompt_error() {
-        #[derive(Clone)]
-        struct FailingMemory;
-        impl ConversationMemory for FailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("load boom"))) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
-        let model = RecordingMockModel::default();
-        let agent = AgentBuilder::new(model).memory(FailingMemory).build();
+        let model = MockCompletionModel::text("ack");
+        let agent = AgentBuilder::new(model)
+            .memory(FailingMemory::default())
+            .build();
         let result = agent.prompt("hello").conversation("t1").await;
 
         match result {
@@ -1439,29 +1302,10 @@ mod tests {
 
     #[tokio::test]
     async fn memory_append_error_does_not_drop_response() {
-        #[derive(Clone)]
-        struct AppendFailingMemory;
-        impl ConversationMemory for AppendFailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Ok(Vec::new()) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
-        let model = RecordingMockModel::default();
-        let agent = AgentBuilder::new(model).memory(AppendFailingMemory).build();
+        let model = MockCompletionModel::text("ack");
+        let agent = AgentBuilder::new(model)
+            .memory(AppendFailingMemory::default())
+            .build();
         let response: String = agent
             .prompt("hello")
             .conversation("t1")

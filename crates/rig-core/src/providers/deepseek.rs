@@ -896,10 +896,7 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 mod tests {
     use super::*;
     use crate::client::ModelListingClient;
-    use crate::http_client::{LazyBody, MultipartForm, Request as HttpRequest, Response};
-    use bytes::Bytes;
-    use std::future::{self, Future};
-    use std::sync::{Arc, Mutex};
+    use crate::test_utils::RecordingHttpClient;
 
     #[test]
     fn test_deserialize_vec_choice() {
@@ -1183,111 +1180,6 @@ mod tests {
         assert_eq!(response.data[0].owned_by, "deepseek");
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct CapturedRequest {
-        uri: String,
-    }
-
-    #[derive(Clone)]
-    enum MockResponse {
-        Success(Bytes),
-        Error(http::StatusCode, String),
-    }
-
-    impl Default for MockResponse {
-        fn default() -> Self {
-            Self::Success(Bytes::new())
-        }
-    }
-
-    #[derive(Clone, Default)]
-    struct RecordingHttpClient {
-        requests: Arc<Mutex<Vec<CapturedRequest>>>,
-        response: Arc<Mutex<MockResponse>>,
-    }
-
-    impl RecordingHttpClient {
-        fn new(response_body: impl Into<Bytes>) -> Self {
-            Self {
-                requests: Arc::new(Mutex::new(Vec::new())),
-                response: Arc::new(Mutex::new(MockResponse::Success(response_body.into()))),
-            }
-        }
-
-        fn with_error(status: http::StatusCode, message: impl Into<String>) -> Self {
-            Self {
-                requests: Arc::new(Mutex::new(Vec::new())),
-                response: Arc::new(Mutex::new(MockResponse::Error(status, message.into()))),
-            }
-        }
-
-        fn requests(&self) -> Vec<CapturedRequest> {
-            self.requests.lock().expect("requests lock").clone()
-        }
-    }
-
-    impl HttpClientExt for RecordingHttpClient {
-        fn send<T, U>(
-            &self,
-            req: HttpRequest<T>,
-        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-        where
-            T: Into<Bytes> + WasmCompatSend,
-            U: From<Bytes> + WasmCompatSend + 'static,
-        {
-            let requests = Arc::clone(&self.requests);
-            let response = self.response.lock().expect("response lock").clone();
-            let (parts, _body) = req.into_parts();
-
-            requests
-                .lock()
-                .expect("requests lock")
-                .push(CapturedRequest {
-                    uri: parts.uri.to_string(),
-                });
-
-            async move {
-                let response_body = match response {
-                    MockResponse::Success(response_body) => response_body,
-                    MockResponse::Error(status, message) => {
-                        return Err(http_client::Error::InvalidStatusCodeWithMessage(
-                            status, message,
-                        ));
-                    }
-                };
-                let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
-                Response::builder()
-                    .status(http::StatusCode::OK)
-                    .body(body)
-                    .map_err(http_client::Error::Protocol)
-            }
-        }
-
-        fn send_multipart<U>(
-            &self,
-            _req: HttpRequest<MultipartForm>,
-        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-        where
-            U: From<Bytes> + WasmCompatSend + 'static,
-        {
-            future::ready(Err(http_client::Error::InvalidStatusCode(
-                http::StatusCode::NOT_IMPLEMENTED,
-            )))
-        }
-
-        fn send_streaming<T>(
-            &self,
-            _req: HttpRequest<T>,
-        ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
-        where
-            T: Into<Bytes> + WasmCompatSend,
-        {
-            future::ready(Err(http_client::Error::InvalidStatusCode(
-                http::StatusCode::NOT_IMPLEMENTED,
-            )))
-        }
-    }
-
     #[tokio::test]
     async fn test_list_models_uses_models_endpoint() {
         let response_body = r#"{
@@ -1322,12 +1214,9 @@ mod tests {
         assert_eq!(models.data[0].id, "deepseek-v4-flash");
         assert_eq!(models.data[0].r#type, None);
         assert_eq!(models.data[0].owned_by.as_deref(), Some("deepseek"));
-        assert_eq!(
-            http_client.requests(),
-            vec![CapturedRequest {
-                uri: "https://api.deepseek.com/models".to_string()
-            }]
-        );
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].uri, "https://api.deepseek.com/models");
     }
 
     #[tokio::test]

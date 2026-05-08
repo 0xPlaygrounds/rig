@@ -1,180 +1,60 @@
 //! Integration tests for `PromptResponse.messages` using mock models.
 //! Exercises the real agent loop code path with mocked LLM responses.
 
-use rig::OneOrMany;
 use rig::agent::AgentBuilder;
-use rig::completion::{
-    Chat, CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
-    Usage,
-};
-use rig::message::{AssistantContent, Text, ToolCall, ToolFunction, UserContent};
-use rig::streaming::{StreamingCompletionResponse, StreamingResult};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use rig::completion::{Chat, Message, Prompt, Usage};
+use rig::message::{AssistantContent, UserContent};
+use rig::test_utils::{MockCompletionModel, MockTurn};
 
 // ---------------------------------------------------------------------------
 // Mock model infrastructure
 // ---------------------------------------------------------------------------
 
-/// A mock model that returns a fixed text response on every call.
-#[derive(Clone)]
-struct SimpleTextModel;
+fn simple_text_turn() -> MockTurn {
+    MockTurn::text("hello from mock")
+        .with_usage(Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+            total_tokens: 15,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+        })
+        .with_message_id("msg_mock_1")
+}
 
-#[allow(refining_impl_trait)]
-impl CompletionModel for SimpleTextModel {
-    type Response = ();
-    type StreamingResponse = ();
-    type Client = ();
+fn simple_text_model(turns: usize) -> MockCompletionModel {
+    MockCompletionModel::new((0..turns).map(|_| simple_text_turn()))
+}
 
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self
-    }
-
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        Ok(CompletionResponse {
-            choice: OneOrMany::one(AssistantContent::Text(Text {
-                text: "hello from mock".to_string(),
-            })),
-            usage: Usage {
-                input_tokens: 10,
-                output_tokens: 5,
-                total_tokens: 15,
+fn tool_then_text_model() -> MockCompletionModel {
+    MockCompletionModel::new([
+        MockTurn::tool_call(
+            "tc_1",
+            "calculator",
+            serde_json::json!({"op": "add", "a": 2, "b": 3}),
+        )
+        .with_usage(Usage {
+            input_tokens: 15,
+            output_tokens: 8,
+            total_tokens: 23,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+        })
+        .with_message_id("msg_tool"),
+        MockTurn::text("The answer is 5")
+            .with_usage(Usage {
+                input_tokens: 20,
+                output_tokens: 4,
+                total_tokens: 24,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
-            },
-            raw_response: (),
-            message_id: Some("msg_mock_1".to_string()),
-        })
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let stream: StreamingResult<()> = Box::pin(futures::stream::empty());
-        Ok(StreamingCompletionResponse::stream(stream))
-    }
-}
-
-/// A mock model that returns a tool call on the first turn, then a text response.
-/// This exercises the multi-turn agent loop.
-#[derive(Clone)]
-struct ToolThenTextModel {
-    turn: Arc<AtomicUsize>,
-}
-
-impl ToolThenTextModel {
-    fn new() -> Self {
-        Self {
-            turn: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-}
-
-#[allow(refining_impl_trait)]
-impl CompletionModel for ToolThenTextModel {
-    type Response = ();
-    type StreamingResponse = ();
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self::new()
-    }
-
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        let turn = self.turn.fetch_add(1, Ordering::SeqCst);
-
-        if turn == 0 {
-            // First turn: return a tool call
-            Ok(CompletionResponse {
-                choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
-                    "tc_1".to_string(),
-                    ToolFunction::new(
-                        "calculator".to_string(),
-                        serde_json::json!({"op": "add", "a": 2, "b": 3}),
-                    ),
-                ))),
-                usage: Usage {
-                    input_tokens: 15,
-                    output_tokens: 8,
-                    total_tokens: 23,
-                    cached_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                },
-                raw_response: (),
-                message_id: Some("msg_tool".to_string()),
             })
-        } else {
-            // Second turn: return a text response
-            Ok(CompletionResponse {
-                choice: OneOrMany::one(AssistantContent::Text(Text {
-                    text: "The answer is 5".to_string(),
-                })),
-                usage: Usage {
-                    input_tokens: 20,
-                    output_tokens: 4,
-                    total_tokens: 24,
-                    cached_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                },
-                raw_response: (),
-                message_id: Some("msg_text".to_string()),
-            })
-        }
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let stream: StreamingResult<()> = Box::pin(futures::stream::empty());
-        Ok(StreamingCompletionResponse::stream(stream))
-    }
+            .with_message_id("msg_text"),
+    ])
 }
 
-/// A mock model that always returns tool calls, never text.
-/// Used to test the MaxTurnsError path.
-#[derive(Clone)]
-struct AlwaysToolCallModel;
-
-#[allow(refining_impl_trait)]
-impl CompletionModel for AlwaysToolCallModel {
-    type Response = ();
-    type StreamingResponse = ();
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self
-    }
-
-    async fn completion(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        Ok(CompletionResponse {
-            choice: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
-                "tc_loop".to_string(),
-                ToolFunction::new("infinite_tool".to_string(), serde_json::json!({"x": 1})),
-            ))),
-            usage: Usage::new(),
-            raw_response: (),
-            message_id: None,
-        })
-    }
-
-    async fn stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let stream: StreamingResult<()> = Box::pin(futures::stream::empty());
-        Ok(StreamingCompletionResponse::stream(stream))
-    }
+fn always_tool_call_turn() -> MockTurn {
+    MockTurn::tool_call("tc_loop", "infinite_tool", serde_json::json!({"x": 1}))
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +64,7 @@ impl CompletionModel for AlwaysToolCallModel {
 /// Test 1: Standard path still returns a plain String (backward compat).
 #[tokio::test]
 async fn standard_prompt_returns_string() {
-    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let agent = AgentBuilder::new(simple_text_model(1)).build();
 
     let result: String = agent.prompt("hi").await.expect("prompt should succeed");
 
@@ -194,7 +74,7 @@ async fn standard_prompt_returns_string() {
 /// Test 2: `extended_details()` returns a `PromptResponse` with `messages: Some(...)`.
 #[tokio::test]
 async fn extended_details_populates_messages() {
-    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let agent = AgentBuilder::new(simple_text_model(1)).build();
 
     let resp = agent
         .prompt("hi")
@@ -237,7 +117,7 @@ async fn extended_details_populates_messages() {
 /// should contain the full conversation including any provided history.
 #[tokio::test]
 async fn extended_with_history_both_populated() {
-    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let agent = AgentBuilder::new(simple_text_model(1)).build();
 
     let initial_history: Vec<Message> = Vec::new();
 
@@ -270,7 +150,7 @@ async fn extended_with_history_both_populated() {
 /// an immutable history reference.
 #[tokio::test]
 async fn standard_with_history_works() {
-    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let agent = AgentBuilder::new(simple_text_model(1)).build();
 
     let history: Vec<Message> = Vec::new();
 
@@ -290,7 +170,7 @@ async fn standard_with_history_works() {
 /// full conversation: User → Assistant(tool_call) → User(tool_result) → Assistant(text).
 #[tokio::test]
 async fn multi_turn_messages_include_tool_calls() {
-    let agent = AgentBuilder::new(ToolThenTextModel::new()).build();
+    let agent = AgentBuilder::new(tool_then_text_model()).build();
 
     let resp = agent
         .prompt("What is 2 + 3?")
@@ -392,7 +272,10 @@ async fn prompt_response_with_messages_builder() {
 async fn max_turns_error_still_contains_history() {
     use rig::completion::PromptError;
 
-    let agent = AgentBuilder::new(AlwaysToolCallModel).build();
+    let agent = AgentBuilder::new(MockCompletionModel::new(
+        (0..10).map(|_| always_tool_call_turn()),
+    ))
+    .build();
 
     let result = agent
         .prompt("do something")
@@ -422,7 +305,7 @@ async fn max_turns_error_still_contains_history() {
 /// be populated (this is the core feature: no need for &mut borrow).
 #[tokio::test]
 async fn extended_details_works_without_with_history() {
-    let agent = AgentBuilder::new(ToolThenTextModel::new()).build();
+    let agent = AgentBuilder::new(tool_then_text_model()).build();
 
     // Note: NO .with_history() call — this is the new use case
     let resp = agent
@@ -445,7 +328,7 @@ async fn extended_details_works_without_with_history() {
 /// caller-owned history.
 #[tokio::test]
 async fn chat_appends_prompt_and_assistant_to_history() {
-    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let agent = AgentBuilder::new(simple_text_model(2)).build();
     let mut history = Vec::<Message>::new();
 
     let output = agent
@@ -491,7 +374,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
 /// Test 11: `Chat::chat` appends every message produced by a tool roundtrip.
 #[tokio::test]
 async fn chat_appends_tool_roundtrip_to_history() {
-    let agent = AgentBuilder::new(ToolThenTextModel::new()).build();
+    let agent = AgentBuilder::new(tool_then_text_model()).build();
     let mut history = Vec::<Message>::new();
 
     let output = agent
@@ -539,7 +422,7 @@ async fn chat_appends_tool_roundtrip_to_history() {
 /// Test 12: Multiple sequential prompts each return independent message histories.
 #[tokio::test]
 async fn sequential_prompts_have_independent_histories() {
-    let agent = AgentBuilder::new(SimpleTextModel).build();
+    let agent = AgentBuilder::new(simple_text_model(2)).build();
 
     let resp1 = agent
         .prompt("first")

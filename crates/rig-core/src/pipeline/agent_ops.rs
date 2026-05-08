@@ -159,61 +159,12 @@ where
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::message;
-    use completion::{Prompt, PromptError};
-    use vector_store::{VectorStoreError, VectorStoreIndex, request::Filter};
-
-    pub struct MockModel;
-
-    impl Prompt for MockModel {
-        #[allow(refining_impl_trait)]
-        async fn prompt(&self, prompt: impl Into<message::Message>) -> Result<String, PromptError> {
-            let msg: message::Message = prompt.into();
-            let prompt = match msg {
-                message::Message::User { content } => match content.first() {
-                    message::UserContent::Text(message::Text { text }) => text,
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            };
-            Ok(format!("Mock response: {prompt}"))
-        }
-    }
-
-    pub struct MockIndex;
-
-    impl VectorStoreIndex for MockIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            let doc = serde_json::from_value(serde_json::json!({
-                "foo": "bar",
-            }))
-            .unwrap();
-
-            Ok(vec![(1.0, "doc1".to_string(), doc)])
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Ok(vec![(1.0, "doc1".to_string())])
-        }
-    }
-
-    #[derive(Debug, serde::Deserialize, PartialEq)]
-    pub struct Foo {
-        pub foo: String,
-    }
+    use crate::test_utils::{Foo, MockPromptModel, MockVectorStoreIndex};
 
     #[tokio::test]
     async fn test_lookup() {
-        let index = MockIndex;
-        let lookup = lookup::<MockIndex, String, Foo>(index, 1);
+        let index = MockVectorStoreIndex;
+        let lookup = lookup::<MockVectorStoreIndex, String, Foo>(index, 1);
 
         let result = lookup.call("query".to_string()).await.unwrap();
         assert_eq!(
@@ -230,8 +181,8 @@ pub mod tests {
 
     #[tokio::test]
     async fn test_prompt() {
-        let model = MockModel;
-        let prompt = prompt::<MockModel, String>(model);
+        let model = MockPromptModel;
+        let prompt = prompt::<MockPromptModel, String>(model);
 
         let result = prompt.call("hello".to_string()).await.unwrap();
         assert_eq!(result, "Mock response: hello");

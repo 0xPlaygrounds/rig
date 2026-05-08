@@ -131,33 +131,7 @@ pub trait ModelLister<H = reqwest::Client>: WasmCompatSend + WasmCompatSync {
 mod tests {
     use super::*;
     use crate::model::Model;
-
-    // Mock implementation for testing
-    struct MockModelLister {
-        models: Vec<Model>,
-    }
-
-    impl MockModelLister {
-        fn new(models: Vec<Model>) -> Self {
-            Self { models }
-        }
-    }
-
-    impl ModelLister for MockModelLister {
-        type Client = Vec<Model>;
-
-        fn new(client: Self::Client) -> Self {
-            Self { models: client }
-        }
-
-        fn list_all(
-            &self,
-        ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend
-        {
-            let models = self.models.clone();
-            async move { Ok(ModelList::new(models)) }
-        }
-    }
+    use crate::test_utils::MockModelLister;
 
     #[tokio::test]
     async fn test_model_lister_list_all() {

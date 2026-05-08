@@ -266,128 +266,13 @@ pub enum ToolServerError {
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use serde::{Deserialize, Serialize};
-    use serde_json::json;
-
     use crate::{
-        completion::ToolDefinition,
-        tool::{Tool, ToolSet, server::ToolServer},
-        vector_store::{
-            VectorStoreError, VectorStoreIndex,
-            request::{Filter, VectorSearchRequest},
+        test_utils::{
+            BarrierMockToolIndex, MockAddTool, MockBarrierTool, MockControlledTool,
+            MockSubtractTool, MockToolIndex,
         },
-        wasm_compat::WasmCompatSend,
+        tool::{ToolSet, server::ToolServer},
     };
-
-    #[derive(Deserialize)]
-    struct OperationArgs {
-        x: i32,
-        y: i32,
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Math error")]
-    struct MathError;
-
-    #[derive(Deserialize, Serialize)]
-    struct Adder;
-    impl Tool for Adder {
-        const NAME: &'static str = "add";
-        type Error = MathError;
-        type Args = OperationArgs;
-        type Output = i32;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: "add".to_string(),
-                description: "Add x and y together".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "x": {
-                            "type": "number",
-                            "description": "The first number to add"
-                        },
-                        "y": {
-                            "type": "number",
-                            "description": "The second number to add"
-                        }
-                    },
-                    "required": ["x", "y"],
-                }),
-            }
-        }
-
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-            println!("[tool-call] Adding {} and {}", args.x, args.y);
-            let result = args.x + args.y;
-            Ok(result)
-        }
-    }
-
-    #[derive(Deserialize, Serialize)]
-    struct Subtractor;
-    impl Tool for Subtractor {
-        const NAME: &'static str = "subtract";
-        type Error = MathError;
-        type Args = OperationArgs;
-        type Output = i32;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: "subtract".to_string(),
-                description: "Subtract y from x".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "x": {
-                            "type": "number",
-                            "description": "The number to subtract from"
-                        },
-                        "y": {
-                            "type": "number",
-                            "description": "The number to subtract"
-                        }
-                    },
-                    "required": ["x", "y"],
-                }),
-            }
-        }
-
-        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-            let result = args.x - args.y;
-            Ok(result)
-        }
-    }
-
-    /// A mock vector store index that returns a predefined list of tool IDs.
-    struct MockToolIndex {
-        tool_ids: Vec<String>,
-    }
-
-    impl VectorStoreIndex for MockToolIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            // Not used by get_tool_definitions, but required by trait
-            Ok(vec![])
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Ok(self
-                .tool_ids
-                .iter()
-                .enumerate()
-                .map(|(i, id)| (1.0 - (i as f64 * 0.1), id.clone()))
-                .collect())
-        }
-    }
 
     #[tokio::test]
     pub async fn test_toolserver() {
@@ -395,7 +280,7 @@ mod tests {
 
         let handle = server.run();
 
-        handle.add_tool(Adder).await.unwrap();
+        handle.add_tool(MockAddTool).await.unwrap();
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 1);
@@ -415,19 +300,17 @@ mod tests {
     pub async fn test_toolserver_dynamic_tools() {
         // Create a toolset with both tools
         let mut toolset = ToolSet::default();
-        toolset.add_tool(Adder);
-        toolset.add_tool(Subtractor);
+        toolset.add_tool(MockAddTool);
+        toolset.add_tool(MockSubtractTool);
 
         // Create a mock index that will return "subtract" as the dynamic tool
-        let mock_index = MockToolIndex {
-            tool_ids: vec!["subtract".to_string()],
-        };
+        let mock_index = MockToolIndex::new(["subtract"]);
 
         // Build server with static tool "add" and dynamic tools from the mock index
-        let server = ToolServer::new().tool(Adder).dynamic_tools(
+        let server = ToolServer::new().tool(MockAddTool).dynamic_tools(
             1,
             mock_index,
-            ToolSet::from_tools(vec![Subtractor]),
+            ToolSet::from_tools(vec![MockSubtractTool]),
         );
 
         let handle = server.run();
@@ -453,14 +336,13 @@ mod tests {
     #[tokio::test]
     pub async fn test_toolserver_dynamic_tools_missing_implementation() {
         // Create a mock index that returns a tool ID that doesn't exist in the toolset
-        let mock_index = MockToolIndex {
-            tool_ids: vec!["nonexistent_tool".to_string()],
-        };
+        let mock_index = MockToolIndex::new(["nonexistent_tool"]);
 
         // Build server with only static tool, but dynamic index references missing tool
-        let server = ToolServer::new()
-            .tool(Adder)
-            .dynamic_tools(1, mock_index, ToolSet::default());
+        let server =
+            ToolServer::new()
+                .tool(MockAddTool)
+                .dynamic_tools(1, mock_index, ToolSet::default());
 
         let handle = server.run();
 
@@ -473,45 +355,12 @@ mod tests {
         assert_eq!(res[0].name, "add");
     }
 
-    /// A tool that waits at a barrier to test concurrency of tool execution.
-    #[derive(Clone)]
-    struct BarrierTool {
-        barrier: Arc<tokio::sync::Barrier>,
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Barrier error")]
-    struct BarrierError;
-
-    impl Tool for BarrierTool {
-        const NAME: &'static str = "barrier_tool";
-        type Error = BarrierError;
-        type Args = serde_json::Value;
-        type Output = String;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: "barrier_tool".to_string(),
-                description: "Waits at a barrier to test concurrency".to_string(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-            }
-        }
-
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            // Wait for all concurrent invocations to reach this point
-            self.barrier.wait().await;
-            Ok("done".to_string())
-        }
-    }
-
     #[tokio::test]
     pub async fn test_toolserver_concurrent_tool_execution() {
         let num_calls = 3;
         let barrier = Arc::new(tokio::sync::Barrier::new(num_calls));
 
-        let server = ToolServer::new().tool(BarrierTool {
-            barrier: barrier.clone(),
-        });
+        let server = ToolServer::new().tool(MockBarrierTool::new(barrier.clone()));
         let handle = server.run();
 
         // Make concurrent calls
@@ -536,50 +385,13 @@ mod tests {
         }
     }
 
-    /// A tool that can be controlled to test concurrent writes to the ToolServer.
-    #[derive(Clone)]
-    struct ControlledTool {
-        started: Arc<tokio::sync::Notify>,
-        allow_finish: Arc<tokio::sync::Notify>,
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("Controlled error")]
-    struct ControlledError;
-
-    impl Tool for ControlledTool {
-        const NAME: &'static str = "controlled";
-        type Error = ControlledError;
-        type Args = serde_json::Value;
-        type Output = i32;
-
-        async fn definition(&self, _prompt: String) -> ToolDefinition {
-            ToolDefinition {
-                name: "controlled".to_string(),
-                description: "Test tool".to_string(),
-                parameters: serde_json::json!({"type": "object", "properties": {}}),
-            }
-        }
-
-        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-            // 1. Signal that we are inside the call (lock should be dropped by now)
-            self.started.notify_one();
-            // 2. Wait indefinitely until the test allows us to finish
-            self.allow_finish.notified().await;
-            Ok(42)
-        }
-    }
-
     #[tokio::test]
     pub async fn test_toolserver_write_while_tool_running() {
         let started = Arc::new(tokio::sync::Notify::new());
         let allow_finish = Arc::new(tokio::sync::Notify::new());
 
         // Build server with the controlled tool that waits at a barrier during execution
-        let tool = ControlledTool {
-            started: started.clone(),
-            allow_finish: allow_finish.clone(),
-        };
+        let tool = MockControlledTool::new(started.clone(), allow_finish.clone());
 
         let server = ToolServer::new().tool(tool);
         let handle = server.run();
@@ -594,7 +406,8 @@ mod tests {
 
         // Try to write to the state (add a tool) while the tool call is mid-execution.
         // If the read lock is incorrectly held across tool execution, this will deadlock.
-        let add_result = tokio::time::timeout(Duration::from_secs(1), handle.add_tool(Adder)).await;
+        let add_result =
+            tokio::time::timeout(Duration::from_secs(1), handle.add_tool(MockAddTool)).await;
 
         assert!(
             add_result.is_ok(),
@@ -608,51 +421,18 @@ mod tests {
         assert_eq!(call_result.unwrap(), "42");
     }
 
-    /// A mock vector store index that waits at a barrier to enforce parallel execution
-    struct BarrierMockIndex {
-        barrier: Arc<tokio::sync::Barrier>,
-        tool_id: String,
-    }
-
-    impl VectorStoreIndex for BarrierMockIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            Ok(vec![])
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            // Wait for all indices to reach this point simultaneously
-            self.barrier.wait().await;
-            Ok(vec![(1.0, self.tool_id.clone())])
-        }
-    }
-
     #[tokio::test]
     pub async fn test_toolserver_parallel_dynamic_tool_fetching() {
         // We expect exactly 2 parallel searches to hit the barrier at the same time
         let barrier = Arc::new(tokio::sync::Barrier::new(2));
 
-        let index1 = BarrierMockIndex {
-            barrier: barrier.clone(),
-            tool_id: "add".to_string(),
-        };
-
-        let index2 = BarrierMockIndex {
-            barrier: barrier.clone(),
-            tool_id: "subtract".to_string(),
-        };
+        let index1 = BarrierMockToolIndex::new(barrier.clone(), "add");
+        let index2 = BarrierMockToolIndex::new(barrier.clone(), "subtract");
 
         // Put both tools in the toolset so they resolve correctly
         let mut toolset = ToolSet::default();
-        toolset.add_tool(Adder);
-        toolset.add_tool(Subtractor);
+        toolset.add_tool(MockAddTool);
+        toolset.add_tool(MockSubtractTool);
 
         let server = ToolServer::new()
             .dynamic_tools(1, index1, ToolSet::default())

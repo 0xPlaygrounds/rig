@@ -865,20 +865,19 @@ mod tests {
     use crate::agent::AgentBuilder;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    };
+    use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolResultContent, UserContent,
     };
     use crate::providers::anthropic;
     use crate::streaming::StreamingPrompt;
-    use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamingCompletionResponse};
+    use crate::test_utils::{
+        AppendFailingMemory, FailingMemory, MockCompletionModel, MockStreamEvent,
+    };
     use futures::StreamExt;
-    use serde::{Deserialize, Serialize};
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::time::Duration;
 
     #[test]
@@ -1043,25 +1042,6 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    struct MockStreamingResponse {
-        usage: crate::completion::Usage,
-    }
-
-    impl MockStreamingResponse {
-        fn new(total_tokens: u64) -> Self {
-            let mut usage = crate::completion::Usage::new();
-            usage.total_tokens = total_tokens;
-            Self { usage }
-        }
-    }
-
-    impl crate::completion::GetTokenUsage for MockStreamingResponse {
-        fn token_usage(&self) -> Option<crate::completion::Usage> {
-            Some(self.usage)
-        }
-    }
-
     fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
         let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
         if history.len() != 3 {
@@ -1116,69 +1096,42 @@ mod tests {
         Ok(())
     }
 
-    #[derive(Clone, Default)]
-    struct MultiTurnMockModel {
-        turn_counter: Arc<AtomicUsize>,
+    fn streaming_tool_then_text_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ])
     }
 
-    #[allow(refining_impl_trait)]
-    impl CompletionModel for MultiTurnMockModel {
-        type Response = ();
-        type StreamingResponse = MockStreamingResponse;
-        type Client = ();
+    fn streaming_text_then_final_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("hello"),
+            MockStreamEvent::text(" world"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]])
+    }
 
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::default()
-        }
-
-        async fn completion(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-            Err(CompletionError::ProviderError(
-                "completion is unused in this streaming test".to_string(),
-            ))
-        }
-
-        async fn stream(
-            &self,
-            request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-            let turn = self.turn_counter.fetch_add(1, Ordering::SeqCst);
-            let validation_error = if turn == 0 {
-                None
-            } else {
-                validate_follow_up_tool_history(&request).err()
-            };
-            let stream = async_stream::stream! {
-                if turn == 0 {
-                    yield Ok(RawStreamingChoice::ToolCall(
-                        RawStreamingToolCall::new(
-                            "tool_call_1".to_string(),
-                            "missing_tool".to_string(),
-                            serde_json::json!({"input": "value"}),
-                        )
-                        .with_call_id("call_1".to_string()),
-                    ));
-                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(4)));
-                } else if let Some(error) = validation_error {
-                    yield Err(CompletionError::ProviderError(error));
-                } else {
-                    yield Ok(RawStreamingChoice::Message("done".to_string()));
-                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(6)));
-                }
-            };
-
-            let pinned_stream: crate::streaming::StreamingResult<Self::StreamingResponse> =
-                Box::pin(stream);
-            Ok(StreamingCompletionResponse::stream(pinned_stream))
-        }
+    fn streaming_final_only_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ]])
     }
 
     #[tokio::test]
     async fn stream_prompt_continues_after_tool_call_turn() {
-        let model = MultiTurnMockModel::default();
-        let turn_counter = model.turn_counter.clone();
+        let model = streaming_tool_then_text_model();
+        let recorded = model.clone();
         let agent = AgentBuilder::new(model).build();
         let empty_history: &[Message] = &[];
 
@@ -1236,71 +1189,14 @@ mod tests {
                     AssistantContent::Text(text) if text.text == "done"
                 ))
         )));
-        assert_eq!(turn_counter.load(Ordering::SeqCst), 2);
-    }
-
-    #[derive(Clone, Copy)]
-    enum FinalResponseScenario {
-        TextThenFinal,
-        FinalOnly,
-    }
-
-    #[derive(Clone)]
-    struct FinalResponseMockModel {
-        scenario: FinalResponseScenario,
-    }
-
-    #[allow(refining_impl_trait)]
-    impl CompletionModel for FinalResponseMockModel {
-        type Response = ();
-        type StreamingResponse = MockStreamingResponse;
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self {
-                scenario: FinalResponseScenario::TextThenFinal,
-            }
-        }
-
-        async fn completion(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-            Err(CompletionError::ProviderError(
-                "completion is unused in this streaming test".to_string(),
-            ))
-        }
-
-        async fn stream(
-            &self,
-            _request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-            let scenario = self.scenario;
-            let stream = async_stream::stream! {
-                match scenario {
-                    FinalResponseScenario::TextThenFinal => {
-                        yield Ok(RawStreamingChoice::Message("hello".to_string()));
-                        yield Ok(RawStreamingChoice::Message(" world".to_string()));
-                        yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(3)));
-                    }
-                    FinalResponseScenario::FinalOnly => {
-                        yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(1)));
-                    }
-                }
-            };
-
-            let pinned_stream: crate::streaming::StreamingResult<Self::StreamingResponse> =
-                Box::pin(stream);
-            Ok(StreamingCompletionResponse::stream(pinned_stream))
-        }
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
     }
 
     #[tokio::test]
     async fn final_response_matches_streamed_text_when_provider_final_is_textless() {
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::TextThenFinal,
-        })
-        .build();
+        let agent = AgentBuilder::new(streaming_text_then_final_model()).build();
 
         let mut stream = agent.stream_prompt("say hello").await;
         let mut streamed_text = String::new();
@@ -1326,10 +1222,7 @@ mod tests {
 
     #[tokio::test]
     async fn final_response_can_remain_empty_for_truly_textless_turns() {
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::FinalOnly,
-        })
-        .build();
+        let agent = AgentBuilder::new(streaming_final_only_model()).build();
 
         let mut stream = agent.stream_prompt("say nothing").await;
         let mut streamed_text = String::new();
@@ -1529,11 +1422,9 @@ mod tests {
         use crate::memory::{ConversationMemory, InMemoryConversationMemory};
 
         let memory = InMemoryConversationMemory::new();
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::TextThenFinal,
-        })
-        .memory(memory.clone())
-        .build();
+        let agent = AgentBuilder::new(streaming_text_then_final_model())
+            .memory(memory.clone())
+            .build();
 
         let mut stream = agent
             .stream_prompt("hi there")
@@ -1574,11 +1465,9 @@ mod tests {
             .await
             .unwrap();
 
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::TextThenFinal,
-        })
-        .memory(memory.clone())
-        .build();
+        let agent = AgentBuilder::new(streaming_text_then_final_model())
+            .memory(memory.clone())
+            .build();
 
         let mut stream = agent
             .stream_prompt("hi")
@@ -1605,12 +1494,10 @@ mod tests {
         use crate::memory::{ConversationMemory, InMemoryConversationMemory};
 
         let memory = InMemoryConversationMemory::new();
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::TextThenFinal,
-        })
-        .memory(memory.clone())
-        .conversation_id("default")
-        .build();
+        let agent = AgentBuilder::new(streaming_text_then_final_model())
+            .memory(memory.clone())
+            .conversation_id("default")
+            .build();
 
         let mut stream = agent.stream_prompt("hi").without_memory().await;
 
@@ -1626,35 +1513,9 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_load_error_yields_memory_error() {
-        use crate::memory::{ConversationMemory, MemoryError};
-        use crate::wasm_compat::WasmBoxedFuture;
-
-        #[derive(Clone)]
-        struct FailingMemory;
-        impl ConversationMemory for FailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("load boom"))) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::TextThenFinal,
-        })
-        .memory(FailingMemory)
-        .build();
+        let agent = AgentBuilder::new(streaming_text_then_final_model())
+            .memory(FailingMemory::default())
+            .build();
 
         let mut stream = agent.stream_prompt("hi").conversation("t1").await;
 
@@ -1674,48 +1535,6 @@ mod tests {
     #[tokio::test]
     async fn streaming_with_filter_shapes_loaded_history() {
         use crate::memory::{ConversationMemory, InMemoryConversationMemory};
-        use std::sync::Mutex;
-
-        #[derive(Clone, Default)]
-        struct RecordingStreamingMockModel {
-            last_history: Arc<Mutex<Vec<Message>>>,
-        }
-
-        #[allow(refining_impl_trait)]
-        impl CompletionModel for RecordingStreamingMockModel {
-            type Response = ();
-            type StreamingResponse = MockStreamingResponse;
-            type Client = ();
-
-            fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-                Self::default()
-            }
-
-            async fn completion(
-                &self,
-                _request: CompletionRequest,
-            ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-                Err(CompletionError::ProviderError(
-                    "completion is unused in this streaming test".to_string(),
-                ))
-            }
-
-            async fn stream(
-                &self,
-                request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-            {
-                *self.last_history.lock().unwrap() =
-                    request.chat_history.clone().into_iter().collect();
-                let stream = async_stream::stream! {
-                    yield Ok(RawStreamingChoice::Message("ok".to_string()));
-                    yield Ok(RawStreamingChoice::FinalResponse(MockStreamingResponse::new(1)));
-                };
-                let pinned: crate::streaming::StreamingResult<Self::StreamingResponse> =
-                    Box::pin(stream);
-                Ok(StreamingCompletionResponse::stream(pinned))
-            }
-        }
 
         let memory = InMemoryConversationMemory::new()
             .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());
@@ -1732,8 +1551,11 @@ mod tests {
             .await
             .unwrap();
 
-        let model = RecordingStreamingMockModel::default();
-        let recorded = model.last_history.clone();
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("ok"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ]]);
+        let recorded = model.clone();
         let agent = AgentBuilder::new(model).memory(memory).build();
 
         let mut stream = agent.stream_prompt("ping").conversation("t1").await;
@@ -1743,7 +1565,11 @@ mod tests {
             }
         }
 
-        let received = recorded.lock().unwrap().clone();
+        let received = recorded.requests()[0]
+            .chat_history
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
         assert_eq!(
             received.len(),
             3,
@@ -1753,35 +1579,9 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_append_error_does_not_suppress_final_response() {
-        use crate::memory::{ConversationMemory, MemoryError};
-        use crate::wasm_compat::WasmBoxedFuture;
-
-        #[derive(Clone)]
-        struct AppendFailingMemory;
-        impl ConversationMemory for AppendFailingMemory {
-            fn load<'a>(
-                &'a self,
-                _id: &'a str,
-            ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-                Box::pin(async { Ok(Vec::new()) })
-            }
-            fn append<'a>(
-                &'a self,
-                _id: &'a str,
-                _msgs: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Err(MemoryError::backend(std::io::Error::other("append boom"))) })
-            }
-            fn clear<'a>(&'a self, _id: &'a str) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                Box::pin(async { Ok(()) })
-            }
-        }
-
-        let agent = AgentBuilder::new(FinalResponseMockModel {
-            scenario: FinalResponseScenario::TextThenFinal,
-        })
-        .memory(AppendFailingMemory)
-        .build();
+        let agent = AgentBuilder::new(streaming_text_then_final_model())
+            .memory(AppendFailingMemory::default())
+            .build();
 
         let mut stream = agent.stream_prompt("hi").conversation("t1").await;
 

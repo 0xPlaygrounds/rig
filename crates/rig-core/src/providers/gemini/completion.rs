@@ -2916,56 +2916,17 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires GEMINI_API_KEY environment variable"]
     async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
-        use crate::completion::{Prompt, ToolDefinition};
+        use crate::completion::Prompt;
         use crate::prelude::*;
         use crate::providers::gemini;
-        use crate::tool::Tool;
-        use serde::{Deserialize, Serialize};
-
-        /// A tool that returns a small red 1x1 pixel PNG image
-        #[derive(Debug, Serialize, Deserialize)]
-        struct ImageGeneratorTool;
-
-        #[derive(Debug, thiserror::Error)]
-        #[error("Image generation error")]
-        struct ImageToolError;
-
-        impl Tool for ImageGeneratorTool {
-            const NAME: &'static str = "generate_test_image";
-            type Error = ImageToolError;
-            type Args = serde_json::Value;
-            // Return the image in the format that from_tool_output expects
-            type Output = String;
-
-            async fn definition(&self, _prompt: String) -> ToolDefinition {
-                ToolDefinition {
-                    name: "generate_test_image".to_string(),
-                    description: "Generates a small test image (a 1x1 red pixel). Call this tool when asked to generate or show an image.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }),
-                }
-            }
-
-            async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
-                // Return a JSON object that from_tool_output will parse as an image
-                // This is a 1x1 red PNG pixel
-                Ok(json!({
-                    "type": "image",
-                    "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
-                    "mimeType": "image/png"
-                }).to_string())
-            }
-        }
+        use crate::test_utils::MockImageGeneratorTool;
 
         let client = gemini::Client::from_env()?;
 
         let agent = client
             .agent("gemini-3-flash-preview")
             .preamble("You are a helpful assistant. When asked about images, use the generate_test_image tool to create one, then describe what you see in the image.")
-            .tool(ImageGeneratorTool)
+            .tool(MockImageGeneratorTool)
             .build();
 
         // This prompt should trigger the tool, which returns an image that Gemini should process
