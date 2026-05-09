@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Compactor` trait (re-exported from `rig_core::memory`) +
+  `CompactingMemory<M, P, C>` adapter and a `TemplateCompactor`
+  reference implementation. Where `DemotingPolicyMemory` only
+  *observes* messages a policy truncates out of active history, a
+  `Compactor` *substitutes* them: it derives a single `Message`-shaped
+  `Artifact` from the evicted prefix (and, optionally, the previous
+  summary), and `CompactingMemory` splices that artifact at the front
+  of the loaded history. The resulting prompt shape is
+  `[summary_message, ...kept_window]`, with the summary rolling
+  forward on every load that produces newly-evicted messages — the
+  canonical recursive-summary pattern for long-running agents.
+  Concurrent loads on the same `conversation_id` are serialised at
+  the compaction seam via an in-flight gate: only one load at a time
+  invokes the compactor; others observe the gate and immediately
+  return the previously-stored summary spliced in front of `kept`,
+  without re-running the compactor. Watermarks and the carry-over
+  summary are in-process only — `Compactor` implementations with
+  durable side effects (LLM calls, vector-store writes) must
+  deduplicate. `clear` drops the carry-over so a freshly-populated
+  backend re-compacts from scratch. `TemplateCompactor` is a
+  zero-dependency, no-LLM rollup useful as a default and for tests;
+  it produces a `TextSummary` that converts into a `Message::System`
+  with header + previous-summary + per-line `role: text` body. The
+  rollup represents out-of-band context about the prior conversation
+  rather than a turn from any participant, so the system role is the
+  semantically correct framing across providers. `TemplateCompactor`
+  exposes `with_max_bytes` so long-running conversations can cap the
+  rolled-up text; when exceeded, the oldest portion of the body is
+  dropped at a UTF-8 boundary and replaced with a `"[…truncated…]"`
+  marker, preserving the most recent context. Note that the spliced
+  summary sits **outside** the wrapped `MemoryPolicy`'s budget, so
+  pairing `CompactingMemory` with a token-budgeted policy requires a
+  bounded compactor (or accepting that the loaded prompt may exceed
+  the policy budget by the artifact size).
+
 - `DemotionHook` trait + `DemotingPolicyMemory<M, P, H>` adapter and a
   `NoopDemotionHook` no-op default. The trait itself lives in
   `rig_core::memory` (re-exported here) so any memory backend can
