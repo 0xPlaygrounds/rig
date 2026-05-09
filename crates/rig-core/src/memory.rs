@@ -251,9 +251,12 @@ pub trait Compactor: WasmCompatSend + WasmCompatSync {
     /// Produce a summary artifact for `evicted`, optionally combining it
     /// with the previous summary in `carry_over`.
     ///
-    /// `evicted` is in original conversation order. Errors are surfaced as
-    /// [`MemoryError::Backend`] (or any other variant the implementation
-    /// chooses) by the composing adapter.
+    /// `evicted` is in original conversation order. Errors are propagated
+    /// unchanged by composing adapters; pick the [`MemoryError`] variant
+    /// that best describes the failure ([`MemoryError::Backend`] for I/O
+    /// or remote-LLM faults, [`MemoryError::Internal`] for invariant
+    /// breaks, and so on). The adapter does not re-wrap the returned
+    /// variant.
     fn compact<'a>(
         &'a self,
         conversation_id: &'a str,

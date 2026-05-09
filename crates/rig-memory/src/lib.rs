@@ -766,6 +766,54 @@ fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
     MemoryError::Internal(err.to_string())
 }
 
+/// RAII guard that clears the `in_flight` flag for a conversation in the
+/// shared compaction state map when dropped, unless the consumer
+/// explicitly disarms it after a successful post-await update.
+///
+/// This prevents the in-flight gate from leaking when the awaiting
+/// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
+/// or when the compactor panics: in either case `Drop` runs and releases
+/// the gate so subsequent loads can retry. A missing entry is a no-op,
+/// covering the case where a concurrent `clear` removed the conversation
+/// while compaction was awaiting.
+struct InFlightGuard<'a, A> {
+    state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
+    key: &'a str,
+    armed: bool,
+}
+
+impl<'a, A> InFlightGuard<'a, A> {
+    fn new(
+        state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
+        key: &'a str,
+    ) -> Self {
+        Self {
+            state,
+            key,
+            armed: true,
+        }
+    }
+
+    /// Disable the `Drop` clean-up. Call after the post-await state
+    /// update has already cleared `in_flight` while holding the lock.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl<A> Drop for InFlightGuard<'_, A> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        if let Ok(mut guard) = self.state.lock()
+            && let Some(entry) = guard.get_mut(self.key)
+        {
+            entry.in_flight = false;
+        }
+    }
+}
+
 /// A [`ConversationMemory`] adapter that wraps a backend with a
 /// [`MemoryPolicy`] **and** a [`Compactor`], replacing truncated turns with
 /// a summary artifact spliced at the front of the loaded history.
@@ -988,16 +1036,20 @@ where
             // the lock, and we only set `absorbed = demoted_count` on
             // success — so `plan.skip <= demoted_count == demoted.len()`.
             let CompactionPlan { carry_over, skip } = plan;
+
+            // Arm an RAII guard so the in-flight gate is released even if
+            // this future is dropped mid-await (caller cancellation) or
+            // the compactor panics. The guard is disarmed below once the
+            // post-await state update has already cleared the flag under
+            // the same lock acquisition that records the new watermark.
+            let in_flight_guard = InFlightGuard::new(&self.state, conversation_id);
+
             let new_slice = match demoted.get(skip..) {
                 Some(s) => s,
                 None => {
-                    // Re-acquire and clear the in-flight flag so the next
-                    // load can retry, then surface the invariant break.
-                    if let Ok(mut guard) = self.state.lock()
-                        && let Some(entry) = guard.get_mut(conversation_id)
-                    {
-                        entry.in_flight = false;
-                    }
+                    // Drop the guard explicitly so the gate is released
+                    // before we surface the invariant break.
+                    drop(in_flight_guard);
                     return Err(MemoryError::Internal(
                         "compaction watermark exceeds demoted slice length".into(),
                     ));
@@ -1040,6 +1092,11 @@ where
                     return Err(err);
                 }
             };
+
+            // Post-await state update completed under the lock above and
+            // already cleared `in_flight`; disarm the RAII guard so its
+            // `Drop` does not re-acquire the lock for a redundant clear.
+            in_flight_guard.disarm();
 
             Ok(splice(summary_for_splice, kept))
         })
@@ -1216,7 +1273,7 @@ impl Compactor for TemplateCompactor {
             if let Some(cap) = self.max_bytes
                 && buf.len() > cap
             {
-                buf = truncate_summary(&self.header, &buf, cap);
+                buf = truncate_summary(&buf, cap);
             }
             Ok(TextSummary(buf))
         })
@@ -1226,10 +1283,18 @@ impl Compactor for TemplateCompactor {
 /// Truncate `buf` to fit within `cap` bytes by dropping the oldest
 /// content after the header line. Always preserves the header plus a
 /// `"[\u{2026}truncated\u{2026}]"` marker, even if they alone exceed `cap`.
-fn truncate_summary(header: &str, buf: &str, cap: usize) -> String {
+///
+/// The header boundary is located by scanning `buf` for the first `\n`
+/// rather than by trusting any caller-supplied header length, so a
+/// header containing embedded newlines does not mis-locate the body.
+fn truncate_summary(buf: &str, cap: usize) -> String {
     const MARKER: &str = "[\u{2026}truncated\u{2026}]\n";
-    // Body starts right after the header's trailing newline.
-    let header_prefix_len = header.len() + 1;
+    // Body starts right after the first newline in `buf`. If `buf` has
+    // no newline at all there is no body to drop, so return as-is.
+    let header_prefix_len = match buf.find('\n') {
+        Some(i) => i + 1,
+        None => return buf.to_string(),
+    };
     if buf.len() <= header_prefix_len {
         return buf.to_string();
     }
@@ -1251,9 +1316,12 @@ fn truncate_summary(header: &str, buf: &str, cap: usize) -> String {
         Some(s) => s,
         None => "",
     };
+    let header_with_nl = match buf.get(..header_prefix_len) {
+        Some(h) => h,
+        None => return buf.to_string(),
+    };
     let mut out = String::with_capacity(header_prefix_len + MARKER.len() + suffix.len());
-    out.push_str(header);
-    out.push('\n');
+    out.push_str(header_with_nl);
     out.push_str(MARKER);
     out.push_str(suffix);
     out
@@ -2592,5 +2660,110 @@ mod tests {
         assert_eq!(mem.tracked_conversations(), 0);
         // A subsequent load on the empty backend returns nothing.
         assert!(mem.load("c").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn compacting_dropped_load_releases_in_flight_gate() {
+        // If a `load(...)` future is dropped while awaiting the
+        // compactor, the in-flight gate must not leak: subsequent loads
+        // on the same conversation must be able to retry compaction.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct GatedCompactor {
+            release: tokio::sync::Notify,
+            entered: AtomicUsize,
+        }
+
+        impl Compactor for GatedCompactor {
+            type Artifact = TextSummary;
+
+            fn compact<'a>(
+                &'a self,
+                _conversation_id: &'a str,
+                _evicted: &'a [Message],
+                _carry_over: Option<&'a Self::Artifact>,
+            ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+                Box::pin(async move {
+                    self.entered.fetch_add(1, Ordering::SeqCst);
+                    self.release.notified().await;
+                    Ok(TextSummary("ran".into()))
+                })
+            }
+        }
+
+        let compactor = Arc::new(GatedCompactor {
+            release: tokio::sync::Notify::new(),
+            entered: AtomicUsize::new(0),
+        });
+        let mem = Arc::new(CompactingMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            compactor.clone(),
+        ));
+        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+            .await
+            .unwrap();
+
+        // Kick off a load that will block inside the compactor, then
+        // abort it while awaiting — simulating a caller-side timeout
+        // or `tokio::select!` cancellation.
+        let mem_load = mem.clone();
+        let handle = tokio::spawn(async move { mem_load.load("c").await });
+        while compactor.entered.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+        handle.abort();
+        let _ = handle.await;
+
+        // The aborted future was dropped without clearing in_flight via
+        // the success/error branches; the RAII guard's `Drop` should
+        // have released it. A new load must therefore be able to drive
+        // a fresh compaction rather than short-circuiting forever.
+        let mem_load = mem.clone();
+        let retry = tokio::spawn(async move { mem_load.load("c").await });
+        // Wait for the compactor to be entered a second time. If the
+        // gate had leaked, this would never happen — the load would
+        // short-circuit on `in_flight = true` and return immediately.
+        while compactor.entered.load(Ordering::SeqCst) < 2 {
+            tokio::task::yield_now().await;
+        }
+        compactor.release.notify_waiters();
+        let loaded = retry.await.unwrap().unwrap();
+        assert_eq!(loaded.len(), 2);
+        let Message::System { content } = &loaded[0] else {
+            panic!("expected summary")
+        };
+        assert_eq!(content, "ran");
+    }
+
+    #[tokio::test]
+    async fn template_compactor_caps_summary_with_multiline_header() {
+        // A header containing embedded newlines must not break the
+        // truncation boundary calculation. The first newline in the
+        // assembled buffer marks the header/body split, regardless of
+        // how the caller chose to format the header.
+        let cap = 256;
+        let compactor = TemplateCompactor::with_header("line one\nline two").with_max_bytes(cap);
+        let mut evicted = Vec::new();
+        for i in 0..50 {
+            evicted.push(user(&format!("message number {i} with some filler")));
+        }
+        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let text = summary.as_str();
+
+        // The first line of the header is preserved as the header line.
+        assert!(text.starts_with("line one\n"));
+        // Truncation marker is present and the most recent line survives.
+        assert!(text.contains("[\u{2026}truncated\u{2026}]"));
+        assert!(text.contains("message number 49"));
+        // Cap is honoured up to the header+marker overhead.
+        let overhead = "line one\n".len() + "[\u{2026}truncated\u{2026}]\n".len();
+        assert!(
+            text.len() <= cap + overhead,
+            "summary len {} exceeds cap {} plus overhead {}",
+            text.len(),
+            cap,
+            overhead,
+        );
     }
 }
