@@ -1,6 +1,8 @@
+#[cfg(feature = "image")]
+use crate::client::Nothing;
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
         ProviderClient,
     },
     completion::GetTokenUsage,
@@ -34,13 +36,13 @@ impl Provider for OpenRouterExt {
 impl<H> Capabilities<H> for OpenRouterExt {
     type Completion = Capable<super::CompletionModel<H>>;
     type Embeddings = Capable<super::EmbeddingModel<H>>;
-    type Transcription = Nothing;
+    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
     type ModelListing = Capable<super::OpenRouterModelLister<H>>;
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
 
     #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
+    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
 }
 
 impl DebugExt for OpenRouterExt {}

@@ -1,4 +1,6 @@
 mod agent;
+#[cfg(feature = "audio")]
+mod audio_generation;
 mod document_file_data;
 mod extractor;
 mod extractor_usage;
@@ -14,6 +16,7 @@ mod reasoning_tool_roundtrip;
 mod request_hook;
 mod streaming;
 mod streaming_tools;
+mod transcription;
 mod typed_prompt_tools;
 
 pub(super) const DEFAULT_MODEL: &str = "openai/gpt-4o-mini";
