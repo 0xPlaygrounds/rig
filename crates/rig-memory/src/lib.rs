@@ -1312,10 +1312,7 @@ fn truncate_summary(buf: &str, cap: usize) -> String {
     while cut < body.len() && !body.is_char_boundary(cut) {
         cut += 1;
     }
-    let suffix = match body.get(cut..) {
-        Some(s) => s,
-        None => "",
-    };
+    let suffix: &str = body.get(cut..).unwrap_or_default();
     let header_with_nl = match buf.get(..header_prefix_len) {
         Some(h) => h,
         None => return buf.to_string(),

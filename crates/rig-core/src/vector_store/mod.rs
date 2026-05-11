@@ -245,9 +245,10 @@ where
 }
 
 /// Index strategy for the super::InMemoryVectorStore
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum IndexStrategy {
     /// Checks all documents in the vector store to find the most relevant documents.
+    #[default]
     BruteForce,
 
     /// Uses LSH to find candidates then computes exact distances.
@@ -257,10 +258,4 @@ pub enum IndexStrategy {
         /// Number of hyperplanes to use for LSH.
         num_hyperplanes: usize,
     },
-}
-
-impl Default for IndexStrategy {
-    fn default() -> Self {
-        Self::BruteForce
-    }
 }
