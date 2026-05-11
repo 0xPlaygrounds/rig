@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `rig::memory::Compactor` trait. A `Compactor` produces a single
+  `Message`-shaped `Artifact` from a slice of messages a memory policy
+  has evicted, optionally combining it with the previous summary
+  (`carry_over`) for rolling-summary semantics. Where `DemotionHook`
+  is a one-way drain that observes evicted messages, `Compactor` is
+  the inverse: it returns an artifact that the composing adapter
+  splices back into the active history, so the loaded prompt shape is
+  `[summary, ...recent_window]` instead of a verbatim suffix. The
+  trait lives in `rig_core` so any memory backend can implement it
+  without taking a `rig-memory` dependency; the composing
+  `CompactingMemory` adapter and a zero-dependency `TemplateCompactor`
+  reference implementation live in `rig-memory`. Implementations with
+  durable side effects (LLM calls, vector-store writes) must
+  deduplicate per the same idempotency contract as `DemotionHook`,
+  since per-conversation watermarks are in-process only.
+
 - Rig-managed conversation memory:
   - New `rig::memory` module with the `ConversationMemory` trait,
     `MemoryError` (with a `MemoryBackendError` source type),
