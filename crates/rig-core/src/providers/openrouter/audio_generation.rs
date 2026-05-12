@@ -61,7 +61,11 @@ where
         .into_iter()
         .collect();
 
-         if let Some(obj) = request.additional_params.as_ref().and_then(|p| p.as_object()) {
+        if let Some(obj) = request
+            .additional_params
+            .as_ref()
+            .and_then(|p| p.as_object())
+        {
             for (k, v) in obj {
                 body_map.insert(k.clone(), v.clone());
             }

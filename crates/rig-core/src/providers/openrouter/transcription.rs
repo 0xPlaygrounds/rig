@@ -155,7 +155,11 @@ where
             body_map.insert("temperature".to_string(), serde_json::json!(temperature));
         }
 
-         if let Some(obj) = request.additional_params.as_ref().and_then(|p| p.as_object()) {
+        if let Some(obj) = request
+            .additional_params
+            .as_ref()
+            .and_then(|p| p.as_object())
+        {
             for (k, v) in obj {
                 body_map.insert(k.clone(), v.clone());
             }
