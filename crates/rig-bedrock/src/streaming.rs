@@ -38,6 +38,7 @@ impl GetTokenUsage for BedrockStreamingResponse {
             total_tokens: u.total_tokens as u64,
             cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
             cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
+            reasoning_tokens: 0,
         })
     }
 }
