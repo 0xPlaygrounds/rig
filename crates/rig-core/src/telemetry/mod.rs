@@ -105,7 +105,7 @@ impl SpanCombinator for tracing::Span {
         }
 
         if let Some(model_name) = response.get_response_model_name() {
-            self.record("gen_ai.response.model_name", model_name);
+            self.record("gen_ai.response.model", model_name);
         }
     }
 
