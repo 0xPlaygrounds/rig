@@ -215,6 +215,9 @@ fn redact_secrets(yaml: &str) -> String {
             || lower.starts_with("api-key:")
             || lower.starts_with("x-goog-api-key:")
             || lower.starts_with("ocp-apim-subscription-key:")
+            || lower.starts_with("set-cookie:")
+            || lower.starts_with("openai-organization:")
+            || lower.starts_with("openai-project:")
         {
             let indentation_len = line.len() - trimmed.len();
             format!(

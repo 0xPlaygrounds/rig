@@ -35,11 +35,11 @@ then:
   - name: access-control-expose-headers
     value: CF-Ray
   - name: openai-organization
-    value: playgrounds-analytics
+    value: '[REDACTED]'
   - name: openai-processing-ms
     value: '2790'
   - name: openai-project
-    value: proj_G6mw9sU8KgcbI6EQ7ghnhCYf
+    value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
   - name: x-ratelimit-limit-requests
@@ -57,7 +57,7 @@ then:
   - name: x-request-id
     value: req_b637e4bb86a14faab121ce4a12b6dbad
   - name: set-cookie
-    value: __cf_bm=aa2GzilrKCGzB92Do0fsCNJLjzyWA76L49LR1TRUIBA-1778586873.7224574-1.0.1.1-iCHeqKgNwdog4BNeE6ug9k5Q_8RJCvVqoM6dK6JMByALcDF3eVkPpKTJSXXpxI7cXqpgwMzJKIlZwuI9ppmgDjzqj_nrJg6vWLK1iJrh1sHqL_UCzyqKDn5SQ9phL5FA; HttpOnly; Secure; Path=/; Domain=api.openai.com; Expires=Tue, 12 May 2026 12:24:37 GMT
+    value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
