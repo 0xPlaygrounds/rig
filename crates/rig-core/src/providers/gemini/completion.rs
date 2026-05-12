@@ -103,6 +103,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -508,6 +509,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                reasoning_tokens: usage.thoughts_token_count.unwrap_or_default() as u64,
             })
             .unwrap_or_default();
 
@@ -589,7 +591,7 @@ pub mod gemini_api_types {
         }
 
         fn get_response_model_name(&self) -> Option<String> {
-            None
+            self.model_version.clone()
         }
 
         fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
@@ -1333,6 +1335,44 @@ pub mod gemini_api_types {
         pub total_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thoughts_token_count: Option<i32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cache_tokens_details: Option<Vec<ModalityTokenCount>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub candidates_tokens_details: Option<Vec<ModalityTokenCount>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub tool_use_prompt_token_count: Option<i32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub tool_use_prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub traffic_type: Option<TrafficType>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ModalityTokenCount {
+        pub modality: Modality,
+        pub token_count: i32,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    pub enum Modality {
+        ModalityUnspecified,
+        Text,
+        Image,
+        Video,
+        Audio,
+        Document,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    pub enum TrafficType {
+        TrafficTypeUnspecified,
+        OnDemand,
+        ProvisionedThroughput,
     }
 
     impl std::fmt::Display for UsageMetadata {
@@ -1359,11 +1399,11 @@ pub mod gemini_api_types {
             let mut usage = crate::completion::Usage::new();
 
             usage.input_tokens = self.prompt_token_count as u64;
-            usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
-                + self.candidates_token_count.unwrap_or_default()
-                + self.thoughts_token_count.unwrap_or_default())
-                as u64;
-            usage.total_tokens = usage.input_tokens + usage.output_tokens;
+            usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
+            usage.cached_input_tokens =
+                self.cached_content_token_count.unwrap_or_default() as u64;
+            usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
+            usage.total_tokens = self.total_token_count as u64;
 
             Some(usage)
         }
