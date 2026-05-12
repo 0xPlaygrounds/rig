@@ -86,6 +86,38 @@ pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
     }
 }
 
+impl<P> MemoryPolicy for Arc<P>
+where
+    P: MemoryPolicy + ?Sized,
+{
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        (**self).apply(messages)
+    }
+
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+        (**self).apply_with_demoted(messages)
+    }
+}
+
+impl<P> MemoryPolicy for Box<P>
+where
+    P: MemoryPolicy + ?Sized,
+{
+    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
+        (**self).apply(messages)
+    }
+
+    fn apply_with_demoted(
+        &self,
+        messages: Vec<Message>,
+    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+        (**self).apply_with_demoted(messages)
+    }
+}
+
 /// Adapt a [`MemoryPolicy`] into a closure suitable for
 /// [`InMemoryConversationMemory::with_filter`].
 ///
@@ -213,6 +245,21 @@ where
 {
     fn count(&self, message: &Message) -> usize {
         (self)(message)
+    }
+}
+
+impl<C> TokenCounter for Arc<C>
+where
+    C: TokenCounter + ?Sized,
+{
+    fn count(&self, message: &Message) -> usize {
+        (**self).count(message)
+    }
+}
+
+impl TokenCounter for Box<dyn TokenCounter> {
+    fn count(&self, message: &Message) -> usize {
+        (**self).count(message)
     }
 }
 
@@ -1630,6 +1677,23 @@ mod tests {
     }
 
     #[test]
+    fn arc_token_counter_can_drive_token_window() {
+        let counter: Arc<dyn TokenCounter> = Arc::new(|_: &Message| 1);
+        let policy = TokenWindowMemory::new(2, counter);
+        let out = policy
+            .apply(vec![user("a"), assistant("b"), user("c")])
+            .unwrap();
+
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn boxed_token_counter_forwards_count() {
+        let counter: Box<dyn TokenCounter> = Box::new(|_: &Message| 7);
+        assert_eq!(counter.count(&user("a")), 7);
+    }
+
+    #[test]
     fn into_filter_returns_input_on_policy_error() {
         struct FailingPolicy;
         impl MemoryPolicy for FailingPolicy {
@@ -1728,6 +1792,28 @@ mod tests {
             .unwrap();
         assert_eq!(kept.len(), 2);
         assert!(demoted.is_empty());
+    }
+
+    #[test]
+    fn arc_memory_policy_preserves_demoted_metadata() {
+        let policy: Arc<dyn MemoryPolicy> = Arc::new(SlidingWindowMemory::last_messages(1));
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![user("old"), assistant("new")])
+            .unwrap();
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(demoted.len(), 1);
+    }
+
+    #[test]
+    fn boxed_memory_policy_preserves_demoted_metadata() {
+        let policy: Box<dyn MemoryPolicy> = Box::new(SlidingWindowMemory::last_messages(1));
+        let (kept, demoted) = policy
+            .apply_with_demoted(vec![user("old"), assistant("new")])
+            .unwrap();
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(demoted.len(), 1);
     }
 
     #[test]
