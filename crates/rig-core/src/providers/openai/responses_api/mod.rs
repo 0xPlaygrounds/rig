@@ -1540,6 +1540,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .map(|d| d.cached_tokens)
                     .unwrap_or(0),
                 cache_creation_input_tokens: 0,
+                reasoning_tokens: usage.output_tokens_details.reasoning_tokens,
             })
             .unwrap_or_default();
 

@@ -950,6 +950,7 @@ mod tests {
                 total_tokens: 3,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                reasoning_tokens: 0,
             },
         );
 
@@ -960,7 +961,7 @@ mod tests {
     #[test]
     fn typed_prompt_response_deserializes_with_deserialize_only_output() {
         let response: TypedPromptResponse<DeserializeOnly> = serde_json::from_str(
-            r#"{"output":{"value":"ok"},"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"cached_input_tokens":0,"cache_creation_input_tokens":0}}"#,
+            r#"{"output":{"value":"ok"},"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"cached_input_tokens":0,"cache_creation_input_tokens":0,"reasoning_tokens":0}}"#,
         )
         .expect("deserialize typed prompt response");
 
@@ -1021,6 +1022,7 @@ mod tests {
                     total_tokens: 2,
                     cached_input_tokens: 0,
                     cache_creation_input_tokens: 0,
+                    reasoning_tokens: 0,
                 }),
             MockTurn::text("").with_usage(Usage {
                 input_tokens: 1,
@@ -1028,6 +1030,7 @@ mod tests {
                 total_tokens: 2,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                reasoning_tokens: 0,
             }),
         ]);
         let agent = AgentBuilder::new(model).build();
@@ -1048,6 +1051,7 @@ mod tests {
                 total_tokens: 4,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                reasoning_tokens: 0,
             }
         );
 
