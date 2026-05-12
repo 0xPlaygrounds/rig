@@ -44,7 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 id: "doc1".to_string(),
                 word: "glarb-glarb".to_string(),
                 definitions: vec![
-                    "1. *glarb-glarb* (noun): A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+                    "1. *glarb-glarb* (noun): A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
                     "2. *glarb-glarb* (noun): A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
                 ]
             },

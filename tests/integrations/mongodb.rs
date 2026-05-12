@@ -69,7 +69,7 @@ async fn vector_search_test() {
             .json_body(json!({
                 "input": [
                     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-ada-002",
@@ -449,7 +449,7 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
         },
         Word {
             id: "doc1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
         Word {
             id: "doc2".to_string(),
