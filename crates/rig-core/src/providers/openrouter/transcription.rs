@@ -56,7 +56,8 @@ pub struct TranscriptionResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionUsage {
-    pub seconds: f64,
+    #[serde(default)]
+    pub seconds: Option<f64>,
     #[serde(default)]
     pub total_tokens: Option<usize>,
     #[serde(default)]
@@ -100,9 +101,9 @@ impl<T> TranscriptionModel<T> {
 }
 
 fn infer_format_from_filename(filename: &str) -> String {
-    filename
-        .split('.')
-        .nth(1)
+    std::path::Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
         .and_then(|ext| match ext.to_lowercase().as_str() {
             "wav" => Some("wav"),
             "mp3" => Some("mp3"),
@@ -132,6 +133,17 @@ where
         &self,
         request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
+        if let Some(_prompt) = request.prompt {
+            return Err(TranscriptionError::RequestError(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "OpenRouter STT does not support a top-level prompt field. \
+                     Provider-specific prompt options can be passed via `additional_params`. \
+                     Example: {\"provider\": {\"options\": {\"<provider>\": {\"prompt\": \"<text>\"}}}}",
+                ),
+            )));
+        }
+
         let audio_b64 = STANDARD.encode(&request.data);
         let format = infer_format_from_filename(&request.filename);
 
@@ -155,12 +167,14 @@ where
             body_map.insert("temperature".to_string(), serde_json::json!(temperature));
         }
 
-        if let Some(obj) = request
-            .additional_params
-            .as_ref()
-            .and_then(|p| p.as_object())
-        {
-            for (k, v) in obj {
+        if let Some(ref additional_params) = request.additional_params {
+            let params = additional_params.as_object().ok_or_else(|| {
+                TranscriptionError::RequestError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "additional transcription parameters must be a JSON object",
+                )))
+            })?;
+            for (k, v) in params {
                 body_map.insert(k.clone(), v.clone());
             }
         }
@@ -205,6 +219,8 @@ mod tests {
         assert_eq!(infer_format_from_filename("audio.MP3"), "mp3");
         assert_eq!(infer_format_from_filename("unknown"), "wav");
         assert_eq!(infer_format_from_filename("noextension"), "wav");
+        assert_eq!(infer_format_from_filename("meeting.final.mp3"), "mp3");
+        assert_eq!(infer_format_from_filename("audio.tar.gz"), "wav");
     }
 
     #[test]
@@ -231,7 +247,7 @@ mod tests {
         let resp: TranscriptionResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.text, "Hello world");
         let usage = resp.usage.unwrap();
-        assert_eq!(usage.seconds, 1.5);
+        assert_eq!(usage.seconds, Some(1.5));
     }
 
     #[test]

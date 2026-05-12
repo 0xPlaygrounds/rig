@@ -3,6 +3,7 @@ use crate::audio_generation::{
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openrouter::Client;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use bytes::Bytes;
 use serde_json::json;
 
@@ -38,7 +39,13 @@ impl<T> AudioGenerationModel<T> {
 
 impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    T: HttpClientExt
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
 {
     type Response = Bytes;
     type Client = Client<T>;
@@ -61,12 +68,14 @@ where
         .into_iter()
         .collect();
 
-        if let Some(obj) = request
-            .additional_params
-            .as_ref()
-            .and_then(|p| p.as_object())
-        {
-            for (k, v) in obj {
+        if let Some(ref additional_params) = request.additional_params {
+            let params = additional_params.as_object().ok_or_else(|| {
+                AudioGenerationError::RequestError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "additional audio generation parameters must be a JSON object",
+                )))
+            })?;
+            for (k, v) in params {
                 body_map.insert(k.clone(), v.clone());
             }
         }
