@@ -2280,6 +2280,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn demoting_stale_successful_load_does_not_clear_new_reservation() {
+        #[derive(Default)]
+        struct IndividuallyGatedHook {
+            releases: Mutex<Vec<Arc<tokio::sync::Notify>>>,
+        }
+
+        impl IndividuallyGatedHook {
+            fn call_count(&self) -> usize {
+                self.releases.lock().unwrap().len()
+            }
+
+            async fn wait_for_call_count(&self, expected: usize) {
+                while self.call_count() < expected {
+                    tokio::task::yield_now().await;
+                }
+            }
+
+            fn release_call(&self, index: usize) {
+                let release = self.releases.lock().unwrap()[index].clone();
+                release.notify_waiters();
+            }
+        }
+
+        impl DemotionHook for IndividuallyGatedHook {
+            fn on_demote<'a>(
+                &'a self,
+                _conversation_id: &'a str,
+                _messages: Vec<Message>,
+            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+                let release = Arc::new(tokio::sync::Notify::new());
+                self.releases.lock().unwrap().push(release.clone());
+                Box::pin(async move {
+                    release.notified().await;
+                    Ok(())
+                })
+            }
+        }
+
+        let hook = Arc::new(IndividuallyGatedHook::default());
+        let mem = Arc::new(DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook.clone(),
+        ));
+
+        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
+            .await
+            .unwrap();
+
+        let mem_load = mem.clone();
+        let stale = tokio::spawn(async move { mem_load.load("c").await });
+        hook.wait_for_call_count(1).await;
+
+        mem.clear("c").await.unwrap();
+        mem.append(
+            "c",
+            vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
+        )
+        .await
+        .unwrap();
+
+        let mem_load = mem.clone();
+        let fresh = tokio::spawn(async move { mem_load.load("c").await });
+        hook.wait_for_call_count(2).await;
+
+        // Let the stale load finish successfully after the conversation id has
+        // been reused. Its post-await update must not clear the fresh in-flight
+        // reservation.
+        hook.release_call(0);
+        assert_eq!(stale.await.unwrap().unwrap().len(), 1);
+        assert_eq!(hook.call_count(), 2);
+
+        let mem_load = mem.clone();
+        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
+        let hook_wait = hook.clone();
+        let concurrent_kept = tokio::select! {
+            result = &mut concurrent => result.unwrap().unwrap(),
+            _ = hook_wait.wait_for_call_count(3) => {
+                panic!("stale successful load must not clear the fresh in-flight reservation")
+            }
+        };
+        assert_eq!(
+            hook.call_count(),
+            2,
+            "stale successful load must not clear the fresh in-flight reservation"
+        );
+
+        hook.release_call(1);
+        assert_eq!(fresh.await.unwrap().unwrap().len(), 1);
+        assert_eq!(concurrent_kept.len(), 1);
+
+        mem.load("c").await.unwrap();
+        assert_eq!(hook.call_count(), 2);
+    }
+
+    #[tokio::test]
     async fn forget_drops_in_process_watermark() {
         let hook = Arc::new(CountingHook::default());
         let mem = DemotingPolicyMemory::new(
