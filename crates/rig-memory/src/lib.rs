@@ -624,15 +624,17 @@ pub struct DemotingPolicyMemory<M, P, H> {
     state: StdMutex<HashMap<String, ConversationDemotionState>>,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+type InFlightReservation = Arc<()>;
+
+#[derive(Debug, Default, Clone)]
 struct ConversationDemotionState {
     /// Number of demoted messages already delivered to the hook within
     /// this process lifetime. Advanced only on hook success.
     delivered: usize,
-    /// True while a `load` is currently awaiting `hook.on_demote(...)`
-    /// for this conversation. Other concurrent loads observe this and
-    /// short-circuit without re-delivering the same messages.
-    in_flight: bool,
+    /// Reservation held while a `load` is currently awaiting
+    /// `hook.on_demote(...)` for this conversation. Other concurrent loads
+    /// observe this and short-circuit without re-delivering the same messages.
+    in_flight: Option<InFlightReservation>,
 }
 
 impl<M, P, H> DemotingPolicyMemory<M, P, H> {
@@ -728,47 +730,51 @@ where
             // place. Only allocate a new `String` key when we are about to
             // record state for a conversation we have not seen before *and*
             // there is actually demotion work to track.
-            let pending = {
+            let (pending, reservation) = {
                 let mut guard = self.state.lock().map_err(poisoned)?;
                 if let Some(entry) = guard.get_mut(conversation_id) {
-                    if entry.in_flight {
+                    if entry.in_flight.is_some() {
                         // Another load is mid-delivery for this conversation;
                         // skip and let the next load see whatever it leaves
                         // behind.
                         return Ok(kept);
                     }
                     if entry.delivered >= demoted_count {
-                        Vec::new()
+                        (Vec::new(), None)
                     } else {
                         let split = entry.delivered;
-                        entry.in_flight = true;
-                        demoted.split_off(split)
+                        let reservation = Arc::new(());
+                        entry.in_flight = Some(reservation.clone());
+                        (demoted.split_off(split), Some(reservation))
                     }
                 } else if demoted_count == 0 {
                     // First load for this conversation and nothing was
                     // demoted: no need to allocate a tracking entry yet.
-                    Vec::new()
+                    (Vec::new(), None)
                 } else {
+                    let reservation = Arc::new(());
                     guard.insert(
                         conversation_id.to_string(),
                         ConversationDemotionState {
                             delivered: 0,
-                            in_flight: true,
+                            in_flight: Some(reservation.clone()),
                         },
                     );
-                    std::mem::take(&mut demoted)
+                    (std::mem::take(&mut demoted), Some(reservation))
                 }
             };
 
-            if pending.is_empty() {
+            let Some(reservation) = reservation else {
                 return Ok(kept);
-            }
+            };
 
             // Arm an RAII guard so the in-flight gate is released even if
             // this future is dropped mid-await (caller cancellation) or the
-            // hook panics. The guard is disarmed below once the post-await
-            // state update has already cleared the flag under the lock.
-            let in_flight_guard = DemotionInFlightGuard::new(&self.state, conversation_id);
+            // hook panics. The reservation token prevents stale guards from
+            // clearing newer in-flight loads after clear()/forget() reuse the
+            // same conversation id.
+            let in_flight_guard =
+                DemotionInFlightGuard::new(&self.state, conversation_id, reservation.clone());
 
             let result = self.hook.on_demote(conversation_id, pending).await;
 
@@ -783,8 +789,13 @@ where
             // then skip a real demotion.
             {
                 let mut guard = self.state.lock().map_err(poisoned)?;
-                if let Some(entry) = guard.get_mut(conversation_id) {
-                    entry.in_flight = false;
+                if let Some(entry) = guard.get_mut(conversation_id)
+                    && entry
+                        .in_flight
+                        .as_ref()
+                        .is_some_and(|current| Arc::ptr_eq(current, &reservation))
+                {
+                    entry.in_flight = None;
                     if result.is_ok() {
                         entry.delivered = demoted_count;
                     }
@@ -832,14 +843,20 @@ fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
 struct DemotionInFlightGuard<'a> {
     state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
     key: &'a str,
+    reservation: InFlightReservation,
     armed: bool,
 }
 
 impl<'a> DemotionInFlightGuard<'a> {
-    fn new(state: &'a StdMutex<HashMap<String, ConversationDemotionState>>, key: &'a str) -> Self {
+    fn new(
+        state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
+        key: &'a str,
+        reservation: InFlightReservation,
+    ) -> Self {
         Self {
             state,
             key,
+            reservation,
             armed: true,
         }
     }
@@ -858,8 +875,12 @@ impl Drop for DemotionInFlightGuard<'_> {
         }
         if let Ok(mut guard) = self.state.lock()
             && let Some(entry) = guard.get_mut(self.key)
+            && entry
+                .in_flight
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
         {
-            entry.in_flight = false;
+            entry.in_flight = None;
         }
     }
 }
@@ -877,6 +898,7 @@ impl Drop for DemotionInFlightGuard<'_> {
 struct InFlightGuard<'a, A> {
     state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
     key: &'a str,
+    reservation: InFlightReservation,
     armed: bool,
 }
 
@@ -884,10 +906,12 @@ impl<'a, A> InFlightGuard<'a, A> {
     fn new(
         state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
         key: &'a str,
+        reservation: InFlightReservation,
     ) -> Self {
         Self {
             state,
             key,
+            reservation,
             armed: true,
         }
     }
@@ -906,8 +930,12 @@ impl<A> Drop for InFlightGuard<'_, A> {
         }
         if let Ok(mut guard) = self.state.lock()
             && let Some(entry) = guard.get_mut(self.key)
+            && entry
+                .in_flight
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
         {
-            entry.in_flight = false;
+            entry.in_flight = None;
         }
     }
 }
@@ -995,10 +1023,10 @@ struct ConversationCompactionState<A> {
     /// Number of demoted messages already absorbed into `summary` within
     /// this process lifetime. Advanced only on compactor success.
     absorbed: usize,
-    /// True while a `load` is currently awaiting the compactor for this
-    /// conversation. Other concurrent loads observe this and short-circuit
+    /// Reservation held while a `load` is currently awaiting the compactor for
+    /// this conversation. Other concurrent loads observe this and short-circuit
     /// without re-running the compactor.
-    in_flight: bool,
+    in_flight: Option<InFlightReservation>,
 }
 
 impl<M, P, C: Compactor> CompactingMemory<M, P, C> {
@@ -1093,7 +1121,7 @@ where
             let plan = {
                 let mut guard = self.state.lock().map_err(poisoned)?;
                 if let Some(entry) = guard.get_mut(conversation_id) {
-                    if entry.in_flight {
+                    if entry.in_flight.is_some() {
                         // Another load is mid-compaction; return what we
                         // have so far. Newly-evicted messages will be
                         // folded in by the next load.
@@ -1104,27 +1132,31 @@ where
                         // summary (if any) and we're done.
                         return Ok(splice(entry.summary.clone(), kept));
                     }
-                    entry.in_flight = true;
+                    let reservation = Arc::new(());
+                    entry.in_flight = Some(reservation.clone());
                     CompactionPlan {
                         carry_over: entry.summary.clone(),
                         skip: entry.absorbed,
+                        reservation,
                     }
                 } else if demoted_count == 0 {
                     // First load for this conversation and nothing was
                     // demoted: no tracking entry needed yet.
                     return Ok(kept);
                 } else {
+                    let reservation = Arc::new(());
                     guard.insert(
                         conversation_id.to_string(),
                         ConversationCompactionState {
                             summary: None,
                             absorbed: 0,
-                            in_flight: true,
+                            in_flight: Some(reservation.clone()),
                         },
                     );
                     CompactionPlan {
                         carry_over: None,
                         skip: 0,
+                        reservation,
                     }
                 }
             };
@@ -1133,14 +1165,19 @@ where
             // sourced from the entry's `absorbed` watermark while we held
             // the lock, and we only set `absorbed = demoted_count` on
             // success — so `plan.skip <= demoted_count == demoted.len()`.
-            let CompactionPlan { carry_over, skip } = plan;
+            let CompactionPlan {
+                carry_over,
+                skip,
+                reservation,
+            } = plan;
 
             // Arm an RAII guard so the in-flight gate is released even if
             // this future is dropped mid-await (caller cancellation) or
             // the compactor panics. The guard is disarmed below once the
             // post-await state update has already cleared the flag under
             // the same lock acquisition that records the new watermark.
-            let in_flight_guard = InFlightGuard::new(&self.state, conversation_id);
+            let in_flight_guard =
+                InFlightGuard::new(&self.state, conversation_id, reservation.clone());
 
             let new_slice = match demoted.get(skip..) {
                 Some(s) => s,
@@ -1172,10 +1209,18 @@ where
                 Ok(artifact) => {
                     let mut guard = self.state.lock().map_err(poisoned)?;
                     if let Some(entry) = guard.get_mut(conversation_id) {
-                        entry.in_flight = false;
-                        entry.absorbed = demoted_count;
-                        entry.summary = Some(artifact.clone());
-                        Some(artifact)
+                        if entry
+                            .in_flight
+                            .as_ref()
+                            .is_some_and(|current| Arc::ptr_eq(current, &reservation))
+                        {
+                            entry.in_flight = None;
+                            entry.absorbed = demoted_count;
+                            entry.summary = Some(artifact.clone());
+                            Some(artifact)
+                        } else {
+                            None
+                        }
                     } else {
                         // Conversation was cleared mid-compaction. Drop
                         // the artifact rather than reviving stale state.
@@ -1184,8 +1229,13 @@ where
                 }
                 Err(err) => {
                     let mut guard = self.state.lock().map_err(poisoned)?;
-                    if let Some(entry) = guard.get_mut(conversation_id) {
-                        entry.in_flight = false;
+                    if let Some(entry) = guard.get_mut(conversation_id)
+                        && entry
+                            .in_flight
+                            .as_ref()
+                            .is_some_and(|current| Arc::ptr_eq(current, &reservation))
+                    {
+                        entry.in_flight = None;
                     }
                     return Err(err);
                 }
@@ -1223,6 +1273,7 @@ where
 struct CompactionPlan<A> {
     carry_over: Option<A>,
     skip: usize,
+    reservation: InFlightReservation,
 }
 
 fn splice<A>(summary: Option<A>, kept: Vec<Message>) -> Vec<Message>
@@ -2165,6 +2216,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn demoting_stale_cancelled_load_does_not_clear_new_reservation() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let rendezvous = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let hook = GatedHook {
+            calls: calls.clone(),
+            rendezvous: rendezvous.clone(),
+            release: release.clone(),
+        };
+
+        let mem = Arc::new(DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook,
+        ));
+
+        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
+            .await
+            .unwrap();
+
+        let mem_load = mem.clone();
+        let stale = tokio::spawn(async move { mem_load.load("c").await });
+        rendezvous.notified().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        mem.clear("c").await.unwrap();
+        mem.append(
+            "c",
+            vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
+        )
+        .await
+        .unwrap();
+
+        let mem_load = mem.clone();
+        let fresh = tokio::spawn(async move { mem_load.load("c").await });
+        rendezvous.notified().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        stale.abort();
+        let _ = stale.await;
+
+        let mem_load = mem.clone();
+        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
+        let concurrent_kept = tokio::select! {
+            result = &mut concurrent => result.unwrap().unwrap(),
+            _ = rendezvous.notified() => {
+                panic!("stale guard must not clear the fresh in-flight reservation")
+            }
+        };
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "stale guard must not clear the fresh in-flight reservation"
+        );
+
+        release.notify_waiters();
+        assert_eq!(fresh.await.unwrap().unwrap().len(), 1);
+        assert_eq!(concurrent_kept.len(), 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
     async fn forget_drops_in_process_watermark() {
         let hook = Arc::new(CountingHook::default());
         let mem = DemotingPolicyMemory::new(
@@ -2933,6 +3048,90 @@ mod tests {
             panic!("expected summary")
         };
         assert_eq!(content, "ran");
+    }
+
+    #[tokio::test]
+    async fn compacting_stale_cancelled_load_does_not_clear_new_reservation() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct GatedCompactor {
+            release: tokio::sync::Notify,
+            rendezvous: tokio::sync::Notify,
+            entered: AtomicUsize,
+        }
+
+        impl Compactor for GatedCompactor {
+            type Artifact = TextSummary;
+
+            fn compact<'a>(
+                &'a self,
+                _conversation_id: &'a str,
+                _evicted: &'a [Message],
+                _carry_over: Option<&'a Self::Artifact>,
+            ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+                Box::pin(async move {
+                    self.entered.fetch_add(1, Ordering::SeqCst);
+                    self.rendezvous.notify_one();
+                    self.release.notified().await;
+                    Ok(TextSummary("ran".into()))
+                })
+            }
+        }
+
+        let compactor = Arc::new(GatedCompactor {
+            release: tokio::sync::Notify::new(),
+            rendezvous: tokio::sync::Notify::new(),
+            entered: AtomicUsize::new(0),
+        });
+        let mem = Arc::new(CompactingMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            compactor.clone(),
+        ));
+
+        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
+            .await
+            .unwrap();
+
+        let mem_load = mem.clone();
+        let stale = tokio::spawn(async move { mem_load.load("c").await });
+        compactor.rendezvous.notified().await;
+        assert_eq!(compactor.entered.load(Ordering::SeqCst), 1);
+
+        mem.clear("c").await.unwrap();
+        mem.append(
+            "c",
+            vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
+        )
+        .await
+        .unwrap();
+
+        let mem_load = mem.clone();
+        let fresh = tokio::spawn(async move { mem_load.load("c").await });
+        compactor.rendezvous.notified().await;
+        assert_eq!(compactor.entered.load(Ordering::SeqCst), 2);
+
+        stale.abort();
+        let _ = stale.await;
+
+        let mem_load = mem.clone();
+        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
+        let concurrent_kept = tokio::select! {
+            result = &mut concurrent => result.unwrap().unwrap(),
+            _ = compactor.rendezvous.notified() => {
+                panic!("stale guard must not clear the fresh in-flight reservation")
+            }
+        };
+        assert_eq!(
+            compactor.entered.load(Ordering::SeqCst),
+            2,
+            "stale guard must not clear the fresh in-flight reservation"
+        );
+
+        compactor.release.notify_waiters();
+        assert_eq!(fresh.await.unwrap().unwrap().len(), 2);
+        assert_eq!(concurrent_kept.len(), 1);
+        assert_eq!(compactor.entered.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
