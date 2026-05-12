@@ -116,6 +116,60 @@ pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
 }
 
+impl<M> ConversationMemory for Arc<M>
+where
+    M: ConversationMemory + ?Sized,
+{
+    fn load<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+        (**self).load(conversation_id)
+    }
+
+    fn append<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        (**self).append(conversation_id, messages)
+    }
+
+    fn clear<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        (**self).clear(conversation_id)
+    }
+}
+
+impl<M> ConversationMemory for Box<M>
+where
+    M: ConversationMemory + ?Sized,
+{
+    fn load<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
+        (**self).load(conversation_id)
+    }
+
+    fn append<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        (**self).append(conversation_id, messages)
+    }
+
+    fn clear<'a>(
+        &'a self,
+        conversation_id: &'a str,
+    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+        (**self).clear(conversation_id)
+    }
+}
+
 /// A history-shaping closure applied during [`InMemoryConversationMemory::load`].
 ///
 /// Implemented automatically for any closure with the right signature; the
@@ -434,5 +488,28 @@ mod tests {
 
         let loaded = mem.load("c").await.unwrap();
         assert_eq!(loaded.len(), 2, "filter should retain only 2 messages");
+    }
+
+    #[tokio::test]
+    async fn arc_conversation_memory_forwards_to_inner() {
+        let inner = Arc::new(InMemoryConversationMemory::new());
+        let mem: Arc<dyn ConversationMemory> = inner.clone();
+
+        mem.append("c", vec![user("hello")]).await.unwrap();
+
+        assert_eq!(inner.load("c").await.unwrap().len(), 1);
+        mem.clear("c").await.unwrap();
+        assert!(inner.load("c").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn boxed_conversation_memory_forwards_to_inner() {
+        let mem: Box<dyn ConversationMemory> = Box::new(InMemoryConversationMemory::new());
+
+        mem.append("c", vec![user("hello")]).await.unwrap();
+
+        assert_eq!(mem.load("c").await.unwrap().len(), 1);
+        mem.clear("c").await.unwrap();
+        assert!(mem.load("c").await.unwrap().is_empty());
     }
 }
