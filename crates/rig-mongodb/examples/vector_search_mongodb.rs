@@ -74,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
         },
         Word {
             id: "doc1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
         Word {
             id: "doc2".to_string(),

@@ -100,12 +100,14 @@ impl CompletionModel {
 
         let tool_config = request.tools_config()?;
         let prompt_with_history = request.messages()?;
+        let output_config = request.output_config()?;
         converse_builder = converse_builder
             .set_additional_model_request_fields(request.additional_params())
             .set_inference_config(request.inference_config())
             .set_tool_config(tool_config)
             .set_system(request.system_prompt()?)
-            .set_messages(Some(prompt_with_history));
+            .set_messages(Some(prompt_with_history))
+            .set_output_config(output_config);
 
         let response = converse_builder.send().await.map_err(|sdk_error| {
             Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))

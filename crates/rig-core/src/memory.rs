@@ -207,6 +207,82 @@ where
     }
 }
 
+/// Derives a single [`Message`]-shaped artifact from a slice of messages
+/// that a memory policy has evicted from the active window.
+///
+/// Where a [`DemotionHook`] is a one-way drain — observe what fell out and
+/// return `()` — a `Compactor` is the inverse: it takes the evicted prefix
+/// (and optionally the previous summary) and produces a derived artifact
+/// that the composing adapter splices *back into* the active history. The
+/// resulting prompt is no longer a verbatim suffix of the conversation; it
+/// is `[summary, ...recent_window]`.
+///
+/// Implementations typically wrap an LLM call (`LlmCompactor<M>`) or a
+/// pure template rollup. They run inline on the load path whenever the
+/// policy demotes new messages, so a slow compactor delays the agent's
+/// next turn — keep them fast or offload to a cached/background pipeline.
+///
+/// # Rolling summaries
+///
+/// `carry_over` is the artifact produced by the previous compaction for
+/// this conversation, if any. Implementations that want a *recursive*
+/// summary (the canonical pattern for long-running agents) should
+/// summarize `evicted` *together with* `carry_over` so context lost in
+/// earlier compactions is preserved transitively. Stateless implementations
+/// can ignore `carry_over` and produce a fresh summary of `evicted` alone.
+///
+/// # Idempotency contract
+///
+/// Composing adapters track per-conversation in-process delivery so the
+/// same `evicted` slice is not compacted twice within a process lifetime,
+/// but those watermarks are not persisted across restarts. Implementations
+/// that have side effects (writing summaries to a vector store, billing an
+/// LLM call) should deduplicate by conversation id and content hash, the
+/// same way [`DemotionHook`] implementations do.
+pub trait Compactor: WasmCompatSend + WasmCompatSync {
+    /// The summary value produced by [`Compactor::compact`].
+    ///
+    /// `Into<Message>` is required so the composing adapter can splice the
+    /// artifact at the front of the loaded history. `Clone` is required so
+    /// the adapter can keep a private copy as `carry_over` for the next
+    /// compaction.
+    type Artifact: Into<Message> + Clone + WasmCompatSend + WasmCompatSync + 'static;
+
+    /// Produce a summary artifact for `evicted`, optionally combining it
+    /// with the previous summary in `carry_over`.
+    ///
+    /// `evicted` is in original conversation order. Errors are propagated
+    /// unchanged by composing adapters; pick the [`MemoryError`] variant
+    /// that best describes the failure ([`MemoryError::Backend`] for I/O
+    /// or remote-LLM faults, [`MemoryError::Internal`] for invariant
+    /// breaks, and so on). The adapter does not re-wrap the returned
+    /// variant.
+    fn compact<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        evicted: &'a [Message],
+        carry_over: Option<&'a Self::Artifact>,
+    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>>;
+}
+
+/// Forwarding impl so callers can pass `Arc<C>` wherever a `Compactor` is
+/// expected (e.g. when sharing a single compactor across adapters).
+impl<C> Compactor for Arc<C>
+where
+    C: Compactor + ?Sized,
+{
+    type Artifact = C::Artifact;
+
+    fn compact<'a>(
+        &'a self,
+        conversation_id: &'a str,
+        evicted: &'a [Message],
+        carry_over: Option<&'a Self::Artifact>,
+    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
+        (**self).compact(conversation_id, evicted, carry_over)
+    }
+}
+
 /// A simple thread-safe in-memory [`ConversationMemory`] backed by a `HashMap`.
 ///
 /// Messages are stored in process memory only and lost on restart. Useful for
