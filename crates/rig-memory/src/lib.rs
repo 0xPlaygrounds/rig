@@ -2205,7 +2205,7 @@ mod tests {
             "retry must re-enter the hook after cancellation"
         );
 
-        release.notify_waiters();
+        release.notify_one();
         let kept = retry.await.unwrap().unwrap();
         assert_eq!(kept.len(), 1);
 
@@ -2273,7 +2273,7 @@ mod tests {
             "stale guard must not clear the fresh in-flight reservation"
         );
 
-        release.notify_waiters();
+        release.notify_one();
         assert_eq!(fresh.await.unwrap().unwrap().len(), 1);
         assert_eq!(concurrent_kept.len(), 1);
         assert_eq!(calls.load(Ordering::SeqCst), 2);
@@ -2299,7 +2299,7 @@ mod tests {
 
             fn release_call(&self, index: usize) {
                 let release = self.releases.lock().unwrap()[index].clone();
-                release.notify_waiters();
+                release.notify_one();
             }
         }
 
@@ -3137,7 +3137,7 @@ mod tests {
         while compactor.entered.load(Ordering::SeqCst) < 2 {
             tokio::task::yield_now().await;
         }
-        compactor.release.notify_waiters();
+        compactor.release.notify_one();
         let loaded = retry.await.unwrap().unwrap();
         assert_eq!(loaded.len(), 2);
         let Message::System { content } = &loaded[0] else {
@@ -3224,7 +3224,7 @@ mod tests {
             "stale guard must not clear the fresh in-flight reservation"
         );
 
-        compactor.release.notify_waiters();
+        compactor.release.notify_one();
         assert_eq!(fresh.await.unwrap().unwrap().len(), 2);
         assert_eq!(concurrent_kept.len(), 1);
         assert_eq!(compactor.entered.load(Ordering::SeqCst), 2);
