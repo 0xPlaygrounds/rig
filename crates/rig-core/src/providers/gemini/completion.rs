@@ -1400,8 +1400,7 @@ pub mod gemini_api_types {
 
             usage.input_tokens = self.prompt_token_count as u64;
             usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
-            usage.cached_input_tokens =
-                self.cached_content_token_count.unwrap_or_default() as u64;
+            usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
             usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
             usage.total_tokens = self.total_token_count as u64;
 

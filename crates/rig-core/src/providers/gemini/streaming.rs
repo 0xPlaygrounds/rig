@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
-use super::completion::gemini_api_types::{ContentCandidate, ModalityTokenCount, Part, PartKind, TrafficType};
+use super::completion::gemini_api_types::{
+    ContentCandidate, ModalityTokenCount, Part, PartKind, TrafficType,
+};
 use super::completion::{
     CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
 };
