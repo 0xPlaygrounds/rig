@@ -1,0 +1,46 @@
+when:
+  method: POST
+  path: /v1/responses
+then:
+  status: 200
+  header:
+    - name: content-type
+      value: application/json
+  body: |-
+    {
+      "id": "resp_rig_cassette_structured_output_smoke",
+      "object": "response",
+      "created_at": 1760000000,
+      "status": "completed",
+      "error": null,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "model": "gpt-4o",
+      "usage": {
+        "input_tokens": 60,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 24,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 84
+      },
+      "output": [
+        {
+          "type": "message",
+          "id": "msg_rig_cassette_structured_output_smoke",
+          "role": "assistant",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"technology\",\"summary\":\"A local meetup for Rust developers focused on practical systems programming topics.\"}"
+            }
+          ]
+        }
+      ],
+      "tools": []
+    }

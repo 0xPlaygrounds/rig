@@ -6,6 +6,7 @@ use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::cassettes::ProviderCassette;
 use crate::support::{
     STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_contains_any_case_insensitive,
     assert_nonempty_response, assert_smoke_structured_output,
@@ -45,9 +46,18 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
 async fn structured_output_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
+    let cassette = ProviderCassette::start(
+        "openai",
+        "structured_output/structured_output_smoke",
+        "https://api.openai.com/v1",
+    )
+    .await;
+    let client = openai::Client::builder()
+        .api_key(cassette.api_key("OPENAI_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
     let agent = client.agent(openai::GPT_4O).build();
 
     let response: SmokeStructuredOutput = agent
@@ -56,6 +66,7 @@ async fn structured_output_smoke() {
         .expect("structured output prompt should succeed");
 
     assert_smoke_structured_output(&response);
+    cassette.finish().await;
 }
 
 #[tokio::test]

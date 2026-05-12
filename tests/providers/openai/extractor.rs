@@ -1,14 +1,23 @@
 //! OpenAI extractor smoke test.
 
-use rig::client::ProviderClient;
 use rig::providers::openai;
 
+use crate::cassettes::ProviderCassette;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
 async fn extractor_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
+    let cassette = ProviderCassette::start(
+        "openai",
+        "extractor/extractor_smoke",
+        "https://api.openai.com/v1",
+    )
+    .await;
+    let client = openai::Client::builder()
+        .api_key(cassette.api_key("OPENAI_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
     let extractor = client.extractor::<SmokePerson>(openai::GPT_4O).build();
 
     let response = extractor
@@ -32,4 +41,5 @@ async fn extractor_smoke() {
     assert_nonempty_response(last_name);
     assert_nonempty_response(job);
     assert!(response.usage.total_tokens > 0, "usage should be populated");
+    cassette.finish().await;
 }

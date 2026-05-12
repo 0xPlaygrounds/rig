@@ -4,14 +4,24 @@ use rig::client::{CompletionClient, ProviderClient};
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 
+use crate::cassettes::ProviderCassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
 async fn streaming_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
+    let cassette = ProviderCassette::start(
+        "openai",
+        "streaming/streaming_smoke",
+        "https://api.openai.com/v1",
+    )
+    .await;
+    let client = openai::Client::builder()
+        .api_key(cassette.api_key("OPENAI_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
     let agent = client
         .agent(openai::GPT_4O)
         .preamble(STREAMING_PREAMBLE)
@@ -23,6 +33,7 @@ async fn streaming_smoke() {
         .expect("streaming prompt should succeed");
 
     assert_nonempty_response(&response);
+    cassette.finish().await;
 }
 
 #[tokio::test]

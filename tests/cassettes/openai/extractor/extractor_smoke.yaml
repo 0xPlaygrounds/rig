@@ -1,0 +1,42 @@
+when:
+  method: POST
+  path: /v1/responses
+then:
+  status: 200
+  header:
+    - name: content-type
+      value: application/json
+  body: |-
+    {
+      "id": "resp_rig_cassette_extractor_smoke",
+      "object": "response",
+      "created_at": 1760000000,
+      "status": "completed",
+      "error": null,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "model": "gpt-4o",
+      "usage": {
+        "input_tokens": 90,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 18,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 108
+      },
+      "output": [
+        {
+          "type": "function_call",
+          "id": "fc_rig_cassette_extractor_smoke",
+          "call_id": "call_rig_cassette_extractor_smoke",
+          "name": "submit",
+          "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
+          "status": "completed"
+        }
+      ],
+      "tools": []
+    }

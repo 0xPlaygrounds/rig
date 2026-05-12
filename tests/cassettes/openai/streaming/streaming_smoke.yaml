@@ -1,0 +1,14 @@
+when:
+  method: POST
+  path: /v1/responses
+then:
+  status: 200
+  header:
+    - name: content-type
+      value: text/event-stream
+  body: |-
+    data: {"type":"response.output_text.delta","sequence_number":1,"output_index":0,"content_index":0,"delta":"A solar eclipse occurs when the Moon passes between Earth and the Sun, temporarily blocking some or all sunlight from reaching part of Earth."}
+
+    data: {"type":"response.completed","sequence_number":2,"response":{"id":"resp_rig_cassette_streaming_smoke","object":"response","created_at":1760000000,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-4o","usage":{"input_tokens":32,"input_tokens_details":{"cached_tokens":0},"output_tokens":26,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":58},"output":[{"type":"message","id":"msg_rig_cassette_streaming_smoke","role":"assistant","status":"completed","content":[{"type":"output_text","text":"A solar eclipse occurs when the Moon passes between Earth and the Sun, temporarily blocking some or all sunlight from reaching part of Earth."}]}],"tools":[]}}
+
+    data: [DONE]
