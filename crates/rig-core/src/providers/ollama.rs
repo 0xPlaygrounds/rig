@@ -406,6 +406,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         total_tokens: prompt_tokens + completion_tokens,
                         cached_input_tokens: 0,
                         cache_creation_input_tokens: 0,
+                        reasoning_tokens: 0,
                     },
                     raw_response,
                     message_id: None,

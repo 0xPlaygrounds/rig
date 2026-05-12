@@ -445,6 +445,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 .map(|c| c as u64)
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
+            reasoning_tokens: 0,
         };
 
         Ok(completion::CompletionResponse {
