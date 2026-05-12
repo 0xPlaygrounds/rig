@@ -80,7 +80,7 @@ async fn main() -> Result<(), anyhow::Error> {
         },
         Document {
             id: "doc1".to_string(),
-            content: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            content: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
         Document {
             id: "doc2".to_string(),

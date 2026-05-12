@@ -59,7 +59,7 @@ async fn main() -> Result<(), anyhow::Error> {
         })?
         .document(Word {
             id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         })?
         .document(Word {
             id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),

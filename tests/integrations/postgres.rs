@@ -91,7 +91,7 @@ async fn vector_search_test() {
         Word {
             id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
             name: "glarb-glarb".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
         },
         Word {
             id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
@@ -201,7 +201,7 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
                 "dimensions": 1536,
                 "input": [
                     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets",
-                    "Definition of a *glarb-glarb*: A glarb-glarb is a ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                    "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
                     "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans."
                 ],
                 "model": "text-embedding-3-small",
