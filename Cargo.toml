@@ -178,7 +178,7 @@ redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
-httpmock = { workspace = true }
+httpmock = { workspace = true, features = ["record", "proxy"] }
 lancedb = { workspace = true }
 mongodb = { workspace = true }
 neo4rs = { workspace = true }

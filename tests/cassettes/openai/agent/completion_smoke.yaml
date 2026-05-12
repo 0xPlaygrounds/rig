@@ -1,0 +1,135 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a concise assistant. Answer directly."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"In one or two sentences, explain what Rust programming language is and why memory safety matters."}]}],"model":"gpt-4o"}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Tue, 12 May 2026 11:54:37 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '1856'
+  - name: connection
+    value: keep-alive
+  - name: cf-ray
+    value: 9fa93ab8cff57aa4-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: server
+    value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: playgrounds-analytics
+  - name: openai-processing-ms
+    value: '2790'
+  - name: openai-project
+    value: proj_G6mw9sU8KgcbI6EQ7ghnhCYf
+  - name: openai-version
+    value: 2020-10-01
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999943'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 1ms
+  - name: x-request-id
+    value: req_b637e4bb86a14faab121ce4a12b6dbad
+  - name: set-cookie
+    value: __cf_bm=aa2GzilrKCGzB92Do0fsCNJLjzyWA76L49LR1TRUIBA-1778586873.7224574-1.0.1.1-iCHeqKgNwdog4BNeE6ug9k5Q_8RJCvVqoM6dK6JMByALcDF3eVkPpKTJSXXpxI7cXqpgwMzJKIlZwuI9ppmgDjzqj_nrJg6vWLK1iJrh1sHqL_UCzyqKDn5SQ9phL5FA; HttpOnly; Secure; Path=/; Domain=api.openai.com; Expires=Tue, 12 May 2026 12:24:37 GMT
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_006cfce08d422087006a0314fa974c8190996bd5483a355760",
+      "object": "response",
+      "created_at": 1778586874,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778586877,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-2024-08-06",
+      "moderation": null,
+      "output": [
+        {
+          "id": "msg_006cfce08d422087006a0314fc2d448190a772d99f93dc92f4",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "Rust is a systems programming language designed for performance and safety, particularly ensuring memory safety without a garbage collector. Memory safety matters because it prevents common bugs like null pointer dereferencing and buffer overflows, which can lead to security vulnerabilities and crashes."
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 38,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 49,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 87
+      },
+      "user": null,
+      "metadata": {}
+    }
