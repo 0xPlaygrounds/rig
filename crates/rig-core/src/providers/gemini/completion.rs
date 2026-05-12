@@ -34,7 +34,7 @@ use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
+    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
 };
 use gemini_api_types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -103,6 +103,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -503,14 +504,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_token_count as u64,
-                output_tokens: usage.candidates_token_count.unwrap_or(0) as u64,
-                total_tokens: usage.total_token_count as u64,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                reasoning_tokens: usage.thoughts_token_count.unwrap_or_default() as u64,
-            })
+            .and_then(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -2089,7 +2083,7 @@ mod tests {
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{
-            ContentCandidate, FinishReason, flatten_schema,
+            ContentCandidate, FinishReason, UsageMetadata, flatten_schema,
         },
     };
 
@@ -2357,6 +2351,56 @@ mod tests {
                     }) if text == "thinking text" && signature == "thought_sig_123"
                 )
         ));
+    }
+
+    #[test]
+    fn test_completion_response_usage_preserves_cached_and_reasoning_tokens() {
+        let response = GenerateContentResponse {
+            response_id: "resp_1".to_string(),
+            candidates: vec![ContentCandidate {
+                content: Some(Content {
+                    parts: vec![Part {
+                        thought: None,
+                        thought_signature: None,
+                        part: PartKind::Text("answer".to_string()),
+                        additional_params: None,
+                    }],
+                    role: Some(Role::Model),
+                }),
+                finish_reason: Some(FinishReason::Stop),
+                safety_ratings: None,
+                citation_metadata: None,
+                token_count: None,
+                avg_logprobs: None,
+                logprobs_result: None,
+                index: Some(0),
+                finish_message: None,
+            }],
+            prompt_feedback: None,
+            usage_metadata: Some(UsageMetadata {
+                prompt_token_count: 40,
+                cached_content_token_count: Some(20),
+                candidates_token_count: Some(30),
+                total_token_count: 100,
+                thoughts_token_count: Some(10),
+                prompt_tokens_details: None,
+                cache_tokens_details: None,
+                candidates_tokens_details: None,
+                tool_use_prompt_token_count: None,
+                tool_use_prompt_tokens_details: None,
+                traffic_type: None,
+            }),
+            model_version: Some("gemini-2.0-flash-001".to_string()),
+        };
+
+        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+            response.try_into().expect("convert response");
+
+        assert_eq!(converted.usage.input_tokens, 40);
+        assert_eq!(converted.usage.cached_input_tokens, 20);
+        assert_eq!(converted.usage.output_tokens, 30);
+        assert_eq!(converted.usage.reasoning_tokens, 10);
+        assert_eq!(converted.usage.total_tokens, 100);
     }
 
     #[test]

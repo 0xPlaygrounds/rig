@@ -60,7 +60,9 @@ impl GetTokenUsage for PartialUsage {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamGenerateContentResponse {
+    pub response_id: Option<String>,
     /// Candidate responses from the model.
+    #[serde(default)]
     pub candidates: Vec<ContentCandidate>,
     pub model_version: Option<String>,
     pub usage_metadata: Option<PartialUsage>,
@@ -100,6 +102,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -147,6 +150,18 @@ where
                                 continue;
                             }
                         };
+
+                        let span = tracing::Span::current();
+                        if let Some(response_id) = data.response_id.as_deref() {
+                            span.record("gen_ai.response.id", response_id);
+                        }
+                        if let Some(model_version) = data.model_version.as_deref() {
+                            span.record("gen_ai.response.model", model_version);
+                        }
+                        if let Some(usage) = data.usage_metadata.as_ref() {
+                            span.record_token_usage(usage);
+                            final_usage = Some(usage.clone());
+                        }
 
                         // Process the response data
                         let Some(choice) = data.candidates.into_iter().next() else {
@@ -218,9 +233,6 @@ where
 
                         // Check if this is the final response
                         if choice.finish_reason.is_some() {
-                            let span = tracing::Span::current();
-                            span.record_token_usage(&data.usage_metadata);
-                            final_usage = data.usage_metadata;
                             break;
                         }
                     }
@@ -291,6 +303,36 @@ mod tests {
         } else {
             panic!("Expected text part");
         }
+    }
+
+    #[test]
+    fn test_deserialize_stream_response_with_usage_only_chunk() {
+        let json_data = json!({
+            "responseId": "response-123",
+            "modelVersion": "gemini-2.0-flash-001",
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 5,
+                "totalTokenCount": 15
+            }
+        });
+
+        let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+        assert_eq!(response.response_id.as_deref(), Some("response-123"));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.0-flash-001")
+        );
+        assert!(response.candidates.is_empty());
+
+        let usage = response
+            .usage_metadata
+            .as_ref()
+            .and_then(GetTokenUsage::token_usage)
+            .unwrap();
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
     }
 
     #[test]

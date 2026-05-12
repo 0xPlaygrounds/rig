@@ -361,6 +361,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -446,6 +447,7 @@ where
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
             );
@@ -539,6 +541,7 @@ where
                     "gen_ai.usage.cache_creation.input_tokens",
                     usage.cache_creation_input_tokens,
                 );
+                agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 
                 if let Some((memory, id)) = memory_handle.as_ref()
                     && let Err(err) = memory.append(id, new_messages.clone()).await
