@@ -717,6 +717,12 @@ where
                 return Ok(kept);
             }
 
+            // Arm an RAII guard so the in-flight gate is released even if
+            // this future is dropped mid-await (caller cancellation) or the
+            // hook panics. The guard is disarmed below once the post-await
+            // state update has already cleared the flag under the lock.
+            let in_flight_guard = DemotionInFlightGuard::new(&self.state, conversation_id);
+
             let result = self.hook.on_demote(conversation_id, pending).await;
 
             // Reacquire briefly to advance the watermark on success and
@@ -737,6 +743,7 @@ where
                     }
                 }
             }
+            in_flight_guard.disarm();
             result?;
             Ok(kept)
         })
@@ -764,6 +771,50 @@ where
 
 fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
     MemoryError::Internal(err.to_string())
+}
+
+/// RAII guard that clears the `in_flight` flag for a conversation in the
+/// shared demotion state map when dropped, unless the consumer explicitly
+/// disarms it after a successful post-await update.
+///
+/// This prevents the in-flight gate from leaking when the awaiting
+/// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
+/// or when the hook panics. A missing entry is a no-op, covering the case
+/// where a concurrent `clear` removed the conversation while delivery was
+/// awaiting.
+struct DemotionInFlightGuard<'a> {
+    state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
+    key: &'a str,
+    armed: bool,
+}
+
+impl<'a> DemotionInFlightGuard<'a> {
+    fn new(state: &'a StdMutex<HashMap<String, ConversationDemotionState>>, key: &'a str) -> Self {
+        Self {
+            state,
+            key,
+            armed: true,
+        }
+    }
+
+    /// Disable the `Drop` clean-up. Call after the post-await state
+    /// update has already cleared `in_flight` while holding the lock.
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for DemotionInFlightGuard<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        if let Ok(mut guard) = self.state.lock()
+            && let Some(entry) = guard.get_mut(self.key)
+        {
+            entry.in_flight = false;
+        }
+    }
 }
 
 /// RAII guard that clears the `in_flight` flag for a conversation in the
@@ -1960,6 +2011,71 @@ mod tests {
         // Subsequent loads observe the watermark and don't re-fire.
         mem.load("c").await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn demoting_policy_memory_dropped_load_releases_in_flight_gate() {
+        // If a `load(...)` future is dropped while awaiting the hook, the
+        // in-flight gate must not leak: subsequent loads on the same
+        // conversation must be able to retry demotion.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let rendezvous = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let hook = GatedHook {
+            calls: calls.clone(),
+            rendezvous,
+            release: release.clone(),
+        };
+
+        let mem = Arc::new(DemotingPolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            SlidingWindowMemory::last_messages(1),
+            hook,
+        ));
+
+        mem.append("c", vec![user("1"), assistant("2"), user("3")])
+            .await
+            .unwrap();
+
+        // Kick off a load that will block inside the hook, then abort it
+        // while awaiting — simulating a caller-side timeout or
+        // `tokio::select!` cancellation.
+        let mem_load = mem.clone();
+        let handle = tokio::spawn(async move { mem_load.load("c").await });
+        while calls.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+        handle.abort();
+        let _ = handle.await;
+
+        // The aborted future was dropped without clearing in_flight via
+        // the success/error branches; the RAII guard's `Drop` should have
+        // released it. A new load must therefore be able to drive a fresh
+        // demotion rather than short-circuiting forever.
+        let mem_load = mem.clone();
+        let retry = tokio::spawn(async move { mem_load.load("c").await });
+        for _ in 0..1_000 {
+            if calls.load(Ordering::SeqCst) >= 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "retry must re-enter the hook after cancellation"
+        );
+
+        release.notify_waiters();
+        let kept = retry.await.unwrap().unwrap();
+        assert_eq!(kept.len(), 1);
+
+        // The successful retry advances the watermark, so future loads
+        // should not fire the hook again.
+        mem.load("c").await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
