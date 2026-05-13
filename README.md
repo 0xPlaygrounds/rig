@@ -8,9 +8,11 @@
 <br>
 <a href="https://docs.rig.rs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
 <a href="https://docs.rs/rig/latest/rig/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
-<a href="https://crates.io/crates/rig-core"><img src="https://img.shields.io/crates/v/rig-core.svg?color=dca282" /></a>
+<a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/v/rig.svg?color=dca282" /></a>
 &nbsp;
 <a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/d/rig-core.svg?color=dca282" /></a>
+&nbsp;
+<a href="LICENSE"><img src="https://img.shields.io/crates/l/rig.svg?color=dca282" /></a>
 </br>
 <a href="https://discord.gg/playgrounds"><img src="https://img.shields.io/discord/511303648119226382?color=%236d82cc&label=Discord&logo=discord&logoColor=white" /></a>
 &nbsp;
@@ -45,7 +47,7 @@
 
 - [Table of contents](#table-of-contents)
 - [What is Rig?](#what-is-rig)
-- [High-level features](#high-level-features)
+- [Features](#features)
 - [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
