@@ -1,8 +1,40 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 //! Public facade for Rig.
+//!
+//! The `rig` crate is the user-facing entry point for Rig. It re-exports the
+//! full public API of `rig_core`, so core traits, builders, providers, tools,
+//! vector-store abstractions, and request/response types are available through
+//! `rig::...` paths.
+//!
+//! # Companion integrations
+//!
+//! Companion provider and vector-store crates are exposed as feature-gated
+//! modules on this facade. Enable only the integrations your application uses:
+//!
+//! ```toml
+//! [dependencies]
+//! rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+//! ```
+//!
+//! This enables modules such as `rig::lancedb` and `rig::fastembed`. Other
+//! companion integrations follow the same pattern, with feature names aligned to
+//! their facade module paths wherever Rust module naming allows it.
+//!
+//! # When to use `rig-core` directly
+//!
+//! Depend on the `rig-core` package directly when you only need the core Rig
+//! implementation crate, including provider abstractions, built-in core
+//! providers, tools, memory traits, and vector-store traits, without the root
+//! facade's companion integration feature surface.
 
 pub use rig_core::*;
 
+/// Conversation memory APIs and optional memory policy helpers.
+///
+/// This module is always available and re-exports the core memory traits and
+/// in-process backend from `rig_core::memory`. Enabling the `memory` feature
+/// additionally re-exports policy types from the `rig-memory` companion crate
+/// into this same module.
 pub mod memory {
     pub use rig_core::memory::*;
 
