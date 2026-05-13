@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
-use super::completion::gemini_api_types::{ContentCandidate, Part, PartKind};
+use super::completion::gemini_api_types::{
+    ContentCandidate, ModalityTokenCount, Part, PartKind, TrafficType,
+};
 use super::completion::{
     CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
 };
@@ -27,6 +29,18 @@ pub struct PartialUsage {
     pub thoughts_token_count: Option<i32>,
     #[serde(default)]
     pub prompt_token_count: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_tokens_details: Option<Vec<ModalityTokenCount>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidates_tokens_details: Option<Vec<ModalityTokenCount>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_use_prompt_token_count: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_use_prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub traffic_type: Option<TrafficType>,
 }
 
 impl GetTokenUsage for PartialUsage {
@@ -34,10 +48,10 @@ impl GetTokenUsage for PartialUsage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_token_count as u64;
-        usage.output_tokens = (self.cached_content_token_count.unwrap_or_default()
-            + self.candidates_token_count.unwrap_or_default()
-            + self.thoughts_token_count.unwrap_or_default()) as u64;
-        usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
+        usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
+        usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
+        usage.total_tokens = self.total_token_count as u64;
 
         Some(usage)
     }
@@ -46,7 +60,9 @@ impl GetTokenUsage for PartialUsage {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamGenerateContentResponse {
+    pub response_id: Option<String>,
     /// Candidate responses from the model.
+    #[serde(default)]
     pub candidates: Vec<ContentCandidate>,
     pub model_version: Option<String>,
     pub usage_metadata: Option<PartialUsage>,
@@ -59,15 +75,7 @@ pub struct StreamingCompletionResponse {
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let mut usage = crate::completion::Usage::new();
-        usage.total_tokens = self.usage_metadata.total_token_count as u64;
-        usage.output_tokens = self
-            .usage_metadata
-            .candidates_token_count
-            .map(|x| x as u64)
-            .unwrap_or(0);
-        usage.input_tokens = self.usage_metadata.prompt_token_count as u64;
-        Some(usage)
+        self.usage_metadata.token_usage()
     }
 }
 
@@ -94,6 +102,8 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
             tracing::Span::current()
@@ -140,6 +150,18 @@ where
                                 continue;
                             }
                         };
+
+                        let span = tracing::Span::current();
+                        if let Some(response_id) = data.response_id.as_deref() {
+                            span.record("gen_ai.response.id", response_id);
+                        }
+                        if let Some(model_version) = data.model_version.as_deref() {
+                            span.record("gen_ai.response.model", model_version);
+                        }
+                        if let Some(usage) = data.usage_metadata.as_ref() {
+                            span.record_token_usage(usage);
+                            final_usage = Some(usage.clone());
+                        }
 
                         // Process the response data
                         let Some(choice) = data.candidates.into_iter().next() else {
@@ -211,9 +233,6 @@ where
 
                         // Check if this is the final response
                         if choice.finish_reason.is_some() {
-                            let span = tracing::Span::current();
-                            span.record_token_usage(&data.usage_metadata);
-                            final_usage = data.usage_metadata;
                             break;
                         }
                     }
@@ -284,6 +303,36 @@ mod tests {
         } else {
             panic!("Expected text part");
         }
+    }
+
+    #[test]
+    fn test_deserialize_stream_response_with_usage_only_chunk() {
+        let json_data = json!({
+            "responseId": "response-123",
+            "modelVersion": "gemini-2.0-flash-001",
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 5,
+                "totalTokenCount": 15
+            }
+        });
+
+        let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+        assert_eq!(response.response_id.as_deref(), Some("response-123"));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.0-flash-001")
+        );
+        assert!(response.candidates.is_empty());
+
+        let usage = response
+            .usage_metadata
+            .as_ref()
+            .and_then(GetTokenUsage::token_usage)
+            .unwrap();
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.total_tokens, 15);
     }
 
     #[test]
@@ -517,11 +566,19 @@ mod tests {
             candidates_token_count: Some(30),
             thoughts_token_count: Some(10),
             prompt_token_count: 40,
+            prompt_tokens_details: None,
+            cache_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_token_count: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
         };
 
         let token_usage = usage.token_usage().unwrap();
         assert_eq!(token_usage.input_tokens, 40);
-        assert_eq!(token_usage.output_tokens, 60); // 20 + 30 + 10
+        assert_eq!(token_usage.cached_input_tokens, 20);
+        assert_eq!(token_usage.output_tokens, 30);
+        assert_eq!(token_usage.reasoning_tokens, 10);
         assert_eq!(token_usage.total_tokens, 100);
     }
 
@@ -533,11 +590,19 @@ mod tests {
             candidates_token_count: Some(30),
             thoughts_token_count: None,
             prompt_token_count: 20,
+            prompt_tokens_details: None,
+            cache_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_token_count: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
         };
 
         let token_usage = usage.token_usage().unwrap();
         assert_eq!(token_usage.input_tokens, 20);
-        assert_eq!(token_usage.output_tokens, 30); // Only candidates_token_count
+        assert_eq!(token_usage.cached_input_tokens, 0);
+        assert_eq!(token_usage.output_tokens, 30);
+        assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.total_tokens, 50);
     }
 
@@ -550,12 +615,70 @@ mod tests {
                 candidates_token_count: Some(75),
                 thoughts_token_count: None,
                 prompt_token_count: 75,
+                prompt_tokens_details: None,
+                cache_tokens_details: None,
+                candidates_tokens_details: None,
+                tool_use_prompt_token_count: None,
+                tool_use_prompt_tokens_details: None,
+                traffic_type: None,
             },
         };
 
         let token_usage = response.token_usage().unwrap();
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
+        assert_eq!(token_usage.reasoning_tokens, 0);
+        assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
+        let json_data = serde_json::json!({
+            "promptTokenCount": 100,
+            "cachedContentTokenCount": 25,
+            "candidatesTokenCount": 50,
+            "thoughtsTokenCount": 15,
+            "totalTokenCount": 190,
+            "promptTokensDetails": [
+                { "modality": "TEXT", "tokenCount": 80 },
+                { "modality": "IMAGE", "tokenCount": 20 }
+            ],
+            "cacheTokensDetails": [
+                { "modality": "TEXT", "tokenCount": 25 }
+            ],
+            "candidatesTokensDetails": [
+                { "modality": "TEXT", "tokenCount": 50 }
+            ],
+            "toolUsePromptTokenCount": 12,
+            "toolUsePromptTokensDetails": [
+                { "modality": "TEXT", "tokenCount": 12 }
+            ],
+            "trafficType": "PROVISIONED_THROUGHPUT"
+        });
+
+        let usage: PartialUsage = serde_json::from_value(json_data).unwrap();
+        assert_eq!(usage.prompt_token_count, 100);
+        assert_eq!(usage.cached_content_token_count, Some(25));
+        assert_eq!(usage.candidates_token_count, Some(50));
+        assert_eq!(usage.thoughts_token_count, Some(15));
+        assert_eq!(usage.total_token_count, 190);
+        assert!(usage.prompt_tokens_details.is_some());
+        assert_eq!(usage.prompt_tokens_details.as_ref().unwrap().len(), 2);
+        assert!(usage.cache_tokens_details.is_some());
+        assert!(usage.candidates_tokens_details.is_some());
+        assert_eq!(usage.tool_use_prompt_token_count, Some(12));
+        assert!(usage.tool_use_prompt_tokens_details.is_some());
+        assert!(matches!(
+            usage.traffic_type,
+            Some(TrafficType::ProvisionedThroughput)
+        ));
+
+        let token_usage = usage.token_usage().unwrap();
+        assert_eq!(token_usage.input_tokens, 100);
+        assert_eq!(token_usage.cached_input_tokens, 25);
+        assert_eq!(token_usage.output_tokens, 50);
+        assert_eq!(token_usage.reasoning_tokens, 15);
+        assert_eq!(token_usage.total_tokens, 190);
     }
 }

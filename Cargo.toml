@@ -1,6 +1,6 @@
 [package]
 name = "rig"
-version = "0.36.0"
+version = "0.37.0"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -144,31 +144,31 @@ exclude-members = ["crates/rig-core", "crates/rig-derive"]
 workspace = true
 
 [dependencies]
-rig_core = { package = "rig-core", path = "crates/rig-core", version = "0.36.0", default-features = false }
-rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.5", optional = true, default-features = false }
-rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.0", optional = true, default-features = false }
-rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.5", optional = true, default-features = false }
-rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.5", optional = true, default-features = false }
-rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.5", optional = true, default-features = false }
-rig-memory = { path = "crates/rig-memory", version = "0.1.0", optional = true, default-features = false }
-rig-milvus = { path = "crates/rig-milvus", version = "0.2.5", optional = true, default-features = false }
-rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.5", optional = true, default-features = false }
-rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.5", optional = true, default-features = false }
-rig-postgres = { path = "crates/rig-postgres", version = "0.2.5", optional = true, default-features = false }
-rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.5", optional = true, default-features = false }
-rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.5", optional = true, default-features = false }
-rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.5", optional = true, default-features = false }
-rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.5", optional = true, default-features = false }
-rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.5", optional = true, default-features = false }
-rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.5", optional = true, default-features = false }
-rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.5", optional = true, default-features = false }
+rig-core = { path = "crates/rig-core", version = "0.37.0", default-features = false }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.6", optional = true, default-features = false }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.1", optional = true, default-features = false }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.6", optional = true, default-features = false }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.6", optional = true, default-features = false }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.6", optional = true, default-features = false }
+rig-memory = { path = "crates/rig-memory", version = "0.1.1", optional = true, default-features = false }
+rig-milvus = { path = "crates/rig-milvus", version = "0.2.6", optional = true, default-features = false }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.6", optional = true, default-features = false }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.6", optional = true, default-features = false }
+rig-postgres = { path = "crates/rig-postgres", version = "0.2.6", optional = true, default-features = false }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.6", optional = true, default-features = false }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.6", optional = true, default-features = false }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.6", optional = true, default-features = false }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.6", optional = true, default-features = false }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.6", optional = true, default-features = false }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.6", optional = true, default-features = false }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.6", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
-rig_core = { package = "rig-core", path = "crates/rig-core", version = "0.36.0", default-features = false, features = [
+rig-core = { path = "crates/rig-core", version = "0.37.0", default-features = false, features = [
   "test-utils",
 ] }
 tokio = { workspace = true, features = ["full"] }
@@ -221,9 +221,8 @@ tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
 
 [features]
-default = ["rig_core/default", "rustls"]
-all = ["rig_core/all"]
-test-utils = ["rig_core/test-utils"]
+default = ["rig-core/default", "rustls"]
+test-utils = ["rig-core/test-utils"]
 bedrock = ["dep:rig-bedrock"]
 fastembed = [
   "dep:rig-fastembed",
@@ -247,23 +246,23 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
-audio = ["rig_core/audio"]
-image = ["rig_core/image"]
-derive = ["rig_core/derive"]
-experimental = ["rig_core/experimental"]
-discord-bot = ["rig_core/discord-bot"]
-pdf = ["rig_core/pdf"]
-epub = ["rig_core/epub"]
-rayon = ["rig_core/rayon"]
-wasm = ["rig_core/wasm"]
-rmcp = ["rig_core/rmcp"]
-socks = ["rig_core/socks"]
-reqwest = ["rig_core/reqwest"]
-websocket = ["rig_core/websocket"]
-websocket-rustls = ["rig_core/websocket-rustls"]
-websocket-native-tls = ["rig_core/websocket-native-tls"]
+audio = ["rig-core/audio"]
+image = ["rig-core/image"]
+derive = ["rig-core/derive"]
+experimental = ["rig-core/experimental"]
+discord-bot = ["rig-core/discord-bot"]
+pdf = ["rig-core/pdf"]
+epub = ["rig-core/epub"]
+rayon = ["rig-core/rayon"]
+wasm = ["rig-core/wasm"]
+rmcp = ["rig-core/rmcp"]
+socks = ["rig-core/socks"]
+reqwest = ["rig-core/reqwest"]
+websocket = ["rig-core/websocket"]
+websocket-rustls = ["rig-core/websocket-rustls"]
+websocket-native-tls = ["rig-core/websocket-native-tls"]
 rustls = [
-  "rig_core/rustls",
+  "rig-core/rustls",
   "rig-bedrock?/bedrock-rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
   "rig-helixdb?/rustls",
@@ -271,15 +270,15 @@ rustls = [
   "rig-milvus?/rustls",
 ]
 native-tls = [
-  "rig_core/native-tls",
+  "rig-core/native-tls",
   "rig-fastembed?/hf-hub-native-tls",
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",
   "rig-milvus?/native-tls",
 ]
-reqwest-middleware = ["rig_core/reqwest-middleware"]
-reqwest-middleware-rustls = ["rig_core/reqwest-middleware-rustls"]
-reqwest-middleware-native-tls = ["rig_core/reqwest-middleware-native-tls"]
+reqwest-middleware = ["rig-core/reqwest-middleware"]
+reqwest-middleware-rustls = ["rig-core/reqwest-middleware-rustls"]
+reqwest-middleware-native-tls = ["rig-core/reqwest-middleware-native-tls"]
 
 [[example]]
 name = "rag"

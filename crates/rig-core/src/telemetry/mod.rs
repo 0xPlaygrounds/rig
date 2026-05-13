@@ -88,6 +88,7 @@ impl SpanCombinator for tracing::Span {
                 "gen_ai.usage.cache_creation.input_tokens",
                 usage.cache_creation_input_tokens,
             );
+            self.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
         }
     }
 
@@ -104,7 +105,7 @@ impl SpanCombinator for tracing::Span {
         }
 
         if let Some(model_name) = response.get_response_model_name() {
-            self.record("gen_ai.response.model_name", model_name);
+            self.record("gen_ai.response.model", model_name);
         }
     }
 
