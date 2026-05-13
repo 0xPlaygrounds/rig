@@ -222,7 +222,6 @@ url = { workspace = true }
 
 [features]
 default = ["rig_core/default", "rustls"]
-all = ["rig_core/all"]
 test-utils = ["rig_core/test-utils"]
 bedrock = ["dep:rig-bedrock"]
 fastembed = [
