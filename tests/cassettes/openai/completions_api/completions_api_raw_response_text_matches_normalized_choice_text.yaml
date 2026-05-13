@@ -1,0 +1,99 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"Return exactly the requested text as plain text with no bullets, quotes, or extra commentary."}]},{"role":"user","content":"Reply with exactly two short lines and nothing else. First line: cedar. Second line: maple."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:44:42 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '367'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999951'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 1ms
+  - name: x-request-id
+    value: req_0fd35725f7974f9bb7a01186c7977314
+  - name: x-openai-proxy-wasm
+    value: v0.1
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb2301ee72b61-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |
+    {
+      "id": "chatcmpl-DexcfRM4BOZ9HIRh8OU8svZRav3pH",
+      "object": "chat.completion",
+      "created": 1778654681,
+      "model": "gpt-4o-2024-08-06",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "cedar  \nmaple",
+            "refusal": null,
+            "annotations": []
+          },
+          "logprobs": null,
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 5,
+        "total_tokens": 54,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "service_tier": "default",
+      "system_fingerprint": "fp_fdcd217abe"
+    }

@@ -8,9 +8,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::client::CompletionClient;
 use rig::completion::{ToolDefinition, TypedPrompt};
-use rig::providers::openai;
 use rig::tool::Tool;
 
+use super::super::support::with_openai_completions_cassette_result;
 use crate::support::assert_weather_tool_roundtrip_response;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
@@ -72,41 +72,38 @@ impl Tool for WeatherTool {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let api_key = std::env::var("OPENAI_API_KEY")?;
-    let mut builder = openai::Client::builder().api_key(&api_key);
+    with_openai_completions_cassette_result(
+        "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip",
+        |client| async move {
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let agent = client
+                .agent(rig::providers::openai::GPT_4O)
+                .preamble(
+                    "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
+                     After calling the tool, return a JSON response with the city name and the weather description. \
+                     DO NOT modify the description from the tool result.",
+                )
+                .tool(WeatherTool::new(call_count.clone()))
+                .build();
 
-    if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
-        builder = builder.base_url(&base_url);
-    }
+            let result = agent
+                .prompt_typed("Hello, whats the weather in London?")
+                .await;
 
-    let client = builder.build()?.completions_api();
-    let agent = client
-        .agent(openai::GPT_4O)
-        .preamble(
-            "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
-             After calling the tool, return a JSON response with the city name and the weather description. \
-             DO NOT modify the description from the tool result.",
-        )
-        .tool(WeatherTool::new(call_count.clone()))
-        .build();
+            println!("prompt_typed result: {result:#?}");
 
-    let result = agent
-        .prompt_typed("Hello, whats the weather in London?")
-        .await;
+            let response: WeatherResponse = result?;
+            println!("agent response: {response:#?}");
 
-    println!("prompt_typed result: {result:#?}");
+            anyhow::ensure!(
+                call_count.load(Ordering::SeqCst) >= 1,
+                "expected the weather tool to be executed at least once"
+            );
+            assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");
 
-    let response: WeatherResponse = result?;
-    println!("agent response: {response:#?}");
-
-    anyhow::ensure!(
-        call_count.load(Ordering::SeqCst) >= 1,
-        "expected the weather tool to be executed at least once"
-    );
-    assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");
-
-    Ok(())
+            Ok(())
+        },
+    )
+    .await
 }

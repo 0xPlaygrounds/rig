@@ -1,0 +1,399 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]}],"model":"gpt-5.2","max_output_tokens":4096,"stream":true,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true,"description":"Get the current weather for a city. Must be called for weather questions."}],"include":["reasoning.encrypted_content"],"reasoning":{"effort":"high"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:24 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '4000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '3999285'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 10ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_d97301591ede4ae39567b8b0fb4f9472
+  - name: openai-processing-ms
+    value: '200'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb4b3cc298626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |+
+    event: response.created
+    data: {"type":"response.created","response":{"id":"resp_0782d93d9bb388ae006a041e40a83c819da44b46a858609614","object":"response","created_at":1778654784,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.2-2025-12-11","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+    event: response.in_progress
+    data: {"type":"response.in_progress","response":{"id":"resp_0782d93d9bb388ae006a041e40a83c819da44b46a858609614","object":"response","created_at":1778654784,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.2-2025-12-11","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+    event: response.output_item.added
+    data: {"type":"response.output_item.added","item":{"id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","type":"function_call","status":"in_progress","arguments":"","call_id":"call_DzQRJ5U1WH1sEtWvZ9Hxo84H","name":"get_weather"},"output_index":0,"sequence_number":2}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"{\"","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"7BlwV17bYlK3LJ","output_index":0,"sequence_number":3}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"city","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"FfR1hl0h3gaT","output_index":0,"sequence_number":4}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"\":\"","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"3WNZvh2eXhNev","output_index":0,"sequence_number":5}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"Tokyo","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"9SlXSwk7ecU","output_index":0,"sequence_number":6}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":",","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"SfzgOL4AgDRF622","output_index":0,"sequence_number":7}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":" Japan","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"Rq6HLsoNid","output_index":0,"sequence_number":8}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"\"}","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","obfuscation":"jVp5XSQttA1zmd","output_index":0,"sequence_number":9}
+
+    event: response.function_call_arguments.done
+    data: {"type":"response.function_call_arguments.done","arguments":"{\"city\":\"Tokyo, Japan\"}","item_id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","output_index":0,"sequence_number":10}
+
+    event: response.output_item.done
+    data: {"type":"response.output_item.done","item":{"id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","type":"function_call","status":"completed","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_DzQRJ5U1WH1sEtWvZ9Hxo84H","name":"get_weather"},"output_index":0,"sequence_number":11}
+
+    event: response.completed
+    data: {"type":"response.completed","response":{"id":"resp_0782d93d9bb388ae006a041e40a83c819da44b46a858609614","object":"response","created_at":1778654784,"status":"completed","background":false,"completed_at":1778654785,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.2-2025-12-11","moderation":null,"output":[{"id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","type":"function_call","status":"completed","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_DzQRJ5U1WH1sEtWvZ9Hxo84H","name":"get_weather"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":148,"input_tokens_details":{"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":168},"user":null,"metadata":{}},"sequence_number":12}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"type":"function_call","id":"fc_0782d93d9bb388ae006a041e41402c819da7e72a7a747f372b","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_DzQRJ5U1WH1sEtWvZ9Hxo84H","name":"get_weather","status":"completed"},{"type":"function_call_output","call_id":"call_DzQRJ5U1WH1sEtWvZ9Hxo84H","output":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed"}],"model":"gpt-5.2","max_output_tokens":4096,"stream":true,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true,"description":"Get the current weather for a city. Must be called for weather questions."}],"include":["reasoning.encrypted_content"],"reasoning":{"effort":"high"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:25 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '4000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '3999227'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 11ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_cc4512fd2dd1491faf1254a138c802ed
+  - name: openai-processing-ms
+    value: '189'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb4b97fc58626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |+
+    event: response.created
+    data: {"type":"response.created","response":{"id":"resp_0782d93d9bb388ae006a041e41973c819dad15b5cc23ba0d26","object":"response","created_at":1778654785,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.2-2025-12-11","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+    event: response.in_progress
+    data: {"type":"response.in_progress","response":{"id":"resp_0782d93d9bb388ae006a041e41973c819dad15b5cc23ba0d26","object":"response","created_at":1778654785,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.2-2025-12-11","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+    event: response.output_item.added
+    data: {"type":"response.output_item.added","item":{"id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+
+    event: response.content_part.added
+    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"Tokyo","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"rqFgJbPePO6","output_index":0,"sequence_number":4}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"Uy2K2SmXPZmq9yy","output_index":0,"sequence_number":5}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Japan","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"ESGdNFIFXs","output_index":0,"sequence_number":6}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"0b8p7QVV5mKNm","output_index":0,"sequence_number":7}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" currently","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"ifnITL","output_index":0,"sequence_number":8}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"sLoIB8cd0eyun","output_index":0,"sequence_number":9}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"72","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"Jcgclo8isxUx13","output_index":0,"sequence_number":10}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"°F","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"nyjVzcWlZ4pOE1","output_index":0,"sequence_number":11}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" (","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"Gb4NojULlzkW9R","output_index":0,"sequence_number":12}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"22","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"snGU3GWCQd9zOl","output_index":0,"sequence_number":13}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"°C","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"itNG7wOzEFZY9E","output_index":0,"sequence_number":14}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":")**","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"PiBGQinzbfhFA","output_index":0,"sequence_number":15}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"DVmLipUiWjifpxo","output_index":0,"sequence_number":16}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"fyiYgb7cGP1aR","output_index":0,"sequence_number":17}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"sun","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"IsETEIAVCtrhC","output_index":0,"sequence_number":18}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"ny","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"dpwAWp12EJSW2i","output_index":0,"sequence_number":19}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" with","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"M5eKoLnBB4O","output_index":0,"sequence_number":20}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" light","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"We8DhkNbeE","output_index":0,"sequence_number":21}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" clouds","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"5lGkeFpyZ","output_index":0,"sequence_number":22}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"**,","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"mi7phq2WgatAr","output_index":0,"sequence_number":23}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"EQT64S4FyRlgv","output_index":0,"sequence_number":24}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"45","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"cOS9QlHLqAKCti","output_index":0,"sequence_number":25}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"%","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"JzLvTUh0duttBw3","output_index":0,"sequence_number":26}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" humidity","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"a7byWWv","output_index":0,"sequence_number":27}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"**,","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"WvGIp6jrWcbg0","output_index":0,"sequence_number":28}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" and","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"LL9s7YrVSHtE","output_index":0,"sequence_number":29}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"qo38Mj21K0e9d","output_index":0,"sequence_number":30}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"NW","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"saRycNQy7SEQUe","output_index":0,"sequence_number":31}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" wind","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"UE2uERWpuLL","output_index":0,"sequence_number":32}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" around","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"KRCCuOcjZ","output_index":0,"sequence_number":33}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"hKAAUp2SFlrrvUH","output_index":0,"sequence_number":34}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"8","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"Uiu8b2uTPIZkPmb","output_index":0,"sequence_number":35}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" mph","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"ZcyhfEdR5Qzw","output_index":0,"sequence_number":36}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"**","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"POf2mw9xUW427c","output_index":0,"sequence_number":37}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".\n\n","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"gGzQnktzZdrnI","output_index":0,"sequence_number":38}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"-","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"VpJn5HiezqOSTfd","output_index":0,"sequence_number":39}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"dlC0qKkItgEtF","output_index":0,"sequence_number":40}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"Pack","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"2VpEiZjjCP5e","output_index":0,"sequence_number":41}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" sunscreen","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"Ouuief","output_index":0,"sequence_number":42}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":":**","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"IwWNII2hPsLxh","output_index":0,"sequence_number":43}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Yes","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"WH22I10ty0Fl","output_index":0,"sequence_number":44}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" —","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"UZTTyxaqPVwvXx","output_index":0,"sequence_number":45}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" it","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"T4uC4rbqZQBB6","output_index":0,"sequence_number":46}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"’s","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"uucmB9ULel8WMs","output_index":0,"sequence_number":47}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" sunny","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"NwCduUyd32","output_index":0,"sequence_number":48}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"5wmdMO0r35pfKAu","output_index":0,"sequence_number":49}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" so","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"h75hQ2SzGvxfY","output_index":0,"sequence_number":50}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" sunscreen","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"97QRIf","output_index":0,"sequence_number":51}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"oiYCjuoBb9MkJ","output_index":0,"sequence_number":52}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" a","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"tOHtgUeJia8ruJ","output_index":0,"sequence_number":53}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" good","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"YBUEKp9rBHg","output_index":0,"sequence_number":54}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" idea","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"3m8rZBArXga","output_index":0,"sequence_number":55}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".\n","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"2aPgeRK4WHGTx0","output_index":0,"sequence_number":56}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"-","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"DpG2sYdKDMZOLKQ","output_index":0,"sequence_number":57}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"7sFnZZDKUP6UA","output_index":0,"sequence_number":58}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"Pack","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"SKsMXN72URge","output_index":0,"sequence_number":59}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" an","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"JegDfBjj73WOf","output_index":0,"sequence_number":60}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" umbrella","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"sn4k78N","output_index":0,"sequence_number":61}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":":**","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"NHt82IJcgb8uJ","output_index":0,"sequence_number":62}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Not","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"nz2o2RTJHpsF","output_index":0,"sequence_number":63}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" necessary","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"0elNYy","output_index":0,"sequence_number":64}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" based","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"1IPEvs8As5","output_index":0,"sequence_number":65}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" on","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"O99oBVFloCkhJ","output_index":0,"sequence_number":66}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"fU22V7Sv3zyM","output_index":0,"sequence_number":67}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" current","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"ho8q9aNI","output_index":0,"sequence_number":68}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" conditions","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"v2zqx","output_index":0,"sequence_number":69}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" (","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"33p209nV9GQ0lN","output_index":0,"sequence_number":70}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"no","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"EUD4bwhpy2QNPt","output_index":0,"sequence_number":71}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" rain","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"IALro17Bkm4","output_index":0,"sequence_number":72}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" indicated","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"pbj0Vs","output_index":0,"sequence_number":73}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":").","item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"obfuscation":"Jhy1pXa5c1Zd1H","output_index":0,"sequence_number":74}
+
+    event: response.output_text.done
+    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","logprobs":[],"output_index":0,"sequence_number":75,"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, and **NW wind around 8 mph**.\n\n- **Pack sunscreen:** Yes — it’s sunny, so sunscreen is a good idea.\n- **Pack an umbrella:** Not necessary based on the current conditions (no rain indicated)."}
+
+    event: response.content_part.done
+    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, and **NW wind around 8 mph**.\n\n- **Pack sunscreen:** Yes — it’s sunny, so sunscreen is a good idea.\n- **Pack an umbrella:** Not necessary based on the current conditions (no rain indicated)."},"sequence_number":76}
+
+    event: response.output_item.done
+    data: {"type":"response.output_item.done","item":{"id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, and **NW wind around 8 mph**.\n\n- **Pack sunscreen:** Yes — it’s sunny, so sunscreen is a good idea.\n- **Pack an umbrella:** Not necessary based on the current conditions (no rain indicated)."}],"role":"assistant"},"output_index":0,"sequence_number":77}
+
+    event: response.completed
+    data: {"type":"response.completed","response":{"id":"resp_0782d93d9bb388ae006a041e41973c819dad15b5cc23ba0d26","object":"response","created_at":1778654785,"status":"completed","background":false,"completed_at":1778654787,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"model":"gpt-5.2-2025-12-11","moderation":null,"output":[{"id":"msg_0782d93d9bb388ae006a041e420f68819d8ae8ba037a18c599","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, and **NW wind around 8 mph**.\n\n- **Pack sunscreen:** Yes — it’s sunny, so sunscreen is a good idea.\n- **Pack an umbrella:** Not necessary based on the current conditions (no rain indicated)."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":206,"input_tokens_details":{"cached_tokens":0},"output_tokens":75,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":281},"user":null,"metadata":{}},"sequence_number":78}
+

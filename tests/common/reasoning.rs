@@ -587,6 +587,15 @@ pub(crate) fn assert_chat_history_preserves_reasoning_tool_roundtrip(
     result: &str,
     provider: &str,
 ) {
+    assert_chat_history_preserves_tool_roundtrip(chat_history, result, provider, true);
+}
+
+pub(crate) fn assert_chat_history_preserves_tool_roundtrip(
+    chat_history: &[Message],
+    result: &str,
+    provider: &str,
+    require_reasoning: bool,
+) {
     assert!(
         chat_history.len() >= 4,
         "[{provider}] Chat history should contain at least user prompt, assistant tool call, tool result, and final assistant response. Got: {chat_history:#?}"
@@ -660,11 +669,13 @@ pub(crate) fn assert_chat_history_preserves_reasoning_tool_roundtrip(
     let prompt_index = prompt_index.unwrap_or_else(|| {
         panic!("[{provider}] Chat history is missing the original user prompt: {chat_history:#?}")
     });
-    let _reasoning_index = reasoning_index.unwrap_or_else(|| {
-        panic!(
-            "[{provider}] Chat history is missing assistant reasoning content: {chat_history:#?}"
-        )
-    });
+    if require_reasoning {
+        reasoning_index.unwrap_or_else(|| {
+            panic!(
+                "[{provider}] Chat history is missing assistant reasoning content: {chat_history:#?}"
+            )
+        });
+    }
     let tool_call_index = tool_call_index.unwrap_or_else(|| {
         panic!("[{provider}] Chat history is missing the get_weather tool call: {chat_history:#?}")
     });

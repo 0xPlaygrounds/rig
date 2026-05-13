@@ -1,0 +1,216 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a calculator. Use the provided tools before answering arithmetic questions."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Calculate 2 - 5."}]}],"model":"gpt-4o","stream":true,"tools":[{"type":"function","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true,"description":"Add x and y together"},{"type":"function","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true,"description":"Subtract y from x (i.e.: x - y)"}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:43 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_8a07a36c8f014b0eb883820ad006c61a
+  - name: openai-processing-ms
+    value: '123'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb52b9f838626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |+
+    event: response.created
+    data: {"type":"response.created","response":{"id":"resp_0d42132c1065583c006a041e53d6e8819eb45c4a47b224488d","object":"response","created_at":1778654803,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Add x and y together","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true},{"type":"function","description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+    event: response.in_progress
+    data: {"type":"response.in_progress","response":{"id":"resp_0d42132c1065583c006a041e53d6e8819eb45c4a47b224488d","object":"response","created_at":1778654803,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Add x and y together","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true},{"type":"function","description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+    event: response.output_item.added
+    data: {"type":"response.output_item.added","item":{"id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","type":"function_call","status":"in_progress","arguments":"","call_id":"call_efj1MP0W8EIj3B1KNC9RtLsq","name":"subtract"},"output_index":0,"sequence_number":2}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"{\"","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"OcfGqvGgl5uHBv","output_index":0,"sequence_number":3}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"x","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"7YVDFkjHOWb1KfA","output_index":0,"sequence_number":4}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"\":","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"dw4wiR7Ash9axR","output_index":0,"sequence_number":5}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"2","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"9afDfFMAyBviXJ8","output_index":0,"sequence_number":6}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":",\"","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"GL9JoycayppVDG","output_index":0,"sequence_number":7}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"y","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"KAShHNDv471aGV0","output_index":0,"sequence_number":8}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"\":","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"ZyT577TB2Ldaze","output_index":0,"sequence_number":9}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"5","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"HXa4UzAIkT6bfXU","output_index":0,"sequence_number":10}
+
+    event: response.function_call_arguments.delta
+    data: {"type":"response.function_call_arguments.delta","delta":"}","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","obfuscation":"ZhW6YSQ0DRzXuow","output_index":0,"sequence_number":11}
+
+    event: response.function_call_arguments.done
+    data: {"type":"response.function_call_arguments.done","arguments":"{\"x\":2,\"y\":5}","item_id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","output_index":0,"sequence_number":12}
+
+    event: response.output_item.done
+    data: {"type":"response.output_item.done","item":{"id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","type":"function_call","status":"completed","arguments":"{\"x\":2,\"y\":5}","call_id":"call_efj1MP0W8EIj3B1KNC9RtLsq","name":"subtract"},"output_index":0,"sequence_number":13}
+
+    event: response.completed
+    data: {"type":"response.completed","response":{"id":"resp_0d42132c1065583c006a041e53d6e8819eb45c4a47b224488d","object":"response","created_at":1778654803,"status":"completed","background":false,"completed_at":1778654804,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","type":"function_call","status":"completed","arguments":"{\"x\":2,\"y\":5}","call_id":"call_efj1MP0W8EIj3B1KNC9RtLsq","name":"subtract"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Add x and y together","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true},{"type":"function","description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":120,"input_tokens_details":{"cached_tokens":0},"output_tokens":18,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":138},"user":null,"metadata":{}},"sequence_number":14}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a calculator. Use the provided tools before answering arithmetic questions."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Calculate 2 - 5."}]},{"type":"function_call","id":"fc_0d42132c1065583c006a041e545978819eaf809364266351fe","arguments":"{\"x\":2,\"y\":5}","call_id":"call_efj1MP0W8EIj3B1KNC9RtLsq","name":"subtract","status":"completed"},{"type":"function_call_output","call_id":"call_efj1MP0W8EIj3B1KNC9RtLsq","output":"-3","status":"completed"}],"model":"gpt-4o","stream":true,"tools":[{"type":"function","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true,"description":"Add x and y together"},{"type":"function","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true,"description":"Subtract y from x (i.e.: x - y)"}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:44 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_8221828c135444cdbcb47df7572b1428
+  - name: openai-processing-ms
+    value: '148'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb530d99c8626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |+
+    event: response.created
+    data: {"type":"response.created","response":{"id":"resp_0d42132c1065583c006a041e54ad64819e96f60e4ebac45491","object":"response","created_at":1778654804,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Add x and y together","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true},{"type":"function","description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+    event: response.in_progress
+    data: {"type":"response.in_progress","response":{"id":"resp_0d42132c1065583c006a041e54ad64819e96f60e4ebac45491","object":"response","created_at":1778654804,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Add x and y together","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true},{"type":"function","description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+    event: response.output_item.added
+    data: {"type":"response.output_item.added","item":{"id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+
+    event: response.content_part.added
+    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"h8noNbX5d8n3Z","output_index":0,"sequence_number":4}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" result","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"Cg73NKHCc","output_index":0,"sequence_number":5}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"FDHNChtvOSJXG","output_index":0,"sequence_number":6}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" \\(","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"x8qGWPHevqqYt","output_index":0,"sequence_number":7}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"2","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"HZCjYGqs4r2y6xa","output_index":0,"sequence_number":8}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" -","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"a3MSbN1GitDJmm","output_index":0,"sequence_number":9}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"8VAA40JVeuCoztd","output_index":0,"sequence_number":10}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"5","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"EjXLQkTRaLVG1cw","output_index":0,"sequence_number":11}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"\\","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"RUhtm1QQXuRVDoV","output_index":0,"sequence_number":12}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":")","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"C5p6GaKiDGrFMZo","output_index":0,"sequence_number":13}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"0nWtcsMO0oQIK","output_index":0,"sequence_number":14}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" \\","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"vvZnO8y49RQz83","output_index":0,"sequence_number":15}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"(-","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"1MouRR14GApG7S","output_index":0,"sequence_number":16}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"3","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"GDPSyONsi0lL57P","output_index":0,"sequence_number":17}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"\\","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"uPk3Kjz5QSQVDkK","output_index":0,"sequence_number":18}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":").","item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"obfuscation":"a7YS8MDRfeOmi4","output_index":0,"sequence_number":19}
+
+    event: response.output_text.done
+    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","logprobs":[],"output_index":0,"sequence_number":20,"text":"The result of \\(2 - 5\\) is \\(-3\\)."}
+
+    event: response.content_part.done
+    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The result of \\(2 - 5\\) is \\(-3\\)."},"sequence_number":21}
+
+    event: response.output_item.done
+    data: {"type":"response.output_item.done","item":{"id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The result of \\(2 - 5\\) is \\(-3\\)."}],"role":"assistant"},"output_index":0,"sequence_number":22}
+
+    event: response.completed
+    data: {"type":"response.completed","response":{"id":"resp_0d42132c1065583c006a041e54ad64819e96f60e4ebac45491","object":"response","created_at":1778654804,"status":"completed","background":false,"completed_at":1778654805,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"msg_0d42132c1065583c006a041e553770819eb06290f6cc94c037","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The result of \\(2 - 5\\) is \\(-3\\)."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Add x and y together","name":"add","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"],"additionalProperties":false},"strict":true},{"type":"function","description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":147,"input_tokens_details":{"cached_tokens":0},"output_tokens":18,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":165},"user":null,"metadata":{}},"sequence_number":23}
+

@@ -1,0 +1,867 @@
+when:
+  path: /v1/models
+  method: GET
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:45:00 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '17439'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: openai-version
+    value: 2020-10-01
+  - name: x-request-id
+    value: 5d6cdfba-57eb-45c9-b670-00444ec5f4c6
+  - name: openai-processing-ms
+    value: '478'
+  - name: x-openai-proxy-wasm
+    value: v0.1
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb2a17b012b61-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "object": "list",
+      "data": [
+        {
+          "id": "text-embedding-ada-002",
+          "object": "model",
+          "created": 1671217299,
+          "owned_by": "openai-internal"
+        },
+        {
+          "id": "whisper-1",
+          "object": "model",
+          "created": 1677532384,
+          "owned_by": "openai-internal"
+        },
+        {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": 1677610602,
+          "owned_by": "openai"
+        },
+        {
+          "id": "tts-1",
+          "object": "model",
+          "created": 1681940951,
+          "owned_by": "openai-internal"
+        },
+        {
+          "id": "gpt-3.5-turbo-16k",
+          "object": "model",
+          "created": 1683758102,
+          "owned_by": "openai-internal"
+        },
+        {
+          "id": "gpt-4-0613",
+          "object": "model",
+          "created": 1686588896,
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": 1687882411,
+          "owned_by": "openai"
+        },
+        {
+          "id": "davinci-002",
+          "object": "model",
+          "created": 1692634301,
+          "owned_by": "system"
+        },
+        {
+          "id": "babbage-002",
+          "object": "model",
+          "created": 1692634615,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-3.5-turbo-instruct",
+          "object": "model",
+          "created": 1692901427,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-3.5-turbo-instruct-0914",
+          "object": "model",
+          "created": 1694122472,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-3.5-turbo-1106",
+          "object": "model",
+          "created": 1698959748,
+          "owned_by": "system"
+        },
+        {
+          "id": "tts-1-hd",
+          "object": "model",
+          "created": 1699046015,
+          "owned_by": "system"
+        },
+        {
+          "id": "tts-1-1106",
+          "object": "model",
+          "created": 1699053241,
+          "owned_by": "system"
+        },
+        {
+          "id": "tts-1-hd-1106",
+          "object": "model",
+          "created": 1699053533,
+          "owned_by": "system"
+        },
+        {
+          "id": "text-embedding-3-small",
+          "object": "model",
+          "created": 1705948997,
+          "owned_by": "system"
+        },
+        {
+          "id": "text-embedding-3-large",
+          "object": "model",
+          "created": 1705953180,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-3.5-turbo-0125",
+          "object": "model",
+          "created": 1706048358,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4-turbo",
+          "object": "model",
+          "created": 1712361441,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4-turbo-2024-04-09",
+          "object": "model",
+          "created": 1712601677,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o",
+          "object": "model",
+          "created": 1715367049,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-2024-05-13",
+          "object": "model",
+          "created": 1715368132,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-2024-07-18",
+          "object": "model",
+          "created": 1721172717,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini",
+          "object": "model",
+          "created": 1721172741,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-2024-08-06",
+          "object": "model",
+          "created": 1722814719,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-audio-preview",
+          "object": "model",
+          "created": 1727460443,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-realtime-preview",
+          "object": "model",
+          "created": 1727659998,
+          "owned_by": "system"
+        },
+        {
+          "id": "omni-moderation-latest",
+          "object": "model",
+          "created": 1731689265,
+          "owned_by": "system"
+        },
+        {
+          "id": "omni-moderation-2024-09-26",
+          "object": "model",
+          "created": 1732734466,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-realtime-preview-2024-12-17",
+          "object": "model",
+          "created": 1733945430,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-audio-preview-2024-12-17",
+          "object": "model",
+          "created": 1734034239,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-realtime-preview-2024-12-17",
+          "object": "model",
+          "created": 1734112601,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-audio-preview-2024-12-17",
+          "object": "model",
+          "created": 1734115920,
+          "owned_by": "system"
+        },
+        {
+          "id": "o1-2024-12-17",
+          "object": "model",
+          "created": 1734326976,
+          "owned_by": "system"
+        },
+        {
+          "id": "o1",
+          "object": "model",
+          "created": 1734375816,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-realtime-preview",
+          "object": "model",
+          "created": 1734387380,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-audio-preview",
+          "object": "model",
+          "created": 1734387424,
+          "owned_by": "system"
+        },
+        {
+          "id": "computer-use-preview",
+          "object": "model",
+          "created": 1734655677,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-mini",
+          "object": "model",
+          "created": 1737146383,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-mini-2025-01-31",
+          "object": "model",
+          "created": 1738010200,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-2024-11-20",
+          "object": "model",
+          "created": 1739331543,
+          "owned_by": "system"
+        },
+        {
+          "id": "computer-use-preview-2025-03-11",
+          "object": "model",
+          "created": 1741377021,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-search-preview-2025-03-11",
+          "object": "model",
+          "created": 1741390858,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-search-preview",
+          "object": "model",
+          "created": 1741391161,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-transcribe",
+          "object": "model",
+          "created": 1742068463,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-transcribe",
+          "object": "model",
+          "created": 1742068596,
+          "owned_by": "system"
+        },
+        {
+          "id": "o1-pro-2025-03-19",
+          "object": "model",
+          "created": 1742251504,
+          "owned_by": "system"
+        },
+        {
+          "id": "o1-pro",
+          "object": "model",
+          "created": 1742251791,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-tts",
+          "object": "model",
+          "created": 1742403959,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-2025-04-16",
+          "object": "model",
+          "created": 1744133301,
+          "owned_by": "system"
+        },
+        {
+          "id": "o4-mini-2025-04-16",
+          "object": "model",
+          "created": 1744133506,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3",
+          "object": "model",
+          "created": 1744225308,
+          "owned_by": "system"
+        },
+        {
+          "id": "o4-mini",
+          "object": "model",
+          "created": 1744225351,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4.1-2025-04-14",
+          "object": "model",
+          "created": 1744315746,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4.1",
+          "object": "model",
+          "created": 1744316542,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4.1-mini-2025-04-14",
+          "object": "model",
+          "created": 1744317547,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4.1-mini",
+          "object": "model",
+          "created": 1744318173,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4.1-nano-2025-04-14",
+          "object": "model",
+          "created": 1744321025,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4.1-nano",
+          "object": "model",
+          "created": 1744321707,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-image-1",
+          "object": "model",
+          "created": 1745517030,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-pro",
+          "object": "model",
+          "created": 1748475349,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-realtime-preview-2025-06-03",
+          "object": "model",
+          "created": 1748907838,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-audio-preview-2025-06-03",
+          "object": "model",
+          "created": 1748908498,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-pro-2025-06-10",
+          "object": "model",
+          "created": 1749166761,
+          "owned_by": "system"
+        },
+        {
+          "id": "o4-mini-deep-research",
+          "object": "model",
+          "created": 1749685485,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-deep-research",
+          "object": "model",
+          "created": 1749840121,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-transcribe-diarize",
+          "object": "model",
+          "created": 1750798887,
+          "owned_by": "system"
+        },
+        {
+          "id": "o3-deep-research-2025-06-26",
+          "object": "model",
+          "created": 1750865219,
+          "owned_by": "system"
+        },
+        {
+          "id": "o4-mini-deep-research-2025-06-26",
+          "object": "model",
+          "created": 1750866121,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-chat-latest",
+          "object": "model",
+          "created": 1754073306,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-2025-08-07",
+          "object": "model",
+          "created": 1754075360,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5",
+          "object": "model",
+          "created": 1754425777,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-mini-2025-08-07",
+          "object": "model",
+          "created": 1754425867,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-mini",
+          "object": "model",
+          "created": 1754425928,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-nano-2025-08-07",
+          "object": "model",
+          "created": 1754426303,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-nano",
+          "object": "model",
+          "created": 1754426384,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-audio-2025-08-28",
+          "object": "model",
+          "created": 1756256146,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime",
+          "object": "model",
+          "created": 1756271701,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-2025-08-28",
+          "object": "model",
+          "created": 1756271773,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-audio",
+          "object": "model",
+          "created": 1756339249,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-codex",
+          "object": "model",
+          "created": 1757527818,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-image-1-mini",
+          "object": "model",
+          "created": 1758845821,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-pro-2025-10-06",
+          "object": "model",
+          "created": 1759469707,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-pro",
+          "object": "model",
+          "created": 1759469822,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-audio-mini",
+          "object": "model",
+          "created": 1759512027,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-audio-mini-2025-10-06",
+          "object": "model",
+          "created": 1759512137,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-search-api",
+          "object": "model",
+          "created": 1759514629,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-mini",
+          "object": "model",
+          "created": 1759517133,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-mini-2025-10-06",
+          "object": "model",
+          "created": 1759517175,
+          "owned_by": "system"
+        },
+        {
+          "id": "sora-2",
+          "object": "model",
+          "created": 1759708615,
+          "owned_by": "system"
+        },
+        {
+          "id": "sora-2-pro",
+          "object": "model",
+          "created": 1759708663,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5-search-api-2025-10-14",
+          "object": "model",
+          "created": 1760043960,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.1-chat-latest",
+          "object": "model",
+          "created": 1762547951,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.1-2025-11-13",
+          "object": "model",
+          "created": 1762800353,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.1",
+          "object": "model",
+          "created": 1762800673,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.1-codex",
+          "object": "model",
+          "created": 1762988221,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.1-codex-mini",
+          "object": "model",
+          "created": 1763007109,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.1-codex-max",
+          "object": "model",
+          "created": 1763671532,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-image-1.5",
+          "object": "model",
+          "created": 1764030620,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.2-2025-12-11",
+          "object": "model",
+          "created": 1765313028,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.2",
+          "object": "model",
+          "created": 1765313051,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.2-pro-2025-12-11",
+          "object": "model",
+          "created": 1765343959,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.2-pro",
+          "object": "model",
+          "created": 1765343983,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.2-chat-latest",
+          "object": "model",
+          "created": 1765344352,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-transcribe-2025-12-15",
+          "object": "model",
+          "created": 1765610407,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-transcribe-2025-03-20",
+          "object": "model",
+          "created": 1765610545,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-tts-2025-03-20",
+          "object": "model",
+          "created": 1765610731,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-mini-tts-2025-12-15",
+          "object": "model",
+          "created": 1765610837,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-mini-2025-12-15",
+          "object": "model",
+          "created": 1765612007,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-audio-mini-2025-12-15",
+          "object": "model",
+          "created": 1765760008,
+          "owned_by": "system"
+        },
+        {
+          "id": "chatgpt-image-latest",
+          "object": "model",
+          "created": 1765925279,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.2-codex",
+          "object": "model",
+          "created": 1766164985,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.3-codex",
+          "object": "model",
+          "created": 1770537915,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-1.5",
+          "object": "model",
+          "created": 1771461469,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-audio-1.5",
+          "object": "model",
+          "created": 1771550885,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-search-preview",
+          "object": "model",
+          "created": 1771905534,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-4o-search-preview-2025-03-11",
+          "object": "model",
+          "created": 1771905621,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.3-chat-latest",
+          "object": "model",
+          "created": 1772236571,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-2026-03-05",
+          "object": "model",
+          "created": 1772654062,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-pro",
+          "object": "model",
+          "created": 1772659601,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-pro-2026-03-05",
+          "object": "model",
+          "created": 1772659657,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4",
+          "object": "model",
+          "created": 1772691852,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-nano-2026-03-17",
+          "object": "model",
+          "created": 1773450837,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-nano",
+          "object": "model",
+          "created": 1773450870,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-mini-2026-03-17",
+          "object": "model",
+          "created": 1773451076,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "object": "model",
+          "created": 1773451123,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-image-2",
+          "object": "model",
+          "created": 1776399795,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-image-2-2026-04-21",
+          "object": "model",
+          "created": 1776399994,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.5",
+          "object": "model",
+          "created": 1776824847,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.5-2026-04-23",
+          "object": "model",
+          "created": 1776839241,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.5-pro",
+          "object": "model",
+          "created": 1776894349,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-5.5-pro-2026-04-23",
+          "object": "model",
+          "created": 1776894470,
+          "owned_by": "system"
+        },
+        {
+          "id": "chat-latest",
+          "object": "model",
+          "created": 1777704602,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-translate",
+          "object": "model",
+          "created": 1777950216,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-2",
+          "object": "model",
+          "created": 1778006032,
+          "owned_by": "system"
+        },
+        {
+          "id": "gpt-realtime-whisper",
+          "object": "model",
+          "created": 1778012060,
+          "owned_by": "system"
+        }
+      ]
+    }

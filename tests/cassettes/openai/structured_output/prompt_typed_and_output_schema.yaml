@@ -1,0 +1,539 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful weather assistant. Respond with realistic weather data."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"What''s the weather forecast for New York City today?"}]}],"model":"gpt-4o","text":{"format":{"type":"json_schema","name":"WeatherForecast","schema":{"type":"object","properties":{"city":{"type":"string"},"current":{"$ref":"#/$defs/Conditions"}},"required":["city","current"],"title":"WeatherForecast","$schema":"https://json-schema.org/draft/2020-12/schema","$defs":{"Conditions":{"type":"object","properties":{"temperature_f":{"type":"number","format":"double"},"humidity_pct":{"type":"integer","format":"uint8","minimum":0,"maximum":255},"description":{"type":"string"}},"required":["temperature_f","humidity_pct","description"],"additionalProperties":false}},"additionalProperties":false},"strict":true}}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:47 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2845'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999872'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 3ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_e0fcda560a644d338f984baca57a4752
+  - name: openai-processing-ms
+    value: '1639'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb5368c928626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_02246fc6a2e7d0bd006a041e55b4c8819d898fdb433a086f79",
+      "object": "response",
+      "created_at": 1778654805,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654807,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-2024-08-06",
+      "moderation": null,
+      "output": [
+        {
+          "id": "msg_02246fc6a2e7d0bd006a041e56709c819d9ce564ad84f12d26",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "{\"city\":\"New York City\",\"current\":{\"temperature_f\":68.0,\"humidity_pct\":55,\"description\":\"Partly cloudy with a light breeze\"}}"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "json_schema",
+          "description": null,
+          "name": "WeatherForecast",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "current": {
+                "$ref": "#/$defs/Conditions"
+              }
+            },
+            "required": [
+              "city",
+              "current"
+            ],
+            "title": "WeatherForecast",
+            "$defs": {
+              "Conditions": {
+                "type": "object",
+                "properties": {
+                  "temperature_f": {
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "humidity_pct": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "temperature_f",
+                  "humidity_pct",
+                  "description"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "strict": true
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 109,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 141
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful weather assistant. Respond with realistic weather data."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"What''s the weather forecast for Los Angeles?"}]}],"model":"gpt-4o","text":{"format":{"type":"json_schema","name":"WeatherForecast","schema":{"type":"object","properties":{"city":{"type":"string"},"current":{"$ref":"#/$defs/Conditions"}},"required":["city","current"],"title":"WeatherForecast","$schema":"https://json-schema.org/draft/2020-12/schema","$defs":{"Conditions":{"type":"object","properties":{"temperature_f":{"type":"number","format":"double"},"humidity_pct":{"type":"integer","format":"uint8","minimum":0,"maximum":255},"description":{"type":"string"}},"required":["temperature_f","humidity_pct","description"],"additionalProperties":false}},"additionalProperties":false},"strict":true}}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:48 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2821'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999874'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 3ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_bea1542aadc94ba49a1f33386c8afde9
+  - name: openai-processing-ms
+    value: '1326'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb541db388626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_06f7ffe4c5e1c54c006a041e5763cc819eb7b75047ecbd1ca6",
+      "object": "response",
+      "created_at": 1778654807,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654808,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-2024-08-06",
+      "moderation": null,
+      "output": [
+        {
+          "id": "msg_06f7ffe4c5e1c54c006a041e585690819e862a30af27b784d2",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "{\"city\":\"Los Angeles\",\"current\":{\"temperature_f\":75,\"humidity_pct\":60,\"description\":\"Partly cloudy\"}}"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "json_schema",
+          "description": null,
+          "name": "WeatherForecast",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "current": {
+                "$ref": "#/$defs/Conditions"
+              }
+            },
+            "required": [
+              "city",
+              "current"
+            ],
+            "title": "WeatherForecast",
+            "$defs": {
+              "Conditions": {
+                "type": "object",
+                "properties": {
+                  "temperature_f": {
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "humidity_pct": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "temperature_f",
+                  "humidity_pct",
+                  "description"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "strict": true
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 107,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 132
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful weather assistant. Respond with realistic weather data."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"What''s the weather forecast for Chicago?"}]}],"model":"gpt-4o","text":{"format":{"type":"json_schema","name":"WeatherForecast","schema":{"type":"object","properties":{"city":{"type":"string"},"current":{"$ref":"#/$defs/Conditions"}},"required":["city","current"],"title":"WeatherForecast","$schema":"https://json-schema.org/draft/2020-12/schema","$defs":{"Conditions":{"type":"object","properties":{"temperature_f":{"type":"number","format":"double"},"humidity_pct":{"type":"integer","format":"uint8","minimum":0,"maximum":255},"description":{"type":"string"}},"required":["temperature_f","humidity_pct","description"],"additionalProperties":false}},"additionalProperties":false},"strict":true}}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:51 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2839'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999875'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 3ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_dd92ff21bd7644b79acd104668994d28
+  - name: openai-processing-ms
+    value: '2399'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb54acd658626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0b1c7d3249434213006a041e58d0e881a086d62732afec84f5",
+      "object": "response",
+      "created_at": 1778654808,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654811,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-2024-08-06",
+      "moderation": null,
+      "output": [
+        {
+          "id": "msg_0b1c7d3249434213006a041e5a9c8c81a09610a7b9dad72900",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "{\"city\":\"Chicago\",\"current\":{\"temperature_f\":58.0,\"humidity_pct\":65,\"description\":\"Partly cloudy with a light breeze\"}}"
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "json_schema",
+          "description": null,
+          "name": "WeatherForecast",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "current": {
+                "$ref": "#/$defs/Conditions"
+              }
+            },
+            "required": [
+              "city",
+              "current"
+            ],
+            "title": "WeatherForecast",
+            "$defs": {
+              "Conditions": {
+                "type": "object",
+                "properties": {
+                  "temperature_f": {
+                    "type": "number",
+                    "format": "double"
+                  },
+                  "humidity_pct": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "temperature_f",
+                  "humidity_pct",
+                  "description"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "strict": true
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 106,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 136
+      },
+      "user": null,
+      "metadata": {}
+    }

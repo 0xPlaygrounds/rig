@@ -1,0 +1,335 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Bob Johnson is a 55 year old retired teacher."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Person","type":"object","properties":{"name":{"type":["string","null"]},"age":{"type":["integer","null"],"format":"uint8","minimum":0,"maximum":255},"profession":{"type":["string","null"]}},"additionalProperties":false,"required":["name","age","profession"]},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:44:49 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2408'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999612'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_5283a697845e474d9af25cbfa2aa36f9
+  - name: openai-processing-ms
+    value: '1477'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb2599d8c2b61-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0c03b466f88130dc006a041de0551081929b7907fd6ae95eb8",
+      "object": "response",
+      "created_at": 1778654688,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654689,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_0c03b466f88130dc006a041de15bfc819285f3dad0305a987e",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+          "call_id": "call_0QZdiV50BFHoFyJBPSVWJb31",
+          "name": "submit"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "required",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Submit the structured data you extracted from the provided text.",
+          "name": "submit",
+          "parameters": {
+            "title": "Person",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "age": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "profession": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "age",
+              "profession"
+            ]
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 171,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 17,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 188
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Bob Johnson is a 55 year old retired teacher."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Person","type":"object","properties":{"name":{"type":["string","null"]},"age":{"type":["integer","null"],"format":"uint8","minimum":0,"maximum":255},"profession":{"type":["string","null"]}},"additionalProperties":false,"required":["name","age","profession"]},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:44:51 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2408'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999612'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_888ba23fc76e4c28bf4c8f684fb51372
+  - name: openai-processing-ms
+    value: '1957'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb263c84e2b61-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_030ba091f05ca9e7006a041de1f774819f9e6fe7146adaf2b9",
+      "object": "response",
+      "created_at": 1778654689,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654691,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_030ba091f05ca9e7006a041de38514819fa30cbcd92c6275c3",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+          "call_id": "call_IvNyVUu5ydU17grHWmGqV2Nk",
+          "name": "submit"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "required",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Submit the structured data you extracted from the provided text.",
+          "name": "submit",
+          "parameters": {
+            "title": "Person",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "age": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "profession": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "age",
+              "profession"
+            ]
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 171,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 17,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 188
+      },
+      "user": null,
+      "metadata": {}
+    }

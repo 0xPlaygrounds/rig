@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rig::agent::{HookAction, PromptHook, ToolCallHookAction, stream_to_stdout};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt, ToolDefinition};
 use rig::providers;
 use rig::streaming::StreamingPrompt;
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use super::super::support::with_openai_cassette_result;
 use crate::support::assert_nonempty_response;
 
 const TEST_FILE: &str = "test.txt";
@@ -147,82 +148,94 @@ impl<M: CompletionModel> PromptHook<M> for PermissionHook {
 }
 
 #[tokio::test]
-#[ignore = "This requires an API key"]
 async fn permission_control_prompt_example() -> Result<()> {
-    let _cleanup = FileCleanup::new()?;
+    with_openai_cassette_result(
+        "permission_control/permission_control_prompt_example",
+        |client| async move {
+            let _cleanup = FileCleanup::new()?;
 
-    let agent = providers::openai::Client::from_env()
-        .expect("client should build")
-        .agent(providers::openai::GPT_4O_MINI)
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+            let agent = client
+                .agent(providers::openai::GPT_4O_MINI)
+                .preamble(
+                    "You are a helpful assistant that can read files using different methods.",
+                )
+                .tool(ReadFileHead)
+                .tool(ReadFileTail)
+                .build();
 
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let last_result = Arc::new(Mutex::new(None));
-    let hook = PermissionHook {
-        call_count: call_count.clone(),
-        last_result: last_result.clone(),
-    };
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let last_result = Arc::new(Mutex::new(None));
+            let hook = PermissionHook {
+                call_count: call_count.clone(),
+                last_result: last_result.clone(),
+            };
 
-    let _response = agent
-        .prompt(
-            "Use the available tools to read test.txt now. \
-             Do not ask any follow-up questions; just read the file and report its content.",
-        )
-        .max_turns(5)
-        .with_hook(hook)
-        .await?;
+            let _response = agent
+                .prompt(
+                    "Use the available tools to read test.txt now. \
+                 Do not ask any follow-up questions; just read the file and report its content.",
+                )
+                .max_turns(5)
+                .with_hook(hook)
+                .await?;
 
-    let last = last_result.lock().expect("lock last_result").clone();
-    anyhow::ensure!(last.as_deref() == Some("hello world"));
-    anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
-    Ok(())
+            let last = last_result.lock().expect("lock last_result").clone();
+            anyhow::ensure!(last.as_deref() == Some("hello world"));
+            anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
+            Ok(())
+        },
+    )
+    .await
 }
 
 #[tokio::test]
-#[ignore = "This requires an API key"]
 async fn permission_control_streaming_example() -> Result<()> {
-    let _cleanup = FileCleanup::new()?;
+    with_openai_cassette_result(
+        "permission_control/permission_control_streaming_example",
+        |client| async move {
+            let _cleanup = FileCleanup::new()?;
 
-    let agent = providers::openai::Client::from_env()
-        .expect("client should build")
-        .agent(providers::openai::GPT_4O_MINI)
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+            let agent = client
+                .agent(providers::openai::GPT_4O_MINI)
+                .preamble(
+                    "You are a helpful assistant that can read files using different methods.",
+                )
+                .tool(ReadFileHead)
+                .tool(ReadFileTail)
+                .build();
 
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let last_result = Arc::new(Mutex::new(None));
-    let hook = PermissionHook {
-        call_count: call_count.clone(),
-        last_result: last_result.clone(),
-    };
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let last_result = Arc::new(Mutex::new(None));
+            let hook = PermissionHook {
+                call_count: call_count.clone(),
+                last_result: last_result.clone(),
+            };
 
-    let mut stream = agent
-        .stream_prompt(
-            "Use the available tools to read test.txt now. \
-             Do not ask any follow-up questions; just read the file and report its content.",
-        )
-        .multi_turn(5)
-        .with_hook(hook)
-        .await;
+            let mut stream = agent
+                .stream_prompt(
+                    "Use the available tools to read test.txt now. \
+                 Do not ask any follow-up questions; just read the file and report its content.",
+                )
+                .multi_turn(5)
+                .with_hook(hook)
+                .await;
 
-    let final_response = stream_to_stdout(&mut stream).await?;
-    let last = last_result.lock().expect("lock last_result").clone();
-    assert_nonempty_response(final_response.response());
-    anyhow::ensure!(
-        final_response
-            .response()
-            .to_ascii_lowercase()
-            .contains("hello world"),
-        "expected the streamed final response to mention the file content, got {:?}",
-        final_response.response()
-    );
-    anyhow::ensure!(last.as_deref() == Some("hello world"));
-    anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
+            let final_response = stream_to_stdout(&mut stream).await?;
+            let last = last_result.lock().expect("lock last_result").clone();
+            assert_nonempty_response(final_response.response());
+            anyhow::ensure!(
+                final_response
+                    .response()
+                    .to_ascii_lowercase()
+                    .contains("hello world"),
+                "expected the streamed final response to mention the file content, got {:?}",
+                final_response.response()
+            );
+            anyhow::ensure!(last.as_deref() == Some("hello world"));
+            anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
 
-    Ok(())
+            Ok(())
+        },
+    )
+    .await
 }

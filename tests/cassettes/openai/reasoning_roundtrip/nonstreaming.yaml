@@ -1,0 +1,279 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful math tutor. Be concise."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}]}],"model":"gpt-5.2","include":["reasoning.encrypted_content"],"reasoning":{"effort":"medium"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:45:19 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '4342'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '4000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '3999736'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 3ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_4529f6ee4d154694aafc8c82c8ca0c97
+  - name: openai-processing-ms
+    value: '9425'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb2dea8368626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0018f02b02eca4aa006a041df59c1c81a1b7c7ff1f9fc9cd83",
+      "object": "response",
+      "created_at": 1778654709,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654718,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-5.2-2025-12-11",
+      "moderation": null,
+      "output": [
+        {
+          "id": "rs_0018f02b02eca4aa006a041df5ff0081a1a903222a956a1a01",
+          "type": "reasoning",
+          "encrypted_content": "gAAAAABqBB3_L2B749e5sEin9ozVUPL5vc7mDzFqqtUC1uk7vcDCJOwVRtEajC77guQh0evyPmAKCWFdCEOE1BzS4UjemC6tyQ2nuGxmxabuyeB03IWW3_wHjoXJYC10nws2doLOtNsyxO9IhjWdyj_XgjolebMo3nUDb_xYBPAlK1QUXhzRoiAdpVLb7A0-aYmlx8rhwPtoLlReQPwhIxRIBL0-Eu-pHL40r9F9nKl6c_KCnDZ9ZAj-2UWOetbhijC5yoXndggUU7AYWnsst2I7pkyxsMsDVi4MgFQSlEm5S0H3FpjXNSTzls9KovOYkORI-iZDuxCAVTvhDqoA_D5pTB7Vxwlr3u4RQ6vL6ymkTvE0Zu5PjGVjBJNOKli9AVILBf1FNW3Jn-qII8t96yMj6f5SUkraCR6zUgOLOieYkSDys1nD-LSjljqEGGJ0TLweW_qci4qqkxMEcHPAK4cE-dJZCRH0rgFPWEKY-21KVGReqAeBog7gGWvQhiwM95lTofbunQve8frQiTRphfRZ8GR57q3kvBEx8S8kDLbCPtY6zq9toCduQCWWhmYF657FHXF9mdZoYqdO3uir5oGfoL7HZSkILw_z8t1rrYZKFKnUr6lPtmtxtHwNEg-hVfHB88k0zLlP54NmMsYutLBwOdIsGoFQuEvYhQSDq_M9K46pFdmfn7DC0ZfFlfWJCYiA13UeMWCqJ_HQ-S4L-fgOl4AwqrfP9qOSbTH5lXsrxjbvHuigROm-zIO-sTFIsfnke9Wcow35nAXTKlrSztrZJ_nioG6XLBgJMZ6cSrLg22nEk07ZJfyH4ucrGhWiVj_q44n2NSc8jTRI_XY9b0nA9Y0dnsTZXOyMaDEo1wvMiTz7PvWI8bbSuIi6JsaPQyP0KDRLk1VDXyh2JMnNIrxnniICHp3PB00LAMRsaZ2lOwIHsvZ6ALmogmB__izJVGuGOFn5m8hJMzRiqSFlF9FSnEt9xVmr0p9REblhPhXSksMD5qNA1mVJjjN0pUQgTYDVQjjaWXiDu5zlfC9WtT-bd_DmHjjBs0W4jru8QhARZn217ZqnZwFukOrSgWPkc8JpP1H9xUAC5AYwmjbmpuQuvrrbZzKVyO_7MU-mDC8jzLbTMSiMnZAWhF5GQi1wOVeWnqykDB4DSfpY76VWJC5EKxi0wH_Yh5b2EGH1MnMrvEymkNszDDlAFP7PTkRZ-RJ2lTEi4Xn6w2tqNVXYy3ylu4MJs7qbInGjpBQi1m_gwnLT3i8F9H20OhqY3gMVpeHIHUkXtLkjoVKllKkTNz59jqYBojhyI-WChr96A_nXe8qQZbrdZtCrNFGNW-dFybG4sqst-kdgLl1z_mOqVO_sMsy9Ufx12EAfvPrVWxuUjRSCBlMqnBEZnkSDJXUy1YgFfuyN3bDlOhFrSFMbEcBjTAkSUMOJ2P0aGiOTijT1HmZ47CUfPAk7bzBAnVR1MxpfeMEyGm7SR4cJqwNw6H8Kgxs0O4TIHw==",
+          "summary": []
+        },
+        {
+          "id": "msg_0018f02b02eca4aa006a041df8d82c81a1bed5fbd6b18ca6a6",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "Let \\(t\\) = time (in hours) after Train 1 leaves Station A until they meet.\n\n- Train 1 speed: \\(60\\text{ km/h}\\)  \n  Distance from A after \\(t\\) hours: \\(\\;60t\\)\n\n- Train 2 leaves Station B **0.5 h later** at \\(90\\text{ km/h}\\)  \n  So it travels for \\((t-0.5)\\) hours.  \n  Distance from B after \\(t\\) hours (measured toward A): \\(\\;90(t-0.5)\\)\n\nThey start 300 km apart, so at the meeting point the distances add to 300:\n\n\\[\n60t + 90(t-0.5) = 300\n\\]\n\nSolve:\n\\[\n60t + 90t - 45 = 300\n\\]\n\\[\n150t = 345\n\\]\n\\[\nt = \\frac{345}{150} = 2.3 \\text{ h} = 2\\text{ h }18\\text{ min}\n\\]\n\n**Meeting time:**\n- \\(2\\) h \\(18\\) min after the train from A leaves.\n- Since the other train leaves 30 min later, that is \\(2\\text{ h }18\\text{ min} - 0\\text{ h }30\\text{ min} = 1\\text{ h }48\\text{ min}\\) after the train from B leaves.\n\n**Distance from Station A:**\n\\[\n60t = 60(2.3)=138\\text{ km}\n\\]\n\n**Answer:** They meet **2 h 18 min after Train 1 leaves Station A** (or **1 h 48 min after Train 2 leaves Station B**), at a point **138 km from Station A**."
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": "medium",
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 0.98,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 73,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 545,
+        "output_tokens_details": {
+          "reasoning_tokens": 151
+        },
+        "total_tokens": 618
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful math tutor. Be concise."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}]},{"type":"reasoning","id":"rs_0018f02b02eca4aa006a041df5ff0081a1a903222a956a1a01","summary":[],"encrypted_content":"gAAAAABqBB3_L2B749e5sEin9ozVUPL5vc7mDzFqqtUC1uk7vcDCJOwVRtEajC77guQh0evyPmAKCWFdCEOE1BzS4UjemC6tyQ2nuGxmxabuyeB03IWW3_wHjoXJYC10nws2doLOtNsyxO9IhjWdyj_XgjolebMo3nUDb_xYBPAlK1QUXhzRoiAdpVLb7A0-aYmlx8rhwPtoLlReQPwhIxRIBL0-Eu-pHL40r9F9nKl6c_KCnDZ9ZAj-2UWOetbhijC5yoXndggUU7AYWnsst2I7pkyxsMsDVi4MgFQSlEm5S0H3FpjXNSTzls9KovOYkORI-iZDuxCAVTvhDqoA_D5pTB7Vxwlr3u4RQ6vL6ymkTvE0Zu5PjGVjBJNOKli9AVILBf1FNW3Jn-qII8t96yMj6f5SUkraCR6zUgOLOieYkSDys1nD-LSjljqEGGJ0TLweW_qci4qqkxMEcHPAK4cE-dJZCRH0rgFPWEKY-21KVGReqAeBog7gGWvQhiwM95lTofbunQve8frQiTRphfRZ8GR57q3kvBEx8S8kDLbCPtY6zq9toCduQCWWhmYF657FHXF9mdZoYqdO3uir5oGfoL7HZSkILw_z8t1rrYZKFKnUr6lPtmtxtHwNEg-hVfHB88k0zLlP54NmMsYutLBwOdIsGoFQuEvYhQSDq_M9K46pFdmfn7DC0ZfFlfWJCYiA13UeMWCqJ_HQ-S4L-fgOl4AwqrfP9qOSbTH5lXsrxjbvHuigROm-zIO-sTFIsfnke9Wcow35nAXTKlrSztrZJ_nioG6XLBgJMZ6cSrLg22nEk07ZJfyH4ucrGhWiVj_q44n2NSc8jTRI_XY9b0nA9Y0dnsTZXOyMaDEo1wvMiTz7PvWI8bbSuIi6JsaPQyP0KDRLk1VDXyh2JMnNIrxnniICHp3PB00LAMRsaZ2lOwIHsvZ6ALmogmB__izJVGuGOFn5m8hJMzRiqSFlF9FSnEt9xVmr0p9REblhPhXSksMD5qNA1mVJjjN0pUQgTYDVQjjaWXiDu5zlfC9WtT-bd_DmHjjBs0W4jru8QhARZn217ZqnZwFukOrSgWPkc8JpP1H9xUAC5AYwmjbmpuQuvrrbZzKVyO_7MU-mDC8jzLbTMSiMnZAWhF5GQi1wOVeWnqykDB4DSfpY76VWJC5EKxi0wH_Yh5b2EGH1MnMrvEymkNszDDlAFP7PTkRZ-RJ2lTEi4Xn6w2tqNVXYy3ylu4MJs7qbInGjpBQi1m_gwnLT3i8F9H20OhqY3gMVpeHIHUkXtLkjoVKllKkTNz59jqYBojhyI-WChr96A_nXe8qQZbrdZtCrNFGNW-dFybG4sqst-kdgLl1z_mOqVO_sMsy9Ufx12EAfvPrVWxuUjRSCBlMqnBEZnkSDJXUy1YgFfuyN3bDlOhFrSFMbEcBjTAkSUMOJ2P0aGiOTijT1HmZ47CUfPAk7bzBAnVR1MxpfeMEyGm7SR4cJqwNw6H8Kgxs0O4TIHw=="},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Let \\(t\\) = time (in hours) after Train 1 leaves Station A until they meet.\n\n- Train 1 speed: \\(60\\text{ km/h}\\)  \n  Distance from A after \\(t\\) hours: \\(\\;60t\\)\n\n- Train 2 leaves Station B **0.5 h later** at \\(90\\text{ km/h}\\)  \n  So it travels for \\((t-0.5)\\) hours.  \n  Distance from B after \\(t\\) hours (measured toward A): \\(\\;90(t-0.5)\\)\n\nThey start 300 km apart, so at the meeting point the distances add to 300:\n\n\\[\n60t + 90(t-0.5) = 300\n\\]\n\nSolve:\n\\[\n60t + 90t - 45 = 300\n\\]\n\\[\n150t = 345\n\\]\n\\[\nt = \\frac{345}{150} = 2.3 \\text{ h} = 2\\text{ h }18\\text{ min}\n\\]\n\n**Meeting time:**\n- \\(2\\) h \\(18\\) min after the train from A leaves.\n- Since the other train leaves 30 min later, that is \\(2\\text{ h }18\\text{ min} - 0\\text{ h }30\\text{ min} = 1\\text{ h }48\\text{ min}\\) after the train from B leaves.\n\n**Distance from Station A:**\n\\[\n60t = 60(2.3)=138\\text{ km}\n\\]\n\n**Answer:** They meet **2 h 18 min after Train 1 leaves Station A** (or **1 h 48 min after Train 2 leaves Station B**), at a point **138 km from Station A**."}],"id":"msg_0018f02b02eca4aa006a041df8d82c81a1bed5fbd6b18ca6a6","status":"completed"},{"type":"message","role":"user","content":[{"type":"input_text","text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?"}]}],"model":"gpt-5.2","include":["reasoning.encrypted_content"],"reasoning":{"effort":"medium"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:45:41 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '7162'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '4000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '3998962'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 15ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_584a75958c1b4255ae8f20bcfda9b3a4
+  - name: openai-processing-ms
+    value: '22602'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb31ac9c48626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0018f02b02eca4aa006a041dff3e6081a1b649d455e3cef038",
+      "object": "response",
+      "created_at": 1778654719,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654741,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-5.2-2025-12-11",
+      "moderation": null,
+      "output": [
+        {
+          "id": "rs_0018f02b02eca4aa006a041dffff7c81a1a68ebb2542bcb591",
+          "type": "reasoning",
+          "encrypted_content": "gAAAAABqBB4V3eisymBIUxiGCrUluc7S4hW5x63VKhf5MhxNzJATmtrFMivKU9SiZLDW31MtANNcY_VoTPpTehoXNJw99dfOZ4a4-EUBtYaYGETFETYWpZ-STeW4t-ckoiskCBjZK1AJ5p76ZjUBvOhOpusnnqHgQvJMKrORW2DiVwfjr4gZJSijHlRCYDDQYM6OqPXY7ZZApJtB1cBwGd66V9ho1M4-4kO2QTyXVWY-r84ujGLGMM8UG8l7wQIjxFvoXJkNM19j2jZD0qoYnUnX_USQMP5RitmwRc8VYfB8k_I3uUFUY2tVU_HXRqoJwQ1bqePghhgLfLQsLuo0cDqndiyiZMhmHuzq2G9OKOPl53y8d7sv6rXMzswG8lLUH3RxZzmZ7ZOf8KAfQI-3uFjsEvVC1LrW-4K-kiCTIVZWrVz4I6W3Am5CPAk22WUYKQhGP1mjJJOKPTurJdeVrTATdLgn0_Iey7mhbsbXSlLcM2ytlmr6JIFQdyPk5FeJRDAmaXnJmHeODWUqhpR0XbhbBgP_0TQa6DfxQSxredtpD2GskhhPFANuaUOJZggwUgTtw3Vxe-MPA6j8MthcynJG82ZNmBiEy_xhMJpgATOcIR2ULmJJ88L4nCE7xow2DjQdT0c91jzi6XjlNrhHPoBby27-VT8f7cb5gSXL3b8bQC8jEDQU1VX77oMuZ16P8EkoVBl279ots4uWgFCXejAKzgFvQ723uvvpsEVSs4BHLjyYApAe3N9gYgiTvv6vVdmtqq4WWaAvQ-G-sNg_YZxDbvvqF5Mj1hza7FMaxGFXtYe4hFzGvntZdXtunHXHI-NpQZugbZ4L1eeVyDw4pXjPQt2mZRyk7d5NlQWqQa7VUQnqQTSFqWMMCoya2bofxcXmRXD04ucTLiVypIGOmSg49YObEL69OsiZBL1FJyHJVUGjLam4-z0njFJ8xFPnaFsGDXs1yW1fcIz7g1Jkw9CWTPZnaOYZPm9Lk7Z9nTI6Y_A4nvXIvEWFq-jKSf_3NQ1cGhilLXs-5z_yXmCuhenwrBQkWGXyVZVDG8tqcbc_ogk-P0-KDxdpG_V7YalEDH_PyE-fwLOXgqf8B8ocouR13FcWhc1wVArWZNKSdCuhhuJ_-03jL0dDdHK1cJgHCAOimA-laovyNe6fD4EVYrtHcT8qHZRNQLm7aD44_sZEaYt48gO4BEB75Ja-U2jaYoQyO4IRBCScEnNAhiYGXBM1e135ExTdbFitScjfmrlACIgJX6J_4J2fJAwwjemgX2RwyIuMYTh8E9R9yJWLhnyjR65NYj1YGMdbgMY2YWbf3139c352E8F0foORMA8XcoGmxssdwjR4jsFS5ztYRYNDrEKPWUCCIwamIIInoM-e7ISQbYM91mxF4UNoQLKfnPpaEmmCz_lkY_VD-O9t3pOlVmqIYL9pamCVSOTHWtbUWYr6y3de_4omD7umuiAyVWu5r66xsAgT49_eN1lalRt5PtLKUU_EDQDbKMwRtJZhFjr1qSpuo1BK2qwu9z1mN6_lNSreUfiYiJ0miPRyR5Y9HrYInjzfU3-6ILLSZ9GOokv3rtLxetEqEioQG3hQE53963IuPYtzGEDgjlvWX_2NNt_N39uzF4LxxIF06__HmNDtz2MlJdO6bctdKF_PjrOHGtBA8WWTmARRY5pNN9cI7qMSIUl_CWEbizgoEvHqFXIX4GgkRM8y5CEwkpm05XVkfanGH6Ho79zSe6Ab0cmne8bHDkC_b4cDpNWGTtXYGjuIscGTKtjeMEvidilDfOFZOOslnESmB-b3RqR5umHh1ZY4px4-U-H_m-Hkne5OFpIa8GOln_YEa8ht5-im5prAL32Ap1TrnIOyzDze-CGBgWeRwJLvb0GSTy49xklFZ6FpvKi54-i4cTv1vFNaqyUzRwrJjsQE-haeslomJ6ia-zPN5piLIrtKh7B6cKnXvDbGmnikR-HNSKv2_EkkR_2Zgu_FlaJQ3rIsGcV43hpUM0_ku3_CCZuSS6s6yRPqcuVWxKHcgDO1_U_z0bEhSlPrluGk9m1Vu8Y_qMZFoq8jQRxcVUKu0egKCSjXeemQICEbT7vmVz3dy_1bkXcBNa6aovqFPhUruBQ3LkmJWJ-BPCC8ndXiREouFuheLGB9R_9nQPgRIx8YFEjPIwE_zIIwtDp-wGd2zaKrsieCdVXkjWgyS382EE8iG9riO5McB0wNDPSOE86-k8YrdOLozSLSfjLhJ6jGRi-2eH4tvaezfRffzs2V8xWnXc-TVCIy7fddd-r6cYQ9sT5PIW3CvMKM5lSt_jRTLSIMYdZUDjkPuWgp3M2oxRcwQnzgnBvR6NiLsNH4kzV0OUGVhjSpoZ25WqFIpzTpmVeNJGrlOsdYs0MPeGVQpH9vBS56ms1GBnpVwi6nhZb1HEmtQIxJ5H-u-v5GEwVaDtNrgZr5xvu-Uos4SKyEEGlAJdJKh79Dp99IAfgFVjYKjRBjniwtObDxQ6f_zscJ9O7W039VwfkJblHuds3koIJV1H-PjpHBk_xGw86m5-WJPROjZD5jIS6cm7bsNDk7W2B8jBzshiZ3mAJW4mRtd5jdQ4ObturiauP0A2qJp3ahsblengtqlRBTUFNtis0_8xhLwu-j_GZxf5UzC1DpDgahZGMwCBXAZ2NQfjeHD6IPEljaTmZrbRTlCsJ64ujtF99x_sLz71wk5Plp9DuqYjkuqIZrdHw8wz0QWuqtItyf0DIk-r-8oIlWdfbV9OOJP-1nATzoqGZdiIvS2gxxYWPQoT3n7wFhpVDd_6GUQa4AINj8jSnwgZVsKc966PSsxJKaVZNIHrfC4gfV-AXQL7j-E-6fhsP5x9m2CbHX8J_L4Yj8xkaUHaBhefUZluob0SD3_p8Il1NcmJHNMgfPyOW1txS0uPdzazVJNldDMzVInZhuA9hKErZhU6nXk1GiZarNBTSYkPQSD67OgD85Ylhp6TM3BQYUpdEiXHX5XXyeuoM1_46ZwqPszr3-Z9L01BajRw_tHuJn4UnsXIVcv1TG2ucXhcXudTDk2uwX9u5lLqe-n_YuKwy1rEXNp38Re_6uA1eHfH8_y0SDBL-dwUbZsER4dZlC0pGQ8aTlJG-A6FUT7JHKDtS5y8Z0raUZWDmAV7TLitGD0aZJN0B2MTlJ7LhJPZ9DajkqKCi2rsjUOompA5e5ZllMDfhEbarHkgI-Jvu6tWDsBJ0Ceam3Hd3LNKVi0dqb1r30xlnS_i_vkSKBll3bKJc2VeI4fYMVUC9eNrm0BArJ_ZW8UqDR9_1kq45ixRvinONzfc_14Jgk98V1y_RcjpfKOs_Vax6pAdS_8rHnGm7sl2qE4jWAaASolFoe81mZErolWMG8Opq1GnQSIc6_Q7ronv48f4BlRhI4l--lnfY7II0a-uhjlFsMbYlVhk-kFXRfXNYXNhE-itllhyQ4K2RomU4xeGEYAmQso6vE4ytvyPk0nMUs9B98mRgiCLd_Q1qvGTWAScPwXvI24tznW4stF5fc5vOW5Txa2nkV2k58qMWajIa5LxQCQQPvp3VHHP92jGiiuGs_C82F43a6vlLpvYZWwR2JppTuzsWvQk6QzJHzb5mV8w==",
+          "summary": []
+        },
+        {
+          "id": "msg_0018f02b02eca4aa006a041e0bdf1c81a19e36adca2ef9c26e",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "Let \\(t\\) be hours after Train A leaves.\n\n**Speeds with slowdown**\n- Train A: \\(60\\) km/h until it has gone \\(150\\) km, then \\(50\\) km/h.  \n  Time to reach 150 km: \\(\\frac{150}{60}=2.5\\) h.\n- Train B (leaves at \\(t=0.5\\)): \\(90\\) km/h until it has gone \\(150\\) km, then \\(80\\) km/h.  \n  Time (after its own start) to reach 150 km: \\(\\frac{150}{90}=1.\\overline{6}\\) h, so it slows at\n  \\[\n  t=0.5+ \\frac{150}{90}=0.5+1.\\overline{6}=2.166\\overline{6}\\text{ h.}\n  \\]\n\n### 1) Separation when Train B starts\nAt \\(t=0.5\\), Train A has gone \\(60(0.5)=30\\) km, so remaining distance is\n\\[\n300-30=270\\text{ km.}\n\\]\n\n### 2) From \\(t=0.5\\) to \\(t=2.166\\overline{6}\\) (before B slows)\nDuration: \\(2.166\\overline{6}-0.5=1.\\overline{6}\\) h.\n\nClosing speed: \\(60+90=150\\) km/h, so distance closed is\n\\[\n150\\left(1.\\overline{6}\\right)=150\\cdot\\frac{5}{3}=250\\text{ km.}\n\\]\nRemaining separation at \\(t=2.166\\overline{6}\\):\n\\[\n270-250=20\\text{ km.}\n\\]\n\n### 3) After \\(t=2.166\\overline{6}\\) (B slowed, A not yet)\nAt this time, A has only gone \\(30 + 60\\left(1.\\overline{6}\\right)=30+100=130\\) km, so A has **not** reached 150 km yet (it won\u2019t slow until \\(t=2.5\\) h).\n\nSo for the remaining 20 km:\n- A speed \\(=60\\)\n- B speed \\(=80\\)\n- Closing speed \\(=60+80=140\\) km/h\n\nTime to meet:\n\\[\n\\Delta t=\\frac{20}{140}=\\frac{1}{7}\\text{ h }=0.142857\\text{ h }=8.571\\text{ min}\n\\]\nSo meeting time (after A leaves):\n\\[\nt=2.166\\overline{6}+\\frac{1}{7}=2.309523\\text{ h } \\approx 2\\text{ h }18\\text{ min }34\\text{ s.}\n\\]\n\n**They meet \\(\\boxed{2\\text{ h }18\\text{ min }34\\text{ s}}\\) after Train A leaves** (equivalently \\(\\boxed{1\\text{ h }48\\text{ min }34\\text{ s}}\\) after Train B leaves)."
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": "medium",
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 0.98,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 495,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 1319,
+        "output_tokens_details": {
+          "reasoning_tokens": 625
+        },
+        "total_tokens": 1814
+      },
+      "user": null,
+      "metadata": {}
+    }

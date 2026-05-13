@@ -1,0 +1,339 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Alice is a 25 year old developer."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Person","type":"object","properties":{"name":{"type":["string","null"]},"age":{"type":["integer","null"],"format":"uint8","minimum":0,"maximum":255},"profession":{"type":["string","null"]}},"additionalProperties":false,"required":["name","age","profession"]},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:44:58 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2396'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999614'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_e1b23d0a075b46bbb0afb7451d6274cb
+  - name: openai-processing-ms
+    value: '944'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb294dfa72b61-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_056ae320ce646ecd006a041de9c8e08197b60eccdcaa0a0ac2",
+      "object": "response",
+      "created_at": 1778654697,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654698,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_056ae320ce646ecd006a041dea42a88197815bcc6bd1d554bf",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+          "call_id": "call_jzCt9wN7xqG3GJak3eHV107d",
+          "name": "submit"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "required",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Submit the structured data you extracted from the provided text.",
+          "name": "submit",
+          "parameters": {
+            "title": "Person",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "age": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "profession": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "age",
+              "profession"
+            ]
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 169,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 14,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 183
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"456 Oak Avenue, Cambridge, MA 02139"}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Address","type":"object","properties":{"street":{"type":["string","null"]},"city":{"type":["string","null"]},"state":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"additionalProperties":false,"required":["street","city","state","zip_code"]},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:44:59 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2481'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999620'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_ef05cc785cad44268a2d30a27c609559
+  - name: openai-processing-ms
+    value: '892'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb29b3d1e2b61-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_08e337cc0d244db3006a041dead42081949e6b351f9f665191",
+      "object": "response",
+      "created_at": 1778654698,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654699,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_08e337cc0d244db3006a041deb3aec819482c802a14abc7fb8",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
+          "call_id": "call_GTGaPzmQp0dHxyYdcUJWcUSz",
+          "name": "submit"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "required",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Submit the structured data you extracted from the provided text.",
+          "name": "submit",
+          "parameters": {
+            "title": "Address",
+            "type": "object",
+            "properties": {
+              "street": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "city": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "zip_code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "street",
+              "city",
+              "state",
+              "zip_code"
+            ]
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 163,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 23,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 186
+      },
+      "user": null,
+      "metadata": {}
+    }

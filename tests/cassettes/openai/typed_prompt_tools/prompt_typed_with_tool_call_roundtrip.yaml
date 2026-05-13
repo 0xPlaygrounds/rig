@@ -1,0 +1,209 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result."}]},{"role":"user","content":"Hello, whats the weather in London?"}],"tools":[{"type":"function","function":{"name":"weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:53 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '365'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999925'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: x-request-id
+    value: req_6edc3f336ca3406ca24928dfcf530ea7
+  - name: x-openai-proxy-wasm
+    value: v0.1
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb562ffb98626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |
+    {
+      "id": "chatcmpl-DexemkwC1nr4RvpeoE53K1m7AIEJ2",
+      "object": "chat.completion",
+      "created": 1778654812,
+      "model": "gpt-4o-2024-08-06",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [
+              {
+                "id": "call_5Ay01JbzIbYsH3RpOsIgWJmK",
+                "type": "function",
+                "function": {
+                  "name": "weather",
+                  "arguments": "{\"city\":\"London\"}"
+                }
+              }
+            ],
+            "refusal": null,
+            "annotations": []
+          },
+          "logprobs": null,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 101,
+        "completion_tokens": 13,
+        "total_tokens": 114,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "service_tier": "default",
+      "system_fingerprint": "fp_8aed6409fd"
+    }
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result."}]},{"role":"user","content":"Hello, whats the weather in London?"},{"role":"assistant","tool_calls":[{"id":"call_5Ay01JbzIbYsH3RpOsIgWJmK","type":"function","function":{"name":"weather","arguments":"{\"city\":\"London\"}"}}]},{"role":"tool","tool_call_id":"call_5Ay01JbzIbYsH3RpOsIgWJmK","content":"The weather in London is all fire and brimstone"}],"tools":[{"type":"function","function":{"name":"weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],"response_format":{"type":"json_schema","json_schema":{"name":"WeatherResponse","strict":true,"schema":{"type":"object","properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false}}}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:53 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '543'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999911'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: x-request-id
+    value: req_64c69a9bda88450295ae9468790f6bca
+  - name: x-openai-proxy-wasm
+    value: v0.1
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb5665ece8626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |
+    {
+      "id": "chatcmpl-Dexen1hcByuV29oQRNznMT2XtVSJA",
+      "object": "chat.completion",
+      "created": 1778654813,
+      "model": "gpt-4o-2024-08-06",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}",
+            "refusal": null,
+            "annotations": []
+          },
+          "logprobs": null,
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 166,
+        "completion_tokens": 23,
+        "total_tokens": 189,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "service_tier": "default",
+      "system_fingerprint": "fp_8aed6409fd"
+    }

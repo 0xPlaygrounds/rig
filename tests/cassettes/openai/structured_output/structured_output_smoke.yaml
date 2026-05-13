@@ -1,46 +1,157 @@
 when:
-  method: POST
   path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Return a concise event object for a local Rust meetup in Seattle."}]}],"model":"gpt-4o","text":{"format":{"type":"json_schema","name":"SmokeStructuredOutput","schema":{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false},"strict":true}}}'
 then:
   status: 200
   header:
-    - name: content-type
-      value: application/json
+  - name: date
+    value: Wed, 13 May 2026 06:46:52 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2417'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '2000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '1999917'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_042505f645824ca09f13f069877e7990
+  - name: openai-processing-ms
+    value: '1144'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb55adf998626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_rig_cassette_structured_output_smoke",
+      "id": "resp_04eccadf349fffb2006a041e5b62108193aef45b4e1f0078fc",
       "object": "response",
-      "created_at": 1760000000,
+      "created_at": 1778654811,
       "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654812,
       "error": null,
+      "frequency_penalty": 0.0,
       "incomplete_details": null,
       "instructions": null,
       "max_output_tokens": null,
-      "model": "gpt-4o",
-      "usage": {
-        "input_tokens": 60,
-        "input_tokens_details": {
-          "cached_tokens": 0
-        },
-        "output_tokens": 24,
-        "output_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "total_tokens": 84
-      },
+      "max_tool_calls": null,
+      "model": "gpt-4o-2024-08-06",
+      "moderation": null,
       "output": [
         {
+          "id": "msg_04eccadf349fffb2006a041e5bd3e881938003592560bded72",
           "type": "message",
-          "id": "msg_rig_cassette_structured_output_smoke",
-          "role": "assistant",
           "status": "completed",
           "content": [
             {
               "type": "output_text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"technology\",\"summary\":\"A local meetup for Rust developers focused on practical systems programming topics.\"}"
+              "annotations": [],
+              "logprobs": [],
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Event\",\"summary\":\"Join fellow Rustaceans in Seattle for an evening of learning and networking. Whether you're a seasoned developer or just starting, come and explore the latest in Rust programming with presentations, discussions, and hands-on sessions.\"}"
             }
-          ]
+          ],
+          "role": "assistant"
         }
       ],
-      "tools": []
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "json_schema",
+          "description": null,
+          "name": "SmokeStructuredOutput",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "category",
+              "summary"
+            ],
+            "title": "SmokeStructuredOutput",
+            "additionalProperties": false
+          },
+          "strict": true
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 64,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 58,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 122
+      },
+      "user": null,
+      "metadata": {}
     }

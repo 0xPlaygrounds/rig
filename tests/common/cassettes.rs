@@ -1,8 +1,8 @@
 //! Cassette-backed provider test helpers.
 //!
 //! Provider cassette tests run in replay mode by default. Set
-//! `RIG_PROVIDER_TEST_MODE=record` or `RIG_PROVIDER_TEST_MODE=refresh` to hit
-//! the real provider and write cassette fixtures.
+//! `RIG_PROVIDER_TEST_MODE=record` to hit the real provider and write cassette
+//! fixtures. Record mode overwrites existing cassette files.
 #![allow(dead_code)]
 
 use httpmock::MockServer;
@@ -18,24 +18,20 @@ const DUMMY_API_KEY: &str = "rig-test-redacted";
 pub(crate) enum CassetteMode {
     Replay,
     Record,
-    Refresh,
 }
 
 impl CassetteMode {
     fn current() -> Self {
         match std::env::var(MODE_ENV) {
             Ok(value) if value.eq_ignore_ascii_case("record") => Self::Record,
-            Ok(value) if value.eq_ignore_ascii_case("refresh") => Self::Refresh,
             Ok(value) if value.eq_ignore_ascii_case("replay") => Self::Replay,
-            Ok(value) => {
-                panic!("{MODE_ENV} must be one of replay, record, or refresh; got {value:?}")
-            }
+            Ok(value) => panic!("{MODE_ENV} must be replay or record; got {value:?}"),
             Err(_) => Self::Replay,
         }
     }
 
     fn records(self) -> bool {
-        matches!(self, Self::Record | Self::Refresh)
+        matches!(self, Self::Record)
     }
 }
 
@@ -68,13 +64,6 @@ impl ProviderCassette {
         let server = MockServer::start_async().await;
 
         let recording_id = if mode.records() {
-            if mode == CassetteMode::Record && cassette_path.exists() {
-                panic!(
-                    "cassette already exists at {}; use {MODE_ENV}=refresh to replace it",
-                    cassette_path.display()
-                );
-            }
-
             server
                 .forward_to_async(&upstream.origin, |rule| {
                     rule.filter(|when| {
@@ -206,11 +195,20 @@ fn sanitize_path_segment(segment: &str) -> String {
 
 fn redact_secrets(yaml: &str) -> String {
     let mut redacted = Vec::new();
+    let mut redact_next_value = false;
 
     for line in yaml.lines() {
         let trimmed = line.trim_start();
         let lower = trimmed.to_ascii_lowercase();
-        let line = if lower.starts_with("authorization:")
+        let is_sensitive_header_name = lower.starts_with("- name: set-cookie")
+            || lower.starts_with("- name: openai-organization")
+            || lower.starts_with("- name: openai-project");
+
+        let line = if redact_next_value && lower.starts_with("value:") {
+            redact_next_value = false;
+            let indentation_len = line.len() - trimmed.len();
+            format!("{}value: '{}'", &line[..indentation_len], REDACTED)
+        } else if lower.starts_with("authorization:")
             || lower.starts_with("x-api-key:")
             || lower.starts_with("api-key:")
             || lower.starts_with("x-goog-api-key:")
@@ -227,6 +225,9 @@ fn redact_secrets(yaml: &str) -> String {
                 REDACTED
             )
         } else {
+            if is_sensitive_header_name {
+                redact_next_value = true;
+            }
             redact_query_api_key(line)
         };
 

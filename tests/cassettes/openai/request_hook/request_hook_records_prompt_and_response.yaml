@@ -6,16 +6,16 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a concise assistant. Answer directly."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"In one or two sentences, explain what Rust programming language is and why memory safety matters."}]}],"model":"gpt-4o"}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a comedian here to entertain the user using humour and jokes."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Entertain me!"}]}],"model":"gpt-4o"}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:32 GMT
+    value: Wed, 13 May 2026 06:46:28 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '1859'
+    value: '1807'
   - name: connection
     value: keep-alive
   - name: server
@@ -27,7 +27,7 @@ then:
   - name: x-ratelimit-remaining-requests
     value: '9999'
   - name: x-ratelimit-remaining-tokens
-    value: '1999943'
+    value: '1999952'
   - name: x-ratelimit-reset-requests
     value: 6ms
   - name: x-ratelimit-reset-tokens
@@ -39,9 +39,9 @@ then:
   - name: openai-project
     value: '[REDACTED]'
   - name: x-request-id
-    value: req_660a98e69a7644969f95e9a19ee34bce
+    value: req_9aa6ca1359a64d4fa76ac629d7252934
   - name: openai-processing-ms
-    value: '1237'
+    value: '1313'
   - name: access-control-expose-headers
     value: X-Request-ID
   - name: access-control-expose-headers
@@ -55,20 +55,20 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: cf-ray
-    value: 9fafb1eb1d6e2b61-LAX
+    value: 9fafb4c5ae988626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_00e3fd2d34c447c5006a041dcf55dc81948d65d088911a6944",
+      "id": "resp_013fcb2d78a3641d006a041e4384d8819f8e8d1223b9c2e62e",
       "object": "response",
-      "created_at": 1778654671,
+      "created_at": 1778654787,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654672,
+      "completed_at": 1778654788,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,7 +79,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_00e3fd2d34c447c5006a041dd0148c8194b2ccafc409b7d157",
+          "id": "msg_013fcb2d78a3641d006a041e444060819f8d07404033b9523e",
           "type": "message",
           "status": "completed",
           "content": [
@@ -87,7 +87,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Rust is a systems programming language focused on safety and performance, particularly emphasizing memory safety without needing a garbage collector. Memory safety is crucial to prevent bugs and vulnerabilities like buffer overflows and data races, ensuring robustness and security in software applications."
+              "text": "Why did the scarecrow win an award? Because he was outstanding in his field!\n\nIf you need more, I've got jokes for days \u2013 well, until tomorrow at least. How about this: I told my computer I needed a break, and now it won't stop sending me Kit Kats!"
             }
           ],
           "role": "assistant"
@@ -118,15 +118,15 @@ then:
       "top_p": 1.0,
       "truncation": "disabled",
       "usage": {
-        "input_tokens": 38,
+        "input_tokens": 29,
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 48,
+        "output_tokens": 59,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 86
+        "total_tokens": 88
       },
       "user": null,
       "metadata": {}

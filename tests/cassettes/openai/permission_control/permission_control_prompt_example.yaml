@@ -1,0 +1,319 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful assistant that can read files using different methods."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content."}]}],"model":"gpt-4o-mini","tools":[{"type":"function","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the first line of test.txt using the head command"},{"type":"function","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the last line of test.txt using the tail command"}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:45:04 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2368'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999680'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 1ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_57f46d0b04024aae89aaa495aecb4f8b
+  - name: openai-processing-ms
+    value: '1709'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb2b329048626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0a4cb18c1030d282006a041deea3f0819da06af044320d7b15",
+      "object": "response",
+      "created_at": 1778654702,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654704,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_0a4cb18c1030d282006a041df02714819d9692edcd25767651",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{}",
+          "call_id": "call_QzeQHENVFKibXmNHDArXHa2r",
+          "name": "read_file_head"
+        },
+        {
+          "id": "fc_0a4cb18c1030d282006a041df02728819db7f61dec166bfdbe",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{}",
+          "call_id": "call_PSuDAbjDkEfOe8R9lLP4a8yf",
+          "name": "read_file_tail"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Read the first line of test.txt using the head command",
+          "name": "read_file_head",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "required": []
+          },
+          "strict": true
+        },
+        {
+          "type": "function",
+          "description": "Read the last line of test.txt using the tail command",
+          "name": "read_file_tail",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "required": []
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 103,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 42,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 145
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful assistant that can read files using different methods."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content."}]},{"type":"function_call","id":"fc_0a4cb18c1030d282006a041df02714819d9692edcd25767651","arguments":"{}","call_id":"call_QzeQHENVFKibXmNHDArXHa2r","name":"read_file_head","status":"completed"},{"type":"function_call","id":"fc_0a4cb18c1030d282006a041df02728819db7f61dec166bfdbe","arguments":"{}","call_id":"call_PSuDAbjDkEfOe8R9lLP4a8yf","name":"read_file_tail","status":"completed"},{"type":"function_call_output","call_id":"call_QzeQHENVFKibXmNHDArXHa2r","output":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","status":"completed"},{"type":"function_call_output","call_id":"call_PSuDAbjDkEfOe8R9lLP4a8yf","output":"hello world","status":"completed"}],"model":"gpt-4o-mini","tools":[{"type":"function","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the first line of test.txt using the head command"},{"type":"function","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the last line of test.txt using the tail command"}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:45:06 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2249'
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999619'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_6f7241ba4c2e4dbeafabc9eb9242ba28
+  - name: openai-processing-ms
+    value: '1813'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb2bea8a28626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0a4cb18c1030d282006a041df07a14819d8c11b1e358524d1b",
+      "object": "response",
+      "created_at": 1778654704,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778654706,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "msg_0a4cb18c1030d282006a041df1e954819db131f4a8b36d29ac",
+          "type": "message",
+          "status": "completed",
+          "content": [
+            {
+              "type": "output_text",
+              "annotations": [],
+              "logprobs": [],
+              "text": "The last line of the file `test.txt` is: \"hello world\"."
+            }
+          ],
+          "role": "assistant"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Read the first line of test.txt using the head command",
+          "name": "read_file_head",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "required": []
+          },
+          "strict": true
+        },
+        {
+          "type": "function",
+          "description": "Read the last line of test.txt using the tail command",
+          "name": "read_file_tail",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+            "required": []
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 164,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 18,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 182
+      },
+      "user": null,
+      "metadata": {}
+    }

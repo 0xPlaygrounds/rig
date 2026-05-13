@@ -1,11 +1,12 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::{Prompt, TypedPrompt};
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::super::support::with_openai_cassette;
 use crate::cassettes::ProviderCassette;
 use crate::support::{
     STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assert_contains_any_case_insensitive,
@@ -70,38 +71,46 @@ async fn structured_output_smoke() {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENAI_API_KEY"]
 async fn prompt_typed_and_output_schema() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_4O)
-        .preamble("You are a helpful weather assistant. Respond with realistic weather data.")
-        .build();
+    with_openai_cassette(
+        "structured_output/prompt_typed_and_output_schema",
+        |client| async move {
+            let agent = client
+                .agent(openai::GPT_4O)
+                .preamble(
+                    "You are a helpful weather assistant. Respond with realistic weather data.",
+                )
+                .build();
 
-    let forecast: WeatherForecast = agent
-        .prompt_typed("What's the weather forecast for New York City today?")
-        .await
-        .expect("prompt_typed should succeed");
-    assert_weather_forecast(&forecast, &["new york", "nyc"]);
+            let forecast: WeatherForecast = agent
+                .prompt_typed("What's the weather forecast for New York City today?")
+                .await
+                .expect("prompt_typed should succeed");
+            assert_weather_forecast(&forecast, &["new york", "nyc"]);
 
-    let extended = agent
-        .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
-        .extended_details()
-        .await
-        .expect("extended prompt_typed should succeed");
-    assert_weather_forecast(&extended.output, &["los angeles", "la"]);
-    assert!(extended.usage.total_tokens > 0, "usage should be populated");
+            let extended = agent
+                .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
+                .extended_details()
+                .await
+                .expect("extended prompt_typed should succeed");
+            assert_weather_forecast(&extended.output, &["los angeles", "la"]);
+            assert!(extended.usage.total_tokens > 0, "usage should be populated");
 
-    let agent_with_schema = client
-        .agent(openai::GPT_4O)
-        .preamble("You are a helpful weather assistant. Respond with realistic weather data.")
-        .output_schema::<WeatherForecast>()
-        .build();
-    let response = agent_with_schema
-        .prompt("What's the weather forecast for Chicago?")
-        .await
-        .expect("output schema prompt should succeed");
-    let parsed: WeatherForecast =
-        serde_json::from_str(&response).expect("schema response should deserialize");
-    assert_weather_forecast(&parsed, &["chicago"]);
+            let agent_with_schema = client
+                .agent(openai::GPT_4O)
+                .preamble(
+                    "You are a helpful weather assistant. Respond with realistic weather data.",
+                )
+                .output_schema::<WeatherForecast>()
+                .build();
+            let response = agent_with_schema
+                .prompt("What's the weather forecast for Chicago?")
+                .await
+                .expect("output schema prompt should succeed");
+            let parsed: WeatherForecast =
+                serde_json::from_str(&response).expect("schema response should deserialize");
+            assert_weather_forecast(&parsed, &["chicago"]);
+        },
+    )
+    .await;
 }

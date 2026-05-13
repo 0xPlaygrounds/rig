@@ -1,0 +1,184 @@
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"Be precise and concise."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"When and where and what type is the next solar eclipse?"}]}],"model":"gpt-4o","stream":true,"temperature":0.5}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 06:46:29 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: server
+    value: cloudflare
+  - name: openai-version
+    value: 2020-10-01
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: x-request-id
+    value: req_2b78c31e070e4ceb963702f8b6da444f
+  - name: openai-processing-ms
+    value: '127'
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: cf-ray
+    value: 9fafb4ce78eb8626-LAX
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |+
+    event: response.created
+    data: {"type":"response.created","response":{"id":"resp_03f5bbb8a05999b2006a041e44f4ec8197b2918831a7245143","object":"response","created_at":1778654789,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+    event: response.in_progress
+    data: {"type":"response.in_progress","response":{"id":"resp_03f5bbb8a05999b2006a041e44f4ec8197b2918831a7245143","object":"response","created_at":1778654789,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+    event: response.output_item.added
+    data: {"type":"response.output_item.added","item":{"id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+
+    event: response.content_part.added
+    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"MfiSVz3AhmF1Q","output_index":0,"sequence_number":4}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" next","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"KvHJA2ScFAg","output_index":0,"sequence_number":5}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" solar","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"NmYlmVHriu","output_index":0,"sequence_number":6}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" eclipse","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"6fG9V9RS","output_index":0,"sequence_number":7}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"YD4RZGX3ElXBH","output_index":0,"sequence_number":8}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" an","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"K5lqy9l5c8a1I","output_index":0,"sequence_number":9}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ann","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"V0sA347cwu3Q","output_index":0,"sequence_number":10}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"ular","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"jouTdFFsOrxy","output_index":0,"sequence_number":11}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" eclipse","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"BUclWYGT","output_index":0,"sequence_number":12}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" on","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"IPJfgErqblwsh","output_index":0,"sequence_number":13}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" October","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"BgYjDE16","output_index":0,"sequence_number":14}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"Oar6FmVRJV8JcQm","output_index":0,"sequence_number":15}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"14","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"KSGLVmMuFRglmJ","output_index":0,"sequence_number":16}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"vvDBHkGr09ZMoRi","output_index":0,"sequence_number":17}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"fEuccOfSfhTufr8","output_index":0,"sequence_number":18}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"202","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"ECHg9BmwJseF7","output_index":0,"sequence_number":19}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"3","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"vARG5bBF6zDLOAe","output_index":0,"sequence_number":20}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"yTpn9cnqDR6RWNz","output_index":0,"sequence_number":21}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" It","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"3YNgjIwqivtDX","output_index":0,"sequence_number":22}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" will","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"6wJ16fZ9Dy9","output_index":0,"sequence_number":23}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" be","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"FBfP0vPhB3IXV","output_index":0,"sequence_number":24}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" visible","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"EIbvAQtJ","output_index":0,"sequence_number":25}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" across","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"pKY3aqDPi","output_index":0,"sequence_number":26}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" parts","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"1AgbfL8DKq","output_index":0,"sequence_number":27}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"0wQPvnPwn3W7A","output_index":0,"sequence_number":28}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"dcx2CetibB4e","output_index":0,"sequence_number":29}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Western","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"JUf3TTtC","output_index":0,"sequence_number":30}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" United","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"67Nwb3oud","output_index":0,"sequence_number":31}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" States","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"PWeMNzquF","output_index":0,"sequence_number":32}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"nQatwZrHAyAgRBx","output_index":0,"sequence_number":33}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Central","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"f6ZvBoMo","output_index":0,"sequence_number":34}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" America","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"35HuXaKr","output_index":0,"sequence_number":35}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"jHwt2qeQysHiXFK","output_index":0,"sequence_number":36}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" and","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"iBb1Jc1zoy13","output_index":0,"sequence_number":37}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" South","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"pvBbaVIjTy","output_index":0,"sequence_number":38}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" America","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"xQxBdMwp","output_index":0,"sequence_number":39}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"obfuscation":"t35pD91nutDhZOd","output_index":0,"sequence_number":40}
+
+    event: response.output_text.done
+    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","logprobs":[],"output_index":0,"sequence_number":41,"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."}
+
+    event: response.content_part.done
+    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."},"sequence_number":42}
+
+    event: response.output_item.done
+    data: {"type":"response.output_item.done","item":{"id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."}],"role":"assistant"},"output_index":0,"sequence_number":43}
+
+    event: response.completed
+    data: {"type":"response.completed","response":{"id":"resp_03f5bbb8a05999b2006a041e44f4ec8197b2918831a7245143","object":"response","created_at":1778654789,"status":"completed","background":false,"completed_at":1778654790,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"msg_03f5bbb8a05999b2006a041e462ac481979d5f80bcd1813926","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":28,"input_tokens_details":{"cached_tokens":0},"output_tokens":38,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":66},"user":null,"metadata":{}},"sequence_number":44}
+

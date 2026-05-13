@@ -6,16 +6,16 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello, my name is Ada Lovelace and I work as a mathematician."}]}],"model":"gpt-4o","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"SmokePerson","type":"object","properties":{"first_name":{"type":"string"},"last_name":{"type":"string"},"job":{"type":"string"}},"required":["first_name","last_name","job"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Jane Smith is a 45 year old data scientist."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Person","type":"object","properties":{"name":{"type":["string","null"]},"age":{"type":["integer","null"],"format":"uint8","minimum":0,"maximum":255},"profession":{"type":["string","null"]}},"additionalProperties":false,"required":["name","age","profession"]},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:48 GMT
+    value: Wed, 13 May 2026 06:44:57 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2181'
+    value: '2406'
   - name: connection
     value: keep-alive
   - name: server
@@ -23,15 +23,15 @@ then:
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
-    value: '2000000'
+    value: '10000000'
   - name: x-ratelimit-remaining-requests
     value: '9999'
   - name: x-ratelimit-remaining-tokens
-    value: '1999623'
+    value: '9999612'
   - name: x-ratelimit-reset-requests
     value: 6ms
   - name: x-ratelimit-reset-tokens
-    value: 11ms
+    value: 2ms
   - name: openai-version
     value: 2020-10-01
   - name: openai-organization
@@ -39,9 +39,9 @@ then:
   - name: openai-project
     value: '[REDACTED]'
   - name: x-request-id
-    value: req_d5a026328c184cf69ca11d9b44bf2cfd
+    value: req_8bfffc0ab9484c35a6d683bc53ad7c11
   - name: openai-processing-ms
-    value: '2380'
+    value: '1615'
   - name: access-control-expose-headers
     value: X-Request-ID
   - name: access-control-expose-headers
@@ -55,35 +55,35 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: cf-ray
-    value: 9fafb249ff532b61-LAX
+    value: 9fafb28a2a6e2b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_04bab0003d7c5ec1006a041dddd55881a089f98ef9613c649d",
+      "id": "resp_0431e0555af9cb76006a041de814d0819482e59ebe40aaceb8",
       "object": "response",
-      "created_at": 1778654685,
+      "created_at": 1778654696,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654687,
+      "completed_at": 1778654697,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
       "instructions": null,
       "max_output_tokens": null,
       "max_tool_calls": null,
-      "model": "gpt-4o-2024-08-06",
+      "model": "gpt-4o-mini-2024-07-18",
       "moderation": null,
       "output": [
         {
-          "id": "fc_04bab0003d7c5ec1006a041ddfcde081a0ab1c059568f54b3e",
+          "id": "fc_0431e0555af9cb76006a041de922388194b36d9ee7d03e4387",
           "type": "function_call",
           "status": "completed",
-          "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-          "call_id": "call_898MyvjeIpFVwZbbZjgKlwyL",
+          "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
+          "call_id": "call_6zMilx2fEKngk9WSYWVDb5vh",
           "name": "submit"
         }
       ],
@@ -113,25 +113,37 @@ then:
           "description": "Submit the structured data you extracted from the provided text.",
           "name": "submit",
           "parameters": {
-            "title": "SmokePerson",
+            "title": "Person",
             "type": "object",
             "properties": {
-              "first_name": {
-                "type": "string"
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
-              "last_name": {
-                "type": "string"
+              "age": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint8",
+                "minimum": 0,
+                "maximum": 255
               },
-              "job": {
-                "type": "string"
+              "profession": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
+            "additionalProperties": false,
             "required": [
-              "first_name",
-              "last_name",
-              "job"
-            ],
-            "additionalProperties": false
+              "name",
+              "age",
+              "profession"
+            ]
           },
           "strict": true
         }
@@ -140,15 +152,15 @@ then:
       "top_p": 1.0,
       "truncation": "disabled",
       "usage": {
-        "input_tokens": 160,
+        "input_tokens": 171,
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 21,
+        "output_tokens": 16,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 181
+        "total_tokens": 187
       },
       "user": null,
       "metadata": {}
