@@ -1,0 +1,84 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Hello, my name is Ada Lovelace and I work as a mathematician."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"submit","description":"Submit the structured data you extracted from the provided text.","parameters":{"type":"object","properties":{"last_name":{"type":"string"},"job":{"type":"string"},"first_name":{"type":"string"}},"required":["first_name","last_name","job"]}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:18 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=1063
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "functionCall": {
+                  "name": "submit",
+                  "args": {
+                    "last_name": "Lovelace",
+                    "job": "mathematician",
+                    "first_name": "Ada"
+                  }
+                },
+                "thoughtSignature": "Cs8CAQw51sfbEHh7cpMcLSE20SFw9VBq5OseyUHXEMlztOSOZ+2eiKYVBEfwu7NNHjjrou65Zo9PSWxXujYjPbusK+PzsQpjdXm2619SvMopg08dndMavHat1EfD5PfnJxaDrgXz7kJMN2j4LWQqT3vY0TWNHF3fd5i5vRpok6oqCjFIX5s5uNq1/ollKRB7mJ//bZaWVU1vuDc0+aWvqCT6x+ciYrKaUCvMurmq66lGY3JtqjJFlo2Vr9hxTDzm5Q1PuhI39uOjLiOJpZ5H/rPdwybZbCAh7L1OT2yp5nFFQmyj/jexekXwYHl2E6fEnEueB6NCnQ8BNILUdx+rVybaCmJrHCCnvxGCPz2DRvk4jJrzLlo9e4sdJwUt0GV835gMJm0J/FNaF5INmDhx1OhVXPKoqtsFRHH3PvL/9/4ZEGDH4uTJmZADuxJQSZIoxwE="
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0,
+          "finishMessage": "Model generated function call(s)."
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 168,
+        "candidatesTokenCount": 31,
+        "totalTokenCount": 281,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 168
+          }
+        ],
+        "thoughtsTokenCount": 82,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "7TwEavCWL9qfz7IPnYeN-Qw"
+    }

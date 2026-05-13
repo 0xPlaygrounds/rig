@@ -1,0 +1,75 @@
+when:
+  path: /v1beta/interactions
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Write a 3-line poem about rust and rivers."}]}],"stream":true,"generation_config":{"temperature":0.4}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:57:35 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2436
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: |+
+    event: interaction.start
+    data: {"interaction":{"id":"v1_ChdfVHdFYXZLY0Y3RFJ6N0lQdE1ySHlBcxIXX1R3RWF2S2NGN0RSejdJUHRNckh5QXM","status":"in_progress","object":"interaction","model":"gemini-3-flash-preview"},"event_type":"interaction.start"}
+
+    event: interaction.status_update
+    data: {"interaction_id":"v1_ChdfVHdFYXZLY0Y3RFJ6N0lQdE1ySHlBcxIXX1R3RWF2S2NGN0RSejdJUHRNckh5QXM","status":"in_progress","event_type":"interaction.status_update"}
+
+    event: content.start
+    data: {"index":0,"content":{"type":"thought"},"event_type":"content.start"}
+
+    event: content.delta
+    data: {"index":0,"delta":{"signature":"Eo8JCowJAQw51scwWIHa+XXatewppzM0e3J9GMS65RiC/VqOAjaIn80wF8vqM3bNlaPtoDsmLaEPu+mYgDdP5SqVjrx9UKPdDXNAbRzB1Zsvw6c8JwkjmzWKi4kQbE4SlIM3Q4MriPT8WkzcfxNlVt5Y20c0aWdeTQQEiNOtT41eUTSCWLRlqz4Hlc1boMpUuKBlx/X5kNP5Fd6jjqLAletN7elnQkpXFJQegMRty30jkZGyMa+v1mU/aZ0QeFU+IxZbhqfWHaLUU7b4MF9ccVgp+FIjtsuxlMuTcuSnEc8YaGjSHZmc0PZFC5SAB7y/6zErWEH+vzxZ961Wgz1QZB9E31xChJQatPyUrke9shkeYYsX/76LGk74E3ZaQuh13vo8E/5LCKa76WZzZh35M2rLvTApIfQyuhRUbWlqSUE3M9AxuW3AzcriipvMQ9bNZNaVeS2CSv3/iT6F72DCUnheF09SO9Sn9FcuIybuRf2ZcvwXEn66Kg9kFUlGFwc4QILiCkjiPkbz5PyicZqM5BGlUSxjkQh+tMTjB2Pail0XjwyDkZPDv2BQrvZH+dit7nEtb3wtYv1WhzeGzzBPnxESgvGfXE0AELOuSGhev2zWP1qo+doe9BH12i5/USXLZegvbdzqjXogQQbHS7iDzMZo8Nc3QxSBsSaYCrh7tQgvGWt9p6dnqzzpHI4EuEXomSoFv455aMWSgyoYdgiFXoQmI4PHQoDZBFty33V1VzYbmAWf8dbpReYeo9AU6nelYS/6WPDJXtHUqlNZtjpZ4zChGWwh59TiTFRZ51K9KneAHP32XA6FxN3Ao1DDXo7mEIVK8U4v/snzl5JL9cDNRUVq5rp8uTWXsgQeXM4eZifnVMNqcpZeNxRuPB9hVFrX4YCzpNUqn6/QOByFskWDFC5ZoLbNHgzDqH3Hoyww++bfKzD4l0MrHzVQ/64HPYUadIqwxPr8hcmB/vVYG7ANPLVg+45uB8v/sYMwFpQk6/ArtIFjS2cFdQ4U/SqjQo0Svjr/BFZ6ncTiklRIFcjCmZllH9dVjeutcxjuEsyHHYjkEOzuYjWZbz4HhPNNI7qubJaK66/8cARfOocsy5bASG8/8CB6MeRL3SGjPIK77gzU1eo5ZOs5oilQMlnb8ZWHgtlG+kl0Ot4GRQ3gxXKqO5s1yEwxMZ9Ei5dvGa60lxCkJpA7LKyKDumnHYZGPAf1eOaw9GLY1PjlBVP7KvcHjqz7V4YreDyF5wrhvH2U8m6e/24l0U4Y5AkcKYSXXlY5c8HvU+UNjTCd+P2NC1Z6MhBPPkmHdrIF5h+9M+xyfbrQC/baAYDiBnfRHv6KNwsuIANEDbUybc0UScd7V6Uz2kUxEUYngwW/r0BKQwwGHV0B+rWPazLzZSECyKGCRzs8VBF5RYUMaF3B4x0ABwyScWlJMxGATJaVTrQpraGGQOPLBHF87c0jBUlubd+3qLiV0MWGad12byRHUvinPwxqoEoodL3t79fwzYZOTHPeLH+lk33ND/cUvj1W2Q6MnrGpcNXvby4G3qs4fypUOfdEI7e7","type":"thought_signature"},"event_type":"content.delta"}
+
+    event: content.stop
+    data: {"index":0,"event_type":"content.stop"}
+
+    event: content.start
+    data: {"index":1,"content":{"type":"text"},"event_type":"content.start"}
+
+    event: content.delta
+    data: {"index":1,"delta":{"text":"Red dust flakes from the iron bridge,\nFalling soft into the rushing blue,","type":"text"},"event_type":"content.delta"}
+
+    event: content.delta
+    data: {"index":1,"delta":{"text":"\nWhere the river drinks the ghost of steel.","type":"text"},"event_type":"content.delta"}
+
+    event: content.stop
+    data: {"index":1,"event_type":"content.stop"}
+
+    event: interaction.complete
+    data: {"interaction":{"id":"v1_ChdfVHdFYXZLY0Y3RFJ6N0lQdE1ySHlBcxIXX1R3RWF2S2NGN0RSejdJUHRNckh5QXM","status":"completed","usage":{"total_tokens":292,"total_input_tokens":13,"input_tokens_by_modality":[{"modality":"text","tokens":13}],"total_cached_tokens":0,"total_output_tokens":26,"total_tool_use_tokens":0,"total_thought_tokens":253},"role":"model","created":"2026-05-13T08:57:36Z","updated":"2026-05-13T08:57:36Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"},"event_type":"interaction.complete"}
+
+    event: done
+    data: [DONE]
+

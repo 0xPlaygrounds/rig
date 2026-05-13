@@ -1,0 +1,568 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Left operand"},"y":{"type":"number","description":"Right operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Value to subtract from"},"y":{"type":"number","description":"Value to subtract"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:06 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=1709
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That's it. Simple execution, no further consideration is necessary.\n",
+                "thought": true
+              },
+              {
+                "text": "ACK-ALPHA",
+                "thoughtSignature": "CuEBAQw51sc98UcU57l+WVSlqgbIKRKG2CRUw2JCI2wO5Fjvq8jsl1VnJrSb3e3orgkzYPsrepNYbMj20nuFtNJFMKylzM4UkiLCqh905MKEGC8g7wXSuo6xYynpUjtF+80XODd4FcCU5Ad9nZNzAF16JBe0IP9ccDOxKXOo/lEJqvL86zkQDRdLrjR5gQCj6Fl0LJptV18S7UHQWSMmEl2L5DQDuL5Yd8xw/h4FbHiKov+GdNnJH8k1OA81aQRjbDoodB96mZdpIwRGvMND9CWZ/Hk8z/MkxPb9gPJfNUmD7NlH"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 204,
+        "candidatesTokenCount": 3,
+        "totalTokenCount": 248,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 204
+          }
+        ],
+        "thoughtsTokenCount": 41,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "4TwEavjHE_Gtz7IPoKfygAw"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That''s it. Simple execution, no further consideration is necessary.\n"},{"thought":false,"text":"ACK-ALPHA"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 2 of 5. Use the stress_add tool to compute 123 + 77. Remember the tool result as SUM. Reply exactly SUM=<tool result>."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Right operand"},"x":{"type":"number","description":"Left operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Value to subtract"},"x":{"type":"number","description":"Value to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:09 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2131
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "Okay, here's my summary, presented as a stream of thought:\n\n**Calculating a Simple Sum with `stress_add`**\n\nAlright, the user wants me to crunch some numbers. Specifically, they want me to calculate 123 + 77. No problem. That looks like a job for the `stress_add` tool. So, my immediate next step is to *call* that tool, feed it the numbers 123 and 77, and let it do its thing.\n\nOnce I have the output from the `stress_add` tool, I need to remember that result. I need to internally label it as \"SUM.\" Gotta make sure I don't lose track of that crucial piece of information. Finally, I need to format my response just right, because the user specified a particular output structure. I'll make sure it's perfect.\n",
+                "thought": true
+              },
+              {
+                "functionCall": {
+                  "name": "stress_add",
+                  "args": {
+                    "y": 77,
+                    "x": 123
+                  }
+                },
+                "thoughtSignature": "CsEBAQw51sePI8ej/fw80w437HQvn+RyFZVOId7+SETlW6paUMvrLHgglhtY1rx8jw92r42zQQzYDuAquL0nve+170c2XwpV6PO+r4cpxQoVVCY+D7GTpdP8Fv91eoDdNUl6ITZovfXJJH9RFFGdAo9YuBdKCDbL9tpQ8Svf/u1GrHJkCIiNooSE3AdNJw78eatlLhdkbLLXK7ycEJAXl5wBuYsdR9MjH00Ip6U35B72VRWZDBDsOqvvmsWqVnsox09j/A=="
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0,
+          "finishMessage": "Model generated function call(s)."
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 330,
+        "candidatesTokenCount": 23,
+        "totalTokenCount": 396,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 330
+          }
+        ],
+        "thoughtsTokenCount": 43,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "4zwEavWaA8jqz7IP68mhuAI"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That''s it. Simple execution, no further consideration is necessary.\n"},{"thought":false,"text":"ACK-ALPHA"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 2 of 5. Use the stress_add tool to compute 123 + 77. Remember the tool result as SUM. Reply exactly SUM=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"Okay, here''s my summary, presented as a stream of thought:\n\n**Calculating a Simple Sum with `stress_add`**\n\nAlright, the user wants me to crunch some numbers. Specifically, they want me to calculate 123 + 77. No problem. That looks like a job for the `stress_add` tool. So, my immediate next step is to *call* that tool, feed it the numbers 123 and 77, and let it do its thing.\n\nOnce I have the output from the `stress_add` tool, I need to remember that result. I need to internally label it as \"SUM.\" Gotta make sure I don''t lose track of that crucial piece of information. Finally, I need to format my response just right, because the user specified a particular output structure. I''ll make sure it''s perfect.\n"},{"thought":false,"thoughtSignature":"CsEBAQw51sePI8ej/fw80w437HQvn+RyFZVOId7+SETlW6paUMvrLHgglhtY1rx8jw92r42zQQzYDuAquL0nve+170c2XwpV6PO+r4cpxQoVVCY+D7GTpdP8Fv91eoDdNUl6ITZovfXJJH9RFFGdAo9YuBdKCDbL9tpQ8Svf/u1GrHJkCIiNooSE3AdNJw78eatlLhdkbLLXK7ycEJAXl5wBuYsdR9MjH00Ip6U35B72VRWZDBDsOqvvmsWqVnsox09j/A==","functionCall":{"name":"stress_add","args":{"y":77,"x":123}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_add","response":{"result":200}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Left operand"},"y":{"type":"number","description":"Right operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Value to subtract"},"x":{"type":"number","description":"Value to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:09 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=618
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "SUM={'stress_add_response': {'result': 200}}"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 556,
+        "candidatesTokenCount": 16,
+        "totalTokenCount": 572,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 556
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "5TwEauuqDfidz7IPmoejmQ8"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That''s it. Simple execution, no further consideration is necessary.\n"},{"thought":false,"text":"ACK-ALPHA"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 2 of 5. Use the stress_add tool to compute 123 + 77. Remember the tool result as SUM. Reply exactly SUM=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"Okay, here''s my summary, presented as a stream of thought:\n\n**Calculating a Simple Sum with `stress_add`**\n\nAlright, the user wants me to crunch some numbers. Specifically, they want me to calculate 123 + 77. No problem. That looks like a job for the `stress_add` tool. So, my immediate next step is to *call* that tool, feed it the numbers 123 and 77, and let it do its thing.\n\nOnce I have the output from the `stress_add` tool, I need to remember that result. I need to internally label it as \"SUM.\" Gotta make sure I don''t lose track of that crucial piece of information. Finally, I need to format my response just right, because the user specified a particular output structure. I''ll make sure it''s perfect.\n"},{"thought":false,"thoughtSignature":"CsEBAQw51sePI8ej/fw80w437HQvn+RyFZVOId7+SETlW6paUMvrLHgglhtY1rx8jw92r42zQQzYDuAquL0nve+170c2XwpV6PO+r4cpxQoVVCY+D7GTpdP8Fv91eoDdNUl6ITZovfXJJH9RFFGdAo9YuBdKCDbL9tpQ8Svf/u1GrHJkCIiNooSE3AdNJw78eatlLhdkbLLXK7ycEJAXl5wBuYsdR9MjH00Ip6U35B72VRWZDBDsOqvvmsWqVnsox09j/A==","functionCall":{"name":"stress_add","args":{"y":77,"x":123}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_add","response":{"result":200}}}],"role":"user"},{"parts":[{"thought":false,"text":"SUM={''stress_add_response'': {''result'': 200}}"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 3 of 5. Use the stress_subtract tool to compute the remembered SUM minus 58. If you need concrete tool arguments, use x=200 and y=58. Remember the tool result as DELTA. Reply exactly DELTA=<tool result>."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Right operand"},"x":{"type":"number","description":"Left operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Value to subtract"},"x":{"type":"number","description":"Value to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:11 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2023
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "**My Process for Using the `stress_subtract` Tool**\n\nOkay, so the user wants to utilize the `stress_subtract` tool. The key here is to correctly interpret the provided input. I see they've explicitly set `x=200` and `y=58`. My task is clear: I need to execute `stress_subtract` using these specific values. Essentially, I'll be making a call to the tool with those arguments. Once the tool runs and returns its result – let's call that result `tool result` for now – I'll format my response as `DELTA=\u003ctool result\u003e`. It's straightforward: apply the tool, capture the output, and present it in the requested format.\n",
+                "thought": true
+              },
+              {
+                "functionCall": {
+                  "name": "stress_subtract",
+                  "args": {
+                    "x": 200,
+                    "y": 58
+                  }
+                },
+                "thoughtSignature": "CtoBAQw51se1qYdo6tnfM8a26INvMIh1w0PsTz2vGvjXnxiBv2L072T6Y7EaeQmJKcCu8Ukw723xqETl/kykXLu7bfVQt0OY8H8br/ys/faq4WOHBbOX30cQkkuUJqZIz7diykDhklrI2UW685GmowPJtDZFyg9skPl0vZCbzl5+kSc7IQQ6sen4XAehBFU8Y/kRWq9e09NEEXlV0sZe6vHNQ1woSlNhamfYcpU67lG20m8E74K8k6h9zwuLKfzuQJ6npzw28QxrxlqxE+WAVBCiODUFFMHGYa6ukRw="
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0,
+          "finishMessage": "Model generated function call(s)."
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 632,
+        "candidatesTokenCount": 23,
+        "totalTokenCount": 710,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 632
+          }
+        ],
+        "thoughtsTokenCount": 55,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "5TwEarvUM-_Sz7IPkf-KkQ0"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That''s it. Simple execution, no further consideration is necessary.\n"},{"thought":false,"text":"ACK-ALPHA"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 2 of 5. Use the stress_add tool to compute 123 + 77. Remember the tool result as SUM. Reply exactly SUM=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"Okay, here''s my summary, presented as a stream of thought:\n\n**Calculating a Simple Sum with `stress_add`**\n\nAlright, the user wants me to crunch some numbers. Specifically, they want me to calculate 123 + 77. No problem. That looks like a job for the `stress_add` tool. So, my immediate next step is to *call* that tool, feed it the numbers 123 and 77, and let it do its thing.\n\nOnce I have the output from the `stress_add` tool, I need to remember that result. I need to internally label it as \"SUM.\" Gotta make sure I don''t lose track of that crucial piece of information. Finally, I need to format my response just right, because the user specified a particular output structure. I''ll make sure it''s perfect.\n"},{"thought":false,"thoughtSignature":"CsEBAQw51sePI8ej/fw80w437HQvn+RyFZVOId7+SETlW6paUMvrLHgglhtY1rx8jw92r42zQQzYDuAquL0nve+170c2XwpV6PO+r4cpxQoVVCY+D7GTpdP8Fv91eoDdNUl6ITZovfXJJH9RFFGdAo9YuBdKCDbL9tpQ8Svf/u1GrHJkCIiNooSE3AdNJw78eatlLhdkbLLXK7ycEJAXl5wBuYsdR9MjH00Ip6U35B72VRWZDBDsOqvvmsWqVnsox09j/A==","functionCall":{"name":"stress_add","args":{"y":77,"x":123}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_add","response":{"result":200}}}],"role":"user"},{"parts":[{"thought":false,"text":"SUM={''stress_add_response'': {''result'': 200}}"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 3 of 5. Use the stress_subtract tool to compute the remembered SUM minus 58. If you need concrete tool arguments, use x=200 and y=58. Remember the tool result as DELTA. Reply exactly DELTA=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Process for Using the `stress_subtract` Tool**\n\nOkay, so the user wants to utilize the `stress_subtract` tool. The key here is to correctly interpret the provided input. I see they''ve explicitly set `x=200` and `y=58`. My task is clear: I need to execute `stress_subtract` using these specific values. Essentially, I''ll be making a call to the tool with those arguments. Once the tool runs and returns its result – let''s call that result `tool result` for now – I''ll format my response as `DELTA=<tool result>`. It''s straightforward: apply the tool, capture the output, and present it in the requested format.\n"},{"thought":false,"thoughtSignature":"CtoBAQw51se1qYdo6tnfM8a26INvMIh1w0PsTz2vGvjXnxiBv2L072T6Y7EaeQmJKcCu8Ukw723xqETl/kykXLu7bfVQt0OY8H8br/ys/faq4WOHBbOX30cQkkuUJqZIz7diykDhklrI2UW685GmowPJtDZFyg9skPl0vZCbzl5+kSc7IQQ6sen4XAehBFU8Y/kRWq9e09NEEXlV0sZe6vHNQ1woSlNhamfYcpU67lG20m8E74K8k6h9zwuLKfzuQJ6npzw28QxrxlqxE+WAVBCiODUFFMHGYa6ukRw=","functionCall":{"name":"stress_subtract","args":{"x":200,"y":58}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_subtract","response":{"result":142}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Right operand"},"x":{"type":"number","description":"Left operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Value to subtract from"},"y":{"type":"number","description":"Value to subtract"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:12 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=604
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "DELTA={'stress_subtract_response': {'result': 142}}"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 827,
+        "candidatesTokenCount": 16,
+        "totalTokenCount": 843,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 827
+          }
+        ],
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "5zwEavbCNrLrz7IPz8fAoAY"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That''s it. Simple execution, no further consideration is necessary.\n"},{"thought":false,"text":"ACK-ALPHA"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 2 of 5. Use the stress_add tool to compute 123 + 77. Remember the tool result as SUM. Reply exactly SUM=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"Okay, here''s my summary, presented as a stream of thought:\n\n**Calculating a Simple Sum with `stress_add`**\n\nAlright, the user wants me to crunch some numbers. Specifically, they want me to calculate 123 + 77. No problem. That looks like a job for the `stress_add` tool. So, my immediate next step is to *call* that tool, feed it the numbers 123 and 77, and let it do its thing.\n\nOnce I have the output from the `stress_add` tool, I need to remember that result. I need to internally label it as \"SUM.\" Gotta make sure I don''t lose track of that crucial piece of information. Finally, I need to format my response just right, because the user specified a particular output structure. I''ll make sure it''s perfect.\n"},{"thought":false,"thoughtSignature":"CsEBAQw51sePI8ej/fw80w437HQvn+RyFZVOId7+SETlW6paUMvrLHgglhtY1rx8jw92r42zQQzYDuAquL0nve+170c2XwpV6PO+r4cpxQoVVCY+D7GTpdP8Fv91eoDdNUl6ITZovfXJJH9RFFGdAo9YuBdKCDbL9tpQ8Svf/u1GrHJkCIiNooSE3AdNJw78eatlLhdkbLLXK7ycEJAXl5wBuYsdR9MjH00Ip6U35B72VRWZDBDsOqvvmsWqVnsox09j/A==","functionCall":{"name":"stress_add","args":{"y":77,"x":123}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_add","response":{"result":200}}}],"role":"user"},{"parts":[{"thought":false,"text":"SUM={''stress_add_response'': {''result'': 200}}"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 3 of 5. Use the stress_subtract tool to compute the remembered SUM minus 58. If you need concrete tool arguments, use x=200 and y=58. Remember the tool result as DELTA. Reply exactly DELTA=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Process for Using the `stress_subtract` Tool**\n\nOkay, so the user wants to utilize the `stress_subtract` tool. The key here is to correctly interpret the provided input. I see they''ve explicitly set `x=200` and `y=58`. My task is clear: I need to execute `stress_subtract` using these specific values. Essentially, I''ll be making a call to the tool with those arguments. Once the tool runs and returns its result – let''s call that result `tool result` for now – I''ll format my response as `DELTA=<tool result>`. It''s straightforward: apply the tool, capture the output, and present it in the requested format.\n"},{"thought":false,"thoughtSignature":"CtoBAQw51se1qYdo6tnfM8a26INvMIh1w0PsTz2vGvjXnxiBv2L072T6Y7EaeQmJKcCu8Ukw723xqETl/kykXLu7bfVQt0OY8H8br/ys/faq4WOHBbOX30cQkkuUJqZIz7diykDhklrI2UW685GmowPJtDZFyg9skPl0vZCbzl5+kSc7IQQ6sen4XAehBFU8Y/kRWq9e09NEEXlV0sZe6vHNQ1woSlNhamfYcpU67lG20m8E74K8k6h9zwuLKfzuQJ6npzw28QxrxlqxE+WAVBCiODUFFMHGYa6ukRw=","functionCall":{"name":"stress_subtract","args":{"x":200,"y":58}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_subtract","response":{"result":142}}}],"role":"user"},{"parts":[{"thought":false,"text":"DELTA={''stress_subtract_response'': {''result'': 142}}"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 4 of 5. Remember that the suffix token is LIME. Also remember that the final code format is <ALPHA>-<SUM>-<DELTA>-<SUFFIX>. Reply exactly ACK-SUFFIX."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Left operand"},"y":{"type":"number","description":"Right operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Value to subtract from"},"y":{"type":"number","description":"Value to subtract"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:14 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=1916
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "**My Processing of the User's Request**\n\nOkay, I've got it. The user has given me some specific instructions. They want me to store two key pieces of information: first, the suffix token is \"LIME\". Second, I need to remember the intended final code format, which is to be structured as \"\u003cALPHA\u003e-\u003cSUM\u003e-\u003cDELTA\u003e-\u003cSUFFIX\u003e\". This format is crucial, as the user will be using this format.\n\nThe most important thing, based on the specific instruction, is that I must respond, and only respond, with \"ACK-SUFFIX.\" No more, no less. I will deliver \"ACK-SUFFIX\" in response. This will acknowledge that I understand the suffix, and that the suffix is key, with the intention of making the user aware that I am processing the suffix appropriately.\n",
+                "thought": true
+              },
+              {
+                "text": "ACK-SUFFIX",
+                "thoughtSignature": "CtkBAQw51sfZWpJuJ84l9JB1v1CC7RSeMSCEm6mfdMi+9kPm0DalmoYt7jGDWCry7VaR4QsNjWv0lyjHy5lHPQT+J0P/1dhV1hAIgED5h4X3HXmgNPShFCyQbXxc3+9plZGnyecCR2vhIwu+RStbBVqWsN3hRCteH1sLt6taa5SWNnT8IA4ALsr+1KDiDx9zZAkDWm+RKiFwAEBrllEkwSYCs/z9Hbq1a1CS4S19N9B9wPx6Rh+pvj8gr3+br2yyEjF1m2M3qyANAu6AT+qfwDXvf0o5MGi0I1bp7Q=="
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 887,
+        "candidatesTokenCount": 3,
+        "totalTokenCount": 942,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 887
+          }
+        ],
+        "thoughtsTokenCount": 52,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "6DwEasrTIdqfz7IPlIeN-Qw"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Turn 1 of 5. Remember that the alpha token is NOVA. Reply exactly ACK-ALPHA."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Immediate Response**\n\nOkay, this is straightforward. The user has given me a very basic instruction: recall a specific token and use it to craft a pre-defined response. No complex analysis, no external information needed, just immediate recall and replication. I understand the task completely. I just need to output \"ACK-ALPHA\". That''s it. Simple execution, no further consideration is necessary.\n"},{"thought":false,"text":"ACK-ALPHA"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 2 of 5. Use the stress_add tool to compute 123 + 77. Remember the tool result as SUM. Reply exactly SUM=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"Okay, here''s my summary, presented as a stream of thought:\n\n**Calculating a Simple Sum with `stress_add`**\n\nAlright, the user wants me to crunch some numbers. Specifically, they want me to calculate 123 + 77. No problem. That looks like a job for the `stress_add` tool. So, my immediate next step is to *call* that tool, feed it the numbers 123 and 77, and let it do its thing.\n\nOnce I have the output from the `stress_add` tool, I need to remember that result. I need to internally label it as \"SUM.\" Gotta make sure I don''t lose track of that crucial piece of information. Finally, I need to format my response just right, because the user specified a particular output structure. I''ll make sure it''s perfect.\n"},{"thought":false,"thoughtSignature":"CsEBAQw51sePI8ej/fw80w437HQvn+RyFZVOId7+SETlW6paUMvrLHgglhtY1rx8jw92r42zQQzYDuAquL0nve+170c2XwpV6PO+r4cpxQoVVCY+D7GTpdP8Fv91eoDdNUl6ITZovfXJJH9RFFGdAo9YuBdKCDbL9tpQ8Svf/u1GrHJkCIiNooSE3AdNJw78eatlLhdkbLLXK7ycEJAXl5wBuYsdR9MjH00Ip6U35B72VRWZDBDsOqvvmsWqVnsox09j/A==","functionCall":{"name":"stress_add","args":{"y":77,"x":123}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_add","response":{"result":200}}}],"role":"user"},{"parts":[{"thought":false,"text":"SUM={''stress_add_response'': {''result'': 200}}"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 3 of 5. Use the stress_subtract tool to compute the remembered SUM minus 58. If you need concrete tool arguments, use x=200 and y=58. Remember the tool result as DELTA. Reply exactly DELTA=<tool result>."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Process for Using the `stress_subtract` Tool**\n\nOkay, so the user wants to utilize the `stress_subtract` tool. The key here is to correctly interpret the provided input. I see they''ve explicitly set `x=200` and `y=58`. My task is clear: I need to execute `stress_subtract` using these specific values. Essentially, I''ll be making a call to the tool with those arguments. Once the tool runs and returns its result – let''s call that result `tool result` for now – I''ll format my response as `DELTA=<tool result>`. It''s straightforward: apply the tool, capture the output, and present it in the requested format.\n"},{"thought":false,"thoughtSignature":"CtoBAQw51se1qYdo6tnfM8a26INvMIh1w0PsTz2vGvjXnxiBv2L072T6Y7EaeQmJKcCu8Ukw723xqETl/kykXLu7bfVQt0OY8H8br/ys/faq4WOHBbOX30cQkkuUJqZIz7diykDhklrI2UW685GmowPJtDZFyg9skPl0vZCbzl5+kSc7IQQ6sen4XAehBFU8Y/kRWq9e09NEEXlV0sZe6vHNQ1woSlNhamfYcpU67lG20m8E74K8k6h9zwuLKfzuQJ6npzw28QxrxlqxE+WAVBCiODUFFMHGYa6ukRw=","functionCall":{"name":"stress_subtract","args":{"x":200,"y":58}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"stress_subtract","response":{"result":142}}}],"role":"user"},{"parts":[{"thought":false,"text":"DELTA={''stress_subtract_response'': {''result'': 142}}"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 4 of 5. Remember that the suffix token is LIME. Also remember that the final code format is <ALPHA>-<SUM>-<DELTA>-<SUFFIX>. Reply exactly ACK-SUFFIX."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Processing of the User''s Request**\n\nOkay, I''ve got it. The user has given me some specific instructions. They want me to store two key pieces of information: first, the suffix token is \"LIME\". Second, I need to remember the intended final code format, which is to be structured as \"<ALPHA>-<SUM>-<DELTA>-<SUFFIX>\". This format is crucial, as the user will be using this format.\n\nThe most important thing, based on the specific instruction, is that I must respond, and only respond, with \"ACK-SUFFIX.\" No more, no less. I will deliver \"ACK-SUFFIX\" in response. This will acknowledge that I understand the suffix, and that the suffix is key, with the intention of making the user aware that I am processing the suffix appropriately.\n"},{"thought":false,"text":"ACK-SUFFIX"}],"role":"model"},{"parts":[{"thought":false,"text":"Turn 5 of 5. Using only facts stored in the previous turns, produce the final code. Reply with the code only."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"stress_add","description":"Add x and y. This tool must be used for stress-test addition turns.","parameters":{"type":"object","properties":{"y":{"type":"number","description":"Right operand"},"x":{"type":"number","description":"Left operand"}},"required":["x","y"]}},{"name":"stress_subtract","description":"Subtract y from x. This tool must be used for stress-test subtraction turns.","parameters":{"type":"object","properties":{"x":{"type":"number","description":"Value to subtract from"},"y":{"type":"number","description":"Value to subtract"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"thinkingBudget":1024,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are running a deterministic Rig integration test. Preserve facts across turns. When a prompt says to use a tool, call exactly that tool before answering. Keep replies concise. When asked for the final code, return only the code with no markdown, quotes, or commentary."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:17 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2788
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "**Final Code Generation**\n\nOkay, the user's requesting the final code. I've got all the pieces I need from the previous turns. Let me see... I have NOVA for the ALPHA token from turn 1, so that's good. Turn 2 gave me the SUM, which is actually the result of the `stress_add_response` calculation. I need to extract that value, which is 200. Got it. Turn 3 provided the DELTA, the `stress_subtract_response` result, and that's 142. Perfect. Finally, I have LIME for the SUFFIX token, from turn 4. \n\nAlright, putting it all together, it's pretty straightforward. The final code will be NOVA-200-142-LIME. That's the format they asked for, and I believe I have it correct. Ready to output.\n",
+                "thought": true
+              },
+              {
+                "text": "NOVA-200-142-LIME",
+                "thoughtSignature": "CooEAQw51selGoGIcaN+HCE3rUceniSOMXm8syTAlJYXDFdVdGHgFxY8GaalIR8oxzvgXUM5CMYKUzfA25O6nAreTpBgZGPrhq4rhTqpLGWKuKQ+KVQVvfwkfrPXo9DddDt5W94kZiRp5Mojf/Cqu7JTJpkYWIrefQjoKVTNkA32Uo1VYv0UtuYAMXHl3on09et/sUHEtxEizmbfEADXNbz/UnCQXexzLs/7LL/ZXnt/9amJfWSc1Qqc8pXLzxZR+noNKwi6b7hjKZAo+LDLhfGtmxO6+K1FMYofFHn1+Z8QS0Q52vEBAwUn+fsQz7u7ID0R8kl2k2dVexfagsqaXlB/z9X5nda224ZqPD1aewHr1ooXHLU8N6m0x7VIyTOp4RQPCz7VG2VS0mznSoQGgidO1zrnH2PbC3wjBbKsMWkcyyf+O6HRaoqQVJMTY6VVdd/wtuPvP3WuWqmamCPxVhJDlvJzmhE4P7EJOB4RR+wumhZliui/GKdsjquMqoTSka0U+3xqgMQZdYASDuorM5algG/u6UftmeDFQXFlVVhVSFcupp8ext/SPJQWbHF/9JFq398dXRUucnYNG+Xm3xa4PzCPp2SckISLObV0xuBb9IibPOL5C0CsLa7932OltpPmiQEfzD0/hafEaSB8McZ93DnuWp7cWRdgSPxTLz1UV6gFZr7edTU7xK+e"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 1091,
+        "candidatesTokenCount": 12,
+        "totalTokenCount": 1269,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1091
+          }
+        ],
+        "thoughtsTokenCount": 166,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "6jwEatbxHo3jz7IPj5mbgQY"
+    }

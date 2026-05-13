@@ -1,0 +1,159 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}],"role":"user"}],"toolConfig":null,"generationConfig":{"thinkingConfig":{"thinkingBudget":2048,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a helpful math tutor. Be concise."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:56 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=12212
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "**Solving the Train Problem**\n\nAlright, let's break this down. I need to figure out when and where these trains meet. First, I'll define my variables clearly. We have a train from Station A and another from Station B, heading towards each other. I'll call their speeds  *vA* and *vB*, and the total distance *D*. The key is to establish a common time frame, and I'll use *t* as the time elapsed since the first train, from A, departs.\n\nNow, I'll set up the equations. Train A's distance is simply its speed multiplied by time: *dA = vA * t*. Train B leaves half an hour later, so its travel time is *(t - 0.5)*. Train B's distance is  *dB = vB * (t - 0.5)*.\n\nWhen they meet, the sum of their distances equals the total distance, so *dA + dB = D*. Substituting the values, that gives me *60t + 90(t - 0.5) = 300*. Now, I'll solve for *t*. I'll expand, simplify, and isolate *t* to find that *t = 2.3* hours.\n\nThis *t* is the time elapsed since the first train left Station A. The problem's wording, \"At what time do they meet,\" is a bit ambiguous, because no absolute starting time is given. It is asking for the duration after the start. So, I need to check carefully: If the trains left at 0:00, then they meet at 02:18. But without a definite starting time, the most reasonable interpretation of the problem is to simply state the duration: the meeting time is 2.3 hours, or 2 hours and 18 minutes, after the departure of the first train.\n\nI have to calculate the distance from Station A. This is easy: *dA = 60 * 2.3 = 138* km. To be sure, I'll calculate Train B's distance to verify. Time for Train B is 1.8 hours. So, *dB = 90 * 1.8 = 162* km. Checking: 138 + 162 = 300 km. Yes, it checks out.\n\nSo, the trains meet 2.3 hours, or 2 hours and 18 minutes, after the first train leaves Station A, at a distance of 138 km from Station A.\n\nI'm aiming for concise and clear.  I will structure my answer as follows:\n1. Define the variables and formulate the distances and time difference.\n2. Set up the \"meeting point\" equation.\n3. Solve for *t*.\n4. Calculate the meeting distance.\n5. Verify the calculation.\n",
+                "thought": true
+              },
+              {
+                "text": "Let $t$ be the time in hours after the first train leaves Station A.\n\n1.  **Set up distance equations:**\n    *   Distance covered by Train A: $d_A = 60t$\n    *   Train B leaves 30 minutes (0.5 hours) later, so its travel time is $(t - 0.5)$ hours.\n    *   Distance covered by Train B: $d_B = 90(t - 0.5)$\n\n2.  **Formulate the meeting condition:**\n    When the trains meet, the sum of their distances equals the total distance between the stations (300 km):\n    $d_A + d_B = 300$\n    $60t + 90(t - 0.5) = 300$\n\n3.  **Solve for $t$:**\n    $60t + 90t - 45 = 300$\n    $150t - 45 = 300$\n    $150t = 345$\n    $t = \\frac{345}{150} = 2.3$ hours\n\n4.  **Calculate the meeting time:**\n    $2.3$ hours is $2$ hours and $0.3 \\times 60 = 18$ minutes.\n    Since no specific departure time for the first train is given, they meet **2 hours and 18 minutes** after the train from Station A leaves.\n\n5.  **Calculate the distance from Station A:**\n    Substitute $t = 2.3$ hours into the distance equation for Train A:\n    $d_A = 60 \\times 2.3 = 138$ km\n\nThe trains meet **2 hours and 18 minutes after the first train leaves Station A**, and **138 km from Station A**."
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 72,
+        "candidatesTokenCount": 426,
+        "totalTokenCount": 2239,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 72
+          }
+        ],
+        "thoughtsTokenCount": 1741,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "CD0Eatj1MLCsz7IP7Pfr2Ao"
+    }
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}],"role":"user"},{"parts":[{"thought":true,"text":"**Solving the Train Problem**\n\nAlright, let''s break this down. I need to figure out when and where these trains meet. First, I''ll define my variables clearly. We have a train from Station A and another from Station B, heading towards each other. I''ll call their speeds  *vA* and *vB*, and the total distance *D*. The key is to establish a common time frame, and I''ll use *t* as the time elapsed since the first train, from A, departs.\n\nNow, I''ll set up the equations. Train A''s distance is simply its speed multiplied by time: *dA = vA * t*. Train B leaves half an hour later, so its travel time is *(t - 0.5)*. Train B''s distance is  *dB = vB * (t - 0.5)*.\n\nWhen they meet, the sum of their distances equals the total distance, so *dA + dB = D*. Substituting the values, that gives me *60t + 90(t - 0.5) = 300*. Now, I''ll solve for *t*. I''ll expand, simplify, and isolate *t* to find that *t = 2.3* hours.\n\nThis *t* is the time elapsed since the first train left Station A. The problem''s wording, \"At what time do they meet,\" is a bit ambiguous, because no absolute starting time is given. It is asking for the duration after the start. So, I need to check carefully: If the trains left at 0:00, then they meet at 02:18. But without a definite starting time, the most reasonable interpretation of the problem is to simply state the duration: the meeting time is 2.3 hours, or 2 hours and 18 minutes, after the departure of the first train.\n\nI have to calculate the distance from Station A. This is easy: *dA = 60 * 2.3 = 138* km. To be sure, I''ll calculate Train B''s distance to verify. Time for Train B is 1.8 hours. So, *dB = 90 * 1.8 = 162* km. Checking: 138 + 162 = 300 km. Yes, it checks out.\n\nSo, the trains meet 2.3 hours, or 2 hours and 18 minutes, after the first train leaves Station A, at a distance of 138 km from Station A.\n\nI''m aiming for concise and clear.  I will structure my answer as follows:\n1. Define the variables and formulate the distances and time difference.\n2. Set up the \"meeting point\" equation.\n3. Solve for *t*.\n4. Calculate the meeting distance.\n5. Verify the calculation.\n"},{"thought":false,"text":"Let $t$ be the time in hours after the first train leaves Station A.\n\n1.  **Set up distance equations:**\n    *   Distance covered by Train A: $d_A = 60t$\n    *   Train B leaves 30 minutes (0.5 hours) later, so its travel time is $(t - 0.5)$ hours.\n    *   Distance covered by Train B: $d_B = 90(t - 0.5)$\n\n2.  **Formulate the meeting condition:**\n    When the trains meet, the sum of their distances equals the total distance between the stations (300 km):\n    $d_A + d_B = 300$\n    $60t + 90(t - 0.5) = 300$\n\n3.  **Solve for $t$:**\n    $60t + 90t - 45 = 300$\n    $150t - 45 = 300$\n    $150t = 345$\n    $t = \\frac{345}{150} = 2.3$ hours\n\n4.  **Calculate the meeting time:**\n    $2.3$ hours is $2$ hours and $0.3 \\times 60 = 18$ minutes.\n    Since no specific departure time for the first train is given, they meet **2 hours and 18 minutes** after the train from Station A leaves.\n\n5.  **Calculate the distance from Station A:**\n    Substitute $t = 2.3$ hours into the distance equation for Train A:\n    $d_A = 60 \\times 2.3 = 138$ km\n\nThe trains meet **2 hours and 18 minutes after the first train leaves Station A**, and **138 km from Station A**."}],"role":"model"},{"parts":[{"thought":false,"text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?"}],"role":"user"}],"toolConfig":null,"generationConfig":{"thinkingConfig":{"thinkingBudget":2048,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a helpful math tutor. Be concise."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:58:09 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=12371
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "**Analyzing the Modified Train Problem**\n\nOkay, so the user wants to adjust the classic train problem. The key is that both trains now reduce their speed by 10 km/h *after* traveling half the total distance of 300 km, which is 150 km. I need to figure out the time and location of the meeting.\n\nI start by breaking down each train's movement.\n\n**Train A:** Initially moving at 60 km/h, and slowing down to 50 km/h after traveling 150km. Its slowdown point takes 2.5 hours to reach.\n\n**Train B:** Initially moving at 90 km/h, and slowing down to 80 km/h after traveling 150km. Since it starts 0.5 hours after Train A, its slowdown point will be reached at 2.167 hours after train A started.\n\nI realize the crucial thing is the *relative* timing of these slowdowns. Who slows down first? Train B does. So, I have to consider different phases of the journey. The initial assumption I had that they reach their slowdown points simultaneously is wrong. It's more complex than that.\n\nSo, I start thinking about meeting points...\n\n**Phase 1:** *Before* Train B slows down (t \u003c 2.167 hours). In this time frame:\nTrain A is at 60t\nTrain B is at 90(t -0.5)\nThe distance equation would be 60t + 90(t - 0.5) = 300\nI solve for t = 2.3 hours, and check that that is within this range.\nSince 2.3 is greater than 2.167 hours, and that phase breaks down after 2.167 hours, I will have to move to the next phase to figure this problem out.\n",
+                "thought": true
+              },
+              {
+                "text": "Let $t$ be the time in hours after the first train leaves Station A.\nThe first train (Train A) leaves at 60 km/h.\nThe second train (Train B) leaves Station B 30 minutes (0.5 hours) later at 90 km/h.\nThe total distance between stations is 300 km.\nHalf the original distance is $300 \\text{ km} / 2 = 150 \\text{ km}$.\n\n**Step 1: Determine when each train slows down.**\n\n*   **Train A:** Travels 150 km at 60 km/h.\n    Time taken for Train A to travel 150 km: $t_{A\\_slow} = \\frac{150 \\text{ km}}{60 \\text{ km/h}} = 2.5$ hours.\n    At this time ($t=2.5$ hours after Train A left), Train A's speed changes to $60 - 10 = 50$ km/h.\n\n*   **Train B:** Travels 150 km at 90 km/h.\n    Time taken for Train B to travel 150 km: $t_{B\\_slow} = \\frac{150 \\text{ km}}{90 \\text{ km/h}} = \\frac{5}{3}$ hours $\\approx 1.67$ hours.\n    Since Train B leaves 0.5 hours after Train A, Train B slows down at $t = 0.5 \\text{ h} + \\frac{5}{3} \\text{ h} = \\frac{1}{2} + \\frac{5}{3} = \\frac{3+10}{6} = \\frac{13}{6}$ hours (after Train A left).\n    At this time ($t=\\frac{13}{6}$ hours after Train A left), Train B's speed changes to $90 - 10 = 80$ km/h.\n\nComparing the times, Train B slows down first (at $t = \\frac{13}{6} \\approx 2.17$ hours) before Train A slows down (at $t = 2.5$ hours).\n\n**Step 2: Calculate the state when the first train slows down (Train B).**\n\nTrain B slows down at $t = \\frac{13}{6}$ hours after Train A leaves.\nAt this moment:\n*   **Train A's distance:** $d_A = 60 \\text{ km/h} \\times \\frac{13}{6} \\text{ h} = 130$ km from Station A.\n*   **Train B's distance:** $d_B = 150$ km from Station B (as it has just reached its slowdown point).\n*   **Remaining distance between them:** $300 - 130 - 150 = 20$ km.\n\n**Step 3: Calculate the time to meet after Train B slows down.**\n\nFrom $t = \\frac{13}{6}$ hours onwards:\n*   Train A's speed is still 60 km/h (it hasn't reached its 150 km mark yet).\n*   Train B's speed is now 80 km/h.\n*   The remaining distance to cover is 20 km.\n\nLet $\\Delta t$ be the additional time until they meet.\nThe sum of distances covered during $\\Delta t$ must be 20 km:\n$60 \\Delta t + 80 \\Delta t = 20$\n$140 \\Delta t = 20$\n$\\Delta t = \\frac{20}{140} = \\frac{1}{7}$ hours.\n\n**Step 4: Calculate the total time until they meet.**\n\nTotal time $T = \\frac{13}{6} \\text{ hours} + \\frac{1}{7} \\text{ hours}$\n$T = \\frac{13 \\times 7 + 1 \\times 6}{42} = \\frac{91 + 6}{42} = \\frac{97}{42}$ hours.\n\nTo convert this to hours and minutes:\n$T = \\frac{97}{42} \\text{ hours} \\approx 2.3095$ hours.\n$0.3095 \\text{ hours} \\times 60 \\text{ minutes/hour} \\approx 18.57$ minutes.\nSo, they meet approximately **2 hours and 18.57 minutes** after the first train leaves Station A.\n\nThe final answer is $\\boxed{\\frac{97}{42} \\text{ hours after the first train leaves Station A}}$."
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 1151,
+        "candidatesTokenCount": 1067,
+        "totalTokenCount": 3584,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 1151
+          }
+        ],
+        "thoughtsTokenCount": 1366,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "FT0Eao_cA7Xhz7IP3rvzgQY"
+    }

@@ -1,0 +1,44 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"In one short paragraph, explain what a solar eclipse is."}],"role":"user"}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0,"thinkingConfig":{"thinkingLevel":"medium","includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a concise assistant. Answer directly in plain text."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:41 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=1463
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"**Defining the Basics**\\n\\nI'm focusing on the solar eclipse. My core constraint is to provide concise summaries. The basics are becoming clear: the Moon moves between the Earth and the Sun, which is a key part. Currently, I'm defining the basic elements for a concise overview. I want to build a concise explanation!\\n\\n\\n\",\"thought\": true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 26,\"totalTokenCount\": 26,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 26}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3-flash-preview\",\"responseId\": \"QD0EavC0AYbhz7IP4YbG8AU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking all or part of the Sun\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 26,\"candidatesTokenCount\": 24,\"totalTokenCount\": 350,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 26}],\"thoughtsTokenCount\": 300,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3-flash-preview\",\"responseId\": \"QD0EavC0AYbhz7IP4YbG8AU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"'s light from reaching our planet. During this celestial alignment, the Moon casts a shadow on Earth's surface, causing the sky to darken\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 26,\"candidatesTokenCount\": 53,\"totalTokenCount\": 379,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 26}],\"thoughtsTokenCount\": 300,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3-flash-preview\",\"responseId\": \"QD0EavC0AYbhz7IP4YbG8AU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" as if it were dawn or dusk. Depending on the Moon's distance and exact position, an eclipse can be total, partial\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 26,\"candidatesTokenCount\": 79,\"totalTokenCount\": 405,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 26}],\"thoughtsTokenCount\": 300,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3-flash-preview\",\"responseId\": \"QD0EavC0AYbhz7IP4YbG8AU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \", or annular.\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 26,\"candidatesTokenCount\": 83,\"totalTokenCount\": 409,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 26}],\"thoughtsTokenCount\": 300,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3-flash-preview\",\"responseId\": \"QD0EavC0AYbhz7IP4YbG8AU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"\",\"thoughtSignature\": \"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\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 26,\"candidatesTokenCount\": 83,\"totalTokenCount\": 409,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 26}],\"thoughtsTokenCount\": 300,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-3-flash-preview\",\"responseId\": \"QD0EavC0AYbhz7IP4YbG8AU\"}\r\n\r\n"

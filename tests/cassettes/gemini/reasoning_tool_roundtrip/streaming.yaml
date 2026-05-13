@@ -1,0 +1,89 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":4096,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:36 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=1417
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"**Assessing Tokyo's Forecast**\\n\\nOkay, I'm initiating the process by querying for Tokyo's current weather using the `get_weather` tool. The goal is to obtain accurate and up-to-date weather conditions to advise about umbrella or sunscreen. My immediate focus is on data retrieval.\\n\\n\\n\",\"thought\": true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 144,\"totalTokenCount\": 192,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 144}],\"thoughtsTokenCount\": 48,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Oz0EauXwGPmcz7IPu9isgQU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"get_weather\",\"args\": {\"city\": \"Tokyo, Japan\"}},\"thoughtSignature\": \"CiQBDDnWxzuIeqVIrHsj7jHCACjiMbS/98SV6f5nad9mf6A9CQoKcwEMOdbHxZC8v+c8EtChdEyPFgTcsKe8oWOj54jJYlM1Z6iRiBa8QUpXk42274C6HDzZf6SKamMObF/9rVhdYxUQzVg40jevEB7dYhvMJ/ig/pi7me/0Ql4GzoQSoRaiXkN+9i7WAy1Fzhdf3ccI0Y+qiY4KpwEBDDnWx/u9wXq50Npr405Ndr8DtvopGcfJXtLqV94gRTKikXUMkiIyjxSgMRTCeuvRXuwTRzcjT/slwrmO+t4DM8DRaZifa7USPgtXAw+QovDxji/dHeLonmI1z86XgbbJrVIrrMFWQBc8fk6CJeyb/vzV5hlw3rtfI5VApk8hdKBNmbwkoQIE4D4YfENd3L49MZQCP0kr1wRt92iu6ALZFKqILymF3g==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 144,\"candidatesTokenCount\": 16,\"totalTokenCount\": 208,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 144}],\"thoughtsTokenCount\": 48,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Oz0EauXwGPmcz7IPu9isgQU\"}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}],"role":"user"},{"parts":[{"thought":true,"text":"**Assessing Tokyo''s Forecast**\n\nOkay, I''m initiating the process by querying for Tokyo''s current weather using the `get_weather` tool. The goal is to obtain accurate and up-to-date weather conditions to advise about umbrella or sunscreen. My immediate focus is on data retrieval.\n\n\n"},{"thought":false,"thoughtSignature":"CiQBDDnWxzuIeqVIrHsj7jHCACjiMbS/98SV6f5nad9mf6A9CQoKcwEMOdbHxZC8v+c8EtChdEyPFgTcsKe8oWOj54jJYlM1Z6iRiBa8QUpXk42274C6HDzZf6SKamMObF/9rVhdYxUQzVg40jevEB7dYhvMJ/ig/pi7me/0Ql4GzoQSoRaiXkN+9i7WAy1Fzhdf3ccI0Y+qiY4KpwEBDDnWx/u9wXq50Npr405Ndr8DtvopGcfJXtLqV94gRTKikXUMkiIyjxSgMRTCeuvRXuwTRzcjT/slwrmO+t4DM8DRaZifa7USPgtXAw+QovDxji/dHeLonmI1z86XgbbJrVIrrMFWQBc8fk6CJeyb/vzV5hlw3rtfI5VApk8hdKBNmbwkoQIE4D4YfENd3L49MZQCP0kr1wRt92iu6ALZFKqILymF3g==","functionCall":{"name":"get_weather","args":{"city":"Tokyo, Japan"}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":4096,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:37 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=429
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The weather\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 317,\"candidatesTokenCount\": 2,\"totalTokenCount\": 319,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 317}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"PD0EauGiOJ_rz7IP-cKrwQU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" in Tokyo, Japan is 72°F (22°C), sunny\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 317,\"candidatesTokenCount\": 19,\"totalTokenCount\": 336,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 317}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"PD0EauGiOJ_rz7IP-cKrwQU\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" with light clouds, 45% humidity, and a wind of 8 mph NW. You should pack sunscreen.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 317,\"candidatesTokenCount\": 43,\"totalTokenCount\": 360,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 317}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"PD0EauGiOJ_rz7IP-cKrwQU\"}\r\n\r\n"

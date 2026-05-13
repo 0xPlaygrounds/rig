@@ -1,0 +1,84 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Hello my name is John Doe! I am a software engineer."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"submit","description":"Submit the structured data you extracted from the provided text.","parameters":{"type":"object","properties":{"job":{"type":"string"},"last_name":{"type":"string"},"first_name":{"type":"string"}}}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:19 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=966
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "functionCall": {
+                  "name": "submit",
+                  "args": {
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "job": "software engineer"
+                  }
+                },
+                "thoughtSignature": "CtUCAQw51semHZvvq2ZHNA0KKn+XmSu6ejlVmY/BELyggaNq3v19rmA8bmo+Yg/xw0l/bNL5IiuMBHRZM5dW5Z0AWaDwf/lIILpo5EFC/WZHthMItbY04SbqW7sA3y01BAGLchy4suSGZ45zFkvjY7fjrtiwGtbuJTHTewheaIPVcyJEBnBOQnedOzmz1sCMka54zgl+zHg3pdeqrzF+MFD0nxF3SMY/GeDJeFmylYjL3uL645NTwGuCsdo0DaHTubhDq7+qLf1Z14PTv7zBSNgnTJe9cpUI8fSNIobxIEFqdKqqXJet353gFT1oBQBgb/KHyWA0t9V7LgsMO/WyPjrZ7+SAPn4vzXOXnLOyriBaHHuY9AY5uUWYVU4MKXJjmuBxD4vDx/2eL6Q0L2qsUrgxTbl7hYpFSGUTEBs9bdBhd+bhALNnEzU9tNr2d4xpRABV1oCXpcs="
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0,
+          "finishMessage": "Model generated function call(s)."
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 178,
+        "candidatesTokenCount": 28,
+        "totalTokenCount": 288,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 178
+          }
+        ],
+        "thoughtsTokenCount": 82,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "7jwEapCyNIOEz7IPsP7hwQw"
+    }

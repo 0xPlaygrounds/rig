@@ -1,0 +1,76 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Return a concise event object for a local Rust meetup in Seattle."}],"role":"user"}],"toolConfig":null,"generationConfig":{"responseMimeType":"application/json","responseJsonSchema":{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","$schema":"https://json-schema.org/draft/2020-12/schema"},"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":null}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:58:55 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2005
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "{\"title\":\"Seattle Rust User Group Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust enthusiasts in Seattle to discuss systems programming, safety, and performance.\"}",
+                "thoughtSignature": "EvEICu4IAQw51sfLBWeijM0GSgfV5uMBn6GZOcGmQLRuTbfiy3izpgw9v+xT8/rN/AlwUJJkzljwzIbwwf+g0TOF2psSFRcYtLSanmpIK8PZdb5omI/hQOK8Aae3vt/26/+rXR9JM/em02vyB/xMlGIcH3OgrJl/dpaoBpvjrm0dsFP8Y3YumV75iEzW9gFFjm7FKlMh3yJBepGC4uGkaoKyWw/rwosj1tddTh0XrJU3kovvKy1jT54VVjnkD0z0vYYCGsSBb8VPOvI1ityEeqpKvbH3c87mulAydTprkzAt/+sLpjdKbPDNenzmk4uM8YgMX9O0qvP+clZUr25nOHWLgx9+pGOqFxiJUCUDJGAmpMcLMKyUbiy5oiYMZV/f1yeAwYdWuSu1B6Ry3sMuwwtFJDnI+X2WsVTxSOn7aQYhdU6E7hbS9l48k9gPm1fJfK3K7wypA7mnl0/5e/+V7h1uzvCjqbnAHbp+IcgOn49MNRLmY+0dPEq+RWaBg+yM3yj7mKMS61WJB0iEAnhgJLq5IVd2b9OrpEPvHT8065oTnNLLijdNfFoqy0TWGBLB3IOFoMUnKl3F7b5MmAnFbDZZtH+yRapSUtH+dDmDDD785xOTafBizfvF9TJPj0a/2ukJNcG3oMoUwEFWZs5PYTxyzPz/ZHFyj7zQkGUXYiV3q0y64C95/QTt1TR8NcHuu6pN0Lmm5Ngql8dFM+W2HPEHFoROWCjEu1rYPoHUgWdCGmsix4YTANIU20tUdc311ooxmtu+PHzrtW18ht+O1TcESa2HrHqg10NXHkHSstgpzO06cc+9o9jOGVXd0np2gtkg/e/oJ+gGVR8XqZx76GEp9qf+1k+qusVn4lT3aHS6kJcNgXFThOzCyA/vwQNPkdb2BFbVzR5VqW7W1jn+Gmyks0CrhBulVIbJTimpbahT+ir7Zemo7hEt04h1cSEP6qkvKWlK5Q1N+UdN9E3sm+TZrSreNbEuPcFJKa/w4w9eJ9SA3A3GNAvui8A9AdhBk1U4J6hYsMb4h6aVeIUU7/is3A5ORDyOTpddUpW9S+IM6tMftiG5VnUmjINdJRV/aaCl7vZ9wtBA3RhUR0voemI4yHGkYS+gzSVcV5uXeZqQEWzXAXgUoArG9KS2XLyYF8wpm+0O/dNLqCL/sgrbupGJ7foCYbPDAHObhcazoA58ZAsfcMxe3/97H85dz5JUGTvk5wZUqWZqQhoPJGDa1PEgFLFMrE1yE+IwPdnpBop0IvbWoviAS9OXgW3mkPpYe3LMk8fbgI0nZMjM0mUY+fAW28NNbxQgqjehv/PC1qs5JBt54vxS2kBGXx+giMC2d0f8Nb/T+bgkwkVBZyqrsek/Y9xizL+7Xa1vXFAmvNRQ/hEcHV7gxun6SdNQg9Ou6SZGGxV0D5o7lvM2vGCKu8TrrYN83vj3ZribertJ8kjyO36Fe5n59JqylR4c9ts5Z7dySeDFVE7JaVcGIuyX2eqfXo+raUcJ9BdO/A1XcTprb5+Q"
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 14,
+        "candidatesTokenCount": 35,
+        "totalTokenCount": 314,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 14
+          }
+        ],
+        "thoughtsTokenCount": 265,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-3-flash-preview",
+      "responseId": "TT0EatGsO42Fz7IPvoGlsQ0"
+    }

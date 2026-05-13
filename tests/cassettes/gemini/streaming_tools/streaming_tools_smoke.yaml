@@ -1,0 +1,88 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate 2 - 5."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The second number to add"},"x":{"type":"number","description":"The first number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The number to subtract"},"x":{"type":"number","description":"The number to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:50 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=766
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate 2 - 5."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx1HlD5FH1nHQFGUrd/8g+c5t8qN2sap0rCwSRkbB1FwKXwEMOdbHu8fC2Ox1cl4bE2pIbHkKmodEh1XrDSyzg7KqbeCMMJVKQ9yJLd5nsMAsAJrRiv77Og6hXq9y8alN8yck+AmvvZCzijCPc2eaD/zqHk75En+U9iQoXpM5o8jlCnsBDDnWxwyMFf81kyZWNP42WPxMjY+iR/qXL0Otq6JEDf/0P5DAv8bc1SEwkCE8pTHeT8RK0CyIY/M9rWQ3Og1ULsb2OD+uCA6YJVPFr/C78Dj9h/dN5IcgnWbzucRhApVtXMATGOYAFRXlBAvTUx2C4kwc3U5b3JN+TLU=","functionCall":{"name":"subtract","args":{"y":5,"x":2}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":-3}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The second number to add"},"x":{"type":"number","description":"The first number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The number to subtract"},"x":{"type":"number","description":"The number to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:51 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=443
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"2\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 213,\"candidatesTokenCount\": 1,\"totalTokenCount\": 214,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 213}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Sj0EasSMLsjqz7IP48mhuAI\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" - 5 = -3.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 213,\"candidatesTokenCount\": 8,\"totalTokenCount\": 221,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 213}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Sj0EasSMLsjqz7IP48mhuAI\"}\r\n\r\n"

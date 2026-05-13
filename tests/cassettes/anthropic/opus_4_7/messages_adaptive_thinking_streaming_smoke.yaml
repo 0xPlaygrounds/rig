@@ -1,0 +1,282 @@
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-opus-4-7","messages":[{"role":"user","content":[{"type":"text","text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}]}],"max_tokens":128000,"stream":true,"system":[{"type":"text","text":"You are a helpful math tutor. Be concise."}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:49:56 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: cache-control
+    value: no-cache
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '10000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '10000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:49:54Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '800000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '800000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:49:54Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:49:54Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '10800000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '10800000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:49:54Z
+  - name: request-id
+    value: req_011CazHEhUnqEfZisDrg6D8d
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-1a748607dd2acf9c14c9dd762d8b5bb4-3c63ce40346dc619-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '2705'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb069991fb4db6e-LAX
+  body: |+
+    event: message_start
+    data: {"type":"message_start","message":{"model":"claude-opus-4-7","id":"msg_018rujFSTk93hfjZJPCZQc4E","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":102,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global"}}       }
+
+    event: content_block_start
+    data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}   }
+
+    event: ping
+    data: {"type": "ping"}
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EooEClkIDRgCKkBUcOZZ64dXs+1VdreJfmUCAnAOhbUvVbLvuZTaDcC7C7NFlMBqaWBgyiD7oq9d8IU1PAKmFfE0YDSeiG2S9u07Mg9jbGF1ZGUtb3B1cy00LTc4ABIMkdB1D3gZi5EV7iqQGgxVtlM/DCSAFCV9segiMFro2MneWuSFfsxuXRIDSy4quSRYalPpwnS1T9i217L+EkQcdxe3B2gxoQjY/3hCzyreAvpXJMu9LCwP74sogGXw5epo64yHGPUcye3jfaYRxUFLSJ/4Z2aN0M4xunJESoUGMCiLGogR8uZvnUcwun5uaYqAT7Cct/shdTsOi7hbE1oqeSueMDJQ/QSXMwmr/Dx7Q7i83tD4lYUhmstxk96iSCWBOTtj4+aEa916YrN4L4OyIegyNUqNb5kGyG4EBZKT758wG3jvJt5KJtU89apgqvgX8uLqfbCFPV7YLSRID+GfPbAKYNVZfn1mmGV7e6DecgsEyoYvxDyW9VVlDPqQNbhLbgSiQm5C4aF1ugCH6LK+7bOE1vJJD7tRRsUUqcfhgoRu1bfo9EmL+ZFEXf1u4OwqwC0eHCzPDhrd5iDVR09gCKE3hQ9QrPx+lnV5n4Dtu9PN22ugrn0H30Y9s5oi55+vN/Tj7inXDQ/i32IoHTV9aWn1wZzkqGYGLlTUvBuQlKvSVvYZObIALxjSLEpYGAE="}         }
+
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":0  }
+
+    event: content_block_start
+    data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}           }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"## Setting Up\n\n- **Train A:"}   }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"** 60 km/h, leaves Station A at time *T*\n- **Train B:** 90 km/h, leaves Station B ("} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"300 km away) 30 min later\n\n## Step 1: Head start for Train A\n\nIn 0.5 h, Train A covers:\n$$60 \\"}           }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"times 0.5 = 30 \\text{ km}$$\n\nRemaining gap when Train B starts: **300 − 30 = 270 km**\n\n## Step 2: Closing the"}        }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" gap\n\nCombined closing speed: 60 + 90 = **150 km/h**\n\nTime to meet (after B departs):\n$$\\frac{270}{150} = "}      }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"1.8 \\text{ h} = 1\\text{ h }48\\text{ min}$$\n\n## Step 3: Meeting time and location\n\n**"}   }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Total time from Train A's departure:** 0.5 + 1.8 = **2.3 h (2 h 18 min)**\n\n→ They"}    }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" meet at **T + 2 h 18 min**\n\n**Distance from Station A:**\n$$60 \\times 2.3 = \\boxed{138 \\text{ km}}$$\n\n*"} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Check:* Train B travels 90 × 1.8 = 162 km. Total: 138 + 162 = 300 ✓"}              }
+
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":1       }
+
+    event: message_delta
+    data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":102,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":594}           }
+
+    event: message_stop
+    data: {"type":"message_stop"       }
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-opus-4-7","messages":[{"role":"user","content":[{"type":"text","text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}]},{"role":"assistant","content":[{"type":"text","text":"## Setting Up\n\n- **Train A:** 60 km/h, leaves Station A at time *T*\n- **Train B:** 90 km/h, leaves Station B (300 km away) 30 min later\n\n## Step 1: Head start for Train A\n\nIn 0.5 h, Train A covers:\n$$60 \\times 0.5 = 30 \\text{ km}$$\n\nRemaining gap when Train B starts: **300 − 30 = 270 km**\n\n## Step 2: Closing the gap\n\nCombined closing speed: 60 + 90 = **150 km/h**\n\nTime to meet (after B departs):\n$$\\frac{270}{150} = 1.8 \\text{ h} = 1\\text{ h }48\\text{ min}$$\n\n## Step 3: Meeting time and location\n\n**Total time from Train A''s departure:** 0.5 + 1.8 = **2.3 h (2 h 18 min)**\n\n→ They meet at **T + 2 h 18 min**\n\n**Distance from Station A:**\n$$60 \\times 2.3 = \\boxed{138 \\text{ km}}$$\n\n*Check:* Train B travels 90 × 1.8 = 162 km. Total: 138 + 162 = 300 ✓"}]},{"role":"user","content":[{"type":"text","text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?"}]}],"max_tokens":128000,"stream":true,"system":[{"type":"text","text":"You are a helpful math tutor. Be concise."}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:50:03 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: cache-control
+    value: no-cache
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '10000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '10000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:50:02Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '800000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '800000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:50:02Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:50:02Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '10800000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '10800000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:50:02Z
+  - name: request-id
+    value: req_011CazHFGtTqadpUzDyPuN3U
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-d58eeb82b3dc3cd57055e31b92df6deb-223068dbb8039e31-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '1456'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb069c9ec02db6e-LAX
+  body: |+
+    event: message_start
+    data: {"type":"message_start","message":{"model":"claude-opus-4-7","id":"msg_016pz5CRREiTzKYM5SnB1fcp","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":541,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global"}}         }
+
+    event: content_block_start
+    data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}       }
+
+    event: ping
+    data: {"type": "ping"}
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"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"}             }
+
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":0      }
+
+    event: content_block_start
+    data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}  }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"## New"} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Setup\n\nEach train slows by 10 km/h after covering 150 km (half of 300).\n\n- **Train A:** 60 km/h,"}          }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" then 50 km/h after 150 km\n- **Train B:** 90 km/h, then 80 km/h after 150 km (departs 30 min later)\n\n## Step 1: When does each"}         }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" train hit its slowdown point?\n\n(Measuring time *t* from"}               }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Train A's departure)\n\n- **Train A** reaches 150 km at: t = 150/60 = **2.5 h**\n- **Train B** reaches 150 km from"}          }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" B at: t = 0.5 + 150/90 ≈ **2.167 h**\n\nSo **Train B slows down first**, before they would have"}       }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" met (original meeting time was 2.3 h).\n\n## Step 2: Positions when Train B slows\n\nAt t = 13/6 h (≈"}               }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 2.167 h):\n- Train A: 60 × 13/6 = **130 km** from A\n- Train B: **150 km** from A (at mid"} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"point)\n- **Gap = 20 km**\n\n## Step 3: Close the remaining 20 km\n\nTrain A still at 60 km/h, Train B now at 80 km/h:"}    }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\n$$\\text{Closing speed} = 60 + 80 = 140 \\text{ km/h}$$\n$$\\text{Time} = \\frac{20}{"}     }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"140} = \\frac{1}{7} \\text{ h} \\approx 8.57 \\text{ min}$$\n\n## Step 4: Meeting time and place\n\n**"} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Total time from A's departure:**\n$$\\frac{13}{6} + \\frac{1}{7} = \\frac{97}{42} \\text{ h} \\approx 2 \\text{ h } 18"}               }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" \\text{ min } 34 \\text{ s}$$\n\n**Distance from Station A:**\n$$130 + 60 \\times \\tfrac{1}{7} = \\boxed{"}         }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\approx 138.6 \\text{ km}}$$\n\n*Check:* Train A hasn't yet hit its slowdown point (138.6"}               }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" < 150 km) ✓\nTrain B traveled 150 + 80/7 ≈ 161.4 km; total = 300 km ✓\n\nSo they meet roughly **8"}             }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":".5 minutes later** than before (≈ T + 2 h 18.6"}   }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" min), only slightly farther along — because Train A's slower z"}   }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"one wasn't reached."}    }
+
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":1               }
+
+    event: message_delta
+    data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":541,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1693}             }
+
+    event: message_stop
+    data: {"type":"message_stop"       }
+

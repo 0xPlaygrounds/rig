@@ -1,0 +1,143 @@
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]}],"max_tokens":16384,"system":[{"type":"text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"tools":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:53:06 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:53:05Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:53:06Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:53:04Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:53:05Z
+  - name: request-id
+    value: req_011CazHUk8B3DJs2ftCzysVD
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-c7bca2e96b432e46cc6e502b05521823-886afd3d78ba34e1-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '1935'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb06e400e14db6e-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_0142x41Emc5YsX6qjbYJNesV","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"The user wants to know the current weather in Tokyo, Japan. I''ll call the get_weather tool for Tokyo.","signature":"EqICClsIDRgCKkALpnxaJuNX1ik+Il9Nwg9CcTK54l2bTSub6P7rlpi5j4/ofhkQ01JdN7ysTgpmRCTVccggWEVSncpDK4cK4WVCMhFjbGF1ZGUtc29ubmV0LTQtNjgAEgyktpRV/KA8QmRVlpgaDKmyU4Tx9KxTK2vGCCIwsU9yyXW/guzSreBd1OmXHLBc90GmODLI9dx5T+NYXksfqGMAwxFV2zIgOt1v1aOhKnVyEcYjmlst5OhIpSegsdP859qmrT5G9jfyBpFKSXv/9JHdYpK/8Z0qXlcVUhALgwUbKyaZf4kv2p8yNAIiITDJS8GnuFaNdOjU81/5+cqMkUrohAB07Oie9vyTcGV5YRT9AfQptjGx4akatz2FoRalH0aCzVgYAQ=="},{"type":"text","text":"Sure! Let me check the current weather in Tokyo right away!"},{"type":"tool_use","id":"toolu_01TYH4VTEAkJQhDXQdhD1osJ","name":"get_weather","input":{"city":"Tokyo"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":671,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":106,"service_tier":"standard","inference_geo":"global"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"role":"assistant","content":[{"type":"thinking","thinking":"The user wants to know the current weather in Tokyo, Japan. I''ll call the get_weather tool for Tokyo.","signature":"EqICClsIDRgCKkALpnxaJuNX1ik+Il9Nwg9CcTK54l2bTSub6P7rlpi5j4/ofhkQ01JdN7ysTgpmRCTVccggWEVSncpDK4cK4WVCMhFjbGF1ZGUtc29ubmV0LTQtNjgAEgyktpRV/KA8QmRVlpgaDKmyU4Tx9KxTK2vGCCIwsU9yyXW/guzSreBd1OmXHLBc90GmODLI9dx5T+NYXksfqGMAwxFV2zIgOt1v1aOhKnVyEcYjmlst5OhIpSegsdP859qmrT5G9jfyBpFKSXv/9JHdYpK/8Z0qXlcVUhALgwUbKyaZf4kv2p8yNAIiITDJS8GnuFaNdOjU81/5+cqMkUrohAB07Oie9vyTcGV5YRT9AfQptjGx4akatz2FoRalH0aCzVgYAQ=="},{"type":"text","text":"Sure! Let me check the current weather in Tokyo right away!"},{"type":"tool_use","id":"toolu_01TYH4VTEAkJQhDXQdhD1osJ","name":"get_weather","input":{"city":"Tokyo"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01TYH4VTEAkJQhDXQdhD1osJ","content":[{"type":"text","text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}]}]}],"max_tokens":16384,"system":[{"type":"text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"tools":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:53:13 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:53:07Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:53:13Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:53:06Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:53:07Z
+  - name: request-id
+    value: req_011CazHUtnKfontz5mGSMgNH
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-e77c6aa6db45c04f0c9051a53e7c9030-a3cc96d01948b376-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '7033'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb06e4cbeb8db6e-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01NgydWUaeWfEypUfWh7Ej9A","type":"message","role":"assistant","content":[{"type":"text","text":"Here''s a summary of the current weather in **Tokyo, Japan** and my packing recommendation:\n\n---\n\n☀️ **Current Weather in Tokyo**\n- **Temperature:** 72°F (22°C) — pleasantly warm\n- **Conditions:** Sunny with light clouds\n- **Humidity:** 45% — comfortable and not too muggy\n- **Wind:** 8 mph from the Northwest — a light, refreshing breeze\n\n---\n\n🧴 **Packing Recommendation: Sunscreen!**\n\nBased on the current conditions, **sunscreen is the clear choice!** Here''s why:\n- The sky is **sunny with only light clouds**, meaning strong UV exposure is likely.\n- The **mild humidity and gentle breeze** make it a great day for outdoor exploring — but your skin will still need protection!\n- There''s **no indication of rain**, so an umbrella isn''t necessary right now.\n\n**Quick Tips for Your Trip:**\n- ✅ Pack **SPF 30+ sunscreen** and reapply throughout the day.\n- ✅ Consider a **light hat or sunglasses** for extra sun protection.\n- 🌂 You *could* toss a compact travel umbrella in your bag just in case conditions change, but it''s not a priority based on current weather.\n\nEnjoy your trip to Tokyo! 🗼🌸"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":816,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":313,"service_tier":"standard","inference_geo":"global"}}'

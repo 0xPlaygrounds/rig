@@ -1,0 +1,134 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}},{"name":"lookup_orchard_label","description":"Return the beta signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:52 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=833
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"lookup_harbor_label\",\"args\": {}},\"thoughtSignature\": \"CiQBDDnWx/D9N+SzC1mSZ+WMkKF2INV0vcrIUELhfr06NHZJ8PYKVwEMOdbHqvdAMihsFKuVSRWbAMwurYu8q+HY/b1saINs/ROl3KGwEpMRoFio38qywuf2D5YfkugSbmR8r7sYSib1eMfJQBaa5tSzWyB0w/Z6wYGrOJt/8QqeAQEMOdbHeepameY/tUXu0zRXeO/+BXAxGldOElYUE03ZjfMX+cKe+bO82PXiOHPppWwUdWZdOhF+sWoxHXyEcz/i0WNFbf+cPWSGiwrnme6J2pbxJCmBolZpm8WOZv0IVkQDR7dibnb4poihg0PgKzAhIQrkx0TVUUQEnh0xXcLXKD1h4teKjMBy7QhTagitW8eIsF3fXPmDe2nHg1td\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 166,\"candidatesTokenCount\": 13,\"totalTokenCount\": 222,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 166}],\"thoughtsTokenCount\": 43,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Sz0EauSdEOnpz7IPvMm2wA8\"}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx/D9N+SzC1mSZ+WMkKF2INV0vcrIUELhfr06NHZJ8PYKVwEMOdbHqvdAMihsFKuVSRWbAMwurYu8q+HY/b1saINs/ROl3KGwEpMRoFio38qywuf2D5YfkugSbmR8r7sYSib1eMfJQBaa5tSzWyB0w/Z6wYGrOJt/8QqeAQEMOdbHeepameY/tUXu0zRXeO/+BXAxGldOElYUE03ZjfMX+cKe+bO82PXiOHPppWwUdWZdOhF+sWoxHXyEcz/i0WNFbf+cPWSGiwrnme6J2pbxJCmBolZpm8WOZv0IVkQDR7dibnb4poihg0PgKzAhIQrkx0TVUUQEnh0xXcLXKD1h4teKjMBy7QhTagitW8eIsF3fXPmDe2nHg1td","functionCall":{"name":"lookup_harbor_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}},{"name":"lookup_orchard_label","description":"Return the beta signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:52 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=733
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"lookup_orchard_label\",\"args\": {}},\"thoughtSignature\": \"Cl0BDDnWxxHgc3COLzB4Myd0eoonRm2H6n/TTOcRvor89zbwka8tKOHq9nGwxbD2F9wWcWDW4MM5dwWaYaKlHTBM/eFVjGsrjVypIjmwJkrTd8FXDjKFdFBeD8i53+AKWgEMOdbHPpRYDOFYlZ0/Cy0LBYwtAj5ZfiXWCi+hXmyhAQHG6B4drB7vP4db+ZBZbJ97p2vZ82CVcY9fxhHSTFReIMp3vM2xAvfP6MMpqj+VGz0akahap0pYkg==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 244,\"candidatesTokenCount\": 13,\"totalTokenCount\": 288,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 244}],\"thoughtsTokenCount\": 31,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"TD0Eav6RC7DRz7IPz4LhuAo\"}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx/D9N+SzC1mSZ+WMkKF2INV0vcrIUELhfr06NHZJ8PYKVwEMOdbHqvdAMihsFKuVSRWbAMwurYu8q+HY/b1saINs/ROl3KGwEpMRoFio38qywuf2D5YfkugSbmR8r7sYSib1eMfJQBaa5tSzWyB0w/Z6wYGrOJt/8QqeAQEMOdbHeepameY/tUXu0zRXeO/+BXAxGldOElYUE03ZjfMX+cKe+bO82PXiOHPppWwUdWZdOhF+sWoxHXyEcz/i0WNFbf+cPWSGiwrnme6J2pbxJCmBolZpm8WOZv0IVkQDR7dibnb4poihg0PgKzAhIQrkx0TVUUQEnh0xXcLXKD1h4teKjMBy7QhTagitW8eIsF3fXPmDe2nHg1td","functionCall":{"name":"lookup_harbor_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"Cl0BDDnWxxHgc3COLzB4Myd0eoonRm2H6n/TTOcRvor89zbwka8tKOHq9nGwxbD2F9wWcWDW4MM5dwWaYaKlHTBM/eFVjGsrjVypIjmwJkrTd8FXDjKFdFBeD8i53+AKWgEMOdbHPpRYDOFYlZ0/Cy0LBYwtAj5ZfiXWCi+hXmyhAQHG6B4drB7vP4db+ZBZbJ97p2vZ82CVcY9fxhHSTFReIMp3vM2xAvfP6MMpqj+VGz0akahap0pYkg==","functionCall":{"name":"lookup_orchard_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_orchard_label","response":{"result":"silver-orchard"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}},{"name":"lookup_orchard_label","description":"Return the beta signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:53 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=921
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.\",\"thoughtSignature\": \"CloBDDnWx6FpoIHkU268rOGs/32UDrm7hSvZSEpW8PAfRSnW0u0O2tpgtYoKx3iq1ef9N9PPTLLNm9zcqCe4v0vNvxflmLM8o/pSYyYI1jLsqFvbtaAVhhcQchcKtgEBDDnWx5hMhh7zNW9I7VpkDMHtIw3VMUbCS0lglg3LcBUkrol/3ip+aMY9A0kq/lbPJ0b9M3CkQBGWJgz+LbSTTwm2tVB8Us5e2ATzk8U5aJ8bECKyWTbfEkYmVKqq8DmnQOoiv+iPOY5QCRbgCzfGOpez+3/X/TLuaXXuONVWBuSBR0MmbxCv2za70MYiQE0RqSiIz5UgyrZ8hkeSWURNSLFsV04TTgaDTKJCx2oklThCx5bZdwpyAQw51seWzZw//qA3Ro9lQ8CPh2LT8jTPHQqlQ77SZ84CsYizggajVojpGkx67JScEKwJMBqODIWakgqrLTEJ7PJMcLWery6NvAdgFF/qmBgku1mpGAI2F+/worFZGWAVgAxRtQqcLj312G8rHcSRZbr1\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 309,\"candidatesTokenCount\": 21,\"totalTokenCount\": 408,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 309}],\"thoughtsTokenCount\": 78,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"TD0Easj1PP3Oz7IPuoPCyQY\"}\r\n\r\n"

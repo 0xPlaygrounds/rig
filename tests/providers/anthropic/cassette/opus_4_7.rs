@@ -1,0 +1,263 @@
+//! Dedicated Claude Opus 4.7 live smoke tests.
+
+use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::client::CompletionClient;
+use rig::completion::message::Image;
+use rig::completion::{Chat, Message, Prompt};
+use rig::message::{DocumentSourceKind, ImageMediaType};
+use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
+use rig::streaming::{StreamingChat, StreamingPrompt};
+
+use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
+use crate::support::{
+    Adder, BASIC_PREAMBLE, BASIC_PROMPT, EXTRACTOR_TEXT, IMAGE_FIXTURE_PATH, STREAMING_PREAMBLE,
+    STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, STRUCTURED_OUTPUT_PROMPT,
+    SmokePerson, SmokeStructuredOutput, Subtract, TOOLS_PREAMBLE, TOOLS_PROMPT,
+    assert_contains_any_case_insensitive, assert_mentions_expected_number,
+    assert_nonempty_response, assert_smoke_structured_output, collect_stream_final_response,
+};
+
+fn opus_4_7_thinking_params() -> serde_json::Value {
+    serde_json::json!({
+        "thinking": { "type": "adaptive" }
+    })
+}
+
+#[tokio::test]
+async fn messages_prompt_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_prompt_smoke").await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble(BASIC_PREAMBLE)
+        .build();
+
+    let response = agent
+        .prompt(BASIC_PROMPT)
+        .await
+        .expect("prompt should succeed");
+
+    assert_nonempty_response(&response);
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_streaming_prompt_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_streaming_prompt_smoke").await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble(STREAMING_PREAMBLE)
+        .build();
+
+    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let response = collect_stream_final_response(&mut stream)
+        .await
+        .expect("streaming prompt should succeed");
+
+    assert_nonempty_response(&response);
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_tools_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_tools_smoke").await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble(TOOLS_PREAMBLE)
+        .tool(Adder)
+        .tool(Subtract)
+        .build();
+
+    let response = agent
+        .prompt(TOOLS_PROMPT)
+        .await
+        .expect("tool prompt should succeed");
+
+    assert_mentions_expected_number(&response, -3);
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_streaming_tools_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_streaming_tools_smoke").await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble(STREAMING_TOOLS_PREAMBLE)
+        .tool(Adder)
+        .tool(Subtract)
+        .build();
+
+    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let response = collect_stream_final_response(&mut stream)
+        .await
+        .expect("streaming tool prompt should succeed");
+
+    assert_mentions_expected_number(&response, -3);
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_structured_output_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_structured_output_smoke")
+            .await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .output_schema::<SmokeStructuredOutput>()
+        .build();
+
+    let response = agent
+        .prompt(STRUCTURED_OUTPUT_PROMPT)
+        .await
+        .expect("structured output prompt should succeed");
+    let structured: SmokeStructuredOutput =
+        serde_json::from_str(&response).expect("structured output should deserialize");
+
+    assert_smoke_structured_output(&structured);
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_extractor_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_extractor_smoke").await;
+    let extractor = client.extractor::<SmokePerson>(CLAUDE_OPUS_4_7).build();
+
+    let response = extractor
+        .extract_with_usage(EXTRACTOR_TEXT)
+        .await
+        .expect("extractor request should succeed");
+
+    assert_nonempty_response(
+        response
+            .data
+            .first_name
+            .as_deref()
+            .expect("first name should be present"),
+    );
+    assert_nonempty_response(
+        response
+            .data
+            .last_name
+            .as_deref()
+            .expect("last name should be present"),
+    );
+    assert!(response.usage.total_tokens > 0, "usage should be populated");
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_image_input_smoke() {
+    let (cassette, client) =
+        super::super::support::anthropic_cassette("opus_4_7/messages_image_input_smoke").await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble("You are an image describer.")
+        .build();
+    let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
+    let image = Image {
+        data: DocumentSourceKind::base64(&BASE64_STANDARD.encode(image_bytes)),
+        media_type: Some(ImageMediaType::JPEG),
+        ..Default::default()
+    };
+
+    let response = agent
+        .prompt(image)
+        .await
+        .expect("image prompt should succeed");
+
+    assert_nonempty_response(&response);
+    assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_adaptive_thinking_nonstreaming_smoke() {
+    let (cassette, client) = super::super::support::anthropic_cassette(
+        "opus_4_7/messages_adaptive_thinking_nonstreaming_smoke",
+    )
+    .await;
+    reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
+        client.completion_model(CLAUDE_OPUS_4_7),
+        Some(opus_4_7_thinking_params()),
+    ))
+    .await;
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_adaptive_thinking_streaming_smoke() {
+    let (cassette, client) = super::super::support::anthropic_cassette(
+        "opus_4_7/messages_adaptive_thinking_streaming_smoke",
+    )
+    .await;
+    reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
+        client.completion_model(CLAUDE_OPUS_4_7),
+        Some(opus_4_7_thinking_params()),
+    ))
+    .await;
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_adaptive_thinking_tool_roundtrip_smoke() {
+    let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (cassette, client) = super::super::support::anthropic_cassette(
+        "opus_4_7/messages_adaptive_thinking_tool_roundtrip_smoke",
+    )
+    .await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+        .max_tokens(16384)
+        .tool(WeatherTool::new(call_count.clone()))
+        .additional_params(opus_4_7_thinking_params())
+        .build();
+
+    let result = agent
+        .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
+        .await
+        .expect("adaptive thinking tool chat should succeed");
+
+    reasoning::assert_nonstreaming_universal(&result, &call_count, "anthropic");
+
+    cassette.finish().await;
+}
+
+#[tokio::test]
+async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
+    let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (cassette, client) = super::super::support::anthropic_cassette(
+        "opus_4_7/messages_adaptive_thinking_streaming_tool_roundtrip_smoke",
+    )
+    .await;
+    let agent = client
+        .agent(CLAUDE_OPUS_4_7)
+        .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+        .max_tokens(16384)
+        .tool(WeatherTool::new(call_count.clone()))
+        .additional_params(opus_4_7_thinking_params())
+        .build();
+
+    let stream = agent
+        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .multi_turn(3)
+        .await;
+
+    let stats = reasoning::collect_stream_stats(stream, "anthropic").await;
+    reasoning::assert_universal(&stats, &call_count, "anthropic");
+
+    cassette.finish().await;
+}

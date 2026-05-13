@@ -1,0 +1,75 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters."}],"role":"user"}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a concise assistant. Answer directly."}],"role":"model"}}'
+then:
+  status: 200
+  header:
+  - name: x-gemini-service-tier
+    value: standard
+  - name: content-type
+    value: application/json; charset=UTF-8
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:00 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=1621
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: |
+    {
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "Rust is a systems programming language known for its focus on performance, safety, and concurrency, primarily achieved through its strict compile-time checks for memory management. Memory safety is crucial as it prevents common programming errors like buffer overflows or null pointer dereferences, which can lead to critical security vulnerabilities, program crashes, or data corruption."
+              }
+            ],
+            "role": "model"
+          },
+          "finishReason": "STOP",
+          "index": 0
+        }
+      ],
+      "usageMetadata": {
+        "promptTokenCount": 29,
+        "candidatesTokenCount": 65,
+        "totalTokenCount": 259,
+        "promptTokensDetails": [
+          {
+            "modality": "TEXT",
+            "tokenCount": 29
+          }
+        ],
+        "thoughtsTokenCount": 165,
+        "serviceTier": "standard"
+      },
+      "modelVersion": "gemini-2.5-flash",
+      "responseId": "2zwEasyTGqeAz7IPk7PUqQk"
+    }

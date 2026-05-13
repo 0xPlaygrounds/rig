@@ -1,0 +1,143 @@
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I need to plan a dinner party for 8 people, including 2 vegetarians and 1 person with a gluten allergy. Create appetizers, mains, and desserts."}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a helpful assistant that can solve complex problems. Use the ''think'' tool to reason through complex problems step by step."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:53:45 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:53:35Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '399000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:53:45Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:53:33Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '2399000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:53:35Z
+  - name: request-id
+    value: req_011CazHWrViWzgV5extkbeZB
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-72a03eb6f4bc61315d7a353596c1d9af-a2165614f6a3009b-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '11780'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb06ef2ecf6db6e-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01EqV8JQ3QF7L5sHwHPb39Tf","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01Jj3YwrwU4L4h8vsSAJUH1M","name":"think","input":{"thought":"The user wants a dinner party menu for 8 people with dietary restrictions:\n- 2 vegetarians (no meat/fish)\n- 1 person with gluten allergy (no gluten - wheat, barley, rye, etc.)\n\nI need to plan appetizers, mains, and desserts that accommodate everyone. The best approach is to either:\n1. Make everything vegetarian AND gluten-free so everyone can eat everything\n2. Or have separate options for each dietary need\n\nLet me think about a well-rounded menu that ideally works for everyone, or clearly labels what''s safe for whom.\n\nI''ll create a cohesive dinner party menu where most items are naturally accommodating, and clearly note which items suit which dietary needs.\n\n**Appetizers:**\n1. Bruschetta - has gluten (bread), but vegetarian. Need GF version too.\n2. Stuffed mushrooms (GF, V) - great option\n3. Caprese skewers (GF, V) - cherry tomatoes, fresh mozzarella, basil, balsamic\n4. Shrimp cocktail (GF, not V)\n\n**Mains:**\n- A vegetarian main + a meat main, both gluten-free\n1. Herb-roasted chicken (GF) - for non-vegetarians\n2. Wild mushroom risotto (GF, V) - vegetarian\n3. Roasted vegetable quinoa (GF, V) - side/main\n4. Side dishes that are GF and V\n\n**Desserts:**\n- Chocolate mousse (GF, V)\n- Fresh berry pavlova (GF, V)\n- Flourless chocolate cake (GF, V)\n\nLet me design a complete, elegant menu:\n\n**APPETIZERS (3 options):**\n1. Caprese Skewers - GF, V (cherry tomatoes, fresh mozzarella, basil, balsamic glaze)\n2. Stuffed Mini Peppers - GF, V (cream cheese, roasted garlic, herbs)\n3. Garlic Shrimp Ceviche - GF (lime, cilantro, red onion) - for non-vegetarians\n\n**MAINS:**\n1. Herb-Roasted Chicken Thighs with lemon and rosemary - GF\n2. Wild Mushroom and Spinach Risotto - GF, V\n3. Sides: Roasted garlic green beans (GF, V), Roasted sweet potato wedges (GF, V)\n\n**DESSERTS:**\n1. Flourless Chocolate Cake - GF, V\n2. Fresh Berry Pavlova - GF, V (meringue base)\n3. Chocolate Mousse cups - GF, V\n\nLet me structure this in a clear, organized, and helpful way with dietary tags and brief descriptions/tips."},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":675,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":717,"service_tier":"standard","inference_geo":"global"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I need to plan a dinner party for 8 people, including 2 vegetarians and 1 person with a gluten allergy. Create appetizers, mains, and desserts."}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Jj3YwrwU4L4h8vsSAJUH1M","name":"think","input":{"thought":"The user wants a dinner party menu for 8 people with dietary restrictions:\n- 2 vegetarians (no meat/fish)\n- 1 person with gluten allergy (no gluten - wheat, barley, rye, etc.)\n\nI need to plan appetizers, mains, and desserts that accommodate everyone. The best approach is to either:\n1. Make everything vegetarian AND gluten-free so everyone can eat everything\n2. Or have separate options for each dietary need\n\nLet me think about a well-rounded menu that ideally works for everyone, or clearly labels what''s safe for whom.\n\nI''ll create a cohesive dinner party menu where most items are naturally accommodating, and clearly note which items suit which dietary needs.\n\n**Appetizers:**\n1. Bruschetta - has gluten (bread), but vegetarian. Need GF version too.\n2. Stuffed mushrooms (GF, V) - great option\n3. Caprese skewers (GF, V) - cherry tomatoes, fresh mozzarella, basil, balsamic\n4. Shrimp cocktail (GF, not V)\n\n**Mains:**\n- A vegetarian main + a meat main, both gluten-free\n1. Herb-roasted chicken (GF) - for non-vegetarians\n2. Wild mushroom risotto (GF, V) - vegetarian\n3. Roasted vegetable quinoa (GF, V) - side/main\n4. Side dishes that are GF and V\n\n**Desserts:**\n- Chocolate mousse (GF, V)\n- Fresh berry pavlova (GF, V)\n- Flourless chocolate cake (GF, V)\n\nLet me design a complete, elegant menu:\n\n**APPETIZERS (3 options):**\n1. Caprese Skewers - GF, V (cherry tomatoes, fresh mozzarella, basil, balsamic glaze)\n2. Stuffed Mini Peppers - GF, V (cream cheese, roasted garlic, herbs)\n3. Garlic Shrimp Ceviche - GF (lime, cilantro, red onion) - for non-vegetarians\n\n**MAINS:**\n1. Herb-Roasted Chicken Thighs with lemon and rosemary - GF\n2. Wild Mushroom and Spinach Risotto - GF, V\n3. Sides: Roasted garlic green beans (GF, V), Roasted sweet potato wedges (GF, V)\n\n**DESSERTS:**\n1. Flourless Chocolate Cake - GF, V\n2. Fresh Berry Pavlova - GF, V (meringue base)\n3. Chocolate Mousse cups - GF, V\n\nLet me structure this in a clear, organized, and helpful way with dietary tags and brief descriptions/tips."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Jj3YwrwU4L4h8vsSAJUH1M","content":[{"type":"text","text":"The user wants a dinner party menu for 8 people with dietary restrictions:\n- 2 vegetarians (no meat/fish)\n- 1 person with gluten allergy (no gluten - wheat, barley, rye, etc.)\n\nI need to plan appetizers, mains, and desserts that accommodate everyone. The best approach is to either:\n1. Make everything vegetarian AND gluten-free so everyone can eat everything\n2. Or have separate options for each dietary need\n\nLet me think about a well-rounded menu that ideally works for everyone, or clearly labels what''s safe for whom.\n\nI''ll create a cohesive dinner party menu where most items are naturally accommodating, and clearly note which items suit which dietary needs.\n\n**Appetizers:**\n1. Bruschetta - has gluten (bread), but vegetarian. Need GF version too.\n2. Stuffed mushrooms (GF, V) - great option\n3. Caprese skewers (GF, V) - cherry tomatoes, fresh mozzarella, basil, balsamic\n4. Shrimp cocktail (GF, not V)\n\n**Mains:**\n- A vegetarian main + a meat main, both gluten-free\n1. Herb-roasted chicken (GF) - for non-vegetarians\n2. Wild mushroom risotto (GF, V) - vegetarian\n3. Roasted vegetable quinoa (GF, V) - side/main\n4. Side dishes that are GF and V\n\n**Desserts:**\n- Chocolate mousse (GF, V)\n- Fresh berry pavlova (GF, V)\n- Flourless chocolate cake (GF, V)\n\nLet me design a complete, elegant menu:\n\n**APPETIZERS (3 options):**\n1. Caprese Skewers - GF, V (cherry tomatoes, fresh mozzarella, basil, balsamic glaze)\n2. Stuffed Mini Peppers - GF, V (cream cheese, roasted garlic, herbs)\n3. Garlic Shrimp Ceviche - GF (lime, cilantro, red onion) - for non-vegetarians\n\n**MAINS:**\n1. Herb-Roasted Chicken Thighs with lemon and rosemary - GF\n2. Wild Mushroom and Spinach Risotto - GF, V\n3. Sides: Roasted garlic green beans (GF, V), Roasted sweet potato wedges (GF, V)\n\n**DESSERTS:**\n1. Flourless Chocolate Cake - GF, V\n2. Fresh Berry Pavlova - GF, V (meringue base)\n3. Chocolate Mousse cups - GF, V\n\nLet me structure this in a clear, organized, and helpful way with dietary tags and brief descriptions/tips."}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a helpful assistant that can solve complex problems. Use the ''think'' tool to reason through complex problems step by step."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:54:19 GMT
+  - name: content-type
+    value: application/json
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '1999000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:53:46Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:54:19Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:53:45Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '2399000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:53:46Z
+  - name: request-id
+    value: req_011CazHXjMsgFD6zd3UP4rz8
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-3ab9c18d76cf14453a7612455688d87e-7e4886be3fb0e2b4-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '34487'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb06f3d3857db6e-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_014tXSJnQPyS2du1kUifCu57","type":"message","role":"assistant","content":[{"type":"text","text":"# 🍽️ Dinner Party Menu for 8\n### Accommodating: 2 Vegetarians (🌿) | 1 Gluten-Free Guest (🌾✗)\n\n> **Strategy:** All dishes are gluten-free by design, eliminating any cross-contamination stress. Mains include a dedicated vegetarian centerpiece alongside a meat option, so every guest is equally celebrated — not just accommodated.\n\n---\n\n## 🥗 APPETIZERS\n*Served family-style as guests arrive*\n\n### 1. 🍅 Caprese Skewers 🌿 🌾✗\n**Ingredients:** Cherry tomatoes, fresh mozzarella balls, fresh basil, extra-virgin olive oil, balsamic glaze, flaky sea salt\n**How to:** Thread tomato → basil → mozzarella onto mini skewers. Drizzle with olive oil and balsamic glaze. Season and serve at room temp.\n> 💡 *Make 24 skewers (3 per person). These can be assembled 2 hours ahead.*\n\n---\n\n### 2. 🫑 Cream Cheese Stuffed Mini Peppers 🌿 🌾✗\n**Ingredients:** 16 mini sweet peppers, 8 oz cream cheese (softened), 2 garlic cloves (roasted), fresh chives, smoked paprika, salt & pepper\n**How to:** Halve and deseed peppers. Mix cream cheese with roasted garlic, chives, salt & pepper. Pipe or spoon filling into each half. Dust with smoked paprika and broil 3–4 min until lightly golden.\n> 💡 *Can be prepped a day ahead and broiled just before serving.*\n\n---\n\n### 3. 🍤 Citrus Shrimp Ceviche 🌾✗\n**Ingredients:** 1.5 lbs large shrimp (cooked, chilled), juice of 3 limes + 1 lemon, ½ red onion (finely diced), 1 jalapeño, 1 avocado, fresh cilantro, cucumber, salt\n**How to:** Toss shrimp with citrus juice, onion, jalapeño, and cucumber. Marinate 15 min. Fold in diced avocado and cilantro just before serving. Serve in small cups or on endive leaves.\n> 💡 *Serve alongside the vegetarian apps so the vegetarians can enjoy options 1 & 2 freely.*\n\n---\n\n## 🍳 MAINS\n*Served simultaneously — one meat, one vegetarian, shared sides*\n\n### 4. 🍗 Lemon & Herb Roasted Chicken Thighs 🌾✗\n*(For the 6 non-vegetarian guests)*\n**Ingredients:** 10 bone-in, skin-on chicken thighs, 4 garlic cloves (minced), 2 lemons (zested + juiced), fresh rosemary & thyme, olive oil, Dijon mustard (check GF label), salt & pepper\n**How to:** Marinate chicken in garlic, lemon zest/juice, herbs, mustard, and olive oil for at least 2 hours (overnight is ideal). Roast at 425°F (220°C) for 35–40 min until golden and internal temp reaches 165°F. Rest 5 min before serving.\n> 💡 *Make 10 thighs for generous portions — leftovers are a gift.*\n\n---\n\n### 5. 🍄 Wild Mushroom & Spinach Risotto 🌿 🌾✗\n*(Vegetarian centerpiece — hearty enough for non-vegetarians too!)*\n**Ingredients:** 2 cups Arborio rice, 1.5 lbs mixed wild mushrooms (cremini, shiitake, oyster), 6 cups warm vegetable broth, 1 cup dry white wine, 1 large shallot, 4 garlic cloves, 3 cups fresh baby spinach, ½ cup Parmesan (or pecorino), 3 tbsp butter, fresh thyme, truffle oil (optional drizzle), salt & pepper\n**How to:** Sauté shallots and garlic in butter. Toast rice 2 min. Add wine and stir until absorbed. Add warm broth one ladle at a time, stirring constantly (~20 min). Fold in sautéed mushrooms, spinach, and Parmesan. Finish with a drizzle of truffle oil.\n> 💡 *This is a showstopper dish. Make a large batch — it pairs beautifully with the chicken for non-vegetarians too.*\n\n---\n\n### SHARED SIDES 🌿 🌾✗\n\n#### 6. 🫘 Roasted Garlic Green Beans\nToss trimmed green beans with olive oil, sliced garlic, salt & pepper. Roast at 425°F for 15 min. Finish with toasted almond slivers and a squeeze of lemon.\n\n#### 7. 🍠 Honey-Rosemary Roasted Sweet Potatoes\nCube sweet potatoes, toss with olive oil, honey, fresh rosemary, salt & smoked paprika. Roast at 400°F for 30–35 min, flipping halfway.\n\n---\n\n## 🍰 DESSERTS\n*All desserts are gluten-free AND vegetarian — everyone eats everything!*\n\n### 8. 🍫 Flourless Chocolate Cake 🌿 🌾✗\n**Ingredients:** 8 oz dark chocolate (70%+), ½ cup butter, 1 cup sugar, 4 eggs, ¼ cup cocoa powder (GF-certified), 1 tsp vanilla, pinch of salt\n**How to:** Melt chocolate and butter together. Whisk in sugar, eggs, vanilla, cocoa, and salt. Pour into a greased 9\" springform pan. Bake at 325°F (165°C) for 25 min. Center should be slightly fudgy. Cool completely before slicing. Serve dusted with cocoa powder and a dollop of whipped cream.\n> 💡 *Can be made the day before — it actually improves overnight!*\n\n---\n\n### 9. 🍓 Fresh Berry Pavlova 🌿 🌾✗\n**Ingredients:** 6 egg whites, 1½ cups caster sugar, 1 tsp white vinegar, 1 tsp cornstarch (GF), whipped cream, mixed fresh berries (strawberries, raspberries, blueberries), fresh mint\n**How to:** Beat egg whites to stiff peaks, gradually adding sugar. Fold in vinegar and cornstarch. Shape into a large round on parchment and bake at 250°F (120°C) for 90 min. Turn oven off and leave inside until fully cool. Top with whipped cream and berries just before serving.\n> 💡 *The meringue base can be made the morning of the party.*\n\n---\n\n## 📋 HOST CHECKLIST & TIPS\n\n| ✅ Task | ⏰ When |\n|---|---|\n| Marinate chicken | Night before |\n| Bake flourless chocolate cake | Day before |\n| Make pavlova base | Morning of |\n| Stuff mini peppers | Afternoon |\n| Assemble caprese skewers | 2 hrs before |\n| Prep ceviche (minus avocado) | 1 hr before |\n| Start risotto | 30 min before serving |\n| Roast sides | 30–40 min before serving |\n\n---\n\n### 🏷️ Key\n| Label | Meaning |\n|---|---|\n| 🌿 | Vegetarian |\n| 🌾✗ | Gluten-Free |\n\n> ⚠️ **Allergy Reminder:** Always check labels on packaged items (broth, Dijon, cocoa, wine) for hidden gluten. Use separate utensils and cookware for the gluten-free guest''s portions to prevent cross-contamination.\n\nThis menu is elegant, inclusive, and stress-manageable — most of it can be prepped ahead so you actually enjoy your own party! 🥂"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2070,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":2018,"service_tier":"standard","inference_geo":"global"}}'

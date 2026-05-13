@@ -1,0 +1,201 @@
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate 2 - 5."}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}}],"tool_choice":{"type":"auto"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:53:27 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: cache-control
+    value: no-cache
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:53:25Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:53:25Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:53:25Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:53:25Z
+  - name: request-id
+    value: req_011CazHWJpiMfjeFTww9carX
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-a1280963811817e3f217b7ac45e5ecfa-2ee448476f5eb518-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '1337'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb06ec49d68db6e-LAX
+  body: |+
+    event: message_start
+    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01ERqJz45ZqVKpBotp4ryK4B","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":703,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":69,"service_tier":"standard","inference_geo":"global"}}   }
+
+    event: content_block_start
+    data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01WEnTwWSvka9yQ29pcQmLFy","name":"subtract","input":{},"caller":{"type":"direct"}}      }
+
+    event: ping
+    data: {"type": "ping"}
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}         }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"x\": 2"} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":", \""} }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"y\": 5}"}            }
+
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":0       }
+
+    event: message_delta
+    data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":703,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":69}             }
+
+    event: message_stop
+    data: {"type":"message_stop"            }
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate 2 - 5."}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01WEnTwWSvka9yQ29pcQmLFy","name":"subtract","input":{"x":2,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01WEnTwWSvka9yQ29pcQmLFy","content":[{"type":"text","text":"-3"}]}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}}],"tool_choice":{"type":"auto"}}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Wed, 13 May 2026 08:53:28 GMT
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: transfer-encoding
+    value: chunked
+  - name: connection
+    value: keep-alive
+  - name: cache-control
+    value: no-cache
+  - name: anthropic-ratelimit-input-tokens-limit
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-remaining
+    value: '2000000'
+  - name: anthropic-ratelimit-input-tokens-reset
+    value: 2026-05-13T08:53:27Z
+  - name: anthropic-ratelimit-output-tokens-limit
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-remaining
+    value: '400000'
+  - name: anthropic-ratelimit-output-tokens-reset
+    value: 2026-05-13T08:53:27Z
+  - name: anthropic-ratelimit-requests-limit
+    value: '4000'
+  - name: anthropic-ratelimit-requests-remaining
+    value: '3999'
+  - name: anthropic-ratelimit-requests-reset
+    value: 2026-05-13T08:53:27Z
+  - name: anthropic-ratelimit-tokens-limit
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-remaining
+    value: '2400000'
+  - name: anthropic-ratelimit-tokens-reset
+    value: 2026-05-13T08:53:27Z
+  - name: request-id
+    value: req_011CazHWRnv4NF54wrA35BuY
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: anthropic-organization-id
+    value: 72af56b7-4756-4612-8117-abf3c67ce635
+  - name: traceresponse
+    value: 00-a351d7743aa1eded61ceb6b7860968cc-a951d3ce4302cf3c-01
+  - name: server
+    value: cloudflare
+  - name: x-envoy-upstream-service-time
+    value: '1044'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: cf-ray
+    value: 9fb06ecebc77db6e-LAX
+  body: |+
+    event: message_start
+    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01RbseJFTZuwrJ8upyxqaSc8","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":786,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":7,"service_tier":"standard","inference_geo":"global"}}     }
+
+    event: content_block_start
+    data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""} }
+
+    event: ping
+    data: {"type": "ping"}
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"The result of 2 -"}              }
+
+    event: content_block_delta
+    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" 5 is **-3**."}  }
+
+    event: content_block_stop
+    data: {"type":"content_block_stop","index":0        }
+
+    event: message_delta
+    data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":786,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":18}  }
+
+    event: message_stop
+    data: {"type":"message_stop"             }
+

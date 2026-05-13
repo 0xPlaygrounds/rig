@@ -1,0 +1,39 @@
+when:
+  path: /v1beta/interactions
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Give me two fun facts about hummingbirds."}]}],"system_instruction":"Be concise.","stream":false,"store":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:22 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2490
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: '{"id":"v1_Chc3endFYXJiQ05yenB6N0lQekthQXFBcxIXN3p3RWFyYkNOcnpwejdJUHpLYUFxQXM","status":"completed","outputs":[{"signature":"EvsFCvgFAQw51scsNyZ+nV9x3A4exRFkMoCy9aGBZVw5+S2wYM75eXAezrK0hXGpcP1BN9FXU9+2yUouC4e9n3yXIwtQ01e4YIKou2ZWZ30LtsNr95LfQrVCwGw7GVdMRm0B7HS9/KVxWtOsVEqizbTJ5Q+cxeEL+tYpGLXFIgWwbNZEwM6eTnClnjTeG/NzsZz2bKP1fp95f+L0EZEzxvMcj2wlunC7UVCXHoJT9vQLtIJNFvmYzyQZcloHgbkWRTlyh6NuugMIz1MxlmgJhEiwobEP+nlXpPoYatVmOEwXqFFyGFd/v2iQTAYm9QcJbGDZ1kc/MYwATkW/OXIcYS4qYuAcE39cCU6sg+KHgtdft4vr5PXbx1xCtdNDW0JSBUa3Mje7gojfFy1ycZRbvZFy7lboTMA8J49XxM5A/gvTx5IBs2rHeSB7TtkJuUXGuARWzxTGayDFWfWNYQcubtKAMjGSQFpSgDWR89lFos4LVTDNKRMhLjICALTidBH4sAZcu3JrvhvyLyowPFeZJ9j9xtF3G8C4TdWlYNqMwEECxFsAiGbYs3CD5gMwyXfqu/1jmi/rkkPrt431mtW9oKeBdC3UbNHfsdasiiiyHOrkvz/9zIKJoutbJyckNnSzsyYFQN1HWBfwbMfRI+d6WosP7dw5PqTb/RL2KNaZyPKQpBfSdwjF+vMPSRzy+7JBEU2nuUuV9VMqUHzTa9eiDOVIdY0Hfbobqwc47ze2ot15MYlZsqbx0yfGHN4DPyNHIg1xzLvkRZAlzqcvQs1LW5tus8V3QVF7N400/qKHC+Oy/O3k+1mtp5K7HMwtZgZtXeipiLmbbD4f+MPLajlyAMiRtFQhEARd3pfgpmaFpc3olO8ucLXY1NiQc+jJsQbzdSj2ehFp6dAw1Y71nNKMJRPIY+MWdxKKU8rcNQ55AuYu2E/Cfhx+eh0CytV8rhMwoV0BhyDd3wQIp4tfbIQ7RgMF1l9Xh3tRIFeu3xGZYunMDkfFFhDBCCAey31Z8Q==","type":"thought"},{"text":"1. Hummingbirds are the only birds capable of flying backward and upside down.\n2. Their hearts can beat up to 1,260 times per minute—about 21 beats per second.","type":"text"}],"usage":{"total_tokens":263,"total_input_tokens":14,"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_output_tokens":43,"total_tool_use_tokens":0,"total_thought_tokens":206},"role":"model","created":"2026-05-13T08:57:22Z","updated":"2026-05-13T08:57:22Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'

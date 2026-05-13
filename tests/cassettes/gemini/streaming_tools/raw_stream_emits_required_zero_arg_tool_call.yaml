@@ -1,0 +1,44 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Call the ping tool with no arguments. Do not answer with normal text before the tool call."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"ping","description":"A zero-argument tool named ping.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: content-disposition
+    value: attachment
+  - name: vary
+    value: Origin
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: transfer-encoding
+    value: chunked
+  - name: date
+    value: Wed, 13 May 2026 08:58:48 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=827
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"ping\",\"args\": {}},\"thoughtSignature\": \"CmcBDDnWxw/+U5PNIjBu8EZqSgtxwMu4CTrCg2M0XxG7/zjEEKp5MOT6jpcPEdOQzdYADqh+li4zDQTtMwgCkF4Fajw6x9OLxFSmNgnwc0yYMNvAGm2Ko6sT2v2XazUgnqwUzuaIVrvbCsUBAQw51seTxEWom8q/bBwE6/6oPEo8jkY5spfepFwOkCAYHLFYcIwAGngxGVIlDtJVkNan5Y9zBNkGkvesmLliM1bk8q7Y3FOy5xEGliijsWnLuZG+2Jz1yG0CdpT0c6LGW4R2xz9FCgNIA0qq0ha/IdJeLmKX5xqHX9H3AIsW7abzW+TkAOHAF3VAY7fQTQczJCqRha9oO2vQ64CjgYVsdzkW5I0xw/xafFhxt+BwCORVKl7D9kj10flU7XORel5IURQIbc8=\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 47,\"candidatesTokenCount\": 8,\"totalTokenCount\": 112,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 47}],\"thoughtsTokenCount\": 57,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Rz0EatWmKLOHz7IPg8rgmAw\"}\r\n\r\n"

@@ -1,0 +1,79 @@
+when:
+  path: /v1beta/interactions
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Give me one short fact about hummingbirds."}]}],"stream":false,"store":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:24 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2105
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: '{"id":"v1_Chc4andFYXNhUUhaWGx6N0lQejlxQm1BOBIXOGp3RWFzYVFIWlhsejdJUHo5cUJtQTg","status":"completed","outputs":[{"signature":"EuMDCuADAQw51sdCj+K/jQJGjCjRJ5l5jQPekmuMLCdaTEnxKr4pPED2JXqAxb2/kil9BYxXYWevWibsNdx80SMkiKcHE1ordTc3Q2Z6ucMOidHwUFU+WZWtmhjyLWeleG0Ap8I3oyB3VU+gQyGxdk4SsCY1pciivfTb8ZMx8CoFbADVNzWH+XoFCKzc/cf57IS4QmIzJ4qGoLB2Xy4SmPxrTC6OssaK8PFy4N459zFUj62WZWUivbVAZ3y/ZXVbRyA0GXQIjuRL7DmkPnsnWMM2luyfoKKwMnolimGG/0D7C25u2iWHBATcaIRBIzBQMiMFbOyztuWibw9u5JEwzrS4DHRzEJPGS/2ceBxxH1VAWip7c4K9T7wX0lOuL111sfAkVptSFnDh7gLNz8uYnbU+dYTALrte8FN5O1fryKgwJGVssLsUH4YKNVaYqJfqUqfEkrS0xW52cDVcvi0g+v4W7BLmKWzW+SOSv4vdaSyvrYuaAdhhK+8ju0OaysYvkUlZmWzaxLL53hICpfW8xbUMiTfUvdF6uDJNjCFe7Fdc3HvZb/pAIJY/3SlQprHnnIucoo/sIf7WYv8/g5wFThT0/8D1kW/gmG5K1UG/b9Gl+j714diKLfi07H+oFtKETFJnSkMR","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backward.","type":"text"}],"usage":{"total_tokens":150,"total_input_tokens":10,"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_output_tokens":12,"total_tool_use_tokens":0,"total_thought_tokens":128},"role":"model","created":"2026-05-13T08:57:24Z","updated":"2026-05-13T08:57:24Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+---
+when:
+  path: /v1beta/interactions
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Now answer with a short analogy."}]}],"stream":false,"previous_interaction_id":"v1_Chc4andFYXNhUUhaWGx6N0lQejlxQm1BOBIXOGp3RWFzYVFIWlhsejdJUHo5cUJtQTg"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: vary
+    value: X-Origin
+  - name: vary
+    value: Referer
+  - name: vary
+    value: Origin,Accept-Encoding
+  - name: date
+    value: Wed, 13 May 2026 08:57:27 GMT
+  - name: server
+    value: scaffolding on HTTPServer2
+  - name: x-xss-protection
+    value: '0'
+  - name: x-frame-options
+    value: SAMEORIGIN
+  - name: x-content-type-options
+    value: nosniff
+  - name: server-timing
+    value: gfet4t7; dur=2873
+  - name: alt-svc
+    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  - name: accept-ranges
+    value: none
+  - name: transfer-encoding
+    value: chunked
+  body: '{"id":"v1_Chc4andFYXNhUUhaWGx6N0lQejlxQm1BOBIXOUR3RWF1dU5MN3lDejdJUG5Jai02QTA","status":"completed","outputs":[{"signature":"EsIICr8IAQw51sfLgvP/DF7FflgGd7lgf5YJ4Tv5pYupysFPv/ERRv0lLHUhGL8FF0k3IlQiqRlZAZPJxurH/Xh1M2hLs9u+oA7BfklAhs5gH4VC82LdPVs9shJdpc4n1Co/tetjvKPhsk95rC7YTkII78kAPBWWkVFOA/W55231OIlMSbHf2gmioBqbyKxkAqnxtURYWuuCp5ly+E6fF16sPNySCgKdAhrhwmjTkt9cYP7wZ8o10sgVXr6ElsNtIO0qsl7tdi4ZFYBo5f0XFVLeWauQq9DmHwA9Qm6dg7Kzi1kzGr+STWH0iRwqJBL4y3PXDqI2qO7GRbSYL6zZDFLbvElrwq8/x1E15Dbwrv8zOiqjHpFrXkKJqlmq4vBWWKy2Z85Gpt+JeIDo+e43IUW153T7B0Rm9mnIlQcqvdjs2T3279/y22xfszes2S+xYtb+XFIdc5/3suxJkYCPDdW6rsNQi/lmM1ZKuE5Ya9lhCLTEMcCUHfCi4PwU9w7G4SiLjNyzY07yz0mBgOb9A54GUc43Lc+CNApAisEiu1pL3GaRWTtZgV1skCfv8JXkS5Np6gBBNQmvekLlWAlB+3vnsbN77rsmcvM6lxcTrODeTZInKStSU23Y76JqCtzTrgTzD2mAhbCroWD84TKMsrZQssDGhkdZyTYSmi0982O18Yepop8KJoPUUnbNSECyr64GzVy3Y9J1OpeSIvBW8DQsMA8tDFbEcj4grvnBGS8y8Cad9b1mQKpmaZ0JjBm03he7IxQT5zUMW8zG6IUSC6CuKpLQbGhCjD6CgbDBrfBLXkD9K8k0XTDhQ74C9Feh5wHstHKCcoVTEErP52er/gAVRx+iensbaZyWi4dzcIpZyyKg9gmFXwJ4foe5h3QNXvVuDmfxA6qE6tjtFa1bIYAYadoQGFQPnfUuayIO3F398zc89knAhF5Sibh2t6AU3xm10QA7KkDofTQFEco4DpU7y7tovClRV4YAw1+GUBest1Pky+otu534hthmTQj7EX7zWRe9Wu+SzteB7pqPQ5aKOZBPHySZJroT/hbX37WxEU3qbzfTU+Yw4dTI6yZy+C5bLMqfybBKEOwxwJDesBUXV83lvPU5C1B8tprLWT7bUEctMSoGCCtQc6h88/nhbMOILoJzzVV2skR2FEBI0lw5lu8oorx8dkFCS0tmiXbukIjETfxwLKOvtkHVg1Mo25c0m+K4awyo1RLQWQep0f/YQOpkOXUlLbLNzTXv+vNX/N+56R/+yXLvv2vX0cmo8CWNBRYVXhPeP+46yyJZTX0NTFKHLFfy6LOl4E2mN4FfsHG500bjBOVQQiSODoLfJppsG0VlsDrLCD3HWm0/mMO5k1+qGvkpaIaYvUc8c8GhHgZ8/wLaNH/CPYy6jN44eJt2F3UhpVzffIclJyFsakt2QbrEXlTqSxmL4veMPS14wnx2fA==","type":"thought"},{"text":"A hummingbird is like a miniature helicopter with feathers.","type":"text"}],"usage":{"total_tokens":280,"total_input_tokens":8,"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_output_tokens":9,"total_tool_use_tokens":0,"total_thought_tokens":263},"role":"model","created":"2026-05-13T08:57:27Z","updated":"2026-05-13T08:57:27Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'

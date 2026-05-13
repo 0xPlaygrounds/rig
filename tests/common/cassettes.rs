@@ -5,14 +5,26 @@
 //! fixtures. Record mode overwrites existing cassette files.
 #![allow(dead_code)]
 
+use axum::body::Bytes;
+use axum::extract::State;
+use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
+use axum::response::Response;
+use axum::{Router, routing::any};
 use httpmock::MockServer;
+use serde::Deserialize;
+use serde_json::Value;
+use std::collections::BTreeMap;
 use std::fmt;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const CASSETTE_ROOT: &str = "tests/cassettes";
 const REDACTED: &str = "[REDACTED]";
-const DUMMY_API_KEY: &str = "rig-test-redacted";
+const DUMMY_API_KEY: &str = REDACTED;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CassetteMode {
@@ -36,11 +48,25 @@ impl CassetteMode {
 }
 
 pub(crate) struct ProviderCassette {
-    server: MockServer,
+    server: CassetteServer,
     cassette_path: PathBuf,
     base_path: String,
     mode: CassetteMode,
     recording_id: Option<usize>,
+}
+
+enum CassetteServer {
+    Recording(MockServer),
+    Replay(ReplayServer),
+}
+
+impl CassetteServer {
+    fn base_url(&self) -> String {
+        match self {
+            Self::Recording(server) => server.base_url(),
+            Self::Replay(server) => server.base_url(),
+        }
+    }
 }
 
 impl fmt::Debug for ProviderCassette {
@@ -61,9 +87,8 @@ impl ProviderCassette {
         let mode = CassetteMode::current();
         let cassette_path = cassette_path(provider, scenario);
         let upstream = UpstreamBase::parse(real_base_url);
-        let server = MockServer::start_async().await;
-
-        let recording_id = if mode.records() {
+        let (server, recording_id) = if mode.records() {
+            let server = MockServer::start_async().await;
             server
                 .forward_to_async(&upstream.origin, |rule| {
                     rule.filter(|when| {
@@ -87,7 +112,10 @@ impl ProviderCassette {
                 })
                 .await;
 
-            Some(recording.id)
+            let recording_id = recording.id;
+            drop(recording);
+
+            (CassetteServer::Recording(server), Some(recording_id))
         } else {
             if !cassette_path.exists() {
                 panic!(
@@ -95,8 +123,10 @@ impl ProviderCassette {
                     cassette_path.display()
                 );
             }
-            server.playback_async(&cassette_path).await;
-            None
+            (
+                CassetteServer::Replay(ReplayServer::start(&cassette_path).await),
+                None,
+            )
         };
 
         Self {
@@ -127,7 +157,11 @@ impl ProviderCassette {
             return;
         };
 
-        let recording = httpmock::Recording::new(recording_id, &self.server);
+        let CassetteServer::Recording(server) = &self.server else {
+            return;
+        };
+
+        let recording = httpmock::Recording::new(recording_id, server);
         let bytes = recording
             .export_async()
             .await
@@ -146,6 +180,284 @@ impl ProviderCassette {
             .await
             .expect("provider cassette should be written");
     }
+}
+
+struct ReplayServer {
+    addr: SocketAddr,
+}
+
+impl ReplayServer {
+    async fn start(cassette_path: &Path) -> Self {
+        let contents = tokio::fs::read_to_string(cassette_path)
+            .await
+            .unwrap_or_else(|error| {
+                panic!(
+                    "provider cassette {} should be readable: {error}",
+                    cassette_path.display()
+                )
+            });
+        let interactions = parse_cassette(cassette_path, &contents);
+        let state = Arc::new(Mutex::new(ReplayState { interactions }));
+        let app = Router::new()
+            .fallback(any(replay_request))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("replay server should bind");
+        let addr = listener
+            .local_addr()
+            .expect("replay server address should be available");
+
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("replay server should run");
+        });
+
+        Self { addr }
+    }
+
+    fn base_url(&self) -> String {
+        format!("http://{}", self.addr)
+    }
+}
+
+struct ReplayState {
+    interactions: Vec<ReplayInteraction>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CassetteInteraction {
+    when: CassetteRequest,
+    then: CassetteResponse,
+}
+
+#[derive(Debug, Deserialize)]
+struct CassetteRequest {
+    path: String,
+    method: String,
+    #[serde(default)]
+    query_param: Vec<NameValue>,
+    #[serde(default)]
+    header: Vec<NameValue>,
+    body: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CassetteResponse {
+    status: u16,
+    #[serde(default)]
+    header: Vec<NameValue>,
+    body: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NameValue {
+    name: String,
+    value: String,
+}
+
+struct ReplayInteraction {
+    when: CassetteRequest,
+    then: CassetteResponse,
+    consumed: bool,
+}
+
+fn parse_cassette(cassette_path: &Path, contents: &str) -> Vec<ReplayInteraction> {
+    serde_yaml::Deserializer::from_str(contents)
+        .map(|document| {
+            CassetteInteraction::deserialize(document).unwrap_or_else(|error| {
+                panic!(
+                    "provider cassette {} should deserialize: {error}",
+                    cassette_path.display()
+                )
+            })
+        })
+        .map(|interaction| ReplayInteraction {
+            when: interaction.when,
+            then: interaction.then,
+            consumed: false,
+        })
+        .collect()
+}
+
+async fn replay_request(
+    State(state): State<Arc<Mutex<ReplayState>>>,
+    method: Method,
+    uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+) -> Response {
+    let mut state = state.lock().await;
+    let request = IncomingRequest {
+        method,
+        uri,
+        headers,
+        body,
+    };
+
+    let Some(index) = state.interactions.iter().position(|interaction| {
+        !interaction.consumed && request_matches(&request, &interaction.when)
+    }) else {
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header("content-type", "application/json")
+            .body(r#"{"message":"Request did not match any route or mock"}"#.into())
+            .expect("replay miss response should build");
+    };
+
+    let interaction = &mut state.interactions[index];
+    interaction.consumed = true;
+    cassette_response(&interaction.then)
+}
+
+struct IncomingRequest {
+    method: Method,
+    uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+}
+
+fn request_matches(request: &IncomingRequest, expected: &CassetteRequest) -> bool {
+    request
+        .method
+        .as_str()
+        .eq_ignore_ascii_case(&expected.method)
+        && request.uri.path() == expected.path
+        && query_matches(request.uri.query(), &expected.query_param)
+        && headers_match(&request.headers, &expected.header)
+        && body_matches(
+            &request.headers,
+            &expected.header,
+            &request.body,
+            expected.body.as_deref(),
+        )
+}
+
+fn query_matches(query: Option<&str>, expected: &[NameValue]) -> bool {
+    let actual = url::form_urlencoded::parse(query.unwrap_or_default().as_bytes())
+        .into_owned()
+        .collect::<Vec<_>>();
+
+    expected.iter().all(|expected| {
+        actual
+            .iter()
+            .any(|(name, value)| name == &expected.name && value == &expected.value)
+    })
+}
+
+fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool {
+    expected.iter().all(|expected| {
+        let Ok(name) = HeaderName::from_bytes(expected.name.as_bytes()) else {
+            return false;
+        };
+
+        actual
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| {
+                if expected.name.eq_ignore_ascii_case("content-type")
+                    && expected.value.starts_with("multipart/form-data;")
+                {
+                    value.starts_with("multipart/form-data;")
+                } else {
+                    value == expected.value
+                }
+            })
+    })
+}
+
+fn body_matches(
+    actual_headers: &axum::http::HeaderMap,
+    expected_headers: &[NameValue],
+    actual: &[u8],
+    expected: Option<&str>,
+) -> bool {
+    let Some(expected) = expected else {
+        return true;
+    };
+    if is_multipart_request(actual_headers, expected_headers) {
+        return true;
+    }
+    let Ok(actual) = std::str::from_utf8(actual) else {
+        return false;
+    };
+
+    if let (Some(actual_json), Some(expected_json)) =
+        (canonical_json(actual), canonical_json(expected))
+    {
+        return actual_json == expected_json;
+    }
+
+    actual == expected
+}
+
+fn is_multipart_request(
+    actual_headers: &axum::http::HeaderMap,
+    expected_headers: &[NameValue],
+) -> bool {
+    expected_headers.iter().any(|header| {
+        header.name.eq_ignore_ascii_case("content-type")
+            && header.value.starts_with("multipart/form-data;")
+    }) || actual_headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("multipart/form-data;"))
+}
+
+fn canonical_json(body: &str) -> Option<Value> {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .map(sort_json_objects)
+}
+
+fn sort_json_objects(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, sort_json_objects(value)))
+                .collect::<BTreeMap<_, _>>()
+                .into_iter()
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(values.into_iter().map(sort_json_objects).collect()),
+        value => value,
+    }
+}
+
+fn cassette_response(response: &CassetteResponse) -> Response {
+    let mut builder = Response::builder().status(response.status);
+    for header in &response.header {
+        if is_hop_by_hop_header(&header.name) {
+            continue;
+        }
+        let Ok(name) = HeaderName::from_bytes(header.name.as_bytes()) else {
+            continue;
+        };
+        let Ok(value) = HeaderValue::from_str(&header.value) else {
+            continue;
+        };
+        builder = builder.header(name, value);
+    }
+
+    builder
+        .body(response.body.clone().unwrap_or_default().into())
+        .expect("cassette response should build")
+}
+
+fn is_hop_by_hop_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "connection"
+            | "content-length"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+    )
 }
 
 struct UpstreamBase {
@@ -202,7 +514,10 @@ fn redact_secrets(yaml: &str) -> String {
         let lower = trimmed.to_ascii_lowercase();
         let is_sensitive_header_name = lower.starts_with("- name: set-cookie")
             || lower.starts_with("- name: openai-organization")
-            || lower.starts_with("- name: openai-project");
+            || lower.starts_with("- name: openai-project")
+            || lower.starts_with("- name: x-api-key")
+            || lower.starts_with("- name: x-goog-api-key")
+            || lower.starts_with("- name: key");
 
         let line = if redact_next_value && lower.starts_with("value:") {
             redact_next_value = false;

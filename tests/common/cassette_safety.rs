@@ -8,12 +8,23 @@ const FORBIDDEN_PATTERNS: &[&str] = &[
     "Authorization:",
     "Bearer ",
     "sk-",
+    "x-api-key:",
+    "x-goog-api-key:",
     "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "AIza",
     "__cf_bm=",
     "proj_",
 ];
 
-const REDACTED_HEADER_NAMES: &[&str] = &["openai-organization", "openai-project", "set-cookie"];
+const REDACTED_HEADER_NAMES: &[&str] = &[
+    "openai-organization",
+    "openai-project",
+    "set-cookie",
+    "x-api-key",
+    "x-goog-api-key",
+];
 
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {
