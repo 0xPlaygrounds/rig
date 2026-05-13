@@ -113,7 +113,6 @@ impl ProviderCassette {
                 .await;
 
             let recording_id = recording.id;
-            drop(recording);
 
             (CassetteServer::Recording(server), Some(recording_id))
         } else {
