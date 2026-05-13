@@ -171,6 +171,12 @@ impl Provider for CopilotExt {
     const VERIFY_PATH: &'static str = "";
 }
 
+impl responses_api::ResponsesProviderProfile for CopilotExt {
+    fn responses_preamble_behavior(&self) -> responses_api::ResponsesPreambleBehavior {
+        responses_api::ResponsesPreambleBehavior::InputSystemMessage
+    }
+}
+
 impl<H> Capabilities<H> for CopilotExt {
     type Completion = Capable<CompletionModel<H>>;
     type Embeddings = Capable<EmbeddingModel<H>>;
@@ -684,7 +690,8 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
-        ResponsesRequest::try_from((self.model.clone(), completion_request))
+        responses_api::GenericResponsesCompletionModel::new(self.client.clone(), self.model.clone())
+            .create_completion_request(completion_request)
     }
 
     async fn completion_chat(
@@ -1744,7 +1751,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .preamble("Follow Copilot compatibility.".to_string())
+            .build();
 
         let _response = model
             .completion(request)
@@ -1754,7 +1764,15 @@ mod tests {
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
         assert!(requests[0].uri.ends_with("/responses"));
-        assert!(String::from_utf8_lossy(&requests[0].body).contains("\"model\":\"gpt-5.3-codex\""));
+        let request_json: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request json");
+        assert_eq!(request_json["model"], "gpt-5.3-codex");
+        assert!(request_json.get("instructions").is_none());
+        assert_eq!(request_json["input"][0]["role"], "system");
+        assert_eq!(
+            request_json["input"][0]["content"][0]["text"],
+            "Follow Copilot compatibility."
+        );
     }
 
     #[tokio::test]

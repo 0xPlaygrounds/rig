@@ -109,6 +109,51 @@ impl CompletionRequest {
     }
 }
 
+/// Provider-specific OpenAI Responses request behavior.
+#[doc(hidden)]
+pub trait ResponsesProviderProfile {
+    /// Controls how Rig maps [`crate::completion::CompletionRequest::preamble`].
+    fn responses_preamble_behavior(&self) -> ResponsesPreambleBehavior {
+        ResponsesPreambleBehavior::Instructions
+    }
+}
+
+/// Controls how Rig maps [`crate::completion::CompletionRequest::preamble`] into
+/// an OpenAI Responses request.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ResponsesPreambleBehavior {
+    /// Use OpenAI's canonical top-level `instructions` field.
+    #[default]
+    Instructions,
+    /// Move `instructions` into the first input item as a system message.
+    ///
+    /// This is for Responses-compatible providers that reject top-level
+    /// `instructions`.
+    InputSystemMessage,
+}
+
+pub(crate) fn move_instructions_into_input_system_message(
+    request: &mut CompletionRequest,
+) -> Result<(), CompletionError> {
+    let Some(instructions) = request.instructions.take() else {
+        return Ok(());
+    };
+
+    if instructions.trim().is_empty() {
+        return Ok(());
+    }
+
+    let mut input = vec![InputItem::system_message(instructions)];
+    input.extend(request.input.clone());
+    request.input = OneOrMany::many(input).map_err(|_| {
+        CompletionError::RequestError(
+            "OpenAI Responses request input must contain at least one item".into(),
+        )
+    })?;
+
+    Ok(())
+}
+
 /// An input item for [`CompletionRequest`].
 #[derive(Debug, Deserialize, Clone)]
 pub struct InputItem {
@@ -817,14 +862,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
             }
             partial_history.extend(req.chat_history);
 
-            // Initialize full history with preamble (or empty if non-existent)
-            // Some "Responses API compatible" providers don't support `instructions` field
-            // so we need to add a system message until further notice
-            let mut full_history: Vec<InputItem> = if let Some(content) = req.preamble {
-                vec![InputItem::system_message(content)]
-            } else {
-                Vec::new()
-            };
+            let mut full_history = Vec::new();
 
             for history_item in partial_history {
                 full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
@@ -921,7 +959,7 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
         Ok(Self {
             input,
             model,
-            instructions: None, // is currently None due to lack of support in compliant providers
+            instructions: req.preamble,
             max_output_tokens: req.max_tokens,
             stream,
             tool_choice,
@@ -942,6 +980,7 @@ pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = 
     pub model: String,
     /// Model-level default tools that are always added to outgoing requests.
     pub tools: Vec<ResponsesToolDefinition>,
+    preamble_behavior: ResponsesPreambleBehavior,
 }
 
 /// The completion model struct for OpenAI's Responses API.
@@ -954,23 +993,27 @@ pub type ResponsesCompletionModel<H = reqwest::Client> =
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
+    Ext: crate::client::Provider + ResponsesProviderProfile + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + 'static,
 {
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
+        let preamble_behavior = client.ext().responses_preamble_behavior();
         Self {
             client,
             model: model.into(),
             tools: Vec::new(),
+            preamble_behavior,
         }
     }
 
     pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
+        let preamble_behavior = client.ext().responses_preamble_behavior();
         Self {
             client,
             model: model.to_string(),
             tools: Vec::new(),
+            preamble_behavior,
         }
     }
 
@@ -997,6 +1040,9 @@ where
     ) -> Result<CompletionRequest, CompletionError> {
         let mut req = CompletionRequest::try_from((self.model.clone(), completion_request))?;
         req.tools.extend(self.tools.clone());
+        if self.preamble_behavior == ResponsesPreambleBehavior::InputSystemMessage {
+            move_instructions_into_input_system_message(&mut req)?;
+        }
 
         Ok(req)
     }
@@ -1396,6 +1442,7 @@ where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
+        + ResponsesProviderProfile
         + crate::client::DebugExt
         + Clone
         + WasmCompatSend
@@ -1927,6 +1974,8 @@ impl FromStr for UserContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::{Completion as _, CompletionModel as _};
     use crate::message;
     use serde_json::json;
 
@@ -2005,6 +2054,131 @@ mod tests {
             .expect("provider-specific service tier should serialize"),
             json!("provider_experimental")
         );
+    }
+
+    fn user_request_with_preamble(preamble: Option<&str>) -> completion::CompletionRequest {
+        completion::CompletionRequest {
+            model: None,
+            preamble: preamble.map(ToString::to_string),
+            chat_history: OneOrMany::one(completion::Message::user("hello")),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn openai_responses_preamble_serializes_to_top_level_instructions() {
+        let request = CompletionRequest::try_from((
+            "gpt-5.4".to_string(),
+            user_request_with_preamble(Some("Follow the policy.")),
+        ))
+        .expect("request");
+
+        assert_eq!(request.instructions.as_deref(), Some("Follow the policy."));
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn openai_responses_builder_preamble_serializes_to_top_level_instructions() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = client.completion_model("gpt-5.4");
+        let user_request = model
+            .completion_request(completion::Message::user("hello"))
+            .preamble("Builder instructions.".to_string())
+            .build();
+
+        let request = model
+            .create_completion_request(user_request)
+            .expect("request");
+
+        assert_eq!(
+            request.instructions.as_deref(),
+            Some("Builder instructions.")
+        );
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[tokio::test]
+    async fn openai_responses_agent_preamble_serializes_to_top_level_instructions() {
+        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let model = client.completion_model("gpt-5.4");
+        let agent = crate::agent::AgentBuilder::new(model.clone())
+            .preamble("Agent instructions.")
+            .build();
+
+        let user_request = agent
+            .completion(
+                completion::Message::user("hello"),
+                Vec::<completion::Message>::new(),
+            )
+            .await
+            .expect("completion request")
+            .build();
+        let request = model
+            .create_completion_request(user_request)
+            .expect("request");
+
+        assert_eq!(request.instructions.as_deref(), Some("Agent instructions."));
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 1);
+        assert_eq!(input[0]["role"], "user");
+    }
+
+    #[test]
+    fn openai_responses_chat_history_system_messages_remain_input_items() {
+        let request = completion::CompletionRequest {
+            chat_history: OneOrMany::many(vec![
+                completion::Message::system("History system."),
+                completion::Message::user("hello"),
+            ])
+            .expect("history"),
+            ..user_request_with_preamble(Some("Top-level instructions."))
+        };
+
+        let request =
+            CompletionRequest::try_from(("gpt-5.4".to_string(), request)).expect("request");
+
+        assert_eq!(
+            request.instructions.as_deref(),
+            Some("Top-level instructions.")
+        );
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 2);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[0]["content"][0]["text"], "History system.");
+        assert_eq!(input[1]["role"], "user");
+    }
+
+    #[test]
+    fn compatibility_normalizer_moves_instructions_to_input_system_message() {
+        let mut request = CompletionRequest::try_from((
+            "gpt-5.4".to_string(),
+            user_request_with_preamble(Some("Compat instructions.")),
+        ))
+        .expect("request");
+
+        move_instructions_into_input_system_message(&mut request).expect("normalize");
+
+        assert_eq!(request.instructions, None);
+        let input = serde_json::to_value(&request.input).expect("serialize input");
+        let input = input.as_array().expect("input array");
+        assert_eq!(input.len(), 2);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[0]["content"][0]["text"], "Compat instructions.");
+        assert_eq!(input[1]["role"], "user");
     }
 
     #[test]

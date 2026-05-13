@@ -6,6 +6,7 @@ mod extractor;
 mod extractor_usage;
 #[cfg(feature = "image")]
 mod image_generation;
+mod instructions;
 mod loaders;
 mod multi_extract;
 mod permission_control;

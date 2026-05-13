@@ -3,6 +3,7 @@ mod context;
 mod embeddings;
 mod extractor;
 mod extractor_usage;
+mod instructions;
 mod loaders;
 mod multi_extract;
 mod permission_control;

@@ -48,23 +48,18 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
             .find_map(|message| message.rag_text())
     });
 
-    // Prepend preamble as system message if present
-    let chat_history: Vec<Message> = if let Some(preamble) = preamble {
-        std::iter::once(Message::system(preamble.to_owned()))
-            .chain(chat_history.iter().cloned())
-            .collect()
-    } else {
-        chat_history.to_vec()
-    };
-
-    let completion_request = model
+    let mut completion_request = model
         .completion_request(prompt)
-        .messages(chat_history)
+        .messages(chat_history.iter().cloned())
         .temperature_opt(temperature)
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params.cloned())
         .output_schema_opt(output_schema.cloned())
         .documents(static_context.to_vec());
+
+    if let Some(preamble) = preamble {
+        completion_request = completion_request.preamble(preamble.to_owned());
+    }
 
     let completion_request = if let Some(tool_choice) = tool_choice {
         completion_request.tool_choice(tool_choice.clone())

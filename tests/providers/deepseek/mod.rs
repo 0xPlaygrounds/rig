@@ -1,6 +1,7 @@
 mod agent;
 mod extractor;
 mod extractor_usage;
+mod instructions;
 mod models;
 mod multi_extract;
 mod permission_control;

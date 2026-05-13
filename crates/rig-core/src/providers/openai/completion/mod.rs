@@ -41,6 +41,20 @@ where
     content.serialize(serializer)
 }
 
+/// Serializes system content as a plain string when there's a single text item.
+fn serialize_system_content<S>(
+    content: &OneOrMany<SystemContent>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if content.len() == 1 {
+        return serializer.serialize_str(&content.first_ref().text);
+    }
+    content.serialize(serializer)
+}
+
 /// `gpt-5.5` completion model
 pub const GPT_5_5: &str = "gpt-5.5";
 
@@ -137,7 +151,10 @@ impl From<ApiErrorResponse> for CompletionError {
 pub enum Message {
     #[serde(alias = "developer")]
     System {
-        #[serde(deserialize_with = "string_or_one_or_many")]
+        #[serde(
+            deserialize_with = "string_or_one_or_many",
+            serialize_with = "serialize_system_content"
+        )]
         content: OneOrMany<SystemContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,

@@ -1,6 +1,7 @@
 mod anthropic;
 mod coding;
 mod general;
+mod instructions;
 
 use rig::providers::zai;
 
