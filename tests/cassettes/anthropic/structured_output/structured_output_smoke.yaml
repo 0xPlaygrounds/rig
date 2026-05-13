@@ -13,7 +13,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:53:33 GMT
+    value: Wed, 13 May 2026 22:45:48 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -25,47 +25,47 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '2000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T08:53:32Z
+    value: 2026-05-13T22:45:47Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T08:53:33Z
+    value: 2026-05-13T22:45:48Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T08:53:28Z
+    value: 2026-05-13T22:45:46Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2400000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T08:53:32Z
+    value: 2026-05-13T22:45:47Z
   - name: request-id
-    value: req_011CazHWX9NosjxGNftB4miE
+    value: req_011Cb1Nyem7UtdUF3E6DCQ5k
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
     value: 72af56b7-4756-4612-8117-abf3c67ce635
   - name: traceresponse
-    value: 00-236ebd37548c95cd053a807ca4c659de-17b8b498ef4ec5cc-01
+    value: 00-92f5a6c4e0723f25eb2243cb2570bf0b-86530bcd86755f77-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '4429'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '1976'
   - name: x-robots-tag
     value: none
+  - name: vary
+    value: Accept-Encoding
   - name: cf-cache-status
     value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
   - name: cf-ray
-    value: 9fb06ed699a8db6e-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01AaXwQHYKaW5xcqFNdjE1Si","type":"message","role":"assistant","content":[{"type":"text","text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering of Rust programming language enthusiasts in Seattle to share knowledge, discuss projects, and network with fellow developers.\"}"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":244,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":45,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb53205fbd44800-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01CSDV2u2Wnp3Ew3ciVm1P8T","type":"message","role":"assistant","content":[{"type":"text","text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to network, share projects, and discuss the latest developments in the Rust ecosystem.\"}"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":244,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":49,"service_tier":"standard","inference_geo":"global"}}'

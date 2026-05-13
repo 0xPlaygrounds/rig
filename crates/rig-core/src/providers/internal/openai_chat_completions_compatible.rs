@@ -487,8 +487,10 @@ fn drain_finalized_tool_calls(
 ) -> (Vec<RawStreamingToolCall>, usize) {
     let mut completed_tool_calls = Vec::new();
     let mut dropped_tool_calls = 0;
+    let mut pending_tool_calls = tool_calls.drain().collect::<Vec<_>>();
+    pending_tool_calls.sort_by_key(|(index, _)| *index);
 
-    for (_, tool_call) in tool_calls.drain() {
+    for (_, tool_call) in pending_tool_calls {
         if let Some(tool_call) = finalize_pending_tool_call(tool_call) {
             completed_tool_calls.push(tool_call);
         } else {

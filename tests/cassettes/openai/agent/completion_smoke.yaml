@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:32 GMT
+    value: Wed, 13 May 2026 22:36:43 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '1859'
+    value: '1824'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb524beb8e1566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '1032'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 1ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_660a98e69a7644969f95e9a19ee34bce
-  - name: openai-processing-ms
-    value: '1237'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_f092070669194ec0b0b5730795bbab8b
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb1eb1d6e2b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_00e3fd2d34c447c5006a041dcf55dc81948d65d088911a6944",
+      "id": "resp_0e8e4b66ef10b6a6006a04fcfae45481a29d3dd8f9c836f457",
       "object": "response",
-      "created_at": 1778654671,
+      "created_at": 1778711802,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654672,
+      "completed_at": 1778711803,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_00e3fd2d34c447c5006a041dd0148c8194b2ccafc409b7d157",
+          "id": "msg_0e8e4b66ef10b6a6006a04fcfb80ac81a2b4ad12f9c12abefb",
           "type": "message",
           "status": "completed",
           "content": [
@@ -87,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Rust is a systems programming language focused on safety and performance, particularly emphasizing memory safety without needing a garbage collector. Memory safety is crucial to prevent bugs and vulnerabilities like buffer overflows and data races, ensuring robustness and security in software applications."
+              "text": "Rust is a systems programming language designed for safety and concurrency, emphasizing memory safety without needing a garbage collector. Memory safety is crucial to prevent vulnerabilities like buffer overflows and memory leaks, ensuring more secure and stable software."
             }
           ],
           "role": "assistant"
@@ -122,11 +124,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 48,
+        "output_tokens": 44,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 86
+        "total_tokens": 82
       },
       "user": null,
       "metadata": {}

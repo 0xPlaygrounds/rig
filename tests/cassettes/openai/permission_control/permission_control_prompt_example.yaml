@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:45:04 GMT
+    value: Wed, 13 May 2026 22:37:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2368'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb525517db6d7af-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '4598'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 1ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_57f46d0b04024aae89aaa495aecb4f8b
-  - name: openai-processing-ms
-    value: '1709'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_d95a44b59dff494ea8eb63a309a1450d
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb2b329048626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0a4cb18c1030d282006a041deea3f0819da06af044320d7b15",
+      "id": "resp_03ca39b9b99c8ec1006a04fd123a8481968bca452ee55dbacf",
       "object": "response",
-      "created_at": 1778654702,
+      "created_at": 1778711826,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654704,
+      "completed_at": 1778711830,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,19 +81,19 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0a4cb18c1030d282006a041df02714819d9692edcd25767651",
+          "id": "fc_03ca39b9b99c8ec1006a04fd16a4f48196b07e22d156e6ed17",
           "type": "function_call",
           "status": "completed",
           "arguments": "{}",
-          "call_id": "call_QzeQHENVFKibXmNHDArXHa2r",
+          "call_id": "call_0ZkSaNqaoesREao90Z8BPcPd",
           "name": "read_file_head"
         },
         {
-          "id": "fc_0a4cb18c1030d282006a041df02728819db7f61dec166bfdbe",
+          "id": "fc_03ca39b9b99c8ec1006a04fd16a50881968dc68d24cb2355dc",
           "type": "function_call",
           "status": "completed",
           "arguments": "{}",
-          "call_id": "call_PSuDAbjDkEfOe8R9lLP4a8yf",
+          "call_id": "call_IhntNcZqBAMWnDr4EGzDQR6g",
           "name": "read_file_tail"
         }
       ],
@@ -167,20 +169,42 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful assistant that can read files using different methods."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content."}]},{"type":"function_call","id":"fc_0a4cb18c1030d282006a041df02714819d9692edcd25767651","arguments":"{}","call_id":"call_QzeQHENVFKibXmNHDArXHa2r","name":"read_file_head","status":"completed"},{"type":"function_call","id":"fc_0a4cb18c1030d282006a041df02728819db7f61dec166bfdbe","arguments":"{}","call_id":"call_PSuDAbjDkEfOe8R9lLP4a8yf","name":"read_file_tail","status":"completed"},{"type":"function_call_output","call_id":"call_QzeQHENVFKibXmNHDArXHa2r","output":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","status":"completed"},{"type":"function_call_output","call_id":"call_PSuDAbjDkEfOe8R9lLP4a8yf","output":"hello world","status":"completed"}],"model":"gpt-4o-mini","tools":[{"type":"function","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the first line of test.txt using the head command"},{"type":"function","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the last line of test.txt using the tail command"}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful assistant that can read files using different methods."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content."}]},{"type":"function_call","id":"fc_03ca39b9b99c8ec1006a04fd16a4f48196b07e22d156e6ed17","arguments":"{}","call_id":"call_0ZkSaNqaoesREao90Z8BPcPd","name":"read_file_head","status":"completed"},{"type":"function_call","id":"fc_03ca39b9b99c8ec1006a04fd16a50881968dc68d24cb2355dc","arguments":"{}","call_id":"call_IhntNcZqBAMWnDr4EGzDQR6g","name":"read_file_tail","status":"completed"},{"type":"function_call_output","call_id":"call_0ZkSaNqaoesREao90Z8BPcPd","output":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","status":"completed"},{"type":"function_call_output","call_id":"call_IhntNcZqBAMWnDr4EGzDQR6g","output":"hello world","status":"completed"}],"model":"gpt-4o-mini","tools":[{"type":"function","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the first line of test.txt using the head command"},{"type":"function","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the last line of test.txt using the tail command"}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:45:06 GMT
+    value: Wed, 13 May 2026 22:37:11 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2249'
+    value: '2259'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5256eeec6d7af-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '908'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -193,43 +217,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_6f7241ba4c2e4dbeafabc9eb9242ba28
-  - name: openai-processing-ms
-    value: '1813'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_4803e68d86e84c97826a19d9dd29f0d0
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb2bea8a28626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0a4cb18c1030d282006a041df07a14819d8c11b1e358524d1b",
+      "id": "resp_03ca39b9b99c8ec1006a04fd16ebe081969471d055a9ce3ffa",
       "object": "response",
-      "created_at": 1778654704,
+      "created_at": 1778711831,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654706,
+      "completed_at": 1778711831,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -240,7 +244,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_0a4cb18c1030d282006a041df1e954819db131f4a8b36d29ac",
+          "id": "msg_03ca39b9b99c8ec1006a04fd1765808196b2ec44317c69e3b1",
           "type": "message",
           "status": "completed",
           "content": [
@@ -248,7 +252,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "The last line of the file `test.txt` is: \"hello world\"."
+              "text": "The content of the last line in `test.txt` is: **\"hello world\"**."
             }
           ],
           "role": "assistant"
@@ -308,11 +312,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 18,
+        "output_tokens": 22,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 182
+        "total_tokens": 186
       },
       "user": null,
       "metadata": {}

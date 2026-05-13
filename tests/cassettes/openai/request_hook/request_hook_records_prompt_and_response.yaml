@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:46:28 GMT
+    value: Wed, 13 May 2026 22:38:20 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '1807'
+    value: '1818'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5271cbc33d7af-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '819'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 1ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_9aa6ca1359a64d4fa76ac629d7252934
-  - name: openai-processing-ms
-    value: '1313'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_7adc476217bb465ba2609078b2ff8189
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb4c5ae988626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_013fcb2d78a3641d006a041e4384d8819f8e8d1223b9c2e62e",
+      "id": "resp_08b3e5bf96bfc551006a04fd5bb63481a19237f4e3458ac4f5",
       "object": "response",
-      "created_at": 1778654787,
+      "created_at": 1778711899,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654788,
+      "completed_at": 1778711900,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_013fcb2d78a3641d006a041e444060819f8d07404033b9523e",
+          "id": "msg_08b3e5bf96bfc551006a04fd5c06d481a1bc5717a95c8bd252",
           "type": "message",
           "status": "completed",
           "content": [
@@ -87,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Why did the scarecrow win an award? Because he was outstanding in his field!\n\nIf you need more, I've got jokes for days \u2013 well, until tomorrow at least. How about this: I told my computer I needed a break, and now it won't stop sending me Kit Kats!"
+              "text": "Why did the scarecrow win an award?\n\nBecause he was outstanding in his field! \ud83c\udf3e\n\nAnd have you heard about the restaurant on the moon?\n\nGreat food, no atmosphere! \ud83c\udf7d\ufe0f\ud83c\udf15\n\nGot any specific topics you want to hear jokes about?"
             }
           ],
           "role": "assistant"
@@ -122,11 +124,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 59,
+        "output_tokens": 54,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 88
+        "total_tokens": 83
       },
       "user": null,
       "metadata": {}

@@ -19,7 +19,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 08:57:38 GMT
+    value: Wed, 13 May 2026 23:31:50 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -29,14 +29,14 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=1731
+    value: gfet4t7; dur=1512
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
     value: none
   - name: transfer-encoding
     value: chunked
-  body: '{"id":"v1_ChdBRDBFYW9HUUpOTGl6N0lQX0tlNXFBOBIXQUQwRWFvR1FKTkxpejdJUF9LZTVxQTg","status":"requires_action","outputs":[{"signature":"Er0BCroBAQw51sdT7G+Be8icpP/C/7C2KRDHIvMaLGXRfUdTTMmGGj/pE5HAo5Kljq1hMNJUOb+i+g5OvQL9L4NQ1LxVWoAWgVvqXDnvFRYayQ/U13IUge4c7W1CDP31Rs0d1p3kG8lMO3wB+kshpz0hzrxGRCSeUCdt0S4dPMWMfEgK9FXovgEo5whtg56LdWk2BRXTLDIi8Pp3TJEPzyApkatkw4iyMwNw7G5HhG6AJY7yRuM3w4MhsZ9sWdXn","type":"thought"},{"id":"jiuwxiyp","type":"function_call","name":"add","arguments":{"y":11,"x":7}}],"usage":{"total_tokens":126,"total_input_tokens":65,"input_tokens_by_modality":[{"modality":"text","tokens":65}],"total_cached_tokens":0,"total_output_tokens":17,"total_tool_use_tokens":0,"total_thought_tokens":44},"role":"model","created":"2026-05-13T08:57:38Z","updated":"2026-05-13T08:57:38Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"id":"v1_Chc1QWtGYXFmT01JZnF6N0lQdGQzb3NBdxIXNUFrRmFxZk9NSWZxejdJUHRkM29zQXc","status":"requires_action","outputs":[{"signature":"Er4BCrsBAQw51scBTCFvHssAMOdGxB7X4Z83Pa0CUEDFBMwOffTNKiuvjWvz/VZXN+adRFYr+sTpn62OxqSkDJYxVvZBlj0GO+wl9nFVB4i+Lgsn3qJZ0yMndK2+eZI/INrxn2PIwF3S1whf0tRz1CyQ37UBrZ7bngRE19feICtNidU7GcMTyrmIkyn6QYbxdccDjLYWPtmcasYNnxflAoIhnma41iam0fNTkOJ17CAvGJnyB/kXMvpJoGt9KJ3ueQ==","type":"thought"},{"id":"nosivb5j","type":"function_call","name":"add","arguments":{"x":7,"y":11}}],"usage":{"total_tokens":129,"total_input_tokens":65,"input_tokens_by_modality":[{"modality":"text","tokens":65}],"total_cached_tokens":0,"total_output_tokens":17,"total_tool_use_tokens":0,"total_thought_tokens":47},"role":"model","created":"2026-05-13T23:31:50Z","updated":"2026-05-13T23:31:50Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
 ---
 when:
   path: /v1beta/interactions
@@ -46,7 +46,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"function_result","name":"add","result":{"sum":18.0},"call_id":"jiuwxiyp"}]}],"stream":false,"previous_interaction_id":"v1_ChdBRDBFYW9HUUpOTGl6N0lQX0tlNXFBOBIXQUQwRWFvR1FKTkxpejdJUF9LZTVxQTg"}'
+  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"function_result","name":"add","result":{"sum":18.0},"call_id":"nosivb5j"}]}],"stream":false,"previous_interaction_id":"v1_Chc1QWtGYXFmT01JZnF6N0lQdGQzb3NBdxIXNUFrRmFxZk9NSWZxejdJUHRkM29zQXc"}'
 then:
   status: 200
   header:
@@ -59,7 +59,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 08:57:39 GMT
+    value: Wed, 13 May 2026 23:31:51 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -69,11 +69,11 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=1499
+    value: gfet4t7; dur=1338
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
     value: none
   - name: transfer-encoding
     value: chunked
-  body: '{"id":"v1_ChdBRDBFYW9HUUpOTGl6N0lQX0tlNXFBOBIXQWowRWF1LWhKb09FejdJUHZKNkEtQWs","status":"completed","outputs":[{"signature":"EiYKJGUyNDgzMGE3LTVjZDYtNDJmZS05OThiLWVlNTM5ZTcyYjljMw==","type":"thought"},{"text":"The sum of 7 and 11 is 18.","type":"text"}],"usage":{"total_tokens":70,"total_input_tokens":56,"input_tokens_by_modality":[{"modality":"text","tokens":56}],"total_cached_tokens":0,"total_output_tokens":14,"total_tool_use_tokens":0,"total_thought_tokens":0},"role":"model","created":"2026-05-13T08:57:39Z","updated":"2026-05-13T08:57:39Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"id":"v1_Chc1QWtGYXFmT01JZnF6N0lQdGQzb3NBdxIXNWdrRmFxLWVHUGlzejdJUHBJeW02UWc","status":"completed","outputs":[{"signature":"EiYKJGUyNDgzMGE3LTVjZDYtNDJmZS05OThiLWVlNTM5ZTcyYjljMw==","type":"thought"},{"text":"The sum of 7 and 11 is 18.","type":"text"}],"usage":{"total_tokens":73,"total_input_tokens":59,"input_tokens_by_modality":[{"modality":"text","tokens":59}],"total_cached_tokens":0,"total_output_tokens":14,"total_tool_use_tokens":0,"total_thought_tokens":0},"role":"model","created":"2026-05-13T23:31:51Z","updated":"2026-05-13T23:31:51Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'

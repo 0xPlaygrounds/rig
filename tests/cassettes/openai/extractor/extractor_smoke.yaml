@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:48 GMT
+    value: Wed, 13 May 2026 22:36:55 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2181'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb525035b26566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '1481'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 11ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_d5a026328c184cf69ca11d9b44bf2cfd
-  - name: openai-processing-ms
-    value: '2380'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_7b6b01e880f64f49a00e878c68450435
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb249ff532b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_04bab0003d7c5ec1006a041dddd55881a089f98ef9613c649d",
+      "id": "resp_0df7a8af949f2e20006a04fd05b9908193ba008810ece827d7",
       "object": "response",
-      "created_at": 1778654685,
+      "created_at": 1778711813,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654687,
+      "completed_at": 1778711815,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_04bab0003d7c5ec1006a041ddfcde081a0ab1c059568f54b3e",
+          "id": "fc_0df7a8af949f2e20006a04fd0635208193bca4ad4943f3e689",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-          "call_id": "call_898MyvjeIpFVwZbbZjgKlwyL",
+          "call_id": "call_5VBFsq10LIBaILKakdPUV0rj",
           "name": "submit"
         }
       ],

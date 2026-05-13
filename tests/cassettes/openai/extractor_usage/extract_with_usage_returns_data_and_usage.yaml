@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:57 GMT
+    value: Wed, 13 May 2026 22:37:00 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2406'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5252abd7c566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '914'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_8bfffc0ab9484c35a6d683bc53ad7c11
-  - name: openai-processing-ms
-    value: '1615'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_e82885cbc60549b38a9cb08fdeb3da98
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb28a2a6e2b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0431e0555af9cb76006a041de814d0819482e59ebe40aaceb8",
+      "id": "resp_0d2b4ec78b89cd9e006a04fd0c04448197be0231df8a62f9e1",
       "object": "response",
-      "created_at": 1778654696,
+      "created_at": 1778711820,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654697,
+      "completed_at": 1778711820,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0431e0555af9cb76006a041de922388194b36d9ee7d03e4387",
+          "id": "fc_0d2b4ec78b89cd9e006a04fd0c79a08197bbefdffb5be91cdd",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-          "call_id": "call_6zMilx2fEKngk9WSYWVDb5vh",
+          "call_id": "call_UvdVX2wFtzFuk8yVIglBIp5k",
           "name": "submit"
         }
       ],

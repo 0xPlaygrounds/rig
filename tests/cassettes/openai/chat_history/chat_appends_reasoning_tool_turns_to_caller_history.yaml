@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:12:07 GMT
+    value: Wed, 13 May 2026 22:36:45 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '1997'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb524c72da2566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '1763'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 0s
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_85583622427e4060af922e143959941e
-  - name: openai-processing-ms
-    value: '1861'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_31dbfc80e38d4c7c8973dd128811cddf
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fb03231cf8911f1-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0d7e48606f77c50c006a043255abf8819e9fc33f7233646b83",
+      "id": "resp_017fbe4d39b0af1f006a04fcfc1eec81a2b1fa10343e42ba35",
       "object": "response",
-      "created_at": 1778659925,
+      "created_at": 1778711804,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778659927,
+      "completed_at": 1778711805,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0d7e48606f77c50c006a043256e020819e98daa3d9c930a4a8",
+          "id": "fc_017fbe4d39b0af1f006a04fcfd975481a2b5f0ad92a9e71cab",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"city\":\"Tokyo, Japan\"}",
-          "call_id": "call_URvQNG8Mm4Rm6DPcdL2fk22g",
+          "call_id": "call_TkY9yYK2D7daHYBasYkrpmEd",
           "name": "get_weather"
         }
       ],
@@ -154,20 +156,42 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"type":"function_call","id":"fc_0d7e48606f77c50c006a043256e020819e98daa3d9c930a4a8","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_URvQNG8Mm4Rm6DPcdL2fk22g","name":"get_weather","status":"completed"},{"type":"function_call_output","call_id":"call_URvQNG8Mm4Rm6DPcdL2fk22g","output":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed"}],"model":"gpt-5.2","max_output_tokens":4096,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true,"description":"Get the current weather for a city. Must be called for weather questions."}],"include":["reasoning.encrypted_content"],"reasoning":{"effort":"high"}}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"type":"function_call","id":"fc_017fbe4d39b0af1f006a04fcfd975481a2b5f0ad92a9e71cab","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_TkY9yYK2D7daHYBasYkrpmEd","name":"get_weather","status":"completed"},{"type":"function_call_output","call_id":"call_TkY9yYK2D7daHYBasYkrpmEd","output":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed"}],"model":"gpt-5.2","max_output_tokens":4096,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true,"description":"Get the current weather for a city. Must be called for weather questions."}],"include":["reasoning.encrypted_content"],"reasoning":{"effort":"high"}}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:12:31 GMT
+    value: Wed, 13 May 2026 22:36:48 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2416'
+    value: '2362'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb524d34cdd566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '2024'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -180,43 +204,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 0s
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_27781e99bc1e4ed5be20a2580ea39c70
-  - name: openai-processing-ms
-    value: '23494'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_7fcbd3747dcf4bc9bf8c5f7df4d44914
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fb032431c3b11f1-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0d7e48606f77c50c006a0432593ff4819ea765fe56eadfd780",
+      "id": "resp_017fbe4d39b0af1f006a04fcfe088481a2a77b5b3cf139c690",
       "object": "response",
-      "created_at": 1778659931,
+      "created_at": 1778711806,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778659949,
+      "completed_at": 1778711807,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -227,7 +231,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_0d7e48606f77c50c006a04325f1b48819eb221f7096c9fff90",
+          "id": "msg_017fbe4d39b0af1f006a04fcfe969081a289f75131f0a0451b",
           "type": "message",
           "status": "completed",
           "content": [
@@ -235,7 +239,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Tokyo, Japan is currently **72\u00b0F (22\u00b0C)**, **sunny with light clouds**, **45% humidity**, and **NW winds around 8 mph**.\n\n- **Pack sunscreen:** Yes\u2014sunny conditions mean meaningful sun exposure.\n- **Pack an umbrella:** Not necessary based on the current conditions (no rain indicated), unless you want it as a just-in-case item for changing forecasts."
+              "text": "Current weather in **Tokyo, Japan**: **72\u00b0F (22\u00b0C)**, **sunny with light clouds**, **45% humidity**, **NW wind 8 mph**.\n\n**What to pack:**\n- **Sunscreen:** Yes \u2014 it\u2019s sunny, so sunscreen is recommended.\n- **Umbrella:** Not necessary right now based on current conditions (no rain indicated)."
             }
           ],
           "role": "assistant"
@@ -290,11 +294,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 86,
+        "output_tokens": 82,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 292
+        "total_tokens": 288
       },
       "user": null,
       "metadata": {}

@@ -24,7 +24,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 08:57:19 GMT
+    value: Wed, 13 May 2026 23:31:32 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -34,7 +34,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=966
+    value: gfet4t7; dur=876
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
@@ -52,11 +52,11 @@ then:
                   "name": "submit",
                   "args": {
                     "first_name": "John",
-                    "last_name": "Doe",
-                    "job": "software engineer"
+                    "job": "software engineer",
+                    "last_name": "Doe"
                   }
                 },
-                "thoughtSignature": "CtUCAQw51semHZvvq2ZHNA0KKn+XmSu6ejlVmY/BELyggaNq3v19rmA8bmo+Yg/xw0l/bNL5IiuMBHRZM5dW5Z0AWaDwf/lIILpo5EFC/WZHthMItbY04SbqW7sA3y01BAGLchy4suSGZ45zFkvjY7fjrtiwGtbuJTHTewheaIPVcyJEBnBOQnedOzmz1sCMka54zgl+zHg3pdeqrzF+MFD0nxF3SMY/GeDJeFmylYjL3uL645NTwGuCsdo0DaHTubhDq7+qLf1Z14PTv7zBSNgnTJe9cpUI8fSNIobxIEFqdKqqXJet353gFT1oBQBgb/KHyWA0t9V7LgsMO/WyPjrZ7+SAPn4vzXOXnLOyriBaHHuY9AY5uUWYVU4MKXJjmuBxD4vDx/2eL6Q0L2qsUrgxTbl7hYpFSGUTEBs9bdBhd+bhALNnEzU9tNr2d4xpRABV1oCXpcs="
+                "thoughtSignature": "CowCAQw51sew+pTxicmI6q+PvoQ9YlzFg++6wN/Iiv5eqD3bBbe+8rIv01MiG5sz4i0D/nCgVAJU2C4tHPMFPGECVvrepf17vzN0EpriVOG0BlhpWzi1cvLmwlokM9xRcawlMMmcv8ZmOz2e+SuDWxZrshvnHL3EGtd2O1mJ6Gns5TP6BnCRcXeviErDa85P833pJFqnUabDOmt8TKW9KRJrWu/k0P9llsV9qe2ruzPkXyvUz1ejhh5ZCbWLmR+ulsEl6oBs8JjHDl7xE+Wsz0KHUUCgs2FiQbjd2NdmW7a9J+bdu9CUEcenyxHB2e+mHnp8FB+nbAbufKuYQ5S4HZ+wdBt99TZ24ROFNCYXzg=="
               }
             ],
             "role": "model"
@@ -69,16 +69,16 @@ then:
       "usageMetadata": {
         "promptTokenCount": 178,
         "candidatesTokenCount": 28,
-        "totalTokenCount": 288,
+        "totalTokenCount": 271,
         "promptTokensDetails": [
           {
             "modality": "TEXT",
             "tokenCount": 178
           }
         ],
-        "thoughtsTokenCount": 82,
+        "thoughtsTokenCount": 65,
         "serviceTier": "standard"
       },
       "modelVersion": "gemini-2.5-flash",
-      "responseId": "7jwEapCyNIOEz7IPsP7hwQw"
+      "responseId": "1AkFaqzyBpOdz7IP48Cb0Qg"
     }

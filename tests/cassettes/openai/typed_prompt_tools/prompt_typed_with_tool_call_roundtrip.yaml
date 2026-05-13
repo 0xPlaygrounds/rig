@@ -11,27 +11,39 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:46:53 GMT
+    value: Wed, 13 May 2026 22:38:37 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
     value: chunked
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5278719a3d7af-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: server
+    value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
   - name: access-control-expose-headers
     value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
   - name: access-control-expose-headers
     value: CF-Ray
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '365'
+    value: '488'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
-  - name: server
-    value: cloudflare
+  - name: x-openai-proxy-wasm
+    value: v0.1
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -45,26 +57,16 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_6edc3f336ca3406ca24928dfcf530ea7
-  - name: x-openai-proxy-wasm
-    value: v0.1
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_6081bba4f5a445579e80ee3cf1cb9571
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb562ffb98626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |
     {
-      "id": "chatcmpl-DexemkwC1nr4RvpeoE53K1m7AIEJ2",
+      "id": "chatcmpl-DfCVoyMbQkxaMRK7u4SZNzzXusYNj",
       "object": "chat.completion",
-      "created": 1778654812,
+      "created": 1778711916,
       "model": "gpt-4o-2024-08-06",
       "choices": [
         {
@@ -74,7 +76,7 @@ then:
             "content": null,
             "tool_calls": [
               {
-                "id": "call_5Ay01JbzIbYsH3RpOsIgWJmK",
+                "id": "call_0A8NJmDhrLX3Xzob2G38KjC8",
                 "type": "function",
                 "function": {
                   "name": "weather",
@@ -105,7 +107,7 @@ then:
         }
       },
       "service_tier": "default",
-      "system_fingerprint": "fp_8aed6409fd"
+      "system_fingerprint": "fp_d9a8f17212"
     }
 ---
 when:
@@ -116,32 +118,44 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result."}]},{"role":"user","content":"Hello, whats the weather in London?"},{"role":"assistant","tool_calls":[{"id":"call_5Ay01JbzIbYsH3RpOsIgWJmK","type":"function","function":{"name":"weather","arguments":"{\"city\":\"London\"}"}}]},{"role":"tool","tool_call_id":"call_5Ay01JbzIbYsH3RpOsIgWJmK","content":"The weather in London is all fire and brimstone"}],"tools":[{"type":"function","function":{"name":"weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],"response_format":{"type":"json_schema","json_schema":{"name":"WeatherResponse","strict":true,"schema":{"type":"object","properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false}}}}'
+  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result."}]},{"role":"user","content":"Hello, whats the weather in London?"},{"role":"assistant","tool_calls":[{"id":"call_0A8NJmDhrLX3Xzob2G38KjC8","type":"function","function":{"name":"weather","arguments":"{\"city\":\"London\"}"}}]},{"role":"tool","tool_call_id":"call_0A8NJmDhrLX3Xzob2G38KjC8","content":"The weather in London is all fire and brimstone"}],"tools":[{"type":"function","function":{"name":"weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],"response_format":{"type":"json_schema","json_schema":{"name":"WeatherResponse","strict":true,"schema":{"type":"object","properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false}}}}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:46:53 GMT
+    value: Wed, 13 May 2026 22:38:38 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
     value: chunked
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5278b7d1ed7af-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: server
+    value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
   - name: access-control-expose-headers
     value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
   - name: access-control-expose-headers
     value: CF-Ray
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '543'
+    value: '633'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
-  - name: server
-    value: cloudflare
+  - name: x-openai-proxy-wasm
+    value: v0.1
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -155,26 +169,16 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_64c69a9bda88450295ae9468790f6bca
-  - name: x-openai-proxy-wasm
-    value: v0.1
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_d289973c92fd414b96af2790a125e679
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb5665ece8626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |
     {
-      "id": "chatcmpl-Dexen1hcByuV29oQRNznMT2XtVSJA",
+      "id": "chatcmpl-DfCVpMip4vLWiAz4ZxtjXsVsRAGXv",
       "object": "chat.completion",
-      "created": 1778654813,
+      "created": 1778711917,
       "model": "gpt-4o-2024-08-06",
       "choices": [
         {
@@ -205,5 +209,5 @@ then:
         }
       },
       "service_tier": "default",
-      "system_fingerprint": "fp_8aed6409fd"
+      "system_fingerprint": "fp_d9a8f17212"
     }

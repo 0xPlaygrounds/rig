@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:58 GMT
+    value: Wed, 13 May 2026 22:37:02 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2396'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb525310f85566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '971'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_e1b23d0a075b46bbb0afb7451d6274cb
-  - name: openai-processing-ms
-    value: '944'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_142a409ab93d4e88beb5783151030a94
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb294dfa72b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_056ae320ce646ecd006a041de9c8e08197b60eccdcaa0a0ac2",
+      "id": "resp_024a25f91b1b2a88006a04fd0d06048194bedb76f28ececf7e",
       "object": "response",
-      "created_at": 1778654697,
+      "created_at": 1778711821,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654698,
+      "completed_at": 1778711821,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_056ae320ce646ecd006a041dea42a88197815bcc6bd1d554bf",
+          "id": "fc_024a25f91b1b2a88006a04fd0d8d108194b889f1ef751a3efd",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-          "call_id": "call_jzCt9wN7xqG3GJak3eHV107d",
+          "call_id": "call_XJufTDn4z7O2GlSjN9ZBBe7o",
           "name": "submit"
         }
       ],
@@ -179,15 +181,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:59 GMT
+    value: Wed, 13 May 2026 22:37:03 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2481'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb52537cafa566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '1061'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -200,43 +224,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_ef05cc785cad44268a2d30a27c609559
-  - name: openai-processing-ms
-    value: '892'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_e2aab5fe52bc4bff887827343883767b
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb29b3d1e2b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_08e337cc0d244db3006a041dead42081949e6b351f9f665191",
+      "id": "resp_0f9682249a498ee5006a04fd0e1b3881939b9a33eb9641b712",
       "object": "response",
-      "created_at": 1778654698,
+      "created_at": 1778711822,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654699,
+      "completed_at": 1778711822,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -247,11 +251,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_08e337cc0d244db3006a041deb3aec819482c802a14abc7fb8",
+          "id": "fc_0f9682249a498ee5006a04fd0ebafc8193a1bfee3d91dcfff5",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
-          "call_id": "call_GTGaPzmQp0dHxyYdcUJWcUSz",
+          "call_id": "call_B4wkJxaLRwbZHLJVJKxyNh5U",
           "name": "submit"
         }
       ],

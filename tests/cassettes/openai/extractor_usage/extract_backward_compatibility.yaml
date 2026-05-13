@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:53 GMT
+    value: Wed, 13 May 2026 22:36:58 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2407'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5251d9d64566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '856'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_6c78aafeb73341a18277c621ce885c74
-  - name: openai-processing-ms
-    value: '1823'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_cfd495d4f6b448cabea7ac3bcd032321
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb270d8f72b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_06098750b3d3880a006a041de40614819790ecdf28d68ea42f",
+      "id": "resp_032687f055a3c6d1006a04fd09ea888195805c24918524da38",
       "object": "response",
-      "created_at": 1778654692,
+      "created_at": 1778711817,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654693,
+      "completed_at": 1778711818,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_06098750b3d3880a006a041de56cc88197967af339b2010d0f",
+          "id": "fc_032687f055a3c6d1006a04fd0a5d2c81959dee8aecf5296931",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"name\":\"John Doe\",\"age\":30,\"profession\":\"software engineer\"}",
-          "call_id": "call_BCwXhSpI2WkMOLT5uclZkhmZ",
+          "call_id": "call_mIRycyT2izcK1tRVcntzOTqY",
           "name": "submit"
         }
       ],

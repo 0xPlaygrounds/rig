@@ -13,7 +13,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:48:46 GMT
+    value: Wed, 13 May 2026 22:40:50 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -25,50 +25,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '2000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T08:48:44Z
+    value: 2026-05-13T22:40:48Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T08:48:45Z
+    value: 2026-05-13T22:40:50Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T08:48:43Z
+    value: 2026-05-13T22:40:47Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2400000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T08:48:44Z
+    value: 2026-05-13T22:40:48Z
   - name: request-id
-    value: req_011CazH9Uw67Mwu5sE6STsmF
+    value: req_011Cb1Nbd8XJuSXGk6fY8Db7
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
     value: 72af56b7-4756-4612-8117-abf3c67ce635
   - name: traceresponse
-    value: 00-9da2633ef72bb008039dcdfc4b8f9f43-310ba59e56adb239-01
+    value: 00-8ac37a95fa5b6248be070c73e0a8f66a-0485dd89a3371c0c-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '2605'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '2440'
   - name: x-robots-tag
     value: none
+  - name: vary
+    value: Accept-Encoding
   - name: cf-cache-status
     value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
   - name: cf-ray
-    value: 9fb067dee9d5db6e-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01ApH5R2nNyt3KwkyAAcGXj9","type":"message","role":"assistant","content":[{"type":"text","text":"I''ll calculate this step by step. First, let me compute the addition **3 + 5** in parallel — actually, I''ll start with the addition first, then use the result for the division.\n\n**Step 1: Add 3 + 5**"},{"type":"tool_use","id":"toolu_01QKCVojzTJjBsUH5GsPCgXh","name":"add","input":{"x":3,"y":5},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":673,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":126,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb52ab9ed1e4800-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_015SRK428WFjVSHpNCqGsEnq","type":"message","role":"assistant","content":[{"type":"text","text":"I''ll calculate this step by step. First, let me compute the addition **3 + 5** simultaneously — since the division depends on this result, I''ll start there!"},{"type":"tool_use","id":"toolu_013Gj5dokEXp4knFRLzWN5nD","name":"add","input":{"x":3,"y":5},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":673,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":106,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -80,12 +80,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate (3 + 5) / 4 and describe the result."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll calculate this step by step. First, let me compute the addition **3 + 5** in parallel — actually, I''ll start with the addition first, then use the result for the division.\n\n**Step 1: Add 3 + 5**"},{"type":"tool_use","id":"toolu_01QKCVojzTJjBsUH5GsPCgXh","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01QKCVojzTJjBsUH5GsPCgXh","content":[{"type":"text","text":"8"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are an assistant that must use the available tools for arithmetic. Never compute the result yourself."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}}]}'
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate (3 + 5) / 4 and describe the result."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll calculate this step by step. First, let me compute the addition **3 + 5** simultaneously — since the division depends on this result, I''ll start there!"},{"type":"tool_use","id":"toolu_013Gj5dokEXp4knFRLzWN5nD","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_013Gj5dokEXp4knFRLzWN5nD","content":[{"type":"text","text":"8"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are an assistant that must use the available tools for arithmetic. Never compute the result yourself."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:48:48 GMT
+    value: Wed, 13 May 2026 22:40:52 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -97,50 +97,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '2000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T08:48:47Z
+    value: 2026-05-13T22:40:51Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T08:48:48Z
+    value: 2026-05-13T22:40:52Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T08:48:46Z
+    value: 2026-05-13T22:40:50Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2400000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T08:48:47Z
+    value: 2026-05-13T22:40:51Z
   - name: request-id
-    value: req_011CazH9gTdXBX5nDGCEUCfg
+    value: req_011Cb1NbpC2fGpW2Kmo2mEEs
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
     value: 72af56b7-4756-4612-8117-abf3c67ce635
   - name: traceresponse
-    value: 00-26ede132751377437eac03e7a3d7d922-8d7c9363fe619548-01
+    value: 00-2d28ace6250a6792bf9a4b5dda41143e-39af19af3361b3c4-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '1992'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '1884'
   - name: x-robots-tag
     value: none
+  - name: vary
+    value: Accept-Encoding
   - name: cf-cache-status
     value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
   - name: cf-ray
-    value: 9fb067efbd11db6e-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01La7pCqwrtMstCBqxzpSYnB","type":"message","role":"assistant","content":[{"type":"text","text":"3 + 5 = **8**. Now I''ll use this result for the division.\n\n**Step 2: Divide 8 / 4**"},{"type":"tool_use","id":"toolu_01X3RwY9QxeM6LXqH6Ye2FL8","name":"divide","input":{"x":8,"y":4},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":812,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":105,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb52aca6ff74800-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01R9hLCJH5Ucdk1pzBN4Sn8g","type":"message","role":"assistant","content":[{"type":"text","text":"Got it! **3 + 5 = 8**. Now I''ll divide that result by **4**:"},{"type":"tool_use","id":"toolu_01Xd7nMixUGYLHBArJipEoDy","name":"divide","input":{"x":8,"y":4},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":792,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":95,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -152,12 +152,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate (3 + 5) / 4 and describe the result."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll calculate this step by step. First, let me compute the addition **3 + 5** in parallel — actually, I''ll start with the addition first, then use the result for the division.\n\n**Step 1: Add 3 + 5**"},{"type":"tool_use","id":"toolu_01QKCVojzTJjBsUH5GsPCgXh","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01QKCVojzTJjBsUH5GsPCgXh","content":[{"type":"text","text":"8"}]}]},{"role":"assistant","content":[{"type":"text","text":"3 + 5 = **8**. Now I''ll use this result for the division.\n\n**Step 2: Divide 8 / 4**"},{"type":"tool_use","id":"toolu_01X3RwY9QxeM6LXqH6Ye2FL8","name":"divide","input":{"x":8,"y":4}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01X3RwY9QxeM6LXqH6Ye2FL8","content":[{"type":"text","text":"2"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are an assistant that must use the available tools for arithmetic. Never compute the result yourself."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}}]}'
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate (3 + 5) / 4 and describe the result."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll calculate this step by step. First, let me compute the addition **3 + 5** simultaneously — since the division depends on this result, I''ll start there!"},{"type":"tool_use","id":"toolu_013Gj5dokEXp4knFRLzWN5nD","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_013Gj5dokEXp4knFRLzWN5nD","content":[{"type":"text","text":"8"}]}]},{"role":"assistant","content":[{"type":"text","text":"Got it! **3 + 5 = 8**. Now I''ll divide that result by **4**:"},{"type":"tool_use","id":"toolu_01Xd7nMixUGYLHBArJipEoDy","name":"divide","input":{"x":8,"y":4}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Xd7nMixUGYLHBArJipEoDy","content":[{"type":"text","text":"2"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are an assistant that must use the available tools for arithmetic. Never compute the result yourself."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:48:51 GMT
+    value: Wed, 13 May 2026 22:40:55 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -169,47 +169,47 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '2000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T08:48:49Z
+    value: 2026-05-13T22:40:53Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T08:48:51Z
+    value: 2026-05-13T22:40:55Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T08:48:48Z
+    value: 2026-05-13T22:40:52Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2400000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T08:48:49Z
+    value: 2026-05-13T22:40:53Z
   - name: request-id
-    value: req_011CazH9qPtyPNMkqVCunLGZ
+    value: req_011Cb1NbxhzurVYrchs5bc6r
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
     value: 72af56b7-4756-4612-8117-abf3c67ce635
   - name: traceresponse
-    value: 00-e126e3b6de4d776f21642de702d8a71e-8f606e4c846d48a2-01
+    value: 00-ef9cbd8f53dc705ff4246dcfadb5dfde-058f4f3e0f8cd6f3-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '3406'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '2813'
   - name: x-robots-tag
     value: none
+  - name: vary
+    value: Accept-Encoding
   - name: cf-cache-status
     value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
   - name: cf-ray
-    value: 9fb067fcbd47db6e-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01Y5xAsKb5KKfBHWKSsMHBKm","type":"message","role":"assistant","content":[{"type":"text","text":"### Result: **2**\n\nHere''s a breakdown of the calculation:\n1. **3 + 5 = 8** — Adding 3 and 5 gives 8.\n2. **8 / 4 = 2** — Dividing 8 by 4 gives 2.\n\nThe final result of **(3 + 5) / 4 = 2**, which is a **positive whole number (integer)**. It''s also an **even number**, exactly halfway between 1 and 3 on the number line."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":930,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":129,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb52ad6ce244800-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_012KExLPnaYh8bj2pv4xfcP3","type":"message","role":"assistant","content":[{"type":"text","text":"### Result: **2**\n\nHere''s a breakdown of the calculation:\n1. **3 + 5 = 8** (addition inside the parentheses first)\n2. **8 ÷ 4 = 2** (then the division)\n\nThe final result is **2**, a positive whole number (integer). This follows the standard order of operations (PEMDAS/BODMAS), where parentheses are evaluated before division."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":900,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":104,"service_tier":"standard","inference_geo":"global"}}'

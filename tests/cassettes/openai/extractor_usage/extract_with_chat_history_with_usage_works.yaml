@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:55 GMT
+    value: Wed, 13 May 2026 22:36:59 GMT
   - name: content-type
     value: application/json
   - name: content-length
     value: '2480'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb52523ffc5566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '954'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_abe3cf39ad004f9cbfca092632baec3d
-  - name: openai-processing-ms
-    value: '1809'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_2babb6dfdbc84b3fa40d40a837d426d2
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb27d5f0e2b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_04331919c6460d58006a041de60e0481a280423747839b316f",
+      "id": "resp_09572ac1c258d0a9006a04fd0af2b4819c9a57a3d5b947b78a",
       "object": "response",
-      "created_at": 1778654694,
+      "created_at": 1778711818,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654695,
+      "completed_at": 1778711819,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_04331919c6460d58006a041de7781081a283d8589d47e058ba",
+          "id": "fc_09572ac1c258d0a9006a04fd0b6534819c914d9f3d8a78aaee",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
-          "call_id": "call_MJz1zB5zBkuJWrLTZao8GrZ4",
+          "call_id": "call_dLyNV72Ab4l3a8diGzMxCi1N",
           "name": "submit"
         }
       ],

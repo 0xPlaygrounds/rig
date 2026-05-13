@@ -10,7 +10,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:45:00 GMT
+    value: Wed, 13 May 2026 22:37:03 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -22,9 +22,9 @@ then:
   - name: openai-version
     value: 2020-10-01
   - name: x-request-id
-    value: 5d6cdfba-57eb-45c9-b670-00444ec5f4c6
+    value: 7a2dede8-0c34-4fdf-8b75-a508ca8af887
   - name: openai-processing-ms
-    value: '478'
+    value: '584'
   - name: x-openai-proxy-wasm
     value: v0.1
   - name: access-control-expose-headers
@@ -40,7 +40,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: cf-ray
-    value: 9fafb2a17b012b61-LAX
+    value: 9fb5253f0880566d-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-

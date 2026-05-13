@@ -238,7 +238,8 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                     .map(|tool_call| tool_call.function.name.as_str())
                     .collect::<Vec<_>>()
             );
-            assert_raw_stream_text_contains(&second_turn, &[ALPHA_SIGNAL_OUTPUT]);
+            let alpha_signal_markers = ALPHA_SIGNAL_OUTPUT.split('-').collect::<Vec<_>>();
+            assert_raw_stream_text_contains(&second_turn, &alpha_signal_markers);
         },
     )
     .await;

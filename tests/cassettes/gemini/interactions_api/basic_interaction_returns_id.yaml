@@ -19,7 +19,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 08:57:22 GMT
+    value: Wed, 13 May 2026 23:31:35 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -29,11 +29,11 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=2490
+    value: gfet4t7; dur=2463
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
     value: none
   - name: transfer-encoding
     value: chunked
-  body: '{"id":"v1_Chc3endFYXJiQ05yenB6N0lQekthQXFBcxIXN3p3RWFyYkNOcnpwejdJUHpLYUFxQXM","status":"completed","outputs":[{"signature":"EvsFCvgFAQw51scsNyZ+nV9x3A4exRFkMoCy9aGBZVw5+S2wYM75eXAezrK0hXGpcP1BN9FXU9+2yUouC4e9n3yXIwtQ01e4YIKou2ZWZ30LtsNr95LfQrVCwGw7GVdMRm0B7HS9/KVxWtOsVEqizbTJ5Q+cxeEL+tYpGLXFIgWwbNZEwM6eTnClnjTeG/NzsZz2bKP1fp95f+L0EZEzxvMcj2wlunC7UVCXHoJT9vQLtIJNFvmYzyQZcloHgbkWRTlyh6NuugMIz1MxlmgJhEiwobEP+nlXpPoYatVmOEwXqFFyGFd/v2iQTAYm9QcJbGDZ1kc/MYwATkW/OXIcYS4qYuAcE39cCU6sg+KHgtdft4vr5PXbx1xCtdNDW0JSBUa3Mje7gojfFy1ycZRbvZFy7lboTMA8J49XxM5A/gvTx5IBs2rHeSB7TtkJuUXGuARWzxTGayDFWfWNYQcubtKAMjGSQFpSgDWR89lFos4LVTDNKRMhLjICALTidBH4sAZcu3JrvhvyLyowPFeZJ9j9xtF3G8C4TdWlYNqMwEECxFsAiGbYs3CD5gMwyXfqu/1jmi/rkkPrt431mtW9oKeBdC3UbNHfsdasiiiyHOrkvz/9zIKJoutbJyckNnSzsyYFQN1HWBfwbMfRI+d6WosP7dw5PqTb/RL2KNaZyPKQpBfSdwjF+vMPSRzy+7JBEU2nuUuV9VMqUHzTa9eiDOVIdY0Hfbobqwc47ze2ot15MYlZsqbx0yfGHN4DPyNHIg1xzLvkRZAlzqcvQs1LW5tus8V3QVF7N400/qKHC+Oy/O3k+1mtp5K7HMwtZgZtXeipiLmbbD4f+MPLajlyAMiRtFQhEARd3pfgpmaFpc3olO8ucLXY1NiQc+jJsQbzdSj2ehFp6dAw1Y71nNKMJRPIY+MWdxKKU8rcNQ55AuYu2E/Cfhx+eh0CytV8rhMwoV0BhyDd3wQIp4tfbIQ7RgMF1l9Xh3tRIFeu3xGZYunMDkfFFhDBCCAey31Z8Q==","type":"thought"},{"text":"1. Hummingbirds are the only birds capable of flying backward and upside down.\n2. Their hearts can beat up to 1,260 times per minute—about 21 beats per second.","type":"text"}],"usage":{"total_tokens":263,"total_input_tokens":14,"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_output_tokens":43,"total_tool_use_tokens":0,"total_thought_tokens":206},"role":"model","created":"2026-05-13T08:57:22Z","updated":"2026-05-13T08:57:22Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"id":"v1_ChcxUWtGYXV6NUJxUGx6N0lQeGRmZXlRZxIXMVFrRmF1ejVCcVBsejdJUHhkZmV5UWc","status":"completed","outputs":[{"signature":"Ev4GCvsGAQw51sfAzixd3j/NPZMpKssj5r8Qpzm/hpg30ckge0wNP8Y8PcpuWc9YDrSfy6B4st9OgoSAO62MC4KXcNsK6Sei62dAt0SxbwrCpsq+nbTFOWdde8Z24njon8iIBEXzCAHl1V6b5QX56HaAIhTVxXSkH7yZTslsd+OrInRfcJpxQ1oqz3J3iv2QF5pcxhPJWSnhQtABu9tYDdhZdc99XkSHlm1QTgKqjElPDGHRwjFqh35KmPTwYxQyamTpQyjOJmjnsG9Ry+yU82VGlXpMixSrfWd5bbrbfm82tdYlCUX0VOy6QxXqu13AaBgmOwNDIXyDmlisHVEO6Bm7ruVgKFfQWRlnLM2dJiKsp58fTuu43wnOlTZrdY1rqF3lf0A+7ZdW2OUzrqNhh4XW7Fvn2qPgJ89YqO/uNoc0sSimX9HN0GDrusH767QsoM3xEArHiQkG9z9TOf0I6Tqd6N7dT7UOW8SOezpBqzA7jHJj/Id41RWOqc8gJwIbYfn2SPqfGamHihE1B9Y14eI3v01iCV2SPJVSW2J+4clfgQmmM3R3P32x2cb/tFSAPyko/fojV2CI4iPt1KzP/1arIWUhL4Do478QdPD6BQVI3FRKBYekDVlHBgxKDzN/aBckCMCE8CeF1jqoFulKKGaHmoriwXFScpuDpeFC+FRkG3HrBON9eI4c5hsc9pK2jsYKsO1/ppg3yiLNt2GDRHEXpBvaV75LpYmHZwjnjQAVOdOTblqu2CqtTjfC6nnS2qpxftQRDZube7m7hyRPaN6T9dHyGrR72D5GZQ24eVQiOmDz5rrLSmfL1EcfcZGN32YNZm+0YSweto0BYcu2YfntyQNia478OuBlyNvKkcJi7vWYhW4uSW0h0U/wn0QL8MQjZa2BGlmiF2Zm1hRKS4BL7GKF4UiJdkZjI1V5Gx2MkEOmn/u7Tu5hvSec8fqfrKarDyxq5C4C3BTsrVfKBu7ohhZ+bfJLQcHAyGIyzVuYCYbi84EOd4uF/EG0FVQHc+mS9xdEjZVOtI5TpaGcuxEL0L/DaeCR/0/zN049WAgKZGE6+4wfXdAR+47PtRFWBMqQczZjAToQ+C7yKyDYzllVq/3YeE8XUSRNhs9L/Wo3fgzjN+xPBICqFZxPVbh2d228Sfc5dPIQpaEV3SRXPPRxZBVe93nioxBGmfmlmAZ0","type":"thought"},{"text":"1. Hummingbirds are the only birds capable of flying backward and upside down.\n2. Their hearts can beat up to 1,260 times per minute.","type":"text"}],"usage":{"total_tokens":295,"total_input_tokens":14,"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_output_tokens":35,"total_tool_use_tokens":0,"total_thought_tokens":246},"role":"model","created":"2026-05-13T23:31:35Z","updated":"2026-05-13T23:31:35Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'

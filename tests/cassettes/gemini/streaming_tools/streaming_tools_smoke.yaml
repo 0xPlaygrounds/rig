@@ -11,7 +11,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate 2 - 5."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The second number to add"},"x":{"type":"number","description":"The first number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The number to subtract"},"x":{"type":"number","description":"The number to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate 2 - 5."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"role":"model"}}'
 then:
   status: 200
   header:
@@ -28,7 +28,7 @@ then:
   - name: transfer-encoding
     value: chunked
   - name: date
-    value: Wed, 13 May 2026 08:58:50 GMT
+    value: Wed, 13 May 2026 23:32:56 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -38,9 +38,10 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=766
+    value: gfet4t7; dur=911
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"subtract\",\"args\": {\"x\": 2,\"y\": 5}},\"thoughtSignature\": \"CiQBDDnWx8dFHLtMKrevVNMTcjdB3YsvIGMMl73Jdqg/6JTN7XEKXwEMOdbHV0tZXaq0CX5q+KoYhIjAF8r8kEKhtDHF+WHvaJLq7U4mtZq7ekcOGMz6MQQURcc2lsq1l2p5f+MwTTx6BFQpYbW7Pqs6KHASaci/IDHfw/MaIv/wl5nmwDo2CuoBAQw51semOZwfvyr92hFxECsh7D6pfD9fxZo+bGEEE6FeFekxOYIElzNQ3XcbRu3dAkLUyNOBvnZmUCewwf4HN8cIaQc4pOGecz6dF0ubQnKFg64l6laAvtCnr0/021+uTc23xaRLHa4UU5xM4gtCRyv+Eyxxd7fNwzFgkxaElfEzgwSI8zLumTTVEh39uUeboIk++M48/isI8l0PQrMD8JzFeHsSCbgvetS3y4uIIc5sNHuIU2WNvaPomIq+/JdQuXQ+yIgTmOG63QXPWcvF3Gw//vaCGlaaLiRILzD5oW5kuF7xmaoyWfwoCmYBDDnWx4DA6DQj9R09CY6mEuiXJIeERCjUbawPe/KiAtdWaYatKz0SGSY9fC/OTg2Y82FeOs4Y65iTAde0lG6F3NwAGtcRUTl6Q6lSlKcvOUeCjWhO4JAsGrnWjPMKGWSjQcr7IdY=\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 138,\"candidatesTokenCount\": 18,\"totalTokenCount\": 249,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 138}],\"thoughtsTokenCount\": 93,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"JwoFaoKiHNCFz7IP49TbmAc\"}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -55,7 +56,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate 2 - 5."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx1HlD5FH1nHQFGUrd/8g+c5t8qN2sap0rCwSRkbB1FwKXwEMOdbHu8fC2Ox1cl4bE2pIbHkKmodEh1XrDSyzg7KqbeCMMJVKQ9yJLd5nsMAsAJrRiv77Og6hXq9y8alN8yck+AmvvZCzijCPc2eaD/zqHk75En+U9iQoXpM5o8jlCnsBDDnWxwyMFf81kyZWNP42WPxMjY+iR/qXL0Otq6JEDf/0P5DAv8bc1SEwkCE8pTHeT8RK0CyIY/M9rWQ3Og1ULsb2OD+uCA6YJVPFr/C78Dj9h/dN5IcgnWbzucRhApVtXMATGOYAFRXlBAvTUx2C4kwc3U5b3JN+TLU=","functionCall":{"name":"subtract","args":{"y":5,"x":2}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":-3}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The second number to add"},"x":{"type":"number","description":"The first number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"number","description":"The number to subtract"},"x":{"type":"number","description":"The number to subtract from"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate 2 - 5."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx8dFHLtMKrevVNMTcjdB3YsvIGMMl73Jdqg/6JTN7XEKXwEMOdbHV0tZXaq0CX5q+KoYhIjAF8r8kEKhtDHF+WHvaJLq7U4mtZq7ekcOGMz6MQQURcc2lsq1l2p5f+MwTTx6BFQpYbW7Pqs6KHASaci/IDHfw/MaIv/wl5nmwDo2CuoBAQw51semOZwfvyr92hFxECsh7D6pfD9fxZo+bGEEE6FeFekxOYIElzNQ3XcbRu3dAkLUyNOBvnZmUCewwf4HN8cIaQc4pOGecz6dF0ubQnKFg64l6laAvtCnr0/021+uTc23xaRLHa4UU5xM4gtCRyv+Eyxxd7fNwzFgkxaElfEzgwSI8zLumTTVEh39uUeboIk++M48/isI8l0PQrMD8JzFeHsSCbgvetS3y4uIIc5sNHuIU2WNvaPomIq+/JdQuXQ+yIgTmOG63QXPWcvF3Gw//vaCGlaaLiRILzD5oW5kuF7xmaoyWfwoCmYBDDnWx4DA6DQj9R09CY6mEuiXJIeERCjUbawPe/KiAtdWaYatKz0SGSY9fC/OTg2Y82FeOs4Y65iTAde0lG6F3NwAGtcRUTl6Q6lSlKcvOUeCjWhO4JAsGrnWjPMKGWSjQcr7IdY=","functionCall":{"name":"subtract","args":{"x":2,"y":5}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":-3}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a calculator. Use the provided tools before answering arithmetic questions."}],"role":"model"}}'
 then:
   status: 200
   header:
@@ -72,7 +73,7 @@ then:
   - name: transfer-encoding
     value: chunked
   - name: date
-    value: Wed, 13 May 2026 08:58:51 GMT
+    value: Wed, 13 May 2026 23:32:56 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -82,7 +83,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=443
+    value: gfet4t7; dur=451
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"2\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 213,\"candidatesTokenCount\": 1,\"totalTokenCount\": 214,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 213}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Sj0EasSMLsjqz7IP48mhuAI\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" - 5 = -3.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 213,\"candidatesTokenCount\": 8,\"totalTokenCount\": 221,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 213}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"Sj0EasSMLsjqz7IP48mhuAI\"}\r\n\r\n"
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The result of \"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 262,\"candidatesTokenCount\": 3,\"totalTokenCount\": 265,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 262}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"KAoFatabGIStz7IP8vyG2Ag\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"2 - 5 is -3.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 262,\"candidatesTokenCount\": 11,\"totalTokenCount\": 273,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 262}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"KAoFatabGIStz7IP8vyG2Ag\"}\r\n\r\n"

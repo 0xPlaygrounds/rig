@@ -11,15 +11,37 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:46:52 GMT
+    value: Wed, 13 May 2026 22:38:36 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2417'
+    value: '2340'
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb5277e380ad7af-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: server
     value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '1233'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -32,43 +54,23 @@ then:
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
-  - name: openai-version
-    value: 2020-10-01
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-project
-    value: '[REDACTED]'
   - name: x-request-id
-    value: req_042505f645824ca09f13f069877e7990
-  - name: openai-processing-ms
-    value: '1144'
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_afc1b273b30c40fd95a05b89fd2c2d27
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb55adf998626-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_04eccadf349fffb2006a041e5b62108193aef45b4e1f0078fc",
+      "id": "resp_0573d493de245e3e006a04fd6b4c8c819f8e9e53272a3cf82f",
       "object": "response",
-      "created_at": 1778654811,
+      "created_at": 1778711915,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778654812,
+      "completed_at": 1778711916,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -79,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_04eccadf349fffb2006a041e5bd3e881938003592560bded72",
+          "id": "msg_0573d493de245e3e006a04fd6c2580819f8977c6b5bcb0115c",
           "type": "message",
           "status": "completed",
           "content": [
@@ -87,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Event\",\"summary\":\"Join fellow Rustaceans in Seattle for an evening of learning and networking. Whether you're a seasoned developer or just starting, come and explore the latest in Rust programming with presentations, discussions, and hands-on sessions.\"}"
+              "text": "{\"title\":\"SmokeStructuredOutput\",\"category\":\"Rust Meetup\",\"summary\":\"Join us for a local Rust meetup in Seattle! Connect with fellow Rust enthusiasts, share projects, and learn more about this powerful programming language.\"}"
             }
           ],
           "role": "assistant"
@@ -146,11 +148,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 58,
+        "output_tokens": 44,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 122
+        "total_tokens": 108
       },
       "user": null,
       "metadata": {}

@@ -13,7 +13,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:50:27 GMT
+    value: Wed, 13 May 2026 22:42:31 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -25,50 +25,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '10000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T08:50:27Z
+    value: 2026-05-13T22:42:30Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T08:50:27Z
+    value: 2026-05-13T22:42:31Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T08:50:25Z
+    value: 2026-05-13T22:42:29Z
   - name: anthropic-ratelimit-tokens-limit
     value: '10800000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '10800000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T08:50:27Z
+    value: 2026-05-13T22:42:30Z
   - name: request-id
-    value: req_011CazHH21KN5HZiPxEvJMmJ
+    value: req_011Cb1Nj7R51v8pB6FnShMhL
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
     value: 72af56b7-4756-4612-8117-abf3c67ce635
   - name: traceresponse
-    value: 00-8ba8b4d109ac2139eb0e77d8e5da8a6d-eec9b1bc51fb5fe6-01
+    value: 00-ac2225e355a339613de475508ee138fc-bfc0f949cbd88b46-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '2260'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '2026'
   - name: x-robots-tag
     value: none
+  - name: vary
+    value: Accept-Encoding
   - name: cf-cache-status
     value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
   - name: cf-ray
-    value: 9fb06a5dcaf4db6e-LAX
-  body: '{"model":"claude-opus-4-7","id":"msg_017jqPfKVFPJspmxgSu2VFXQ","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"","signature":"EvIBClkIDRgCKkDx7ukSY+knGW/vrV5eaICF7GOcBqB/XJwpom/y9qObCnTu4zROnQq5A+HcnO/nz5IEV55PQOOq68YTyW1ZYfE+Mg9jbGF1ZGUtb3B1cy00LTc4ABIM6TZ7e1CyMu8WhxyyGgxLxlu8dSHXojKpd8ciMBDslQehuUT1GMYDQrqGSh1ZrT0hCPYniHrTNgBe1LCp8OCV90n5tfRH/wzriDl7SipH6pBB/fySjzakg9z1YRh/BNogkSSKgCfnt60qHrQf6wiO32PA/K7a0VDMuEyJ2/nu+wlxGkSbtnZ7hk9is47ViDKIYuTkisoYAQ=="},{"type":"tool_use","id":"toolu_01GNhAWJTN8QnKsqu6bERmHS","name":"get_weather","input":{"city":"Tokyo"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":913,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":108,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb52d351eac4800-LAX
+  body: '{"model":"claude-opus-4-7","id":"msg_01GmU8h4Qh5w9buEqxydZWFa","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"","signature":"EvIBClkIDRgCKkDx7ukSY+knGW/vrV5eaICF7GOcBqB/XJwpom/y9qObCnTu4zROnQq5A+HcnO/nz5IEV55PQOOq68YTyW1ZYfE+Mg9jbGF1ZGUtb3B1cy00LTc4ABIMObcm7oQXWAvr7yZEGgyPC2hn7ib5u9TZ6OEiMJ+JZBUxQ1B5fK14c5UT1R3Rl5sr7P6su2fynuCOWbWh3oeXlJmCiam0ZTH/8CFIHypHnBnCxfe26WZwKArBbqFJfbpd+o3BY1hcuF0myUgaFTBYrQQPtDKRfxusqsdlA7obmCRIrdW1wACDMUxPyHLI94iKvY+iHLcYAQ=="},{"type":"tool_use","id":"toolu_01DRFZ57yA8nf5oDDS7NifF7","name":"get_weather","input":{"city":"Tokyo"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":913,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":108,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -80,12 +80,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-opus-4-7","messages":[{"role":"user","content":[{"type":"text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"EvIBClkIDRgCKkDx7ukSY+knGW/vrV5eaICF7GOcBqB/XJwpom/y9qObCnTu4zROnQq5A+HcnO/nz5IEV55PQOOq68YTyW1ZYfE+Mg9jbGF1ZGUtb3B1cy00LTc4ABIM6TZ7e1CyMu8WhxyyGgxLxlu8dSHXojKpd8ciMBDslQehuUT1GMYDQrqGSh1ZrT0hCPYniHrTNgBe1LCp8OCV90n5tfRH/wzriDl7SipH6pBB/fySjzakg9z1YRh/BNogkSSKgCfnt60qHrQf6wiO32PA/K7a0VDMuEyJ2/nu+wlxGkSbtnZ7hk9is47ViDKIYuTkisoYAQ=="},{"type":"tool_use","id":"toolu_01GNhAWJTN8QnKsqu6bERmHS","name":"get_weather","input":{"city":"Tokyo"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01GNhAWJTN8QnKsqu6bERmHS","content":[{"type":"text","text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}]}]}],"max_tokens":16384,"system":[{"type":"text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"tools":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"thinking":{"type":"adaptive"}}'
+  body: '{"model":"claude-opus-4-7","messages":[{"role":"user","content":[{"type":"text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"EvIBClkIDRgCKkDx7ukSY+knGW/vrV5eaICF7GOcBqB/XJwpom/y9qObCnTu4zROnQq5A+HcnO/nz5IEV55PQOOq68YTyW1ZYfE+Mg9jbGF1ZGUtb3B1cy00LTc4ABIMObcm7oQXWAvr7yZEGgyPC2hn7ib5u9TZ6OEiMJ+JZBUxQ1B5fK14c5UT1R3Rl5sr7P6su2fynuCOWbWh3oeXlJmCiam0ZTH/8CFIHypHnBnCxfe26WZwKArBbqFJfbpd+o3BY1hcuF0myUgaFTBYrQQPtDKRfxusqsdlA7obmCRIrdW1wACDMUxPyHLI94iKvY+iHLcYAQ=="},{"type":"tool_use","id":"toolu_01DRFZ57yA8nf5oDDS7NifF7","name":"get_weather","input":{"city":"Tokyo"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01DRFZ57yA8nf5oDDS7NifF7","content":[{"type":"text","text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}]}]}],"max_tokens":16384,"system":[{"type":"text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"tools":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"thinking":{"type":"adaptive"}}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 08:50:31 GMT
+    value: Wed, 13 May 2026 22:42:35 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -97,47 +97,47 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '10000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T08:50:29Z
+    value: 2026-05-13T22:42:32Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T08:50:31Z
+    value: 2026-05-13T22:42:35Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T08:50:28Z
+    value: 2026-05-13T22:42:31Z
   - name: anthropic-ratelimit-tokens-limit
     value: '10800000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '10800000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T08:50:29Z
+    value: 2026-05-13T22:42:32Z
   - name: request-id
-    value: req_011CazHHCMuykZn9AkXjdczh
+    value: req_011Cb1NjGU2xFJErM28utyfQ
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
     value: 72af56b7-4756-4612-8117-abf3c67ce635
   - name: traceresponse
-    value: 00-26363eb7e3786a5ac43568c2f649e409-cb1bb242c87f4b85-01
+    value: 00-f30f22cb5ec625a13a6ab98146c8df23-173e740b7d90a201-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '3535'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '3564'
   - name: x-robots-tag
     value: none
+  - name: vary
+    value: Accept-Encoding
   - name: cf-cache-status
     value: DYNAMIC
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: content-security-policy
+    value: default-src 'none'; frame-ancestors 'none'
   - name: cf-ray
-    value: 9fb06a6cfe26db6e-LAX
-  body: '{"model":"claude-opus-4-7","id":"msg_01DU5Pa3jPgxNwjtkXyqZGLM","type":"message","role":"assistant","content":[{"type":"text","text":"Here''s the current weather in Tokyo, Japan:\n\n- **Temperature:** 72°F (22°C)\n- **Conditions:** Sunny with light clouds\n- **Humidity:** 45%\n- **Wind:** 8 mph from the NW\n\n**Recommendation:** Pack the **sunscreen**! ☀️ With sunny skies, low humidity, and no rain in the current conditions, you''ll want sun protection rather than an umbrella. The mild temperature makes it great weather for sightseeing — just don''t forget to reapply sunscreen throughout the day."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1075,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":192,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb52d4259b94800-LAX
+  body: '{"model":"claude-opus-4-7","id":"msg_01P5BVArZowbbUgeq1dJg7qe","type":"message","role":"assistant","content":[{"type":"text","text":"Here''s the current weather in Tokyo:\n\n- **Temperature:** 72°F (22°C)\n- **Conditions:** Sunny with light clouds\n- **Humidity:** 45%\n- **Wind:** 8 mph NW\n\n**Recommendation: Pack sunscreen! ☀️** With sunny skies, mild temperatures, and low humidity, you won''t need an umbrella today. The UV exposure from the sun makes sunscreen the smarter choice. That said, if your trip spans several days, it''s always wise to toss a compact umbrella in your bag just in case conditions change."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1075,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":197,"service_tier":"standard","inference_geo":"global"}}'

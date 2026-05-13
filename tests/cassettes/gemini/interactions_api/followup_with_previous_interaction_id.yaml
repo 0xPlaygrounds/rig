@@ -19,7 +19,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 08:57:24 GMT
+    value: Wed, 13 May 2026 23:31:37 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -29,14 +29,14 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=2105
+    value: gfet4t7; dur=2025
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
     value: none
   - name: transfer-encoding
     value: chunked
-  body: '{"id":"v1_Chc4andFYXNhUUhaWGx6N0lQejlxQm1BOBIXOGp3RWFzYVFIWlhsejdJUHo5cUJtQTg","status":"completed","outputs":[{"signature":"EuMDCuADAQw51sdCj+K/jQJGjCjRJ5l5jQPekmuMLCdaTEnxKr4pPED2JXqAxb2/kil9BYxXYWevWibsNdx80SMkiKcHE1ordTc3Q2Z6ucMOidHwUFU+WZWtmhjyLWeleG0Ap8I3oyB3VU+gQyGxdk4SsCY1pciivfTb8ZMx8CoFbADVNzWH+XoFCKzc/cf57IS4QmIzJ4qGoLB2Xy4SmPxrTC6OssaK8PFy4N459zFUj62WZWUivbVAZ3y/ZXVbRyA0GXQIjuRL7DmkPnsnWMM2luyfoKKwMnolimGG/0D7C25u2iWHBATcaIRBIzBQMiMFbOyztuWibw9u5JEwzrS4DHRzEJPGS/2ceBxxH1VAWip7c4K9T7wX0lOuL111sfAkVptSFnDh7gLNz8uYnbU+dYTALrte8FN5O1fryKgwJGVssLsUH4YKNVaYqJfqUqfEkrS0xW52cDVcvi0g+v4W7BLmKWzW+SOSv4vdaSyvrYuaAdhhK+8ju0OaysYvkUlZmWzaxLL53hICpfW8xbUMiTfUvdF6uDJNjCFe7Fdc3HvZb/pAIJY/3SlQprHnnIucoo/sIf7WYv8/g5wFThT0/8D1kW/gmG5K1UG/b9Gl+j714diKLfi07H+oFtKETFJnSkMR","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backward.","type":"text"}],"usage":{"total_tokens":150,"total_input_tokens":10,"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_output_tokens":12,"total_tool_use_tokens":0,"total_thought_tokens":128},"role":"model","created":"2026-05-13T08:57:24Z","updated":"2026-05-13T08:57:24Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"id":"v1_Chcxd2tGYXE3X0tZdnJ6N0lQNV8zNXNBNBIXMXdrRmFxN19LWXZyejdJUDVfMzVzQTQ","status":"completed","outputs":[{"signature":"EocFCoQFAQw51seVkbM7qZ66wjtA5RKpj0ILweHcxFtJ0g3nI9ZScQqq1/i7xdW4eNefutMHPqHTo2HSe/GHSJKpcnTnTwknu/jrExzmGBajIbXvGM6nCw/GrrOx0UMjlHkjkFO2VbiL+f4nCZJGs+dwU024lt334qUZisUUppBoAJ4i23bdt6XySAodIOeVUGIbyQCcWcEuSjnGieWJ5uJn7SDI/aX9CXfHz4Y+7Vel1hCBpZ8Sfc4ySv9YAlxIkKbzuOz0SxQ+pB6cnz+tJ++Q+tr44XRwEUl+gK5mqHPhPMEArDmEAPOSXFX+YB2pQjG4f67IvL8VsW+OOug5q1z/VAQFgfXmwLZ6f6cvF6j6dFa7/r6AUKTn0xajnmidpV8kLnrHhYN1dZeQagd70G9PpQTjVzDP2q1vC3zRP6DQnx/WI93Ab7hVU2JZaBFOigH29NIISNc4iZDYVKcCS5w24vu+hcsxcju/5jouY/dONUjK6GHpU2Vq87IaIdGkE5oy5oklPa/rc85QHCynSupbACXa4vOysuov9MH6Jj8ZMFmA97QJ3/nsHLd3WrSZAGvsFX5SMcLHTKEkOlWnvzkv2pGu4CWd6tv+fe9SFfaahGU92Y9hoktDKbljKiRL4yxPFOwSjuacGmutA/OHbrvCQ5KPudZ7HDqZRg2Ls4mR+s6+/G+JehuvcaUzvdK+4IalWMyBoSn27hCF6GzOVMpfU9x5slYBzv612VK7uJKmMtybdHZVtT43z2JLrR8FmFgYJsImGGZNB1dBrVYXZ9MiWBTGDHqiTmvItsaufPnglG+HaN84uy0XDhqtHavPC7/3F3WF/+HYE+hDGHdjckeu+VGZZqtGqVY=","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backwards.","type":"text"}],"usage":{"total_tokens":189,"total_input_tokens":10,"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_output_tokens":12,"total_tool_use_tokens":0,"total_thought_tokens":167},"role":"model","created":"2026-05-13T23:31:37Z","updated":"2026-05-13T23:31:37Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
 ---
 when:
   path: /v1beta/interactions
@@ -46,7 +46,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Now answer with a short analogy."}]}],"stream":false,"previous_interaction_id":"v1_Chc4andFYXNhUUhaWGx6N0lQejlxQm1BOBIXOGp3RWFzYVFIWlhsejdJUHo5cUJtQTg"}'
+  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Now answer with a short analogy."}]}],"stream":false,"previous_interaction_id":"v1_Chcxd2tGYXE3X0tZdnJ6N0lQNV8zNXNBNBIXMXdrRmFxN19LWXZyejdJUDVfMzVzQTQ"}'
 then:
   status: 200
   header:
@@ -59,7 +59,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 08:57:27 GMT
+    value: Wed, 13 May 2026 23:31:40 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -69,11 +69,11 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=2873
+    value: gfet4t7; dur=2514
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
     value: none
   - name: transfer-encoding
     value: chunked
-  body: '{"id":"v1_Chc4andFYXNhUUhaWGx6N0lQejlxQm1BOBIXOUR3RWF1dU5MN3lDejdJUG5Jai02QTA","status":"completed","outputs":[{"signature":"EsIICr8IAQw51sfLgvP/DF7FflgGd7lgf5YJ4Tv5pYupysFPv/ERRv0lLHUhGL8FF0k3IlQiqRlZAZPJxurH/Xh1M2hLs9u+oA7BfklAhs5gH4VC82LdPVs9shJdpc4n1Co/tetjvKPhsk95rC7YTkII78kAPBWWkVFOA/W55231OIlMSbHf2gmioBqbyKxkAqnxtURYWuuCp5ly+E6fF16sPNySCgKdAhrhwmjTkt9cYP7wZ8o10sgVXr6ElsNtIO0qsl7tdi4ZFYBo5f0XFVLeWauQq9DmHwA9Qm6dg7Kzi1kzGr+STWH0iRwqJBL4y3PXDqI2qO7GRbSYL6zZDFLbvElrwq8/x1E15Dbwrv8zOiqjHpFrXkKJqlmq4vBWWKy2Z85Gpt+JeIDo+e43IUW153T7B0Rm9mnIlQcqvdjs2T3279/y22xfszes2S+xYtb+XFIdc5/3suxJkYCPDdW6rsNQi/lmM1ZKuE5Ya9lhCLTEMcCUHfCi4PwU9w7G4SiLjNyzY07yz0mBgOb9A54GUc43Lc+CNApAisEiu1pL3GaRWTtZgV1skCfv8JXkS5Np6gBBNQmvekLlWAlB+3vnsbN77rsmcvM6lxcTrODeTZInKStSU23Y76JqCtzTrgTzD2mAhbCroWD84TKMsrZQssDGhkdZyTYSmi0982O18Yepop8KJoPUUnbNSECyr64GzVy3Y9J1OpeSIvBW8DQsMA8tDFbEcj4grvnBGS8y8Cad9b1mQKpmaZ0JjBm03he7IxQT5zUMW8zG6IUSC6CuKpLQbGhCjD6CgbDBrfBLXkD9K8k0XTDhQ74C9Feh5wHstHKCcoVTEErP52er/gAVRx+iensbaZyWi4dzcIpZyyKg9gmFXwJ4foe5h3QNXvVuDmfxA6qE6tjtFa1bIYAYadoQGFQPnfUuayIO3F398zc89knAhF5Sibh2t6AU3xm10QA7KkDofTQFEco4DpU7y7tovClRV4YAw1+GUBest1Pky+otu534hthmTQj7EX7zWRe9Wu+SzteB7pqPQ5aKOZBPHySZJroT/hbX37WxEU3qbzfTU+Yw4dTI6yZy+C5bLMqfybBKEOwxwJDesBUXV83lvPU5C1B8tprLWT7bUEctMSoGCCtQc6h88/nhbMOILoJzzVV2skR2FEBI0lw5lu8oorx8dkFCS0tmiXbukIjETfxwLKOvtkHVg1Mo25c0m+K4awyo1RLQWQep0f/YQOpkOXUlLbLNzTXv+vNX/N+56R/+yXLvv2vX0cmo8CWNBRYVXhPeP+46yyJZTX0NTFKHLFfy6LOl4E2mN4FfsHG500bjBOVQQiSODoLfJppsG0VlsDrLCD3HWm0/mMO5k1+qGvkpaIaYvUc8c8GhHgZ8/wLaNH/CPYy6jN44eJt2F3UhpVzffIclJyFsakt2QbrEXlTqSxmL4veMPS14wnx2fA==","type":"thought"},{"text":"A hummingbird is like a miniature helicopter with feathers.","type":"text"}],"usage":{"total_tokens":280,"total_input_tokens":8,"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_output_tokens":9,"total_tool_use_tokens":0,"total_thought_tokens":263},"role":"model","created":"2026-05-13T08:57:27Z","updated":"2026-05-13T08:57:27Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"id":"v1_Chcxd2tGYXE3X0tZdnJ6N0lQNV8zNXNBNBIXMlFrRmFwWGdOcXlFejdJUHQ0LWowQTQ","status":"completed","outputs":[{"signature":"EpMGCpAGAQw51seHAB7t7X78Tu0ty1sLHf+cOKxR4WyxqSOwZJqGDznD1HaAxEFfJZIgqxgUudrUgNLbXH0Opmovww6EXKnlRj89Q9mHD0bdPZvpYGyyyjZOWkYYslo8J4yqzIrsUXoo8s3OzPd9iiud1NxobN5+V9KNKqDp825bRehn8i+8aMTGyu6EIC1X1EABmnJANdrA2ua6DohIj/poQkOzuKXBGG+hK8cOxIj0hzizrcn+Or+3aHZueJa+56AaEjmho8JNWuoDHOgFP2ke/DK45GGMfHH0DIhYMJXKxKzi8rqnsTp3bgt3pxgo1yqqyOF94rPyqG284uF37BUPrAKj2bldPO6HTU5aRKyVLaLQcItjrP9vV8r+0KkSbtaDFjDk/G7YxU+E07I1qkpF03WBv+GyC+1pOffb8FWzme36a0mPuBIZ/0GMyS65mfL4QCRua80lGsQ3Kz500mPfhQ405cqkbpHL9RZrOOWiX9EBImf3MYf+u3Xcd2VnVHFMXAaBJURofgvdnl3RLjbsLHDrYMVCUw1+98Tvi5cuf4UNNyItBGLmZHG9lVpxVrvu5HEw/Y+u+WFuoQqaxyRSSAGVLsjKqHb7taFCl8pcE9xiHjmRLKP67iYLZuoyjOWUvBDpU6cX4vyjuSLgBBRvVlKYjdMLBTtimS1qch5vEQpHbgnpZOEICNMUxAloRW5+Za2s5qgrkSZoEHYfmX/oJqooRlbtLRCJxvv1Kcfa5sItK5EgchVR2q8FskEcBHKXdH9Y5yQ46cR5/EIhbqpvH5eSubcgGlU3kThx4dEFDdLHvLAYKqjy2SCPoansrt/Jwm/PNus8XdguQ2yZUqE8/L9ANTHkgpWn/qyy6yc5OWbt24cEk+beFcG2CDKlTUPDlquPjL1DrCzUrgmygwNKDokcxPrMI32ZWEN35WzRgAjdYaA/lccD70BCA3Gp3BFQ7v6QNH+2w2WUzTz6YzOiWXeh5bB2Eb9a4Koyi3SlQNd3H+zT9j5g0xB5S+orsx9NpOjgWSg3X1DwvhsFSZeTcY6e5Q==","type":"thought"},{"text":"A hummingbird is like a tiny, feathered helicopter.","type":"text"}],"usage":{"total_tokens":197,"total_input_tokens":8,"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_output_tokens":10,"total_tool_use_tokens":0,"total_thought_tokens":179},"role":"model","created":"2026-05-13T23:31:40Z","updated":"2026-05-13T23:31:40Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'

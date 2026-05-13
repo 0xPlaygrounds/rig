@@ -11,27 +11,39 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 06:44:42 GMT
+    value: Wed, 13 May 2026 22:36:50 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
     value: chunked
   - name: connection
     value: keep-alive
+  - name: cf-ray
+    value: 9fb524eb1ece566d-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: server
+    value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
   - name: access-control-expose-headers
     value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
   - name: access-control-expose-headers
     value: CF-Ray
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '367'
+    value: '355'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
-  - name: server
-    value: cloudflare
+  - name: x-openai-proxy-wasm
+    value: v0.1
   - name: x-ratelimit-limit-requests
     value: '10000'
   - name: x-ratelimit-limit-tokens
@@ -45,26 +57,16 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 1ms
   - name: x-request-id
-    value: req_0fd35725f7974f9bb7a01186c7977314
-  - name: x-openai-proxy-wasm
-    value: v0.1
-  - name: cf-cache-status
-    value: DYNAMIC
+    value: req_ab646961e803473bb03babcab78658f5
   - name: set-cookie
     value: '[REDACTED]'
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: cf-ray
-    value: 9fafb2301ee72b61-LAX
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |
     {
-      "id": "chatcmpl-DexcfRM4BOZ9HIRh8OU8svZRav3pH",
+      "id": "chatcmpl-DfCU59Cjg8VL4bJP4dUltMR20dYRP",
       "object": "chat.completion",
-      "created": 1778654681,
+      "created": 1778711809,
       "model": "gpt-4o-2024-08-06",
       "choices": [
         {
