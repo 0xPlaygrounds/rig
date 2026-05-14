@@ -13,9 +13,10 @@ use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
     ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT,
     STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract, TWO_TOOL_STREAM_PREAMBLE,
-    TWO_TOOL_STREAM_PROMPT, assert_stream_contains_zero_arg_tool_call_named,
-    assert_tool_call_precedes_later_text, assert_two_tool_roundtrip_contract,
-    collect_stream_observation, zero_arg_tool_definition,
+    TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
+    assert_stream_contains_zero_arg_tool_call_named, assert_tool_call_precedes_later_text,
+    assert_two_tool_roundtrip_contract, collect_stream_final_response, collect_stream_observation,
+    zero_arg_tool_definition,
 };
 
 fn streaming_tool_params() -> serde_json::Value {
@@ -40,13 +41,11 @@ async fn streaming_tools_smoke() {
                 .stream_prompt(STREAMING_TOOLS_PROMPT)
                 .multi_turn(3)
                 .await;
-            let observation = collect_stream_observation(&mut stream).await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming tool prompt should succeed");
 
-            assert!(
-                observation.errors.is_empty(),
-                "stream should not emit errors: {:?}",
-                observation.errors
-            );
+            assert_mentions_expected_number(&response, -3);
         },
     )
     .await;
@@ -136,23 +135,22 @@ async fn example_streaming_with_tools() {
         |client| async move {
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
+                .preamble(
+                    "You are a calculator here to help the user perform arithmetic operations. \
+                     Use the tools provided to answer the user's question.",
+                )
+                .max_tokens(1024)
                 .tool(Adder)
                 .tool(Subtract)
                 .additional_params(streaming_tool_params())
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(STREAMING_TOOLS_PROMPT)
-                .multi_turn(3)
-                .await;
-            let observation = collect_stream_observation(&mut stream).await;
+            let mut stream = agent.stream_prompt("Calculate 2 - 5").multi_turn(3).await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
 
-            assert!(
-                observation.errors.is_empty(),
-                "stream should not emit errors: {:?}",
-                observation.errors
-            );
+            assert_mentions_expected_number(&response, -3);
         },
     )
     .await;

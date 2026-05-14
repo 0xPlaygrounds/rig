@@ -36,11 +36,10 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                 .expect("[openai] Chat failed before it could update caller-owned history");
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "openai");
-            reasoning::assert_chat_history_preserves_tool_roundtrip(
+            reasoning::assert_chat_history_preserves_reasoning_tool_roundtrip(
                 &chat_history,
                 &result,
                 "openai",
-                false,
             );
         },
     )
