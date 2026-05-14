@@ -24,7 +24,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 23:33:01 GMT
+    value: Thu, 14 May 2026 00:17:05 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -34,7 +34,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=1915
+    value: gfet4t7; dur=2044
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
@@ -48,8 +48,8 @@ then:
           "content": {
             "parts": [
               {
-                "text": "{\"title\":\"Seattle Rust User Group Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust enthusiasts in Seattle to discuss systems programming, share projects, and network with the developer community.\"}",
-                "thoughtSignature": "EukKCuYKAQw51seUuPk2PBnNH2UZXHw7DWrkvLWEhWVUCKkIwGJdl2orsnP9tMIB61HcRcJzdwYOy4DMIp81HS29aR90QeEhymNufIZgNnKZFYX0OZaRzxjrf3wPBL7lfdMf+FcJEdnsPwg1qW6VIjYnQXgWqYVKHxXx+UHpoHazkXn/5rPnO3BbTHidF9TJ9Azoky3eYSz0NZ1OhqRH9aAy78lhVNIVn5Z6Emu0MW3RRNYFre8HviUIlENOP9aaGVl8j6y6U37f4M0+fwXVTFMYP9jcv3yfzWxax0FaXZs3KGdL4wtOxNSx4qYaLvnHXCac9NKf31943Doo6U86my6MKZ2wYu5KmB8Kq25k3Vz/x37vXQXKom9mqwoOFtjHVax0qKOBQK4o/hIGY248aFLseRFalSuu9sB28HoyEmL4NOBaWpHCqLc/LCew7YRN07yg8yTXovuhqFNxa/CZuqUqqnrtOMW4qKp3uwNjRC9dMkyWUPXGYXiH24s15+ldfmHKfZ2LWYRzt3dHrlLLwglQy8Wi1JpTBVz5Ko3NuMd8yTOcdepoxiV71g2k3HukBSsyVaHv325E6VI8EoO1DHMywRUpNyAmexT2bCZLt6rWq+/U7P54Z0rc4SlLtv3bjeTRYyGYiWl1lhItQhNErszMR7kih81i8N12bTf8tDOzv+4sO96lgQcpABmE27u+LxzvgC6ogJ3Vnc3dpfZ5SbTicHzVtbIVckCAN2tTfpp+L8MJj76zBIndHfVLQRRgA0FyEjyoHULVaw5bI/1K6qve7OsEpRgTlxnaM4pQAYRcDbUXCojy59ZkRnYQ93XqS8YT4Viv6G7FWKYGk3ztxYHL6ePE95AK7t2dOxR/VDF8lU1/KvE1NmBCdU4V4G1gL93Bv45zL5zd1nLe1u6gzy5K+G6d75lEdr1/fZCOhyvAY7n8RmtSqGwlIN68OKClGJgZTUvlbaUAK0FoIA1XVT/FMYqh0OSaVflZEAqEbPFCLIaTy7VLW+1q3auyaAfviQc8LFs1NLUVj+v1bjZTsjhVQejRdKsIQfiz9hHGhynsG4tMDWJ8vOMFt2rI9GYhc+/Pojx++qLT44ZsszgFmRyWJF/6yaAfX172ifx/GaKBkqiApGkSojmNj3Y0JxOzXmPd0zqgbVSZ5AhLSV9xDWxhxEEL+kxwlndDazyQR+BfbpXv1SVm1dNY493mdY8K82Ndp/OWSf0YqRJPFXYBU13Nao3NAVwAETam3tUCV43f8GOAR7ViBrodiKTvOBAzPoexdVooFHqzTjGn+VJ/6+TEUlKC9+j5IfpTFeOsvpxCmXT48HwiR0qqNERpbQXJk/4HBdDMIVU70IDbN1beaYgDeKab1/l5X9x8QugydQ7VRI6bP8QsOTi4/SJ+bf2fBkiWFZXfJxeWH4Ay/6U4tuWmNMmhqdcgdtnm7FfHesVv5RSxpnMzO7AVgCZ62t26GEkXddY9Jm4uSfrzjSQLThetERrdAJmAh4czgAm2NKYpCxQsttwxV+7hGywpt6DNLUQzWPNSx0jxNkos4bsj7QnYxE6JV+k2qK8vzNa5pTnp57BdODsfAEVKZMgQLt6HfiNXXRbp6cv5nLgz2JSBCBnHztyEHci3moq+tGz82cAkbuFLoSzxoWoQlt3+L9XMRCNb4LPA5QSHUp0HZSf/0Dv9GCLfsN+03o7cDhmhyr7jbxKa5R/DhAhiJiw8hgzO8cT5iY4azoyQukDWb6t+pEhTteOL39vh9LmnwqU6g0OzH7Es04CuyvUMvbT2M4d/TCtu+rkqCoRu6etudOZfWprqvNexMK2j7mmRi2pZzy15+nQXCYeZxtZo3q0="
+                "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to discuss systems programming, performance, and memory safety.\"}",
+                "thoughtSignature": "EqYICqMIAQw51sdox0LN3NrSWbHhZPdVL2QJKS/2yhPZxf6m1J33gtxg9JSwWQk1PCUUiHBp/MzhRI7/1OHkqLRxFA+5G026GGtZoTDDz91hU1scj9LCfxwPLNEhTN3ReWEE5xaV4yj+Euq/TxSVKPYr6Ul+6m6qgl4YHAOHmSvYfeJ1WxjNgqGbF3GpKKvtnIFx6j8TXMWyH6jacaj81HJK9PID3ZcKLWlF2w9TTEahjmeb2rnE2qmHehvwqCo81ug0Y7DwV0f9y7JDVQkI+P36SXQ909bewqFKcMfxqtJWWCUpLoRNAZYpeSe+IKoKm1qjE90QEMrt6WsjUAa/xC0EAj7vx+E1deO0vxHIrKrspFLCHdKYRL/naW3Zlqb/tBrZ0nnl0B+5AKuft7U8UFLWhd6SjClS8ln78Fxgx02yTt/Txf2I2RqUhxg6Z+uUJqJ7kvvtiLWsWU589tNS+ZN9+/99JGVy0agWE6bN8C+ozv9a85xVjxLT5LJP6vEGJsJvOJ4VkvdiCocN3C6rnTqNtsiDsSGey6MNynIYlOD37PgnW1yXJEO67YrDRJn63bjIM9QsmpfwRaCZtlsbQWdK57qCbOmwfDKpoy/T5DWfqDGITSzA9RrYpypnvRDlqDBrRmUKfeUHUiMHoQfs3D5EsI9eHp6d5r6qEKTHw0OGdxv+YkrZsF4jSAQL+BJOJZTMKmY9REIMAAcSYRdwQPunwEEaKn3rbgiH7Bolx1oSwNhj+fsK8SZFJKkA2JZODms9ksTS7YFOteGjMgOkU4H3+qytQ+p+2pa3CKVSpNXP1P7Z524Cs2Kic2IZ1+jWhCzoYpPbk/aBceG/ts/IDCUe/vVvPJE6E41BA8R98J0SWSt8gH/68S1Li2AsJJxYmfb5eKWUuZrZoaWukbFLE0asGuPKMF1QMVcnxG802dOPOvlHezhMveB9UGCRJ/yZ/Pb/IRIYnnTkWbHG12q0hjyKreznl16bt5RUqxyly3uuwyghlQryF1Nsx3t1oqXBKNnEqe8jiKEBryB+NssTXpKF/XBrcGzN+TeYW4QnYS7lmacVzJnXjEnvOerwmrK3kvVTWVhr61kZ2De2gjWbFl6XRZYHRcvEE+i36wNBAzPl7OA3WV7SRYcQ7dhwS+exspPIC/yQHHyVwEejKygRICB4TjxLDU7izEgy1WHDTHpEGjOt18dFyjlgdMdDzhumhN2JjEnfcJOKtWfev1AYezHv3OyMgT9KuDsuUijSsQ4d/YxfD7jy5vE3oOAtNz9QduVxsFHzl7xDLFM13PfJLZFhGo+jpFXSPCxHgrblFLr0Y902JpiABsxRBg3x7FaOI/KN4gz+QDeHnlRnEPC/WvKp5LzNZfMmGhgin9a/y7Wz975t2Ou6LXB3n5wstQS/DhrCFkKM+SNd"
               }
             ],
             "role": "model"
@@ -60,17 +60,17 @@ then:
       ],
       "usageMetadata": {
         "promptTokenCount": 14,
-        "candidatesTokenCount": 40,
-        "totalTokenCount": 363,
+        "candidatesTokenCount": 34,
+        "totalTokenCount": 288,
         "promptTokensDetails": [
           {
             "modality": "TEXT",
             "tokenCount": 14
           }
         ],
-        "thoughtsTokenCount": 309,
+        "thoughtsTokenCount": 240,
         "serviceTier": "standard"
       },
       "modelVersion": "gemini-3-flash-preview",
-      "responseId": "KwoFaqmbNLvrz7IP7t73sA4"
+      "responseId": "fxQFarSzCpXMqtsP2u7koQY"
     }

@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:36:48 GMT
+    value: Thu, 14 May 2026 00:29:51 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb524e0ed4a566d-LAX
+    value: 9fb5ca72de5a0f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '409'
+    value: '367'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -57,16 +57,16 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 0s
   - name: x-request-id
-    value: req_44e37805f3474f2aa74f9311bec23647
+    value: req_3c23494727c34834ad0f3142e99914a1
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |
     {
-      "id": "chatcmpl-DfCU45dlMBJGBDszfwbnE3XR7bXov",
+      "id": "chatcmpl-DfEFStonxzIRsiXjrrdExDIZ7WKyo",
       "object": "chat.completion",
-      "created": 1778711808,
+      "created": 1778718590,
       "model": "gpt-4o-2024-08-06",
       "choices": [
         {

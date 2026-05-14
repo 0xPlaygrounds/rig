@@ -28,7 +28,7 @@ then:
   - name: transfer-encoding
     value: chunked
   - name: date
-    value: Wed, 13 May 2026 23:32:54 GMT
+    value: Thu, 14 May 2026 00:16:57 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -38,7 +38,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=785
+    value: gfet4t7; dur=834
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"ping\",\"args\": {}},\"thoughtSignature\": \"CmQBDDnWx+sb+ZSzzR5UAAk4NtGsRd37lM2eHuKCI2cAEUsFKThia6dfU+PTsGamjoM8Pkm5sp7W65Ceyz5/Z3UVUEB9cgZ8GKeIqldBKyXNy0J15FWkoVOi1cpifJI6SuC3nSLxCqUBAQw51sfMe5RnJSOCHbEUtMtpAMbjwKlGOHa3p2VGYsrWbEJgu8gq//vlIf+I78p+173bH6c/In5G7kpe+pVQcHH8CNESoeMqWmEdjhq52Bz+huxUVCaaXFvxxvOaUvnbvo/fJnKWUUWk+7Gtr7YHKKRu15iSqYIOpLmVAVh+H0Pn4BjTWmHu2M9P8TNQGiYLKxq8c7PoZnU8paP88uhfNLwSWC/j\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 47,\"candidatesTokenCount\": 8,\"totalTokenCount\": 102,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 47}],\"thoughtsTokenCount\": 47,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"JQoFasjyFe2Iz7IPha3ouQg\"}\r\n\r\n"
+  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"ping\",\"args\": {}},\"thoughtSignature\": \"Cl4BDDnWx/MjfYNZpy5xiOicXj3pxKdSYVciHVmP1QPm+vQvVu93m3ELuYmnZVB/0GmEuJTbP/ASZXY6iqdpIGvxWLZr0UHN3xWtSoa/LB5JX3cKD+TjTLwxO9MjKc86CrIBAQw51sedrA5G0o03oFcpiPORiefFIBstpsR1Z8crizfMZI1hhLBqPmtPRBsCpC6vl6ijjFE/BQjvgRz46rXOVsMOk41wFAOOpjmd6oIpmEIBsYQ6Kgv1ljcvX60XmcBPImOVZafN2bgF6/733VUO4n3AJivCGMq5SAY5L+Uush4nhFzLzxEoCqxB84bKLqoP5tpuogr04o3iWxH+CuDDEXwGvXnb9rvbAXpZwot1pYBWCA==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 47,\"candidatesTokenCount\": 8,\"totalTokenCount\": 106,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 47}],\"thoughtsTokenCount\": 51,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"eBQFatjaKIKsqtsPoaDAgA0\"}\r\n\r\n"

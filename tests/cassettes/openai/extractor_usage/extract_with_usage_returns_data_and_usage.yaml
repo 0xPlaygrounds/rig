@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:00 GMT
+    value: Thu, 14 May 2026 00:30:06 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5252abd7c566d-LAX
+    value: 9fb5cad28a600f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '914'
+    value: '1086'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_e82885cbc60549b38a9cb08fdeb3da98
+    value: req_6cef9ad269b64d918bc5f574a55c8b59
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0d2b4ec78b89cd9e006a04fd0c04448197be0231df8a62f9e1",
+      "id": "resp_09321312e88b3225006a05178d498c81918ce74ac386a8a81c",
       "object": "response",
-      "created_at": 1778711820,
+      "created_at": 1778718605,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711820,
+      "completed_at": 1778718606,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0d2b4ec78b89cd9e006a04fd0c79a08197bbefdffb5be91cdd",
+          "id": "fc_09321312e88b3225006a05178dfc808191a15cf4c8e70aa0db",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-          "call_id": "call_UvdVX2wFtzFuk8yVIglBIp5k",
+          "call_id": "call_GmJNJSwkI8i943ybq3jmIPY1",
           "name": "submit"
         }
       ],

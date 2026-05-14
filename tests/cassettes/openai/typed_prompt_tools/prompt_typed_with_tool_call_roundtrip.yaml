@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:37 GMT
+    value: Thu, 14 May 2026 00:31:47 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5278719a3d7af-LAX
+    value: 9fb5cd418f6f16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '488'
+    value: '2005'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -57,16 +57,16 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_6081bba4f5a445579e80ee3cf1cb9571
+    value: req_6c599c15b08c40d8a1b5322d37d54b0c
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |
     {
-      "id": "chatcmpl-DfCVoyMbQkxaMRK7u4SZNzzXusYNj",
+      "id": "chatcmpl-DfEHJzL3S2uXIh8wwn8EANIpL77Qp",
       "object": "chat.completion",
-      "created": 1778711916,
+      "created": 1778718705,
       "model": "gpt-4o-2024-08-06",
       "choices": [
         {
@@ -76,7 +76,7 @@ then:
             "content": null,
             "tool_calls": [
               {
-                "id": "call_0A8NJmDhrLX3Xzob2G38KjC8",
+                "id": "call_9BctHBzO4awnHYaR9Gu35JcT",
                 "type": "function",
                 "function": {
                   "name": "weather",
@@ -118,12 +118,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result."}]},{"role":"user","content":"Hello, whats the weather in London?"},{"role":"assistant","tool_calls":[{"id":"call_0A8NJmDhrLX3Xzob2G38KjC8","type":"function","function":{"name":"weather","arguments":"{\"city\":\"London\"}"}}]},{"role":"tool","tool_call_id":"call_0A8NJmDhrLX3Xzob2G38KjC8","content":"The weather in London is all fire and brimstone"}],"tools":[{"type":"function","function":{"name":"weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],"response_format":{"type":"json_schema","json_schema":{"name":"WeatherResponse","strict":true,"schema":{"type":"object","properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false}}}}'
+  body: '{"model":"gpt-4o","messages":[{"role":"system","content":[{"type":"text","text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result."}]},{"role":"user","content":"Hello, whats the weather in London?"},{"role":"assistant","tool_calls":[{"id":"call_9BctHBzO4awnHYaR9Gu35JcT","type":"function","function":{"name":"weather","arguments":"{\"city\":\"London\"}"}}]},{"role":"tool","tool_call_id":"call_9BctHBzO4awnHYaR9Gu35JcT","content":"The weather in London is all fire and brimstone"}],"tools":[{"type":"function","function":{"name":"weather","description":"Get the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}],"response_format":{"type":"json_schema","json_schema":{"name":"WeatherResponse","strict":true,"schema":{"type":"object","properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false}}}}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:38 GMT
+    value: Thu, 14 May 2026 00:31:48 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -131,7 +131,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5278b7d1ed7af-LAX
+    value: 9fb5cd52e90616df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -149,7 +149,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '633'
+    value: '418'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -169,16 +169,16 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_d289973c92fd414b96af2790a125e679
+    value: req_8ee1a8f32d374a7a9fc9eadcf2b03696
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |
     {
-      "id": "chatcmpl-DfCVpMip4vLWiAz4ZxtjXsVsRAGXv",
+      "id": "chatcmpl-DfEHLpnhNBpM3Z2lKzdFwvu28CwGg",
       "object": "chat.completion",
-      "created": 1778711917,
+      "created": 1778718707,
       "model": "gpt-4o-2024-08-06",
       "choices": [
         {

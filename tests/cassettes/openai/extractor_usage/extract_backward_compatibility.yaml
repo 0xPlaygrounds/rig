@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:36:58 GMT
+    value: Thu, 14 May 2026 00:30:03 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5251d9d64566d-LAX
+    value: 9fb5cac22c460f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '856'
+    value: '684'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -49,28 +49,28 @@ then:
   - name: x-ratelimit-remaining-requests
     value: '9999'
   - name: x-ratelimit-remaining-tokens
-    value: '9999612'
+    value: '9999611'
   - name: x-ratelimit-reset-requests
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_cfd495d4f6b448cabea7ac3bcd032321
+    value: req_ad4d5337cb5f4a2daf2ad872ee0edca7
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_032687f055a3c6d1006a04fd09ea888195805c24918524da38",
+      "id": "resp_072c61c1fe4a9166006a05178aab348194bbb9309c5c834a1a",
       "object": "response",
-      "created_at": 1778711817,
+      "created_at": 1778718602,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711818,
+      "completed_at": 1778718603,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_032687f055a3c6d1006a04fd0a5d2c81959dee8aecf5296931",
+          "id": "fc_072c61c1fe4a9166006a05178b013c81948b2f0165e56409c7",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"name\":\"John Doe\",\"age\":30,\"profession\":\"software engineer\"}",
-          "call_id": "call_mIRycyT2izcK1tRVcntzOTqY",
+          "call_id": "call_5LufaAVW1hREWQfVFVtgXZDQ",
           "name": "submit"
         }
       ],

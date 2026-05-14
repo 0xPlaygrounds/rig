@@ -11,15 +11,15 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:20 GMT
+    value: Thu, 14 May 2026 00:31:28 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '1818'
+    value: '1860'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5271cbc33d7af-LAX
+    value: 9fb5cccfaae616df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '819'
+    value: '1386'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 1ms
   - name: x-request-id
-    value: req_7adc476217bb465ba2609078b2ff8189
+    value: req_1d5dcc5d46544127bd521a3a23526451
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_08b3e5bf96bfc551006a04fd5bb63481a19237f4e3458ac4f5",
+      "id": "resp_063e5511e6712885006a0517debf4c8193b85a36739dc0ae75",
       "object": "response",
-      "created_at": 1778711899,
+      "created_at": 1778718686,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711900,
+      "completed_at": 1778718687,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_08b3e5bf96bfc551006a04fd5c06d481a1bc5717a95c8bd252",
+          "id": "msg_063e5511e6712885006a0517df18dc8193956231a0911d1f14",
           "type": "message",
           "status": "completed",
           "content": [
@@ -89,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Why did the scarecrow win an award?\n\nBecause he was outstanding in his field! \ud83c\udf3e\n\nAnd have you heard about the restaurant on the moon?\n\nGreat food, no atmosphere! \ud83c\udf7d\ufe0f\ud83c\udf15\n\nGot any specific topics you want to hear jokes about?"
+              "text": "Why don't scientists trust atoms?\n\nBecause they make up everything! \ud83d\ude04\n\nAnd here's a classic for you: Why was the math book sad?\n\nIt had too many problems! \ud83d\udcda\n\nIf you're up for a riddle: What do you call fake spaghetti?\n\nAn impasta! \ud83c\udf5d\n\nLet me know if you want more!"
             }
           ],
           "role": "assistant"
@@ -124,11 +124,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 54,
+        "output_tokens": 69,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 83
+        "total_tokens": 98
       },
       "user": null,
       "metadata": {}

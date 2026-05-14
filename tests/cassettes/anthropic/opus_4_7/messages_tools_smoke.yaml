@@ -13,7 +13,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:43:00 GMT
+    value: Thu, 14 May 2026 00:20:15 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -25,50 +25,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '10000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:42:59Z
+    value: 2026-05-14T00:20:15Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:43:00Z
+    value: 2026-05-14T00:20:15Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:42:58Z
+    value: 2026-05-14T00:20:13Z
   - name: anthropic-ratelimit-tokens-limit
     value: '10800000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '10800000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:42:59Z
+    value: 2026-05-14T00:20:15Z
   - name: request-id
-    value: req_011Cb1NmHRsuE73frmpzgfWd
+    value: req_011Cb1WBQz2qMZHUdCUXunZC
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-3f204f36d53e729033748cca4f5f9d02-383e56ab84e6a0a2-01
+    value: 00-8140c43d8e4450cb011389c96a334f3c-2b50e1ed67ed3fa6-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '1741'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '1762'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb52ded4fa94800-LAX
-  body: '{"model":"claude-opus-4-7","id":"msg_019BwNaxhozeXkfwHSsDnauT","type":"message","role":"assistant","content":[{"type":"text","text":"I''ll calculate 2 - 5 for you."},{"type":"tool_use","id":"toolu_013FjN7TDcrd6kvoJqqEfRF7","name":"subtract","input":{"x":2,"y":5},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":950,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":101,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5bc62a880d908-LAX
+  body: '{"model":"claude-opus-4-7","id":"msg_01HVovfW4xo6pG6wNt8VcJb6","type":"message","role":"assistant","content":[{"type":"text","text":"I''ll calculate 2 - 5 for you."},{"type":"tool_use","id":"toolu_0174MSEo9x4QJFTgCqPXf63n","name":"subtract","input":{"x":2,"y":5},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":950,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":101,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -80,12 +80,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-opus-4-7","messages":[{"role":"user","content":[{"type":"text","text":"Calculate 2 - 5."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll calculate 2 - 5 for you."},{"type":"tool_use","id":"toolu_013FjN7TDcrd6kvoJqqEfRF7","name":"subtract","input":{"x":2,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_013FjN7TDcrd6kvoJqqEfRF7","content":[{"type":"text","text":"-3"}]}]}],"max_tokens":128000,"system":[{"type":"text","text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}}]}'
+  body: '{"model":"claude-opus-4-7","messages":[{"role":"user","content":[{"type":"text","text":"Calculate 2 - 5."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll calculate 2 - 5 for you."},{"type":"tool_use","id":"toolu_0174MSEo9x4QJFTgCqPXf63n","name":"subtract","input":{"x":2,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_0174MSEo9x4QJFTgCqPXf63n","content":[{"type":"text","text":"-3"}]}]}],"max_tokens":128000,"system":[{"type":"text","text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:43:02 GMT
+    value: Thu, 14 May 2026 00:20:17 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -97,47 +97,47 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '10000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:43:01Z
+    value: 2026-05-14T00:20:17Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '800000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:43:02Z
+    value: 2026-05-14T00:20:17Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:43:00Z
+    value: 2026-05-14T00:20:16Z
   - name: anthropic-ratelimit-tokens-limit
     value: '10800000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '10800000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:43:01Z
+    value: 2026-05-14T00:20:17Z
   - name: request-id
-    value: req_011Cb1NmRJQHaPm8bZxquvNU
+    value: req_011Cb1WBZLL2jBMUhPgyHQRA
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-fa6166b987835c2c500efec1502393b5-feeb6327c723b9ce-01
+    value: 00-a9110bbcebb38267cd24688a0f02319d-a612b0d8ee1b5c0a-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '1523'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '1855'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb52df8ccfd4800-LAX
-  body: '{"model":"claude-opus-4-7","id":"msg_016WtzK9WqvXAnKMxouAVf2J","type":"message","role":"assistant","content":[{"type":"text","text":"The result of 2 - 5 is **-3**."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1065,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":20,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5bc6eee8ed908-LAX
+  body: '{"model":"claude-opus-4-7","id":"msg_01Bqe7dSEe3wDkoKx72a6Hw1","type":"message","role":"assistant","content":[{"type":"text","text":"2 - 5 = **-3**"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1065,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":15,"service_tier":"standard","inference_geo":"global"}}'

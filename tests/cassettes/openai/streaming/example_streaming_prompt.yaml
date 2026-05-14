@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:21 GMT
+    value: Thu, 14 May 2026 00:31:28 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: transfer-encoding
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5272358e9d7af-LAX
+    value: 9fb5ccd94d6a16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,123 +37,150 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '208'
+    value: '128'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
   - name: x-request-id
-    value: req_b626f1cf179c4475a8936c9cd0b3ce40
+    value: req_b3b65d6e477e4550b8be5ed65df40096
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |+
     event: response.created
-    data: {"type":"response.created","response":{"id":"resp_05251d93115fcae6006a04fd5cc45c81a2ac71be4ba4bacc41","object":"response","created_at":1778711900,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+    data: {"type":"response.created","response":{"id":"resp_019db996c7f1dc4a006a0517e0463c81a19bbbcf743e95ca09","object":"response","created_at":1778718688,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
 
     event: response.in_progress
-    data: {"type":"response.in_progress","response":{"id":"resp_05251d93115fcae6006a04fd5cc45c81a2ac71be4ba4bacc41","object":"response","created_at":1778711900,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+    data: {"type":"response.in_progress","response":{"id":"resp_019db996c7f1dc4a006a0517e0463c81a19bbbcf743e95ca09","object":"response","created_at":1778718688,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
 
     event: response.output_item.added
-    data: {"type":"response.output_item.added","item":{"id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+    data: {"type":"response.output_item.added","item":{"id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
 
     event: response.content_part.added
-    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"gUB0JTvSip8Lr","output_index":0,"sequence_number":4}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"zXwdTXXWHBpdk","output_index":0,"sequence_number":4}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" next","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"ProMHsFVXJf","output_index":0,"sequence_number":5}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" next","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"5c8Y3vlTwcU","output_index":0,"sequence_number":5}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" solar","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"JLUaUjAqO3","output_index":0,"sequence_number":6}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" solar","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"h5QJ1W3dyr","output_index":0,"sequence_number":6}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" eclipse","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"dzWswhOZ","output_index":0,"sequence_number":7}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" eclipse","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"thrOCGHA","output_index":0,"sequence_number":7}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"vqRnq6BFBRjWK","output_index":0,"sequence_number":8}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"L0tjcE60iUfi3","output_index":0,"sequence_number":8}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" a","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"xDmIpi7a5GvEbj","output_index":0,"sequence_number":9}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" an","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"5irrZAlsUH8La","output_index":0,"sequence_number":9}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" partial","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"1DJ8rmWn","output_index":0,"sequence_number":10}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ann","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"4fDdkHTdbDad","output_index":0,"sequence_number":10}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" solar","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"T2gdfJC06T","output_index":0,"sequence_number":11}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"ular","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"svwpdeYZYDRE","output_index":0,"sequence_number":11}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" eclipse","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"WW2s0z7t","output_index":0,"sequence_number":12}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" eclipse","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"OyLz3vVp","output_index":0,"sequence_number":12}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" on","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"OQtwq9Nog1REw","output_index":0,"sequence_number":13}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" on","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"rud6Xz0cluCFz","output_index":0,"sequence_number":13}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" October","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"oZEXQG3u","output_index":0,"sequence_number":14}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" October","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"XqimUaJm","output_index":0,"sequence_number":14}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"kEqsEmgukGPxLeT","output_index":0,"sequence_number":15}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"KdkWQINu25oaTgC","output_index":0,"sequence_number":15}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"14","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"I5m1BqShdTuxHV","output_index":0,"sequence_number":16}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"14","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"rKDDgPo7e2N8NZ","output_index":0,"sequence_number":16}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"n4XOmj2LE0f21eS","output_index":0,"sequence_number":17}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"thVVZufkf1bjunC","output_index":0,"sequence_number":17}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"hjSdGR3S2NjYs59","output_index":0,"sequence_number":18}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" ","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"LXWjIDtcNHKnpDU","output_index":0,"sequence_number":18}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"202","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"og6ARdF6OJfCK","output_index":0,"sequence_number":19}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"202","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"94DUbAttYYIUp","output_index":0,"sequence_number":19}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"3","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"vNgAkH1kV5d52hg","output_index":0,"sequence_number":20}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"3","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"HhZVrP6MgvA6vr2","output_index":0,"sequence_number":20}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"lHaHEnKrm6gg8v5","output_index":0,"sequence_number":21}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"iIJ1ING66a8dXXI","output_index":0,"sequence_number":21}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" It","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"6nNheug6veXB1","output_index":0,"sequence_number":22}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" It","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"sGCIdBrsOBT2u","output_index":0,"sequence_number":22}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" will","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"dpO0EzE9Xxs","output_index":0,"sequence_number":23}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" will","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"T7HkPTI8Yl9","output_index":0,"sequence_number":23}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" be","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"Epw4vYLWq6yAy","output_index":0,"sequence_number":24}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" be","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"8zOgNUGkhQeb0","output_index":0,"sequence_number":24}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" visible","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"lP0HnfBt","output_index":0,"sequence_number":25}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" visible","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"RxBSXARu","output_index":0,"sequence_number":25}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" in","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"E3WjguvcY54Ul","output_index":0,"sequence_number":26}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" across","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"51Xiwged0","output_index":0,"sequence_number":26}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" parts","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"RHtTicU3NC","output_index":0,"sequence_number":27}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" parts","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"YAmVpYJqn6","output_index":0,"sequence_number":27}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"PTz1GxULhKI9o","output_index":0,"sequence_number":28}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"M9AKH9AV5yqoM","output_index":0,"sequence_number":28}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"Pr2NDQFduiIY","output_index":0,"sequence_number":29}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"l1ausZ9KtoPs","output_index":0,"sequence_number":29}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" Americas","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"7xzVO9e","output_index":0,"sequence_number":30}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Western","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"hVV0ijHY","output_index":0,"sequence_number":30}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"obfuscation":"SfhfuJUNmPVZHZM","output_index":0,"sequence_number":31}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" United","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"KYQ5MEyR8","output_index":0,"sequence_number":31}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" States","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"0fxnyXMOm","output_index":0,"sequence_number":32}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"UganvPTN7p1ZAYw","output_index":0,"sequence_number":33}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" Central","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"VCAEzMvR","output_index":0,"sequence_number":34}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" America","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"GFrUhDGu","output_index":0,"sequence_number":35}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":",","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"QF7RAP0wajEaPNs","output_index":0,"sequence_number":36}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" and","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"0UbdD02bLaJO","output_index":0,"sequence_number":37}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" South","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"cnn7jxdSs3","output_index":0,"sequence_number":38}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" America","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"91btm44n","output_index":0,"sequence_number":39}
+
+    event: response.output_text.delta
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"obfuscation":"pswAWRoQO4Jl2yD","output_index":0,"sequence_number":40}
 
     event: response.output_text.done
-    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","logprobs":[],"output_index":0,"sequence_number":32,"text":"The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."}
+    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","logprobs":[],"output_index":0,"sequence_number":41,"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."}
 
     event: response.content_part.done
-    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."},"sequence_number":33}
+    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."},"sequence_number":42}
 
     event: response.output_item.done
-    data: {"type":"response.output_item.done","item":{"id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."}],"role":"assistant"},"output_index":0,"sequence_number":34}
+    data: {"type":"response.output_item.done","item":{"id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."}],"role":"assistant"},"output_index":0,"sequence_number":43}
 
     event: response.completed
-    data: {"type":"response.completed","response":{"id":"resp_05251d93115fcae6006a04fd5cc45c81a2ac71be4ba4bacc41","object":"response","created_at":1778711900,"status":"completed","background":false,"completed_at":1778711901,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"msg_05251d93115fcae6006a04fd5d460c81a2a7f8a1bd0d661d62","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":28,"input_tokens_details":{"cached_tokens":0},"output_tokens":29,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":57},"user":null,"metadata":{}},"sequence_number":35}
+    data: {"type":"response.completed","response":{"id":"resp_019db996c7f1dc4a006a0517e0463c81a19bbbcf743e95ca09","object":"response","created_at":1778718688,"status":"completed","background":false,"completed_at":1778718689,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"msg_019db996c7f1dc4a006a0517e0a4d881a1830bf6ee528280de","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The next solar eclipse is an annular eclipse on October 14, 2023. It will be visible across parts of the Western United States, Central America, and South America."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":0.5,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":28,"input_tokens_details":{"cached_tokens":0},"output_tokens":38,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":66},"user":null,"metadata":{}},"sequence_number":44}
 

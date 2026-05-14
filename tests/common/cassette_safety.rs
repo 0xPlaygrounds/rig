@@ -19,6 +19,7 @@ const FORBIDDEN_PATTERNS: &[&str] = &[
 ];
 
 const REDACTED_HEADER_NAMES: &[&str] = &[
+    "anthropic-organization-id",
     "openai-organization",
     "openai-project",
     "set-cookie",

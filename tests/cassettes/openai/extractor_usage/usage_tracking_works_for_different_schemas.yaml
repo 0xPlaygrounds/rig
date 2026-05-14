@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:02 GMT
+    value: Thu, 14 May 2026 00:30:07 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb525310f85566d-LAX
+    value: 9fb5cada8b270f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '971'
+    value: '883'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_142a409ab93d4e88beb5783151030a94
+    value: req_dff5ff1bbf9e4ec6810d5460b3fcd97c
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_024a25f91b1b2a88006a04fd0d06048194bedb76f28ececf7e",
+      "id": "resp_03b1981c19d19d9d006a05178e94848192b2bf29e14640ebc2",
       "object": "response",
-      "created_at": 1778711821,
+      "created_at": 1778718606,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711821,
+      "completed_at": 1778718607,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_024a25f91b1b2a88006a04fd0d8d108194b889f1ef751a3efd",
+          "id": "fc_03b1981c19d19d9d006a05178f1c888192880389ac2df0fc8a",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-          "call_id": "call_XJufTDn4z7O2GlSjN9ZBBe7o",
+          "call_id": "call_PNvGXB31sTIbb03rh8FOGXdw",
           "name": "submit"
         }
       ],
@@ -181,7 +181,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:03 GMT
+    value: Thu, 14 May 2026 00:30:08 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -189,7 +189,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb52537cafa566d-LAX
+    value: 9fb5cae1882f0f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -207,7 +207,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1061'
+    value: '1082'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -225,22 +225,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_e2aab5fe52bc4bff887827343883767b
+    value: req_92dfdeaece794d9ca747791f46bca5fd
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0f9682249a498ee5006a04fd0e1b3881939b9a33eb9641b712",
+      "id": "resp_04838e18d0383ebd006a05178fb25881a0a81ec349f95a83df",
       "object": "response",
-      "created_at": 1778711822,
+      "created_at": 1778718607,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711822,
+      "completed_at": 1778718608,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -251,11 +251,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0f9682249a498ee5006a04fd0ebafc8193a1bfee3d91dcfff5",
+          "id": "fc_04838e18d0383ebd006a05179041f081a0912be21dfbddb7e8",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
-          "call_id": "call_B4wkJxaLRwbZHLJVJKxyNh5U",
+          "call_id": "call_V8syKKT84frovBdPttWBKHK6",
           "name": "submit"
         }
       ],

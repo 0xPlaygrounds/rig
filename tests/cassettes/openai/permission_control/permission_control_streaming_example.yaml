@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:12 GMT
+    value: Thu, 14 May 2026 00:30:14 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: transfer-encoding
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb52575380bd7af-LAX
+    value: 9fb5cb0a88c116df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,50 +37,50 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '91'
+    value: '219'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
   - name: x-request-id
-    value: req_1e5b551218e3483298a744ac8dd6f3cb
+    value: req_f3266366026446ca8a2fdfdaea9c3845
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |+
     event: response.created
-    data: {"type":"response.created","response":{"id":"resp_07bc452340d5054e006a04fd17f864819f89589bf569ab7612","object":"response","created_at":1778711831,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+    data: {"type":"response.created","response":{"id":"resp_04daab23ef7aca3f006a0517963a9081a18d97d6a883cc7602","object":"response","created_at":1778718614,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
 
     event: response.in_progress
-    data: {"type":"response.in_progress","response":{"id":"resp_07bc452340d5054e006a04fd17f864819f89589bf569ab7612","object":"response","created_at":1778711831,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+    data: {"type":"response.in_progress","response":{"id":"resp_04daab23ef7aca3f006a0517963a9081a18d97d6a883cc7602","object":"response","created_at":1778718614,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
 
     event: response.output_item.added
-    data: {"type":"response.output_item.added","item":{"id":"fc_07bc452340d5054e006a04fd18f8e4819fad0d12adb55ca0f6","type":"function_call","status":"in_progress","arguments":"","call_id":"call_sJbA2kNyyHSTO43g38cN22Ga","name":"read_file_head"},"output_index":0,"sequence_number":2}
+    data: {"type":"response.output_item.added","item":{"id":"fc_04daab23ef7aca3f006a051797707c81a1b5afb075c674a069","type":"function_call","status":"in_progress","arguments":"","call_id":"call_cRrZR7fbQ017JOLX6ET6iQlR","name":"read_file_head"},"output_index":0,"sequence_number":2}
 
     event: response.function_call_arguments.delta
-    data: {"type":"response.function_call_arguments.delta","delta":"{}","item_id":"fc_07bc452340d5054e006a04fd18f8e4819fad0d12adb55ca0f6","obfuscation":"l9OWRCWITC6GwA","output_index":0,"sequence_number":3}
+    data: {"type":"response.function_call_arguments.delta","delta":"{}","item_id":"fc_04daab23ef7aca3f006a051797707c81a1b5afb075c674a069","obfuscation":"pcp9xEFH57ViBk","output_index":0,"sequence_number":3}
 
     event: response.function_call_arguments.done
-    data: {"type":"response.function_call_arguments.done","arguments":"{}","item_id":"fc_07bc452340d5054e006a04fd18f8e4819fad0d12adb55ca0f6","output_index":0,"sequence_number":4}
+    data: {"type":"response.function_call_arguments.done","arguments":"{}","item_id":"fc_04daab23ef7aca3f006a051797707c81a1b5afb075c674a069","output_index":0,"sequence_number":4}
 
     event: response.output_item.done
-    data: {"type":"response.output_item.done","item":{"id":"fc_07bc452340d5054e006a04fd18f8e4819fad0d12adb55ca0f6","type":"function_call","status":"completed","arguments":"{}","call_id":"call_sJbA2kNyyHSTO43g38cN22Ga","name":"read_file_head"},"output_index":0,"sequence_number":5}
+    data: {"type":"response.output_item.done","item":{"id":"fc_04daab23ef7aca3f006a051797707c81a1b5afb075c674a069","type":"function_call","status":"completed","arguments":"{}","call_id":"call_cRrZR7fbQ017JOLX6ET6iQlR","name":"read_file_head"},"output_index":0,"sequence_number":5}
 
     event: response.output_item.added
-    data: {"type":"response.output_item.added","item":{"id":"fc_07bc452340d5054e006a04fd18f8f4819faeed5d97ae593e3c","type":"function_call","status":"in_progress","arguments":"","call_id":"call_IqLZOBnL6PahzD9MWvhWqaPL","name":"read_file_tail"},"output_index":1,"sequence_number":6}
+    data: {"type":"response.output_item.added","item":{"id":"fc_04daab23ef7aca3f006a051797708c81a1a3d5ae9aa171218e","type":"function_call","status":"in_progress","arguments":"","call_id":"call_27vGpbOOGoB7NObgpxI111RV","name":"read_file_tail"},"output_index":1,"sequence_number":6}
 
     event: response.function_call_arguments.delta
-    data: {"type":"response.function_call_arguments.delta","delta":"{}","item_id":"fc_07bc452340d5054e006a04fd18f8f4819faeed5d97ae593e3c","obfuscation":"VBcgPhhlhWzDsJ","output_index":1,"sequence_number":7}
+    data: {"type":"response.function_call_arguments.delta","delta":"{}","item_id":"fc_04daab23ef7aca3f006a051797708c81a1a3d5ae9aa171218e","obfuscation":"iC6wB5ivPz4mMF","output_index":1,"sequence_number":7}
 
     event: response.function_call_arguments.done
-    data: {"type":"response.function_call_arguments.done","arguments":"{}","item_id":"fc_07bc452340d5054e006a04fd18f8f4819faeed5d97ae593e3c","output_index":1,"sequence_number":8}
+    data: {"type":"response.function_call_arguments.done","arguments":"{}","item_id":"fc_04daab23ef7aca3f006a051797708c81a1a3d5ae9aa171218e","output_index":1,"sequence_number":8}
 
     event: response.output_item.done
-    data: {"type":"response.output_item.done","item":{"id":"fc_07bc452340d5054e006a04fd18f8f4819faeed5d97ae593e3c","type":"function_call","status":"completed","arguments":"{}","call_id":"call_IqLZOBnL6PahzD9MWvhWqaPL","name":"read_file_tail"},"output_index":1,"sequence_number":9}
+    data: {"type":"response.output_item.done","item":{"id":"fc_04daab23ef7aca3f006a051797708c81a1a3d5ae9aa171218e","type":"function_call","status":"completed","arguments":"{}","call_id":"call_27vGpbOOGoB7NObgpxI111RV","name":"read_file_tail"},"output_index":1,"sequence_number":9}
 
     event: response.completed
-    data: {"type":"response.completed","response":{"id":"resp_07bc452340d5054e006a04fd17f864819f89589bf569ab7612","object":"response","created_at":1778711831,"status":"completed","background":false,"completed_at":1778711832,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[{"id":"fc_07bc452340d5054e006a04fd18f8e4819fad0d12adb55ca0f6","type":"function_call","status":"completed","arguments":"{}","call_id":"call_sJbA2kNyyHSTO43g38cN22Ga","name":"read_file_head"},{"id":"fc_07bc452340d5054e006a04fd18f8f4819faeed5d97ae593e3c","type":"function_call","status":"completed","arguments":"{}","call_id":"call_IqLZOBnL6PahzD9MWvhWqaPL","name":"read_file_tail"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":103,"input_tokens_details":{"cached_tokens":0},"output_tokens":42,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":145},"user":null,"metadata":{}},"sequence_number":10}
+    data: {"type":"response.completed","response":{"id":"resp_04daab23ef7aca3f006a0517963a9081a18d97d6a883cc7602","object":"response","created_at":1778718614,"status":"completed","background":false,"completed_at":1778718615,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[{"id":"fc_04daab23ef7aca3f006a051797707c81a1b5afb075c674a069","type":"function_call","status":"completed","arguments":"{}","call_id":"call_cRrZR7fbQ017JOLX6ET6iQlR","name":"read_file_head"},{"id":"fc_04daab23ef7aca3f006a051797708c81a1a3d5ae9aa171218e","type":"function_call","status":"completed","arguments":"{}","call_id":"call_27vGpbOOGoB7NObgpxI111RV","name":"read_file_tail"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":103,"input_tokens_details":{"cached_tokens":0},"output_tokens":42,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":145},"user":null,"metadata":{}},"sequence_number":10}
 
 ---
 when:
@@ -91,12 +91,12 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful assistant that can read files using different methods."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content."}]},{"type":"function_call","id":"fc_07bc452340d5054e006a04fd18f8e4819fad0d12adb55ca0f6","arguments":"{}","call_id":"call_sJbA2kNyyHSTO43g38cN22Ga","name":"read_file_head","status":"completed"},{"type":"function_call","id":"fc_07bc452340d5054e006a04fd18f8f4819faeed5d97ae593e3c","arguments":"{}","call_id":"call_IqLZOBnL6PahzD9MWvhWqaPL","name":"read_file_tail","status":"completed"},{"type":"function_call_output","call_id":"call_sJbA2kNyyHSTO43g38cN22Ga","output":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","status":"completed"},{"type":"function_call_output","call_id":"call_IqLZOBnL6PahzD9MWvhWqaPL","output":"hello world","status":"completed"}],"model":"gpt-4o-mini","stream":true,"tools":[{"type":"function","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the first line of test.txt using the head command"},{"type":"function","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the last line of test.txt using the tail command"}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a helpful assistant that can read files using different methods."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content."}]},{"type":"function_call","id":"fc_04daab23ef7aca3f006a051797707c81a1b5afb075c674a069","arguments":"{}","call_id":"call_cRrZR7fbQ017JOLX6ET6iQlR","name":"read_file_head","status":"completed"},{"type":"function_call","id":"fc_04daab23ef7aca3f006a051797708c81a1a3d5ae9aa171218e","arguments":"{}","call_id":"call_27vGpbOOGoB7NObgpxI111RV","name":"read_file_tail","status":"completed"},{"type":"function_call_output","call_id":"call_cRrZR7fbQ017JOLX6ET6iQlR","output":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","status":"completed"},{"type":"function_call_output","call_id":"call_27vGpbOOGoB7NObgpxI111RV","output":"hello world","status":"completed"}],"model":"gpt-4o-mini","stream":true,"tools":[{"type":"function","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the first line of test.txt using the head command"},{"type":"function","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true,"description":"Read the last line of test.txt using the tail command"}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:13 GMT
+    value: Thu, 14 May 2026 00:30:16 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: transfer-encoding
@@ -104,7 +104,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5257d4b57d7af-LAX
+    value: 9fb5cb13deed16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -122,99 +122,78 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '97'
+    value: '456'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
   - name: x-request-id
-    value: req_61aa828a1cf54eec9afe6765a910a4d2
+    value: req_b4050547c1f44e2f9321810a9a096085
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |+
     event: response.created
-    data: {"type":"response.created","response":{"id":"resp_07bc452340d5054e006a04fd193d18819f8ebbe8c4a303eee8","object":"response","created_at":1778711833,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+    data: {"type":"response.created","response":{"id":"resp_04daab23ef7aca3f006a051797b8ac81a187c3f06978d7dc42","object":"response","created_at":1778718615,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
 
     event: response.in_progress
-    data: {"type":"response.in_progress","response":{"id":"resp_07bc452340d5054e006a04fd193d18819f8ebbe8c4a303eee8","object":"response","created_at":1778711833,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+    data: {"type":"response.in_progress","response":{"id":"resp_04daab23ef7aca3f006a051797b8ac81a187c3f06978d7dc42","object":"response","created_at":1778718615,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
 
     event: response.output_item.added
-    data: {"type":"response.output_item.added","item":{"id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+    data: {"type":"response.output_item.added","item":{"id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
 
     event: response.content_part.added
-    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"NoL7qELduSW4h","output_index":0,"sequence_number":4}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"D76VrkbTRlzQx","output_index":0,"sequence_number":4}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" content","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"BrCKFYkZ","output_index":0,"sequence_number":5}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" content","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"VKdgZrBy","output_index":0,"sequence_number":5}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"l9nVsKCGpefar","output_index":0,"sequence_number":6}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"IKl7ftTq6HgQo","output_index":0,"sequence_number":6}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"pTM4MBjQXP0w","output_index":0,"sequence_number":7}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"K4AOOGE30wZv","output_index":0,"sequence_number":7}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" last","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"mypE310Gj2k","output_index":0,"sequence_number":8}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" file","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"jN8W8cF6JEh","output_index":0,"sequence_number":8}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" line","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"I8Re8Q77S6h","output_index":0,"sequence_number":9}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" test","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"atuhESfPcof","output_index":0,"sequence_number":9}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" of","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"nVe1K8vFAOrGi","output_index":0,"sequence_number":10}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".txt","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"xKP2E951yC6Y","output_index":0,"sequence_number":10}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" the","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"5w7gS58wrgz1","output_index":0,"sequence_number":11}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"ET8gfa2Z5s7l4","output_index":0,"sequence_number":11}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" file","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"5b4HhYiAQ53","output_index":0,"sequence_number":12}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":":","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"yVDmRSqThaH4Xen","output_index":0,"sequence_number":12}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" test","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"VPDjPdpE4sz","output_index":0,"sequence_number":13}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" \"","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"RVfLMrhgDbMvYN","output_index":0,"sequence_number":13}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":".txt","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"SnjBz3ZfqNdP","output_index":0,"sequence_number":14}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"hello","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"mYO1ydcDphw","output_index":0,"sequence_number":14}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"Uy5gfV3DZ13hy","output_index":0,"sequence_number":15}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" world","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"973CzR7Aj6","output_index":0,"sequence_number":15}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":":","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"aUnSeV7Rim1abpE","output_index":0,"sequence_number":16}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" **","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"3dWRSfAmR6xEI","output_index":0,"sequence_number":17}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"\"","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"5uJMRYUxcwzgN67","output_index":0,"sequence_number":18}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"hello","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"QujTx1FfKrK","output_index":0,"sequence_number":19}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" world","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"V9ZWzdooV7","output_index":0,"sequence_number":20}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"\"","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"RWBEY90jVg5cGDh","output_index":0,"sequence_number":21}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"**","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"sVVco7L3AEeSns","output_index":0,"sequence_number":22}
-
-    event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":".","item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"obfuscation":"zC9igGAz5t8cvzv","output_index":0,"sequence_number":23}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"\".","item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"obfuscation":"lCaxQPgKUmTpou","output_index":0,"sequence_number":16}
 
     event: response.output_text.done
-    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","logprobs":[],"output_index":0,"sequence_number":24,"text":"The content of the last line of the file test.txt is: **\"hello world\"**."}
+    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","logprobs":[],"output_index":0,"sequence_number":17,"text":"The content of the file test.txt is: \"hello world\"."}
 
     event: response.content_part.done
-    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The content of the last line of the file test.txt is: **\"hello world\"**."},"sequence_number":25}
+    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The content of the file test.txt is: \"hello world\"."},"sequence_number":18}
 
     event: response.output_item.done
-    data: {"type":"response.output_item.done","item":{"id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The content of the last line of the file test.txt is: **\"hello world\"**."}],"role":"assistant"},"output_index":0,"sequence_number":26}
+    data: {"type":"response.output_item.done","item":{"id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The content of the file test.txt is: \"hello world\"."}],"role":"assistant"},"output_index":0,"sequence_number":19}
 
     event: response.completed
-    data: {"type":"response.completed","response":{"id":"resp_07bc452340d5054e006a04fd193d18819f8ebbe8c4a303eee8","object":"response","created_at":1778711833,"status":"completed","background":false,"completed_at":1778711834,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[{"id":"msg_07bc452340d5054e006a04fd19d8bc819f98700e4fe3aa43ec","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The content of the last line of the file test.txt is: **\"hello world\"**."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":164,"input_tokens_details":{"cached_tokens":0},"output_tokens":22,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":186},"user":null,"metadata":{}},"sequence_number":27}
+    data: {"type":"response.completed","response":{"id":"resp_04daab23ef7aca3f006a051797b8ac81a187c3f06978d7dc42","object":"response","created_at":1778718615,"status":"completed","background":false,"completed_at":1778718616,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-mini-2024-07-18","moderation":null,"output":[{"id":"msg_04daab23ef7aca3f006a05179895d481a1859eee6f0abbbfbb","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The content of the file test.txt is: \"hello world\"."}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true},{"type":"function","description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"type":"object","properties":{},"additionalProperties":false,"required":[]},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":164,"input_tokens_details":{"cached_tokens":0},"output_tokens":15,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":179},"user":null,"metadata":{}},"sequence_number":20}
 

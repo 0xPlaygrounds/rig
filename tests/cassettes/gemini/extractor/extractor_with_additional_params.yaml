@@ -9,7 +9,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Hello my name is John Doe! I am a software engineer."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"submit","description":"Submit the structured data you extracted from the provided text.","parameters":{"type":"object","properties":{"job":{"type":"string"},"last_name":{"type":"string"},"first_name":{"type":"string"}}}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"thought":false,"text":"Hello my name is John Doe! I am a software engineer."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"submit","description":"Submit the structured data you extracted from the provided text.","parameters":{"type":"object","properties":{"first_name":{"type":"string"},"last_name":{"type":"string"},"job":{"type":"string"}}}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}],"role":"model"}}'
 then:
   status: 200
   header:
@@ -24,7 +24,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 23:31:32 GMT
+    value: Thu, 14 May 2026 00:15:29 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -34,7 +34,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=876
+    value: gfet4t7; dur=891
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
@@ -56,7 +56,7 @@ then:
                     "last_name": "Doe"
                   }
                 },
-                "thoughtSignature": "CowCAQw51sew+pTxicmI6q+PvoQ9YlzFg++6wN/Iiv5eqD3bBbe+8rIv01MiG5sz4i0D/nCgVAJU2C4tHPMFPGECVvrepf17vzN0EpriVOG0BlhpWzi1cvLmwlokM9xRcawlMMmcv8ZmOz2e+SuDWxZrshvnHL3EGtd2O1mJ6Gns5TP6BnCRcXeviErDa85P833pJFqnUabDOmt8TKW9KRJrWu/k0P9llsV9qe2ruzPkXyvUz1ejhh5ZCbWLmR+ulsEl6oBs8JjHDl7xE+Wsz0KHUUCgs2FiQbjd2NdmW7a9J+bdu9CUEcenyxHB2e+mHnp8FB+nbAbufKuYQ5S4HZ+wdBt99TZ24ROFNCYXzg=="
+                "thoughtSignature": "CowCAQw51sf1tbIgpqnYh1jCkMvHvKPjcWAAskdXmc43By8g5vohSoLg2vvC424l9iNMBAj2w7s/LOG+wKFMEo7pH69A4JpevqJLa6xxk/AwydF6C/we+wCP7Mr4hwr/EBiAGdqNkWTSa1obJMQJvbPn9yzc7NDUcEYvan34MHl8ak3r6kNwEs+I2bp2OgSVb8j5v7WqRMLNRPeA8zSsauks1KCXvLMFTqaJ0U9CEkvHy0yO5wBT7QGPxpm/GpUualJLsxAqhMZMFRRGHPU7GeM3JZnLK/rs2GI+yqqFcDYD3Zmr1YiqHIqmeH2kT9GHNxq5FvK5FfiB6bsMViN/EfeEwVyJLuhHMKdN5b5aCA=="
               }
             ],
             "role": "model"
@@ -80,5 +80,5 @@ then:
         "serviceTier": "standard"
       },
       "modelVersion": "gemini-2.5-flash",
-      "responseId": "1AkFaqzyBpOdz7IP48Cb0Qg"
+      "responseId": "IBQFap2RKL2tmtkPpb3h0As"
     }

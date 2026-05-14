@@ -6,20 +6,20 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Screw you Putin!"}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Names","type":"object","properties":{"names":{"type":"array","items":{"type":"string"}}},"required":["names"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Screw you Putin!"}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Topics","type":"object","properties":{"topics":{"type":"array","items":{"type":"string"}}},"required":["topics"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:04 GMT
+    value: Thu, 14 May 2026 00:30:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2015'
+    value: '2019'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb525440b20566d-LAX
+    value: 9fb5caed493dae39-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '615'
+    value: '592'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_620cc0fb295a4fec916f3d299166e095
+    value: req_a69504c78cca4038bba5b774139a98fd
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0e2d6e37c5201dc1006a04fd100d4081939c13da28446dbbe9",
+      "id": "resp_0eab4c91017a6ea8006a05179194fc81918e85712e430e8f11",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718609,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711824,
+      "completed_at": 1778718609,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0e2d6e37c5201dc1006a04fd106cd88193900b5b86262afc58",
+          "id": "fc_0eab4c91017a6ea8006a051791f050819194315d06613d6f9b",
           "type": "function_call",
           "status": "completed",
-          "arguments": "{\"names\":[\"Putin\"]}",
-          "call_id": "call_UdNA2LxVAWPYGs5cNbNgnS1o",
+          "arguments": "{\"topics\":[\"Putin\"]}",
+          "call_id": "call_kEFBLdcq7wm0FyACj62jJ344",
           "name": "submit"
         }
       ],
@@ -115,10 +115,10 @@ then:
           "description": "Submit the structured data you extracted from the provided text.",
           "name": "submit",
           "parameters": {
-            "title": "Names",
+            "title": "Topics",
             "type": "object",
             "properties": {
-              "names": {
+              "topics": {
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -126,7 +126,7 @@ then:
               }
             },
             "required": [
-              "names"
+              "topics"
             ],
             "additionalProperties": false
           },
@@ -159,20 +159,20 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m going to the store to buy some milk."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Names","type":"object","properties":{"names":{"type":"array","items":{"type":"string"}}},"required":["names"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m going to the store to buy some milk."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Topics","type":"object","properties":{"topics":{"type":"array","items":{"type":"string"}}},"required":["topics"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:04 GMT
+    value: Thu, 14 May 2026 00:30:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2006'
+    value: '2037'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5254469244b1f-LAX
+    value: 9fb5caed4cf31289-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -190,7 +190,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '767'
+    value: '695'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -208,22 +208,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_d720eb5e619f4b2bbbf72f42a1396d7a
+    value: req_334cad761668471abb7239085708674e
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0705e22b792450e9006a04fd1026c0819680f5f7fd5755f863",
+      "id": "resp_077775d77b8612b9006a051791951081a38eb1e0676717edf4",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718609,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711824,
+      "completed_at": 1778718610,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -234,11 +234,164 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0705e22b792450e9006a04fd10988481969e30e17eb915bb83",
+          "id": "fc_077775d77b8612b9006a051791f45881a3adca1ebf14c9f2d1",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{\"topics\":[\"store\",\"buy\",\"milk\"]}",
+          "call_id": "call_b2TEN6vJOX7gKB8PTttE4O6M",
+          "name": "submit"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "required",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Submit the structured data you extracted from the provided text.",
+          "name": "submit",
+          "parameters": {
+            "title": "Topics",
+            "type": "object",
+            "properties": {
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "topics"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 158,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 11,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 169
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m going to the store to buy some milk."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Names","type":"object","properties":{"names":{"type":"array","items":{"type":"string"}}},"required":["names"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Thu, 14 May 2026 00:30:10 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2006'
+  - name: connection
+    value: keep-alive
+  - name: cf-ray
+    value: 9fb5caed2c6e2163-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: server
+    value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '775'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999625'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: x-request-id
+    value: req_8a20fd5a166744769dc884ac9efef69a
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_0d859ced5990de5b006a0517918b708197bfa313f6fa4d2e4e",
+      "object": "response",
+      "created_at": 1778718609,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778718610,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_0d859ced5990de5b006a051791fab88197bb0c0bcceb9f24df",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"names\":[]}",
-          "call_id": "call_Xf3CLpVEgktk5RXrwBy2O9GT",
+          "call_id": "call_MJoAy0UPagawHX8MJWYrsa3u",
           "name": "submit"
         }
       ],
@@ -312,20 +465,20 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I love my dog, but I hate my cat."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Topics","type":"object","properties":{"topics":{"type":"array","items":{"type":"string"}}},"required":["topics"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Screw you Putin!"}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Names","type":"object","properties":{"names":{"type":"array","items":{"type":"string"}}},"required":["names"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:05 GMT
+    value: Thu, 14 May 2026 00:30:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2044'
+    value: '2015'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb525447c35fca7-LAX
+    value: 9fb5caeccd570f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -343,7 +496,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '899'
+    value: '838'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -355,28 +508,28 @@ then:
   - name: x-ratelimit-remaining-requests
     value: '9999'
   - name: x-ratelimit-remaining-tokens
-    value: '9999624'
+    value: '9999630'
   - name: x-ratelimit-reset-requests
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_24229c6016424f119b702dcecd40acdb
+    value: req_23813dcd62d640de893d37bec5b1da40
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0e05afd38be8a9e6006a04fd10279081a394fbaaba92ae0dcf",
+      "id": "resp_05afb8b0a197920e006a0517917e90819d890828d6c4b9c135",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718609,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711824,
+      "completed_at": 1778718610,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -387,11 +540,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0e05afd38be8a9e6006a04fd10a77881a3b632b704877970be",
+          "id": "fc_05afb8b0a197920e006a051791ec5c819d9c3668417de9ec2d",
           "type": "function_call",
           "status": "completed",
-          "arguments": "{\"topics\":[\"dog\",\"cat\",\"love\",\"hate\"]}",
-          "call_id": "call_IrV8joAtt2GBDMBZVLiUk5jf",
+          "arguments": "{\"names\":[\"Putin\"]}",
+          "call_id": "call_gpztP0REoERrK69WuJAEqpQ7",
           "name": "submit"
         }
       ],
@@ -421,10 +574,10 @@ then:
           "description": "Submit the structured data you extracted from the provided text.",
           "name": "submit",
           "parameters": {
-            "title": "Topics",
+            "title": "Names",
             "type": "object",
             "properties": {
-              "topics": {
+              "names": {
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -432,7 +585,7 @@ then:
               }
             },
             "required": [
-              "topics"
+              "names"
             ],
             "additionalProperties": false
           },
@@ -443,15 +596,15 @@ then:
       "top_p": 1.0,
       "truncation": "disabled",
       "usage": {
-        "input_tokens": 159,
+        "input_tokens": 153,
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 13,
+        "output_tokens": 8,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 172
+        "total_tokens": 161
       },
       "user": null,
       "metadata": {}
@@ -470,7 +623,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:05 GMT
+    value: Thu, 14 May 2026 00:30:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -478,7 +631,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5254449ec79cf-LAX
+    value: 9fb5caed4e3eda41-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -496,7 +649,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '992'
+    value: '886'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -514,22 +667,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_8f318ebe186047468ca826a0e15d9b91
+    value: req_d7b501748ec9450592ee22166041c35f
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_01e0e0d3f6582460006a04fd10212881a3aec56ab7e2111733",
+      "id": "resp_0a38c0fda4cecaf3006a051791928c81a3ab593ad206becfea",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718609,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711824,
+      "completed_at": 1778718610,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -540,11 +693,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_01e0e0d3f6582460006a04fd10b59081a3a2f9698a5cc4dd46",
+          "id": "fc_0a38c0fda4cecaf3006a05179231fc81a3af65c614ac080fe7",
           "type": "function_call",
           "status": "completed",
-          "arguments": "{\"sentiment\":-0.5,\"confidence\":0.9}",
-          "call_id": "call_FDYR0eW0jjzXdCdeAK0MoNjJ",
+          "arguments": "{\"sentiment\":-0.5,\"confidence\":0.8}",
+          "call_id": "call_L5QXOUGIt3ytaeexkcS7t9Eo",
           "name": "submit"
         }
       ],
@@ -621,20 +774,20 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m going to the store to buy some milk."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Topics","type":"object","properties":{"topics":{"type":"array","items":{"type":"string"}}},"required":["topics"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m going to the store to buy some milk."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Sentiment","type":"object","properties":{"sentiment":{"type":"number","format":"double"},"confidence":{"type":"number","format":"double"}},"required":["sentiment","confidence"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:05 GMT
+    value: Thu, 14 May 2026 00:30:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2028'
+    value: '2131'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5254489013434-LAX
+    value: 9fb5caed59a1f7cd-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -652,7 +805,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1061'
+    value: '872'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -664,28 +817,28 @@ then:
   - name: x-ratelimit-remaining-requests
     value: '9999'
   - name: x-ratelimit-remaining-tokens
-    value: '9999625'
+    value: '9999619'
   - name: x-ratelimit-reset-requests
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_4d085f6d79eb4f76b2e4b2ecfc5e15a4
+    value: req_6d119a9bebff4f5cb33bb95ce38dc7d0
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_06af4f5d786c183f006a04fd1029788196b2f7fa0c22ce6705",
+      "id": "resp_0234ee21d9bd1d88006a051791968081a091a26af8dbd7ea68",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718609,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711825,
+      "completed_at": 1778718610,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -696,11 +849,167 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_06af4f5d786c183f006a04fd10cf2081969d8d627d7880476e",
+          "id": "fc_0234ee21d9bd1d88006a05179212ac81a0821ddbc5983b3587",
           "type": "function_call",
           "status": "completed",
-          "arguments": "{\"topics\":[\"store\",\"milk\"]}",
-          "call_id": "call_zGzmypUvD0rXHtHDHCgZ3MC5",
+          "arguments": "{\"sentiment\":0.0,\"confidence\":0.0}",
+          "call_id": "call_z8c1a72g66h2uqBObZhazj8Y",
+          "name": "submit"
+        }
+      ],
+      "parallel_tool_calls": true,
+      "presence_penalty": 0.0,
+      "previous_response_id": null,
+      "prompt_cache_key": null,
+      "prompt_cache_retention": "in_memory",
+      "reasoning": {
+        "effort": null,
+        "summary": null
+      },
+      "safety_identifier": null,
+      "service_tier": "default",
+      "store": true,
+      "temperature": 1.0,
+      "text": {
+        "format": {
+          "type": "text"
+        },
+        "verbosity": "medium"
+      },
+      "tool_choice": "required",
+      "tools": [
+        {
+          "type": "function",
+          "description": "Submit the structured data you extracted from the provided text.",
+          "name": "submit",
+          "parameters": {
+            "title": "Sentiment",
+            "type": "object",
+            "properties": {
+              "sentiment": {
+                "type": "number",
+                "format": "double"
+              },
+              "confidence": {
+                "type": "number",
+                "format": "double"
+              }
+            },
+            "required": [
+              "sentiment",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "strict": true
+        }
+      ],
+      "top_logprobs": 0,
+      "top_p": 1.0,
+      "truncation": "disabled",
+      "usage": {
+        "input_tokens": 164,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 15,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 179
+      },
+      "user": null,
+      "metadata": {}
+    }
+---
+when:
+  path: /v1/responses
+  method: POST
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I love my dog, but I hate my cat."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Topics","type":"object","properties":{"topics":{"type":"array","items":{"type":"string"}}},"required":["topics"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
+then:
+  status: 200
+  header:
+  - name: date
+    value: Thu, 14 May 2026 00:30:10 GMT
+  - name: content-type
+    value: application/json
+  - name: content-length
+    value: '2044'
+  - name: connection
+    value: keep-alive
+  - name: cf-ray
+    value: 9fb5caed590f6c93-LAX
+  - name: cf-cache-status
+    value: DYNAMIC
+  - name: server
+    value: cloudflare
+  - name: strict-transport-security
+    value: max-age=31536000; includeSubDomains; preload
+  - name: x-content-type-options
+    value: nosniff
+  - name: access-control-expose-headers
+    value: X-Request-ID
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: access-control-expose-headers
+    value: CF-Ray
+  - name: openai-organization
+    value: '[REDACTED]'
+  - name: openai-processing-ms
+    value: '1217'
+  - name: openai-project
+    value: '[REDACTED]'
+  - name: openai-version
+    value: 2020-10-01
+  - name: x-ratelimit-limit-requests
+    value: '10000'
+  - name: x-ratelimit-limit-tokens
+    value: '10000000'
+  - name: x-ratelimit-remaining-requests
+    value: '9999'
+  - name: x-ratelimit-remaining-tokens
+    value: '9999624'
+  - name: x-ratelimit-reset-requests
+    value: 6ms
+  - name: x-ratelimit-reset-tokens
+    value: 2ms
+  - name: x-request-id
+    value: req_ba35e0bf66044e4583805de8fb2addbb
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: alt-svc
+    value: h3=":443"; ma=86400
+  body: |-
+    {
+      "id": "resp_061bf5861a9e99dc006a05179198648192a105ef2ec02466a7",
+      "object": "response",
+      "created_at": 1778718609,
+      "status": "completed",
+      "background": false,
+      "billing": {
+        "payer": "developer"
+      },
+      "completed_at": 1778718610,
+      "error": null,
+      "frequency_penalty": 0.0,
+      "incomplete_details": null,
+      "instructions": null,
+      "max_output_tokens": null,
+      "max_tool_calls": null,
+      "model": "gpt-4o-mini-2024-07-18",
+      "moderation": null,
+      "output": [
+        {
+          "id": "fc_061bf5861a9e99dc006a05179265b4819289a5637d9b437262",
+          "type": "function_call",
+          "status": "completed",
+          "arguments": "{\"topics\":[\"dog\",\"cat\",\"love\",\"hate\"]}",
+          "call_id": "call_u6uzfGDTAVr9SdTjeoc9TdWv",
           "name": "submit"
         }
       ],
@@ -752,15 +1061,15 @@ then:
       "top_p": 1.0,
       "truncation": "disabled",
       "usage": {
-        "input_tokens": 158,
+        "input_tokens": 159,
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 9,
+        "output_tokens": 13,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 167
+        "total_tokens": 172
       },
       "user": null,
       "metadata": {}
@@ -779,7 +1088,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:05 GMT
+    value: Thu, 14 May 2026 00:30:10 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -787,7 +1096,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb52544ac980b78-LAX
+    value: 9fb5caed598fc74e-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -805,7 +1114,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1215'
+    value: '1315'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -823,22 +1132,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_a61be9d1faad4845a6a744e212745ca9
+    value: req_e503899088a14228a859e6d59c5c3f83
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0a5b264666a0c851006a04fd102fbc819cb05823c58043fa4e",
+      "id": "resp_048c509b3abb5a6c006a0517919b6c8191b3e9f28fbf796e7c",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718609,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711825,
+      "completed_at": 1778718610,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -849,11 +1158,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_0a5b264666a0c851006a04fd110378819c98a5b9e3aad30e71",
+          "id": "fc_048c509b3abb5a6c006a051792709081919cb66f798038bb04",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"names\":[\"dog\",\"cat\"]}",
-          "call_id": "call_1zW5Qq2sKrnJhezTA61kB6pZ",
+          "call_id": "call_HKjouoXp7XT6qT1tmcd2378j",
           "name": "submit"
         }
       ],
@@ -927,321 +1236,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m going to the store to buy some milk."}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Sentiment","type":"object","properties":{"sentiment":{"type":"number","format":"double"},"confidence":{"type":"number","format":"double"}},"required":["sentiment","confidence"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
-then:
-  status: 200
-  header:
-  - name: date
-    value: Wed, 13 May 2026 22:37:05 GMT
-  - name: content-type
-    value: application/json
-  - name: content-length
-    value: '2127'
-  - name: connection
-    value: keep-alive
-  - name: cf-ray
-    value: 9fb525447f85ae43-LAX
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: server
-    value: cloudflare
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-processing-ms
-    value: '1240'
-  - name: openai-project
-    value: '[REDACTED]'
-  - name: openai-version
-    value: 2020-10-01
-  - name: x-ratelimit-limit-requests
-    value: '10000'
-  - name: x-ratelimit-limit-tokens
-    value: '10000000'
-  - name: x-ratelimit-remaining-requests
-    value: '9999'
-  - name: x-ratelimit-remaining-tokens
-    value: '9999619'
-  - name: x-ratelimit-reset-requests
-    value: 6ms
-  - name: x-ratelimit-reset-tokens
-    value: 2ms
-  - name: x-request-id
-    value: req_f5e7060ff8284af684b79480dbe93bfa
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: alt-svc
-    value: h3=":443"; ma=86400
-  body: |-
-    {
-      "id": "resp_0b333f3888cf7e8c006a04fd10306881939dbf12af644d94ca",
-      "object": "response",
-      "created_at": 1778711824,
-      "status": "completed",
-      "background": false,
-      "billing": {
-        "payer": "developer"
-      },
-      "completed_at": 1778711825,
-      "error": null,
-      "frequency_penalty": 0.0,
-      "incomplete_details": null,
-      "instructions": null,
-      "max_output_tokens": null,
-      "max_tool_calls": null,
-      "model": "gpt-4o-mini-2024-07-18",
-      "moderation": null,
-      "output": [
-        {
-          "id": "fc_0b333f3888cf7e8c006a04fd1126788193af3e3107338c3e55",
-          "type": "function_call",
-          "status": "completed",
-          "arguments": "{\"sentiment\":0,\"confidence\":0}",
-          "call_id": "call_thdxbw7FeF9F8W6S6EpUNPt6",
-          "name": "submit"
-        }
-      ],
-      "parallel_tool_calls": true,
-      "presence_penalty": 0.0,
-      "previous_response_id": null,
-      "prompt_cache_key": null,
-      "prompt_cache_retention": "in_memory",
-      "reasoning": {
-        "effort": null,
-        "summary": null
-      },
-      "safety_identifier": null,
-      "service_tier": "default",
-      "store": true,
-      "temperature": 1.0,
-      "text": {
-        "format": {
-          "type": "text"
-        },
-        "verbosity": "medium"
-      },
-      "tool_choice": "required",
-      "tools": [
-        {
-          "type": "function",
-          "description": "Submit the structured data you extracted from the provided text.",
-          "name": "submit",
-          "parameters": {
-            "title": "Sentiment",
-            "type": "object",
-            "properties": {
-              "sentiment": {
-                "type": "number",
-                "format": "double"
-              },
-              "confidence": {
-                "type": "number",
-                "format": "double"
-              }
-            },
-            "required": [
-              "sentiment",
-              "confidence"
-            ],
-            "additionalProperties": false
-          },
-          "strict": true
-        }
-      ],
-      "top_logprobs": 0,
-      "top_p": 1.0,
-      "truncation": "disabled",
-      "usage": {
-        "input_tokens": 164,
-        "input_tokens_details": {
-          "cached_tokens": 0
-        },
-        "output_tokens": 11,
-        "output_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "total_tokens": 175
-      },
-      "user": null,
-      "metadata": {}
-    }
----
-when:
-  path: /v1/responses
-  method: POST
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Screw you Putin!"}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Topics","type":"object","properties":{"topics":{"type":"array","items":{"type":"string"}}},"required":["topics"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
-then:
-  status: 200
-  header:
-  - name: date
-    value: Wed, 13 May 2026 22:37:05 GMT
-  - name: content-type
-    value: application/json
-  - name: content-length
-    value: '2073'
-  - name: connection
-    value: keep-alive
-  - name: cf-ray
-    value: 9fb525446f8b2b81-LAX
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: server
-    value: cloudflare
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-processing-ms
-    value: '1421'
-  - name: openai-project
-    value: '[REDACTED]'
-  - name: openai-version
-    value: 2020-10-01
-  - name: x-ratelimit-limit-requests
-    value: '10000'
-  - name: x-ratelimit-limit-tokens
-    value: '10000000'
-  - name: x-ratelimit-remaining-requests
-    value: '9999'
-  - name: x-ratelimit-remaining-tokens
-    value: '9999630'
-  - name: x-ratelimit-reset-requests
-    value: 6ms
-  - name: x-ratelimit-reset-tokens
-    value: 2ms
-  - name: x-request-id
-    value: req_72a43a29e97b4729a948b0cda7d32fce
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: alt-svc
-    value: h3=":443"; ma=86400
-  body: |-
-    {
-      "id": "resp_00f28fa0efe860cc006a04fd104dc881918ecc0317b9f00399",
-      "object": "response",
-      "created_at": 1778711824,
-      "status": "completed",
-      "background": false,
-      "billing": {
-        "payer": "developer"
-      },
-      "completed_at": 1778711825,
-      "error": null,
-      "frequency_penalty": 0.0,
-      "incomplete_details": null,
-      "instructions": null,
-      "max_output_tokens": null,
-      "max_tool_calls": null,
-      "model": "gpt-4o-mini-2024-07-18",
-      "moderation": null,
-      "output": [
-        {
-          "id": "fc_00f28fa0efe860cc006a04fd10fb748191a3d9d0c7232567b9",
-          "type": "function_call",
-          "status": "completed",
-          "arguments": "{\"topics\":[\"Putin\",\"politics\",\"anger\",\"expression of frustration\"]}",
-          "call_id": "call_G0oKbvVUDaZ2P4SBxhC0TKFa",
-          "name": "submit"
-        }
-      ],
-      "parallel_tool_calls": true,
-      "presence_penalty": 0.0,
-      "previous_response_id": null,
-      "prompt_cache_key": null,
-      "prompt_cache_retention": "in_memory",
-      "reasoning": {
-        "effort": null,
-        "summary": null
-      },
-      "safety_identifier": null,
-      "service_tier": "default",
-      "store": true,
-      "temperature": 1.0,
-      "text": {
-        "format": {
-          "type": "text"
-        },
-        "verbosity": "medium"
-      },
-      "tool_choice": "required",
-      "tools": [
-        {
-          "type": "function",
-          "description": "Submit the structured data you extracted from the provided text.",
-          "name": "submit",
-          "parameters": {
-            "title": "Topics",
-            "type": "object",
-            "properties": {
-              "topics": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": [
-              "topics"
-            ],
-            "additionalProperties": false
-          },
-          "strict": true
-        }
-      ],
-      "top_logprobs": 0,
-      "top_p": 1.0,
-      "truncation": "disabled",
-      "usage": {
-        "input_tokens": 153,
-        "input_tokens_details": {
-          "cached_tokens": 0
-        },
-        "output_tokens": 17,
-        "output_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "total_tokens": 170
-      },
-      "user": null,
-      "metadata": {}
-    }
----
-when:
-  path: /v1/responses
-  method: POST
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
   body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Screw you Putin!"}]}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"type":"function","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Sentiment","type":"object","properties":{"sentiment":{"type":"number","format":"double"},"confidence":{"type":"number","format":"double"}},"required":["sentiment","confidence"],"additionalProperties":false},"strict":true,"description":"Submit the structured data you extracted from the provided text."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:37:06 GMT
+    value: Thu, 14 May 2026 00:30:11 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -1249,7 +1249,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb525446d26d7af-LAX
+    value: 9fb5caed5fd316df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -1267,7 +1267,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1929'
+    value: '1202'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -1279,28 +1279,28 @@ then:
   - name: x-ratelimit-remaining-requests
     value: '9999'
   - name: x-ratelimit-remaining-tokens
-    value: '9999623'
+    value: '9999624'
   - name: x-ratelimit-reset-requests
     value: 6ms
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_fd6b1a72e4604dd8b8d85a00d1601ac2
+    value: req_1031b219a0bc45dd8c06446f2930df87
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_02eee16570de90d3006a04fd102ac0819d904f353597d1c0b2",
+      "id": "resp_08c87b1279779eaf006a051792137c819093163a6de263e1d8",
       "object": "response",
-      "created_at": 1778711824,
+      "created_at": 1778718610,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711825,
+      "completed_at": 1778718611,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -1311,11 +1311,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_02eee16570de90d3006a04fd11434c819db19eafba3ebfa5ff",
+          "id": "fc_08c87b1279779eaf006a051792c170819084abf4961c79a9c4",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"sentiment\":-1,\"confidence\":0.9}",
-          "call_id": "call_UP4ogSp29zn07kEvxITUUvIP",
+          "call_id": "call_aVYKFcfmXFAoSNmBZ8e5Ds4M",
           "name": "submit"
         }
       ],

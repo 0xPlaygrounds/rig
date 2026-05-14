@@ -11,15 +11,15 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:36:43 GMT
+    value: Thu, 14 May 2026 00:29:45 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '1824'
+    value: '1810'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb524beb8e1566d-LAX
+    value: 9fb5ca4f0b810f27-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1032'
+    value: '959'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 1ms
   - name: x-request-id
-    value: req_f092070669194ec0b0b5730795bbab8b
+    value: req_75323420717b4fe3aaca555b757e3c43
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0e8e4b66ef10b6a6006a04fcfae45481a29d3dd8f9c836f457",
+      "id": "resp_094a4e10a19b4460006a051778fe388192941e47a265672802",
       "object": "response",
-      "created_at": 1778711802,
+      "created_at": 1778718585,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711803,
+      "completed_at": 1778718585,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_0e8e4b66ef10b6a6006a04fcfb80ac81a2b4ad12f9c12abefb",
+          "id": "msg_094a4e10a19b4460006a05177970f48192bc59e14201816d58",
           "type": "message",
           "status": "completed",
           "content": [
@@ -89,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Rust is a systems programming language designed for safety and concurrency, emphasizing memory safety without needing a garbage collector. Memory safety is crucial to prevent vulnerabilities like buffer overflows and memory leaks, ensuring more secure and stable software."
+              "text": "Rust is a systems programming language focused on safety and performance, offering memory safety without a garbage collector. Memory safety prevents common bugs like null pointer dereferencing and buffer overflows, enhancing program reliability and security."
             }
           ],
           "role": "assistant"
@@ -124,11 +124,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 44,
+        "output_tokens": 42,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 82
+        "total_tokens": 80
       },
       "user": null,
       "metadata": {}

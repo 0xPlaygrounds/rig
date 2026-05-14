@@ -11,15 +11,15 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:31 GMT
+    value: Thu, 14 May 2026 00:31:41 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2825'
+    value: '2848'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb527628832d7af-LAX
+    value: 9fb5cd2468d916df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '934'
+    value: '803'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 3ms
   - name: x-request-id
-    value: req_91c4a654dd21433c8e6655d760f22c9f
+    value: req_66156af8fb1a4a5ca26ee4939ef79353
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_07805f719ad0dc48006a04fd66dbbc8197a63b3f18f958ab60",
+      "id": "resp_0a8bfd2d865a757d006a0517ec48a08190829974be09f09131",
       "object": "response",
-      "created_at": 1778711910,
+      "created_at": 1778718700,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711911,
+      "completed_at": 1778718700,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_07805f719ad0dc48006a04fd673e388197a3e333b5e5358953",
+          "id": "msg_0a8bfd2d865a757d006a0517ecadc08190be77cf9ddcdce7d4",
           "type": "message",
           "status": "completed",
           "content": [
@@ -89,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "{\"city\":\"New York City\",\"current\":{\"temperature_f\":68.0,\"humidity_pct\":55,\"description\":\"Partly cloudy\"}}"
+              "text": "{\"city\":\"New York City\",\"current\":{\"temperature_f\":66,\"humidity_pct\":72,\"description\":\"Partly cloudy with a chance of showers\"}}"
             }
           ],
           "role": "assistant"
@@ -170,11 +170,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 28,
+        "output_tokens": 31,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 137
+        "total_tokens": 140
       },
       "user": null,
       "metadata": {}
@@ -193,15 +193,15 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:34 GMT
+    value: Thu, 14 May 2026 00:31:42 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2813'
+    value: '2844'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb52768eafcd7af-LAX
+    value: 9fb5cd2a0d7b16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -219,7 +219,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '2452'
+    value: '1040'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -237,22 +237,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 3ms
   - name: x-request-id
-    value: req_72dc984f404d40f5b27751aef690a2ba
+    value: req_20f895a35d7d46adb7bc81553cecbbb3
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_000f14515d4c9c93006a04fd67e46c8196a678871824a484e3",
+      "id": "resp_094b12cab7b93d0e006a0517ed3354819691eddbf33a5cedc2",
       "object": "response",
-      "created_at": 1778711911,
+      "created_at": 1778718701,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711914,
+      "completed_at": 1778718702,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -263,7 +263,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_000f14515d4c9c93006a04fd6a14d88196b08b5f4fbd50c32c",
+          "id": "msg_094b12cab7b93d0e006a0517edb9408196a748b5e22bcc7e0f",
           "type": "message",
           "status": "completed",
           "content": [
@@ -271,7 +271,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "{\"city\":\"Los Angeles\",\"current\":{\"temperature_f\":75,\"humidity_pct\":60,\"description\":\"Sunny\"}}"
+              "text": "{\"city\":\"Los Angeles\",\"current\":{\"temperature_f\":75.0,\"humidity_pct\":60,\"description\":\"Clear skies with occasional clouds\"}}"
             }
           ],
           "role": "assistant"
@@ -352,11 +352,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 23,
+        "output_tokens": 29,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 130
+        "total_tokens": 136
       },
       "user": null,
       "metadata": {}
@@ -375,15 +375,15 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:35 GMT
+    value: Thu, 14 May 2026 00:31:43 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2841'
+    value: '2840'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb52778e8eed7af-LAX
+    value: 9fb5cd313e3316df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -401,7 +401,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '671'
+    value: '984'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -419,22 +419,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 3ms
   - name: x-request-id
-    value: req_a8343bb5b44e42279557f1cbae2dca5b
+    value: req_cedc947e8b9d48e58fdb2a30a99f6f27
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_06964fa22078eac5006a04fd6a71cc81939376b7d3490ad254",
+      "id": "resp_03b6b9b4cd87c572006a0517ee5b6c81a38160393fd93a9db0",
       "object": "response",
-      "created_at": 1778711914,
+      "created_at": 1778718702,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711914,
+      "completed_at": 1778718703,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -445,7 +445,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_06964fa22078eac5006a04fd6ac6d48193b74fe4aa2d2166f4",
+          "id": "msg_03b6b9b4cd87c572006a0517eef6e881a3a2542265401fe101",
           "type": "message",
           "status": "completed",
           "content": [
@@ -453,7 +453,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "{\"city\":\"Chicago\",\"current\":{\"temperature_f\":55.0,\"humidity_pct\":63,\"description\":\"Partly cloudy with a gentle breeze.\"}}"
+              "text": "{\"city\":\"Chicago\",\"current\":{\"temperature_f\":55.0,\"humidity_pct\":72,\"description\":\"Partly cloudy with a slight breeze\"}}"
             }
           ],
           "role": "assistant"
@@ -534,11 +534,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 31,
+        "output_tokens": 30,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 137
+        "total_tokens": 136
       },
       "user": null,
       "metadata": {}

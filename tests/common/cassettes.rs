@@ -12,7 +12,7 @@ use axum::response::Response;
 use axum::{Router, routing::any};
 use httpmock::MockServer;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::net::SocketAddr;
@@ -152,6 +152,11 @@ impl ProviderCassette {
     }
 
     pub(crate) async fn finish(self) {
+        if let CassetteServer::Replay(server) = &self.server {
+            server.assert_consumed(&self.cassette_path).await;
+            return;
+        }
+
         let Some(recording_id) = self.recording_id else {
             return;
         };
@@ -183,6 +188,7 @@ impl ProviderCassette {
 
 struct ReplayServer {
     addr: SocketAddr,
+    state: Arc<Mutex<ReplayState>>,
 }
 
 impl ReplayServer {
@@ -199,7 +205,7 @@ impl ReplayServer {
         let state = Arc::new(Mutex::new(ReplayState { interactions }));
         let app = Router::new()
             .fallback(any(replay_request))
-            .with_state(state);
+            .with_state(state.clone());
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("replay server should bind");
@@ -213,11 +219,34 @@ impl ReplayServer {
                 .expect("replay server should run");
         });
 
-        Self { addr }
+        Self { addr, state }
     }
 
     fn base_url(&self) -> String {
         format!("http://{}", self.addr)
+    }
+
+    async fn assert_consumed(&self, cassette_path: &Path) {
+        let state = self.state.lock().await;
+        let unused = state
+            .interactions
+            .iter()
+            .enumerate()
+            .filter(|(_, interaction)| !interaction.consumed)
+            .map(|(index, interaction)| {
+                format!(
+                    "[{index}] {} {}",
+                    interaction.when.method, interaction.when.path
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            unused.is_empty(),
+            "provider cassette {} left unused interactions:\n{}",
+            cassette_path.display(),
+            unused.join("\n")
+        );
     }
 }
 
@@ -298,16 +327,62 @@ async fn replay_request(
     let Some(index) = state.interactions.iter().position(|interaction| {
         !interaction.consumed && request_matches(&request, &interaction.when)
     }) else {
+        let message = replay_miss_message(&request, &state.interactions);
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")
-            .body(r#"{"message":"Request did not match any route or mock"}"#.into())
+            .body(message.into())
             .expect("replay miss response should build");
     };
 
     let interaction = &mut state.interactions[index];
     interaction.consumed = true;
     cassette_response(&interaction.then)
+}
+
+fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteraction]) -> String {
+    let candidates = interactions
+        .iter()
+        .enumerate()
+        .map(|(index, interaction)| {
+            let method_matches = request
+                .method
+                .as_str()
+                .eq_ignore_ascii_case(&interaction.when.method);
+            let path_matches = request.uri.path() == interaction.when.path;
+            let query_matches = query_matches(request.uri.query(), &interaction.when.query_param);
+            let headers_match = headers_match(&request.headers, &interaction.when.header);
+            let body_matches = body_matches(
+                &request.headers,
+                &interaction.when.header,
+                &request.body,
+                interaction.when.body.as_deref(),
+            );
+
+            json!({
+                "index": index,
+                "consumed": interaction.consumed,
+                "method_matches": method_matches,
+                "path_matches": path_matches,
+                "query_matches": query_matches,
+                "headers_match": headers_match,
+                "body_matches": body_matches,
+                "expected_method": interaction.when.method,
+                "expected_path": interaction.when.path,
+                "expected_body_preview": interaction.when.body.as_deref().map(body_preview),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "message": "Request did not match any route or mock",
+        "actual_method": request.method.as_str(),
+        "actual_path": request.uri.path(),
+        "actual_query": request.uri.query(),
+        "actual_body_preview": body_preview_bytes(&request.body),
+        "candidates": candidates,
+    })
+    .to_string()
 }
 
 struct IncomingRequest {
@@ -376,7 +451,12 @@ fn body_matches(
         return true;
     };
     if is_multipart_request(actual_headers, expected_headers) {
-        return true;
+        return multipart_bodies_match(
+            actual_headers,
+            expected_headers,
+            actual,
+            expected.as_bytes(),
+        );
     }
     let Ok(actual) = std::str::from_utf8(actual) else {
         return false;
@@ -404,6 +484,130 @@ fn is_multipart_request(
         .is_some_and(|value| value.starts_with("multipart/form-data;"))
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct MultipartPart {
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+fn multipart_bodies_match(
+    actual_headers: &axum::http::HeaderMap,
+    expected_headers: &[NameValue],
+    actual: &[u8],
+    expected: &[u8],
+) -> bool {
+    let Some(actual_boundary) = actual_headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(multipart_boundary)
+    else {
+        return false;
+    };
+    let Some(expected_boundary) = expected_headers
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case("content-type"))
+        .and_then(|header| multipart_boundary(&header.value))
+    else {
+        return false;
+    };
+
+    match (
+        parse_multipart_parts(actual, &actual_boundary),
+        parse_multipart_parts(expected, &expected_boundary),
+    ) {
+        (Some(actual_parts), Some(expected_parts)) => actual_parts == expected_parts,
+        _ => false,
+    }
+}
+
+fn multipart_boundary(content_type: &str) -> Option<String> {
+    content_type.split(';').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        name.eq_ignore_ascii_case("boundary")
+            .then(|| value.trim_matches('"').to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
+    let marker = format!("--{boundary}").into_bytes();
+    let mut parts = Vec::new();
+
+    for raw_part in split_bytes(body, &marker).into_iter().skip(1) {
+        let raw_part = strip_prefix_bytes(raw_part, b"\r\n");
+        if raw_part.starts_with(b"--") {
+            break;
+        }
+
+        let raw_part = strip_suffix_bytes(raw_part, b"\r\n");
+        if raw_part.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+
+        let header_end = find_bytes(raw_part, b"\r\n\r\n")?;
+        let raw_headers = &raw_part[..header_end];
+        let raw_body = &raw_part[header_end + b"\r\n\r\n".len()..];
+        let raw_headers = std::str::from_utf8(raw_headers).ok()?;
+        let mut headers = raw_headers
+            .lines()
+            .filter_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                Some((
+                    name.trim().to_ascii_lowercase(),
+                    normalize_multipart_header_value(value.trim()),
+                ))
+            })
+            .collect::<Vec<_>>();
+        headers.sort();
+
+        parts.push(MultipartPart {
+            headers,
+            body: raw_body.to_vec(),
+        });
+    }
+
+    Some(parts)
+}
+
+fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<&'a [u8]> {
+    let mut parts = Vec::new();
+    let mut remainder = body;
+
+    while let Some(index) = find_bytes(remainder, marker) {
+        let (before, after_marker) = remainder.split_at(index);
+        parts.push(before);
+        remainder = &after_marker[marker.len()..];
+    }
+
+    parts.push(remainder);
+    parts
+}
+
+fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+
+    body.windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn strip_prefix_bytes<'a>(body: &'a [u8], prefix: &[u8]) -> &'a [u8] {
+    body.strip_prefix(prefix).unwrap_or(body)
+}
+
+fn strip_suffix_bytes<'a>(body: &'a [u8], suffix: &[u8]) -> &'a [u8] {
+    body.strip_suffix(suffix).unwrap_or(body)
+}
+
+fn normalize_multipart_header_value(value: &str) -> String {
+    value
+        .split(';')
+        .map(str::trim)
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 fn canonical_json(body: &str) -> Option<Value> {
     serde_json::from_str::<Value>(body)
         .ok()
@@ -421,6 +625,22 @@ fn sort_json_objects(value: Value) -> Value {
         ),
         Value::Array(values) => Value::Array(values.into_iter().map(sort_json_objects).collect()),
         value => value,
+    }
+}
+
+fn body_preview(body: &str) -> String {
+    const LIMIT: usize = 512;
+    let mut preview = body.chars().take(LIMIT).collect::<String>();
+    if body.chars().count() > LIMIT {
+        preview.push_str("...");
+    }
+    preview
+}
+
+fn body_preview_bytes(body: &[u8]) -> String {
+    match std::str::from_utf8(body) {
+        Ok(body) => body_preview(body),
+        Err(_) => format!("<{} bytes of non-UTF-8 body>", body.len()),
     }
 }
 
@@ -514,6 +734,7 @@ fn redact_secrets(yaml: &str) -> String {
         let is_sensitive_header_name = lower.starts_with("- name: set-cookie")
             || lower.starts_with("- name: openai-organization")
             || lower.starts_with("- name: openai-project")
+            || lower.starts_with("- name: anthropic-organization-id")
             || lower.starts_with("- name: x-api-key")
             || lower.starts_with("- name: x-goog-api-key")
             || lower.starts_with("- name: key");
@@ -530,6 +751,7 @@ fn redact_secrets(yaml: &str) -> String {
             || lower.starts_with("set-cookie:")
             || lower.starts_with("openai-organization:")
             || lower.starts_with("openai-project:")
+            || lower.starts_with("anthropic-organization-id:")
         {
             let indentation_len = line.len() - trimmed.len();
             format!(

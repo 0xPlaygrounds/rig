@@ -13,59 +13,35 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:41:26 GMT
+    value: Thu, 14 May 2026 00:18:31 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
     value: chunked
   - name: connection
     value: keep-alive
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '1999000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:41:20Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:41:26Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:41:19Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2399000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:41:20Z
   - name: request-id
-    value: req_011Cb1NdvnDTrMGZgonkpij9
+    value: req_011Cb1W3FpuNCSamsMZcZize
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-f1112de362c12d2eddde9b8b51059a41-8e7e3db84e5210f6-01
+    value: 00-3f2ec13af298b8ec9ece617035559db9-83fa90b9a79fbd3d-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '7115'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '8350'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb52b7b6d7f4800-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_014nSEaQ9VQCWVjchnmVGKYs","type":"message","role":"assistant","content":[{"type":"text","text":"## Image Description\n\nThe image shows a **close-up macro photograph of a black ant**, captured in striking detail against a softly blurred background of warm reddish-brown and dark tones.\n\n### Key Details:\n\n- **Species**: Likely a **carpenter ant** (*Camponotus* sp.) or similar large black ant\n- **Posture**: The ant is in a **rearing/defensive posture**, with its front legs raised off the ground and its head tilted upward — possibly carrying something small in its mandibles (appears to be a small food particle or debris)\n- **Body**: The ant''s **three body segments** (head, thorax, and abdomen/gaster) are clearly visible, with fine hairs (setae) on the abdomen\n- **Legs**: All **six legs** are visible, with the characteristic jointed structure\n- **Antennae**: The **elbowed antennae** are extended outward\n- **Surface**: The ant is standing on what appears to be a **rough concrete or stone surface**\n- **Lighting**: The image is well-lit, highlighting the ant''s **glossy black exoskeleton** with a slight iridescent sheen on the abdomen\n\nThis is an excellent **macro photography** shot, showcasing fine anatomical details rarely visible to the naked eye."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1554,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":298,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5b9adbd87d908-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01S8NSqprTePy1HVNH17je8z","type":"message","role":"assistant","content":[{"type":"text","text":"## Macro Photography: Black Ant\n\nThis is a **close-up macro photograph** of a **black ant** (*likely Camponotus* sp. or a similar species), captured in striking detail on what appears to be a **concrete or stone surface**.\n\n### Notable Features Visible:\n- **Segmented body** — clearly showing the head, thorax, petiole, and abdomen\n- **Mandibles** — the ant appears to be holding or carrying a small piece of food/debris\n- **Long, slender legs** with fine hairs (setae) visible\n- **Antennae** — elbowed antennae characteristic of ants\n- **Iridescent/golden sheen** on the abdomen, suggesting it may be a **carpenter ant** (*Camponotus* species)\n- The ant appears to be in an **upright, alert posture**\n\n### Photography Details:\n- **Shallow depth of field** creates a beautifully blurred background (bokeh)\n- The **warm reddish-brown tones** in the background contrast nicely with the dark ant\n- Excellent **side-profile composition** highlighting the ant''s anatomy\n\nThis is a well-executed **macro insect photograph** showcasing the remarkable detail of an otherwise commonly overlooked creature."}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1554,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":292,"service_tier":"standard","inference_geo":"global"}}'

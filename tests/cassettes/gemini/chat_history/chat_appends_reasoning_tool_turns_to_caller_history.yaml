@@ -24,7 +24,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 23:31:15 GMT
+    value: Thu, 14 May 2026 00:15:14 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -34,7 +34,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=2479
+    value: gfet4t7; dur=1920
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
@@ -48,7 +48,7 @@ then:
           "content": {
             "parts": [
               {
-                "text": "**My Weather Check for Tokyo**\n\nOkay, so the user wants a weather check for Tokyo and needs a recommendation on whether to pack an umbrella or sunscreen. Right, simple enough. First, I need to call the `get_weather` tool. The `city` parameter will definitely be \"Tokyo, Japan\" – no ambiguity there. Once I have the output from the tool, I'll need to quickly analyze it. I'll be looking specifically for keywords like \"rain,\" \"sunny,\" \"cloudy,\" and the temperature, of course. That's the key to making a helpful suggestion. Then, I'll synthesize my findings and formulate a concise response. Basically, it'll be a quick summary of the weather plus a recommendation: \"Bring an umbrella,\" \"Pack sunscreen,\" or possibly \"You're good!\" depending on the actual conditions. Let's get that data and make a useful call!\n",
+                "text": "**Analyzing the Weather Query**\n\nOkay, so the user wants the weather in Tokyo, Japan, and a packing recommendation. Easy enough! The `get_weather` tool is exactly what I need here. I'll call it with the city \"Tokyo, Japan\" to fetch the current weather data. Once I have that information, I'll be able to tell the user what the weather is like and, based on that, advise them on whether to bring an umbrella or sunscreen. This should be a straightforward task, leveraging the available tools efficiently. Let's get that weather data and craft a concise, helpful response.\n",
                 "thought": true
               },
               {
@@ -58,7 +58,7 @@ then:
                     "city": "Tokyo, Japan"
                   }
                 },
-                "thoughtSignature": "Ct0FAQw51seTEZJu+dgxB1txRppfMc86mv36pPubNfMMMrdemZfkgUOY6ewOEKEinLL3TDyjvekuOwxu098cTAY65CjVeVrvucltQvDU6JPxb1k8/bT3ktV1Tq8ZFwSz6elSTYfQtBLLud4uE4SR8u8/Sf7NMZ0BFZdLRkO8o2gCD+aHww+NhLOegP2uQLS3q2oxiYmSo3/Jfor4nmhpsE+I7BTX+EH3qP2yarCxAjYQdd2Jo5W/7AsPvr5//iQrbWnZDiHeNZJMitlRBWyIWQKc4HHmrNY7bjBPC3B544eVEQnT2mo6uObIIEVmsmvUQFQFWr2/iBbJz3ILj2f8HUPtsqzGh1taLGHbxgDcbOdeDi7mFuRbTl+rr3eazz36FRtqresWs3exyuJUl608XN2FQuQyZxYYjmz+Z1MDKbXbvGiIk2wkKWxccRoMprXivwY21WdY/JDUUmFyWIeeB/YOP/2Pu/ZCmZUhBPfByikr66ZHq3eVBQhbkCF1hhUXph7X860BjOYXlqi8SH/Kexs7RbJJwHkC3q5sLgKc9iNkEWWHCpFq+XXG8KkjuqDNna/6KBI4MSdORbyGl2MWmbgSGX0ja4rT3XZMYjh5UOqaB0QsWAtUwTxjGXPC1u/J9idH0jXfJbFk0rJsR22iOYp5vXn2FMBMjgtGAxoBlX4ikc7xB1RQat/womKPNPGxZJzoa8Zv3UTTtvHiWmdn7YPV6ZImZgmqZBUZdY7DcDykamG7f2Hbz5lZfo6J+LljvIu0ynBNMzc19+mT8YZahQjdu08I0tAxNMbS2SnqGc53qY8nDnrCWnlomS09jrunp8jcU4gfnxZdcowXNMoqjjEFkV5muyGnF+l3l25s+xoef5zhPv8/E7/Fn4U6NSeS0KSWIFFinJsjb7H3L1cZVIdl2VFVuq+KjV0IeK5H+X6e6iHIVAaH05sTYddGaVNo0C3oAfYXZPbwNVBdrfOs2Q=="
+                "thoughtSignature": "CroDAQw51sdI2eIp1ZVfle5EgW9iGZLWM8p1rWhmKyVKTbB8xw8Wt5rMXl+Agd59ot6q1iPr0ch1uyrlLxm2AFRceciZhrOpqBEuefwyLrvsmiTua0GrFMMH5UiEnVACDOV0lcj+jid5FhkTaZTzVFaDjyrKVLt0+UsIhgRuv2Pbvoo1fjoWacMEfLDrLLVQHjjKzLqppgkKxJTCX40iEtdFd79BlncuwVRPdnihr3FiBs9ZPRQidgwmMrM5NvIWeiLN7krMxLrg50078xOGKPgoKXRLeKrqA2rgYppL+ZjXlO4sn4Ra1ctv+qMOnWXuE5PKWVUJ4fmaN13NxgF/6bA6xjrv00KzknTd+nYGBaoSdi2t4I6knv088B2uzvOx1N1ZURKGnHervq7C7JhnFd7skor8cJrkif/f8z0vwG9OScE/LSmqJ6CiU6r7pNOkmbvXNi6HflhGV2JQDZXoiknHsna1sp2RmUr8fe0SJoGbO3tdDRjs9efn6cX+lRMcIrnWLcaFZ1SB0Q0qwSDe0PoBuiG1NidG5PItaQK0G4QDf0Rcihzh2Rk9CQO7Eu6VZ8yrGeQeKehtMBHmGQ=="
               }
             ],
             "role": "model"
@@ -71,18 +71,18 @@ then:
       "usageMetadata": {
         "promptTokenCount": 144,
         "candidatesTokenCount": 17,
-        "totalTokenCount": 324,
+        "totalTokenCount": 250,
         "promptTokensDetails": [
           {
             "modality": "TEXT",
             "tokenCount": 144
           }
         ],
-        "thoughtsTokenCount": 163,
+        "thoughtsTokenCount": 89,
         "serviceTier": "standard"
       },
       "modelVersion": "gemini-2.5-flash",
-      "responseId": "wQkFasK7IKSIz7IPhv_kkQg"
+      "responseId": "EBQFatDtGcammtkP7_bnqQ0"
     }
 ---
 when:
@@ -96,7 +96,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}],"role":"user"},{"parts":[{"thought":true,"text":"**My Weather Check for Tokyo**\n\nOkay, so the user wants a weather check for Tokyo and needs a recommendation on whether to pack an umbrella or sunscreen. Right, simple enough. First, I need to call the `get_weather` tool. The `city` parameter will definitely be \"Tokyo, Japan\" – no ambiguity there. Once I have the output from the tool, I''ll need to quickly analyze it. I''ll be looking specifically for keywords like \"rain,\" \"sunny,\" \"cloudy,\" and the temperature, of course. That''s the key to making a helpful suggestion. Then, I''ll synthesize my findings and formulate a concise response. Basically, it''ll be a quick summary of the weather plus a recommendation: \"Bring an umbrella,\" \"Pack sunscreen,\" or possibly \"You''re good!\" depending on the actual conditions. Let''s get that data and make a useful call!\n"},{"thought":false,"thoughtSignature":"Ct0FAQw51seTEZJu+dgxB1txRppfMc86mv36pPubNfMMMrdemZfkgUOY6ewOEKEinLL3TDyjvekuOwxu098cTAY65CjVeVrvucltQvDU6JPxb1k8/bT3ktV1Tq8ZFwSz6elSTYfQtBLLud4uE4SR8u8/Sf7NMZ0BFZdLRkO8o2gCD+aHww+NhLOegP2uQLS3q2oxiYmSo3/Jfor4nmhpsE+I7BTX+EH3qP2yarCxAjYQdd2Jo5W/7AsPvr5//iQrbWnZDiHeNZJMitlRBWyIWQKc4HHmrNY7bjBPC3B544eVEQnT2mo6uObIIEVmsmvUQFQFWr2/iBbJz3ILj2f8HUPtsqzGh1taLGHbxgDcbOdeDi7mFuRbTl+rr3eazz36FRtqresWs3exyuJUl608XN2FQuQyZxYYjmz+Z1MDKbXbvGiIk2wkKWxccRoMprXivwY21WdY/JDUUmFyWIeeB/YOP/2Pu/ZCmZUhBPfByikr66ZHq3eVBQhbkCF1hhUXph7X860BjOYXlqi8SH/Kexs7RbJJwHkC3q5sLgKc9iNkEWWHCpFq+XXG8KkjuqDNna/6KBI4MSdORbyGl2MWmbgSGX0ja4rT3XZMYjh5UOqaB0QsWAtUwTxjGXPC1u/J9idH0jXfJbFk0rJsR22iOYp5vXn2FMBMjgtGAxoBlX4ikc7xB1RQat/womKPNPGxZJzoa8Zv3UTTtvHiWmdn7YPV6ZImZgmqZBUZdY7DcDykamG7f2Hbz5lZfo6J+LljvIu0ynBNMzc19+mT8YZahQjdu08I0tAxNMbS2SnqGc53qY8nDnrCWnlomS09jrunp8jcU4gfnxZdcowXNMoqjjEFkV5muyGnF+l3l25s+xoef5zhPv8/E7/Fn4U6NSeS0KSWIFFinJsjb7H3L1cZVIdl2VFVuq+KjV0IeK5H+X6e6iHIVAaH05sTYddGaVNo0C3oAfYXZPbwNVBdrfOs2Q==","functionCall":{"name":"get_weather","args":{"city":"Tokyo, Japan"}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":4096,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"thought":false,"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}],"role":"user"},{"parts":[{"thought":true,"text":"**Analyzing the Weather Query**\n\nOkay, so the user wants the weather in Tokyo, Japan, and a packing recommendation. Easy enough! The `get_weather` tool is exactly what I need here. I''ll call it with the city \"Tokyo, Japan\" to fetch the current weather data. Once I have that information, I''ll be able to tell the user what the weather is like and, based on that, advise them on whether to bring an umbrella or sunscreen. This should be a straightforward task, leveraging the available tools efficiently. Let''s get that weather data and craft a concise, helpful response.\n"},{"thought":false,"thoughtSignature":"CroDAQw51sdI2eIp1ZVfle5EgW9iGZLWM8p1rWhmKyVKTbB8xw8Wt5rMXl+Agd59ot6q1iPr0ch1uyrlLxm2AFRceciZhrOpqBEuefwyLrvsmiTua0GrFMMH5UiEnVACDOV0lcj+jid5FhkTaZTzVFaDjyrKVLt0+UsIhgRuv2Pbvoo1fjoWacMEfLDrLLVQHjjKzLqppgkKxJTCX40iEtdFd79BlncuwVRPdnihr3FiBs9ZPRQidgwmMrM5NvIWeiLN7krMxLrg50078xOGKPgoKXRLeKrqA2rgYppL+ZjXlO4sn4Ra1ctv+qMOnWXuE5PKWVUJ4fmaN13NxgF/6bA6xjrv00KzknTd+nYGBaoSdi2t4I6knv088B2uzvOx1N1ZURKGnHervq7C7JhnFd7skor8cJrkif/f8z0vwG9OScE/LSmqJ6CiU6r7pNOkmbvXNi6HflhGV2JQDZXoiknHsna1sp2RmUr8fe0SJoGbO3tdDRjs9efn6cX+lRMcIrnWLcaFZ1SB0Q0qwSDe0PoBuiG1NidG5PItaQK0G4QDf0Rcihzh2Rk9CQO7Eu6VZ8yrGeQeKehtMBHmGQ==","functionCall":{"name":"get_weather","args":{"city":"Tokyo, Japan"}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":4096,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"role":"model"}}'
 then:
   status: 200
   header:
@@ -111,7 +111,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 23:31:18 GMT
+    value: Thu, 14 May 2026 00:15:15 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -121,7 +121,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=2278
+    value: gfet4t7; dur=843
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
@@ -135,12 +135,7 @@ then:
           "content": {
             "parts": [
               {
-                "text": "**Analyzing the Tokyo Weather Report**\n\nOkay, so the user wants the Tokyo weather and a packing recommendation, and I've successfully pulled the data. Let me break down this response: \"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW.\"\n\nRight, 72F, or 22C, is a pleasant temperature. \"Sunny with light clouds\" – that’s the key piece. Definitely sunscreen weather! No mention of rain, so an umbrella isn't needed. Humidity is a reasonable 45%, not overly oppressive. And the wind, 8 mph from the northwest, shouldn't be a factor in my recommendation. Based on the \"sunny with light clouds\" description, sunscreen is the definitive recommendation here.\n",
-                "thought": true
-              },
-              {
-                "text": "The weather in Tokyo, Japan is currently 72°F (22°C), sunny with light clouds, 45% humidity, and a wind of 8 mph from the Northwest. You should pack sunscreen.",
-                "thoughtSignature": "CvgDAQw51seSp4nCzfpkt3IqTSkH1rjGQ7D61H0pfO1VRja0ZTtPOumDYDfdRTKzdWff9Ucvw6IOsiUv0dPx2gHIShSMmVC55p+EyJBxGTLcQZb5L5U01pngayDiCdAuQgCKSAbBY3O5yZvdkfNKGhFxsezxqimZYAlRKv7K+StMk88PZkS0GHeeAxE05/Hd/qzBxPXs54d5KeqEr49gjK/rLzvMEiP7ecTNPFHUDOG1yXv6GK8MaPHEwCNRWPVQKJzsTvyOzP69/BkmCV0QEn604Dbmvj3UCCY5t+VsK+c97mznp+FooWlK0d2f9OpIkO6rS7fUikouVaKGc/PsYnDlkXMvlqDpzxtYHE3dK1AK34BJDEocqVbwEy1MBLD27wbEg8YrNp4KDC2hTczOI1X2QC6ZM+67UfIhchxlE3UA+U+UUuUO6Wozh+zKEdLWgIHsAqec4VPJHUIjCO3jehRFbmf8Uxjdk/AWBoFgaImjNRztJeH2XmRJc8ldCbzxfIdXgsDge36un+7o96PUXJzMbcdALHtplq4921ff6+B2M7mKdQqfXbZLEFevxHkbVZdN+qaNBL3J89GovPVVtEoeH/Xy1yIQ0CwmpdTAhKnCpiwhKRLJ8NWmkJ4cL5j9RIU2yAp+ZMntlUZrooucIDoH4KMi/BB1gImB"
+                "text": "The weather in Tokyo, Japan is 72°F (22°C), sunny with light clouds, 45% humidity, and a wind of 8 mph NW. You should pack sunscreen."
               }
             ],
             "role": "model"
@@ -150,18 +145,17 @@ then:
         }
       ],
       "usageMetadata": {
-        "promptTokenCount": 395,
-        "candidatesTokenCount": 46,
-        "totalTokenCount": 563,
+        "promptTokenCount": 333,
+        "candidatesTokenCount": 43,
+        "totalTokenCount": 376,
         "promptTokensDetails": [
           {
             "modality": "TEXT",
-            "tokenCount": 395
+            "tokenCount": 333
           }
         ],
-        "thoughtsTokenCount": 122,
         "serviceTier": "standard"
       },
       "modelVersion": "gemini-2.5-flash",
-      "responseId": "xAkFapS4A9mHz7IP64Wc2Qk"
+      "responseId": "EhQFaoXrF8-CmtkPq6Kw4Aw"
     }

@@ -11,15 +11,15 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:36 GMT
+    value: Thu, 14 May 2026 00:31:44 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2340'
+    value: '2410'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5277e380ad7af-LAX
+    value: 9fb5cd389c6d16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1233'
+    value: '1232'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 2ms
   - name: x-request-id
-    value: req_afc1b273b30c40fd95a05b89fd2c2d27
+    value: req_33097c7bb49142f2bef831f50b91f948
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_0573d493de245e3e006a04fd6b4c8c819f8e9e53272a3cf82f",
+      "id": "resp_0d9d82c9b357963f006a0517efb0b881a3aecf677bb33a023c",
       "object": "response",
-      "created_at": 1778711915,
+      "created_at": 1778718703,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711916,
+      "completed_at": 1778718704,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,7 +81,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_0573d493de245e3e006a04fd6c2580819f8977c6b5bcb0115c",
+          "id": "msg_0d9d82c9b357963f006a0517f02c7481a3bc96d78ef0c33d85",
           "type": "message",
           "status": "completed",
           "content": [
@@ -89,7 +89,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "{\"title\":\"SmokeStructuredOutput\",\"category\":\"Rust Meetup\",\"summary\":\"Join us for a local Rust meetup in Seattle! Connect with fellow Rust enthusiasts, share projects, and learn more about this powerful programming language.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Local Event\",\"summary\":\"Join fellow developers in Seattle for a local Rust Meetup. An opportunity to network, share projects, and learn more about Rust programming with hands-on sessions and presentations. Suitable for all levels of Rust enthusiasts.\"}"
             }
           ],
           "role": "assistant"
@@ -148,11 +148,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 44,
+        "output_tokens": 56,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 108
+        "total_tokens": 120
       },
       "user": null,
       "metadata": {}

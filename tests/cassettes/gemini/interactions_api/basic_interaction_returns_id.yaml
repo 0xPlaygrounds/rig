@@ -19,7 +19,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 23:31:35 GMT
+    value: Thu, 14 May 2026 00:15:32 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -29,11 +29,11 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=2463
+    value: gfet4t7; dur=2619
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
     value: none
   - name: transfer-encoding
     value: chunked
-  body: '{"id":"v1_ChcxUWtGYXV6NUJxUGx6N0lQeGRmZXlRZxIXMVFrRmF1ejVCcVBsejdJUHhkZmV5UWc","status":"completed","outputs":[{"signature":"Ev4GCvsGAQw51sfAzixd3j/NPZMpKssj5r8Qpzm/hpg30ckge0wNP8Y8PcpuWc9YDrSfy6B4st9OgoSAO62MC4KXcNsK6Sei62dAt0SxbwrCpsq+nbTFOWdde8Z24njon8iIBEXzCAHl1V6b5QX56HaAIhTVxXSkH7yZTslsd+OrInRfcJpxQ1oqz3J3iv2QF5pcxhPJWSnhQtABu9tYDdhZdc99XkSHlm1QTgKqjElPDGHRwjFqh35KmPTwYxQyamTpQyjOJmjnsG9Ry+yU82VGlXpMixSrfWd5bbrbfm82tdYlCUX0VOy6QxXqu13AaBgmOwNDIXyDmlisHVEO6Bm7ruVgKFfQWRlnLM2dJiKsp58fTuu43wnOlTZrdY1rqF3lf0A+7ZdW2OUzrqNhh4XW7Fvn2qPgJ89YqO/uNoc0sSimX9HN0GDrusH767QsoM3xEArHiQkG9z9TOf0I6Tqd6N7dT7UOW8SOezpBqzA7jHJj/Id41RWOqc8gJwIbYfn2SPqfGamHihE1B9Y14eI3v01iCV2SPJVSW2J+4clfgQmmM3R3P32x2cb/tFSAPyko/fojV2CI4iPt1KzP/1arIWUhL4Do478QdPD6BQVI3FRKBYekDVlHBgxKDzN/aBckCMCE8CeF1jqoFulKKGaHmoriwXFScpuDpeFC+FRkG3HrBON9eI4c5hsc9pK2jsYKsO1/ppg3yiLNt2GDRHEXpBvaV75LpYmHZwjnjQAVOdOTblqu2CqtTjfC6nnS2qpxftQRDZube7m7hyRPaN6T9dHyGrR72D5GZQ24eVQiOmDz5rrLSmfL1EcfcZGN32YNZm+0YSweto0BYcu2YfntyQNia478OuBlyNvKkcJi7vWYhW4uSW0h0U/wn0QL8MQjZa2BGlmiF2Zm1hRKS4BL7GKF4UiJdkZjI1V5Gx2MkEOmn/u7Tu5hvSec8fqfrKarDyxq5C4C3BTsrVfKBu7ohhZ+bfJLQcHAyGIyzVuYCYbi84EOd4uF/EG0FVQHc+mS9xdEjZVOtI5TpaGcuxEL0L/DaeCR/0/zN049WAgKZGE6+4wfXdAR+47PtRFWBMqQczZjAToQ+C7yKyDYzllVq/3YeE8XUSRNhs9L/Wo3fgzjN+xPBICqFZxPVbh2d228Sfc5dPIQpaEV3SRXPPRxZBVe93nioxBGmfmlmAZ0","type":"thought"},{"text":"1. Hummingbirds are the only birds capable of flying backward and upside down.\n2. Their hearts can beat up to 1,260 times per minute.","type":"text"}],"usage":{"total_tokens":295,"total_input_tokens":14,"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_output_tokens":35,"total_tool_use_tokens":0,"total_thought_tokens":246},"role":"model","created":"2026-05-13T23:31:35Z","updated":"2026-05-13T23:31:35Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"id":"v1_ChdJUlFGYXN5eUtZU21tdGtQaDZYbndRcxIXSVJRRmFzeXlLWVNtbXRrUGg2WG53UXM","status":"completed","outputs":[{"signature":"ErYGCrMGAQw51sfPuFe+r5jpRKvGq3yljpV0Xd8fTc3W+HD5b+EcvFwAY4cvPuE5YrfJCEXeyBdbOJpTRgiOKXkLZGidXGjjGuvwWo3aq3ucTKLZ5zZL5HENnoVfO2Afc+/U7P1nKtfondgZdHrqPN6U6zwlrtmyCvZUU0COAerAcF5hoSh7894DD1zZjTWJiXLwRp61YFtiU6fihxHRCy+eyUbfEemVYDOzEIu6f0ng5my2sOvZf3GpiJdc2IJtOEGa6J1v5IRaWftd4EdjDZIJK627kYHI9DQxVwlNpxueCZkn/uTQMHTRQRTRxtengSPB2p3sperurRZtoBERRHidLYPqvblIKcKF9cUn7YB47Y/PRDZM4s0ZyLZVvHnpXsKVU3Ym1o0p267X8ORYgx/95mGnJhEZJuh1P+9NxC621BtHFHiznbnJMqCOFRBGMtPl62kBX9+6Chh2uJUcYpMv2OrBtB/sWsycN6Jj51jMk0c0aHrSNU3fOThT2qlqIIdaOobmB6w6ROvKZ7ZFwHoonNcAC+WcJ1K+Wab2grwpLPLRKNvOGTSXDAykR9VFAffCzj9IuuwllOfTYmaleo9HSSrXX1hyuDXsHI/LaCmQVU6SyqO20Ao+fxF9RYqokgdOOamkHOBZF12tESKhj6V6nNf2+bjmqbhzCWyqRfqVnHWmMZW9omvKhEqtXRCXZbbpyCT34mUoz9RLXEDsVMHbKQZGKKPgNzT9Vf+yJGJOk/vsokMg1J9xgOXjTFXUijP0gqB9bqaZ/SN5UoGjEuGplEZF3YITUrDN1Ue9tdCLQHpNz8zGsiTEpsphWsK5HnaHuw29OReIfHQUTUGwdgl/eRvd0NpMerORflqijha37HjyUZQe5+DJJsBg/xKTcvNOEIQ8iaPQUnp0qflpWmVSuuKO/EvAz1mzo0nhmygVh2igazDkiZ1MWKzWzH8hBsISgeu2pPTT/a2c4+Wpmc8lpUG5ZtYtYqwaQ1C7q4WVIGIWG0REHz7JaHovSm5TM2BI6kY83vautsJr/FjF+OxuNWCXzsLpNXC2qOfmKjqEEcH0JsWwyF5HT9i8hJ0XJsXQVZQMlue1","type":"thought"},{"text":"1. **Backward Flight:** Hummingbirds are the only birds capable of flying backward and upside down.\n2. **Rapid Heartbeat:** Their hearts can beat up to 1,260 times per minute—about 21 beats per second.","type":"text"}],"usage":{"total_tokens":293,"total_input_tokens":14,"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_output_tokens":52,"total_tool_use_tokens":0,"total_thought_tokens":227},"role":"model","created":"2026-05-14T00:15:32Z","updated":"2026-05-14T00:15:32Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'

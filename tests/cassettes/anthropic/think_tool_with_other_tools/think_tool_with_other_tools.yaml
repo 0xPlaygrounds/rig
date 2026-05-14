@@ -13,7 +13,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:46:51 GMT
+    value: Thu, 14 May 2026 00:23:28 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -25,50 +25,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '2000000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:46:49Z
+    value: 2026-05-14T00:23:26Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:46:51Z
+    value: 2026-05-14T00:23:28Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:46:48Z
+    value: 2026-05-14T00:23:25Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2400000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:46:49Z
+    value: 2026-05-14T00:23:26Z
   - name: request-id
-    value: req_011Cb1P4BG2JjRRRKBa4u8th
+    value: req_011Cb1WRXmDPpEhsx2kyz5Hg
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-872c48e0c674b279888080555390583c-4dd613f50b66966c-01
+    value: 00-0c8b7edc936f403914a578a96254f5c8-fe6910bc2bdb6985-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '3853'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '3359'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb5338599054800-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01CmspqmRkbt6yT2n4kCPuAM","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1010,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":204,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5c10f9831d908-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01S2oetqdHRqbxaJMiGURiCT","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01Wxpe86TuZdCTPsAPmt8996","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1010,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":169,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -80,12 +80,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Wxpe86TuZdCTPsAPmt8996","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Wxpe86TuZdCTPsAPmt8996","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:46:54 GMT
+    value: Thu, 14 May 2026 00:23:31 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -97,50 +97,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '1999000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:46:53Z
+    value: 2026-05-14T00:23:30Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:46:54Z
+    value: 2026-05-14T00:23:31Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:46:52Z
+    value: 2026-05-14T00:23:29Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2399000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:46:53Z
+    value: 2026-05-14T00:23:30Z
   - name: request-id
-    value: req_011Cb1P4U8Y22gmgWxEbr9nN
+    value: req_011Cb1WRoDeVQr84U7yqnXv8
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-77d8002fed30ade01260c2dd12d6e5bd-6fdbc2c5f9490ef9-01
+    value: 00-288a35ab19f79fb7dd6a1073c9dc4a0b-97c0be74bb7683c2-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '2213'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '2404'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb5339e59eb4800-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_017ixbkPDagm2MPDGqYAcgiZ","type":"message","role":"assistant","content":[{"type":"text","text":"Let me look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","name":"database_lookup","input":{"query":"customer_policy"},"caller":{"type":"direct"}},{"type":"tool_use","id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","name":"database_lookup","input":{"query":"product_inventory"},"caller":{"type":"direct"}},{"type":"tool_use","id":"toolu_01N3mbMMFqPv5LPAurUFvbng","name":"database_lookup","input":{"query":"shipping_rates"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1379,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":145,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5c1255dd1d908-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01H9MRxyn7ZhoDoufUzCHEU2","type":"message","role":"assistant","content":[{"type":"text","text":"I''ll look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","name":"database_lookup","input":{"query":"customer_policy"},"caller":{"type":"direct"}},{"type":"tool_use","id":"toolu_019p412kieBsFUBXaCHhkP31","name":"database_lookup","input":{"query":"product_inventory"},"caller":{"type":"direct"}},{"type":"tool_use","id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","name":"database_lookup","input":{"query":"shipping_rates"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1309,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":145,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -152,12 +152,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}]}]},{"role":"assistant","content":[{"type":"text","text":"Let me look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","name":"database_lookup","input":{"query":"customer_policy"}},{"type":"tool_use","id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","name":"database_lookup","input":{"query":"product_inventory"}},{"type":"tool_use","id":"toolu_01N3mbMMFqPv5LPAurUFvbng","name":"database_lookup","input":{"query":"shipping_rates"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","content":[{"type":"text","text":"Customers can return items within 30 days with a receipt for a full refund."}]},{"type":"tool_result","tool_use_id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","content":[{"type":"text","text":"Product A: 15 units, Product B: 8 units, Product C: Out of stock"}]},{"type":"tool_result","tool_use_id":"toolu_01N3mbMMFqPv5LPAurUFvbng","content":[{"type":"text","text":"Standard shipping: $5.99, Express shipping: $15.99, Next-day shipping: $29.99"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Wxpe86TuZdCTPsAPmt8996","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Wxpe86TuZdCTPsAPmt8996","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}]}]},{"role":"assistant","content":[{"type":"text","text":"I''ll look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","name":"database_lookup","input":{"query":"customer_policy"}},{"type":"tool_use","id":"toolu_019p412kieBsFUBXaCHhkP31","name":"database_lookup","input":{"query":"product_inventory"}},{"type":"tool_use","id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","name":"database_lookup","input":{"query":"shipping_rates"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","content":[{"type":"text","text":"Customers can return items within 30 days with a receipt for a full refund."}]},{"type":"tool_result","tool_use_id":"toolu_019p412kieBsFUBXaCHhkP31","content":[{"type":"text","text":"Product A: 15 units, Product B: 8 units, Product C: Out of stock"}]},{"type":"tool_result","tool_use_id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","content":[{"type":"text","text":"Standard shipping: $5.99, Express shipping: $15.99, Next-day shipping: $29.99"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:46:58 GMT
+    value: Thu, 14 May 2026 00:23:36 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -169,50 +169,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '1999000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:46:55Z
+    value: 2026-05-14T00:23:33Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:46:58Z
+    value: 2026-05-14T00:23:35Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:46:54Z
+    value: 2026-05-14T00:23:31Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2399000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:46:55Z
+    value: 2026-05-14T00:23:33Z
   - name: request-id
-    value: req_011Cb1P4e2M3JicWmbzdHD1g
+    value: req_011Cb1WRyMqgtn7vtK2BHBi3
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-e26ef685a6a90ed671253a7374f0e0db-4ddb769dd99695da-01
+    value: 00-c2ca4148ec97a3b2d7366c6e2089e114-261a5a1da16e9191-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '4027'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '4564'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb533accedd4800-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_015r4YeX4yEQqPFRQ6CkPCaP","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01SJqZ5xYuvnWhFiV7nzqtfg","name":"think","input":{"thought":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: 1 × $25 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK — I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): $15.99 flat rate — but Product C is out of stock, so this is moot. I''ll still mention the rate.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: 1 × $25 = $25\n   - 2 × Product B: 2 × $40 = $80\n   - Standard shipping: $5.99\n   - Total: $25 + $80 + $5.99 = $110.99\n\nLet me calculate these with the calculator tool. I can do both simultaneously."},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1677,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":271,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5c134fea4d908-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_0177sUZa3DgntfbjmWKZo6hx","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01R3Bv7LtyZmm5wa6ThERgRi","name":"think","input":{"thought":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: $25 x 1 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK - I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): The shipping rates don''t seem to be per-item, they look like flat rates. Express shipping = $15.99. But wait, Product C is out of stock, so the exchange can''t happen anyway. I should still answer the question.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: $25\n   - 2 x Product B: $40 x 2 = $80\n   - Subtotal: $105\n   - Standard shipping: $5.99\n   - Total: $110.99\n\nLet me calculate these."},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1607,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":270,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -224,12 +224,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}]}]},{"role":"assistant","content":[{"type":"text","text":"Let me look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","name":"database_lookup","input":{"query":"customer_policy"}},{"type":"tool_use","id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","name":"database_lookup","input":{"query":"product_inventory"}},{"type":"tool_use","id":"toolu_01N3mbMMFqPv5LPAurUFvbng","name":"database_lookup","input":{"query":"shipping_rates"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","content":[{"type":"text","text":"Customers can return items within 30 days with a receipt for a full refund."}]},{"type":"tool_result","tool_use_id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","content":[{"type":"text","text":"Product A: 15 units, Product B: 8 units, Product C: Out of stock"}]},{"type":"tool_result","tool_use_id":"toolu_01N3mbMMFqPv5LPAurUFvbng","content":[{"type":"text","text":"Standard shipping: $5.99, Express shipping: $15.99, Next-day shipping: $29.99"}]}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01SJqZ5xYuvnWhFiV7nzqtfg","name":"think","input":{"thought":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: 1 × $25 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK — I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): $15.99 flat rate — but Product C is out of stock, so this is moot. I''ll still mention the rate.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: 1 × $25 = $25\n   - 2 × Product B: 2 × $40 = $80\n   - Standard shipping: $5.99\n   - Total: $25 + $80 + $5.99 = $110.99\n\nLet me calculate these with the calculator tool. I can do both simultaneously."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01SJqZ5xYuvnWhFiV7nzqtfg","content":[{"type":"text","text":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: 1 × $25 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK — I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): $15.99 flat rate — but Product C is out of stock, so this is moot. I''ll still mention the rate.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: 1 × $25 = $25\n   - 2 × Product B: 2 × $40 = $80\n   - Standard shipping: $5.99\n   - Total: $25 + $80 + $5.99 = $110.99\n\nLet me calculate these with the calculator tool. I can do both simultaneously."}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Wxpe86TuZdCTPsAPmt8996","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Wxpe86TuZdCTPsAPmt8996","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}]}]},{"role":"assistant","content":[{"type":"text","text":"I''ll look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","name":"database_lookup","input":{"query":"customer_policy"}},{"type":"tool_use","id":"toolu_019p412kieBsFUBXaCHhkP31","name":"database_lookup","input":{"query":"product_inventory"}},{"type":"tool_use","id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","name":"database_lookup","input":{"query":"shipping_rates"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","content":[{"type":"text","text":"Customers can return items within 30 days with a receipt for a full refund."}]},{"type":"tool_result","tool_use_id":"toolu_019p412kieBsFUBXaCHhkP31","content":[{"type":"text","text":"Product A: 15 units, Product B: 8 units, Product C: Out of stock"}]},{"type":"tool_result","tool_use_id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","content":[{"type":"text","text":"Standard shipping: $5.99, Express shipping: $15.99, Next-day shipping: $29.99"}]}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01R3Bv7LtyZmm5wa6ThERgRi","name":"think","input":{"thought":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: $25 x 1 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK - I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): The shipping rates don''t seem to be per-item, they look like flat rates. Express shipping = $15.99. But wait, Product C is out of stock, so the exchange can''t happen anyway. I should still answer the question.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: $25\n   - 2 x Product B: $40 x 2 = $80\n   - Subtotal: $105\n   - Standard shipping: $5.99\n   - Total: $110.99\n\nLet me calculate these."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01R3Bv7LtyZmm5wa6ThERgRi","content":[{"type":"text","text":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: $25 x 1 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK - I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): The shipping rates don''t seem to be per-item, they look like flat rates. Express shipping = $15.99. But wait, Product C is out of stock, so the exchange can''t happen anyway. I should still answer the question.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: $25\n   - 2 x Product B: $40 x 2 = $80\n   - Subtotal: $105\n   - Standard shipping: $5.99\n   - Total: $110.99\n\nLet me calculate these."}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:47:00 GMT
+    value: Thu, 14 May 2026 00:23:38 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -241,50 +241,50 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '1999000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:47:00Z
+    value: 2026-05-14T00:23:37Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:47:00Z
+    value: 2026-05-14T00:23:38Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:46:58Z
+    value: 2026-05-14T00:23:36Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2399000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:47:00Z
+    value: 2026-05-14T00:23:37Z
   - name: request-id
-    value: req_011Cb1P4x82bMjwQ86edaZjH
+    value: req_011Cb1WSKjh86hZEv76Hhh6d
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-faa915c43112bd28426b05493c355bf8-1bba36f87672776a-01
+    value: 00-bb62679cea5f128ce97f3b3fa60ca9dd-3aa6d3e6761a6579-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '1956'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '2745'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb533c73ac84800-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01AaCQKih9f3etTb1pEE9xmj","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_01HD5UH4DPkThXN5XRk6u42C","name":"calculator","input":{"expression":"1 * 25"},"caller":{"type":"direct"}},{"type":"tool_use","id":"toolu_01TMVH8UjuMMddowzXYhNCSu","name":"calculator","input":{"expression":"25 + (2 * 40) + 5.99"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2181,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":103,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5c152cc4dd908-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_011CQFs3Nx4ooiAdzXChw91m","type":"message","role":"assistant","content":[{"type":"text","text":"Now let me calculate the costs simultaneously!"},{"type":"tool_use","id":"toolu_016w6PLHYKAC113ZQ6av7zP4","name":"calculator","input":{"expression":"25 * 1"},"caller":{"type":"direct"}},{"type":"tool_use","id":"toolu_01TX9JZnQyVGCres7FTi1gra","name":"calculator","input":{"expression":"25 + (2 * 40) + 5.99"},"caller":{"type":"direct"}}],"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2109,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":112,"service_tier":"standard","inference_geo":"global"}}'
 ---
 when:
   path: /v1/messages
@@ -296,12 +296,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HVif5Yq65iJPcYZLwGhRrq","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each\n2. Whether Product C is in stock\n3. Express shipping cost for the exchanged items (2 units of Product C)\n4. Cost to buy Product A + 2 Product B with standard shipping\n\nI need to:\n- Look up customer policy (for return/refund info)\n- Look up product inventory (for Product C stock)\n- Look up shipping rates (for express and standard shipping)\n- Calculate the refund amount\n- Calculate the total cost for Product A + 2 Product B + standard shipping\n\nI can make all three database lookups simultaneously since they''re independent."}]}]},{"role":"assistant","content":[{"type":"text","text":"Let me look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","name":"database_lookup","input":{"query":"customer_policy"}},{"type":"tool_use","id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","name":"database_lookup","input":{"query":"product_inventory"}},{"type":"tool_use","id":"toolu_01N3mbMMFqPv5LPAurUFvbng","name":"database_lookup","input":{"query":"shipping_rates"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HqXeWMQ6Rxj99sowRgDLkd","content":[{"type":"text","text":"Customers can return items within 30 days with a receipt for a full refund."}]},{"type":"tool_result","tool_use_id":"toolu_016bt6q2Usaxg7J1mSPyGUbQ","content":[{"type":"text","text":"Product A: 15 units, Product B: 8 units, Product C: Out of stock"}]},{"type":"tool_result","tool_use_id":"toolu_01N3mbMMFqPv5LPAurUFvbng","content":[{"type":"text","text":"Standard shipping: $5.99, Express shipping: $15.99, Next-day shipping: $29.99"}]}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01SJqZ5xYuvnWhFiV7nzqtfg","name":"think","input":{"thought":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: 1 × $25 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK — I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): $15.99 flat rate — but Product C is out of stock, so this is moot. I''ll still mention the rate.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: 1 × $25 = $25\n   - 2 × Product B: 2 × $40 = $80\n   - Standard shipping: $5.99\n   - Total: $25 + $80 + $5.99 = $110.99\n\nLet me calculate these with the calculator tool. I can do both simultaneously."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01SJqZ5xYuvnWhFiV7nzqtfg","content":[{"type":"text","text":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: 1 × $25 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK — I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): $15.99 flat rate — but Product C is out of stock, so this is moot. I''ll still mention the rate.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: 1 × $25 = $25\n   - 2 × Product B: 2 × $40 = $80\n   - Standard shipping: $5.99\n   - Total: $25 + $80 + $5.99 = $110.99\n\nLet me calculate these with the calculator tool. I can do both simultaneously."}]}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01HD5UH4DPkThXN5XRk6u42C","name":"calculator","input":{"expression":"1 * 25"}},{"type":"tool_use","id":"toolu_01TMVH8UjuMMddowzXYhNCSu","name":"calculator","input":{"expression":"25 + (2 * 40) + 5.99"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01HD5UH4DPkThXN5XRk6u42C","content":[{"type":"text","text":"25.0"}]},{"type":"tool_result","tool_use_id":"toolu_01TMVH8UjuMMddowzXYhNCSu","content":[{"type":"text","text":"110.99"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
+  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. How much will I get refunded, and is Product C in stock? Also, how much would it cost to ship the exchanged items with express shipping? Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01Wxpe86TuZdCTPsAPmt8996","name":"think","input":{"thought":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01Wxpe86TuZdCTPsAPmt8996","content":[{"type":"text","text":"The customer has multiple questions:\n1. Refund for 1 unit of Product A at $25 each = $25 refund\n2. Is Product C in stock? - Need to check inventory\n3. Express shipping cost for the exchanged items (2 units of Product C) - Need shipping rates\n4. Cost to buy Product A + 2 Product B with standard shipping - Need shipping rates and calculate item cost\n\nI need to look up: customer_policy, product_inventory, and shipping_rates simultaneously since they''re all independent."}]}]},{"role":"assistant","content":[{"type":"text","text":"I''ll look up all the necessary information at the same time!"},{"type":"tool_use","id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","name":"database_lookup","input":{"query":"customer_policy"}},{"type":"tool_use","id":"toolu_019p412kieBsFUBXaCHhkP31","name":"database_lookup","input":{"query":"product_inventory"}},{"type":"tool_use","id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","name":"database_lookup","input":{"query":"shipping_rates"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_016qtbvR4fvoGMW4jtSwQWpT","content":[{"type":"text","text":"Customers can return items within 30 days with a receipt for a full refund."}]},{"type":"tool_result","tool_use_id":"toolu_019p412kieBsFUBXaCHhkP31","content":[{"type":"text","text":"Product A: 15 units, Product B: 8 units, Product C: Out of stock"}]},{"type":"tool_result","tool_use_id":"toolu_01KohXkiGgTYYfuY9TtQkhWH","content":[{"type":"text","text":"Standard shipping: $5.99, Express shipping: $15.99, Next-day shipping: $29.99"}]}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01R3Bv7LtyZmm5wa6ThERgRi","name":"think","input":{"thought":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: $25 x 1 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK - I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): The shipping rates don''t seem to be per-item, they look like flat rates. Express shipping = $15.99. But wait, Product C is out of stock, so the exchange can''t happen anyway. I should still answer the question.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: $25\n   - 2 x Product B: $40 x 2 = $80\n   - Subtotal: $105\n   - Standard shipping: $5.99\n   - Total: $110.99\n\nLet me calculate these."}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01R3Bv7LtyZmm5wa6ThERgRi","content":[{"type":"text","text":"Now I have all the info I need. Let me work through each question:\n\n1. Refund for 1 unit of Product A: $25 x 1 = $25. Policy says full refund within 30 days with receipt.\n\n2. Product C is OUT OF STOCK - I need to inform the customer.\n\n3. Express shipping for exchanged items (2 units of Product C): The shipping rates don''t seem to be per-item, they look like flat rates. Express shipping = $15.99. But wait, Product C is out of stock, so the exchange can''t happen anyway. I should still answer the question.\n\n4. Cost to buy Product A + 2 Product B with standard shipping:\n   - Product A: $25\n   - 2 x Product B: $40 x 2 = $80\n   - Subtotal: $105\n   - Standard shipping: $5.99\n   - Total: $110.99\n\nLet me calculate these."}]}]},{"role":"assistant","content":[{"type":"text","text":"Now let me calculate the costs simultaneously!"},{"type":"tool_use","id":"toolu_016w6PLHYKAC113ZQ6av7zP4","name":"calculator","input":{"expression":"25 * 1"}},{"type":"tool_use","id":"toolu_01TX9JZnQyVGCres7FTi1gra","name":"calculator","input":{"expression":"25 + (2 * 40) + 5.99"}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_016w6PLHYKAC113ZQ6av7zP4","content":[{"type":"text","text":"25.0"}]},{"type":"tool_result","tool_use_id":"toolu_01TX9JZnQyVGCres7FTi1gra","content":[{"type":"text","text":"110.99"}]}]}],"max_tokens":64000,"system":[{"type":"text","text":"You are a customer service agent for an online store.\n            You have access to several tools:\n\n            1. The ''think'' tool allows you to reason through complex problems step by step.\n               Use it when you need to analyze information or plan your response.\n\n            2. The ''calculator'' tool can perform arithmetic using expressions.\n\n            3. The ''database_lookup'' tool can retrieve information about store policies,\n               shipping rates, and product inventory.\n\n            When handling customer inquiries, use the ''think'' tool to analyze the situation\n            before responding or using other tools."}],"tools":[{"name":"think","description":"Use the tool to think about something. It will not obtain new information\n            or change the database, but just append the thought to the log. Use it when complex\n            reasoning or some cache memory is needed.","input_schema":{"type":"object","properties":{"thought":{"type":"string","description":"A thought to think about."}},"required":["thought"]}},{"name":"calculator","description":"Evaluate arithmetic expressions with +, -, *, /, and parentheses.","input_schema":{"type":"object","properties":{"expression":{"type":"string","description":"An arithmetic expression such as ''25 + (2 * 40)''"}},"required":["expression"]}},{"name":"database_lookup","description":"Look up customer_policy, shipping_rates, or product_inventory.","input_schema":{"type":"object","properties":{"query":{"type":"string","description":"One of customer_policy, shipping_rates, or product_inventory"}},"required":["query"]}}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:47:07 GMT
+    value: Thu, 14 May 2026 00:23:45 GMT
   - name: content-type
     value: application/json
   - name: transfer-encoding
@@ -313,47 +313,47 @@ then:
   - name: anthropic-ratelimit-input-tokens-remaining
     value: '1999000'
   - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-13T22:47:01Z
+    value: 2026-05-14T00:23:40Z
   - name: anthropic-ratelimit-output-tokens-limit
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-remaining
     value: '400000'
   - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-13T22:47:07Z
+    value: 2026-05-14T00:23:45Z
   - name: anthropic-ratelimit-requests-limit
     value: '4000'
   - name: anthropic-ratelimit-requests-remaining
     value: '3999'
   - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-13T22:47:00Z
+    value: 2026-05-14T00:23:39Z
   - name: anthropic-ratelimit-tokens-limit
     value: '2400000'
   - name: anthropic-ratelimit-tokens-remaining
     value: '2399000'
   - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-13T22:47:01Z
+    value: 2026-05-14T00:23:40Z
   - name: request-id
-    value: req_011Cb1P57kiHTTEJaehPzuFY
+    value: req_011Cb1WSXxu7X43vuhWpnf6M
   - name: strict-transport-security
     value: max-age=31536000; includeSubDomains; preload
   - name: anthropic-organization-id
-    value: 72af56b7-4756-4612-8117-abf3c67ce635
+    value: '[REDACTED]'
   - name: traceresponse
-    value: 00-2811978311834d5fef470b28327606b0-d860f8a24f698209-01
+    value: 00-f13b50ce80da99b8c2b7bee4a17a6da4-52f0cee97c0fa9a8-01
   - name: server
     value: cloudflare
   - name: x-envoy-upstream-service-time
-    value: '6585'
-  - name: x-robots-tag
-    value: none
-  - name: vary
-    value: Accept-Encoding
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: set-cookie
-    value: '[REDACTED]'
+    value: '6336'
   - name: content-security-policy
     value: default-src 'none'; frame-ancestors 'none'
+  - name: vary
+    value: Accept-Encoding
+  - name: set-cookie
+    value: '[REDACTED]'
+  - name: x-robots-tag
+    value: none
+  - name: cf-cache-status
+    value: DYNAMIC
   - name: cf-ray
-    value: 9fb533d55fa94800-LAX
-  body: '{"model":"claude-sonnet-4-6","id":"msg_01Pceg6kHTC4x4FWgYZU6sEb","type":"message","role":"assistant","content":[{"type":"text","text":"Here''s a full breakdown of everything you asked about:\n\n---\n\n### 💰 1. Refund for Returning 1 Unit of Product A\nPer our **30-day return policy**, you''re eligible for a **full refund of $25.00** for 1 unit of Product A (as long as you have your receipt and are within the 30-day window).\n\n---\n\n### 🔄 2. Exchange of 2 Units of Product B for Product C\nUnfortunately, **Product C is currently out of stock**. We''re unable to process the exchange at this time. We recommend checking back later or reaching out for a restock notification!\n\n---\n\n### 🚚 3. Express Shipping for Exchanged Items\nThe express shipping rate is a flat **$15.99**. However, since Product C is out of stock, this exchange cannot be fulfilled right now. Once Product C is back in stock, express shipping would cost **$15.99**.\n\n---\n\n### 🛒 4. Cost to Buy 1x Product A + 2x Product B with Standard Shipping\n| Item | Price |\n|---|---|\n| 1× Product A | $25.00 |\n| 2× Product B | $80.00 |\n| Standard Shipping | $5.99 |\n| **Total** | **$110.99** |\n\n---\n\n**Summary:**\n- ✅ **Refund:** $25.00 for 1× Product A\n- ❌ **Product C:** Out of stock — exchange not possible right now\n- 📦 **Express shipping (when available):** $15.99\n- 🛍️ **Product A + 2× Product B + Standard Shipping:** $110.99\n\nLet me know if there''s anything else I can help you with!"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2349,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":417,"service_tier":"standard","inference_geo":"global"}}'
+    value: 9fb5c164bf95d908-LAX
+  body: '{"model":"claude-sonnet-4-6","id":"msg_01QkqKa1TbrqtnSeoKCNdJWY","type":"message","role":"assistant","content":[{"type":"text","text":"Here''s a full breakdown of everything you asked about:\n\n---\n\n### 💰 1. Refund for Returning 1 Unit of Product A\nPer our policy, customers can return items **within 30 days with a receipt for a full refund**.\n- **Refund amount: $25.00** (1 × $25)\n\n---\n\n### 🔄 2. Exchanging 2 Units of Product B for Product C\n⚠️ **Unfortunately, Product C is currently out of stock.** The exchange cannot be processed at this time. You may want to wait until it''s back in stock or consider an alternative product.\n\n---\n\n### 🚚 3. Express Shipping for the Exchanged Items (2× Product C)\nAssuming Product C comes back in stock and the exchange goes through:\n- **Express shipping cost: $15.99** (flat rate)\n\n---\n\n### 🛒 4. Cost to Buy 1× Product A + 2× Product B with Standard Shipping\n| Item | Price |\n|------|-------|\n| 1× Product A | $25.00 |\n| 2× Product B | $80.00 |\n| Standard Shipping | $5.99 |\n| **Total** | **$110.99** |\n\n---\n\n### Summary\n| Question | Answer |\n|----------|--------|\n| Refund for 1× Product A | **$25.00** |\n| Product C in stock? | **❌ Out of stock** |\n| Express shipping (exchange) | **$15.99** |\n| Product A + 2× Product B + Standard Shipping | **$110.99** |\n\nIs there anything else I can help you with? 😊"}],"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2286,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":404,"service_tier":"standard","inference_geo":"global"}}'

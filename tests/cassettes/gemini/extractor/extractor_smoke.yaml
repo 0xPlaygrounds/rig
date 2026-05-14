@@ -24,7 +24,7 @@ then:
   - name: vary
     value: Origin,Accept-Encoding
   - name: date
-    value: Wed, 13 May 2026 23:31:31 GMT
+    value: Thu, 14 May 2026 00:15:28 GMT
   - name: server
     value: scaffolding on HTTPServer2
   - name: x-xss-protection
@@ -34,7 +34,7 @@ then:
   - name: x-content-type-options
     value: nosniff
   - name: server-timing
-    value: gfet4t7; dur=1052
+    value: gfet4t7; dur=1002
   - name: alt-svc
     value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
   - name: accept-ranges
@@ -56,7 +56,7 @@ then:
                     "first_name": "Ada"
                   }
                 },
-                "thoughtSignature": "CtIBAQw51seBPfow7uyxdaJQhp4i+qXDF2y7d7BNumKpX7PH73/OPTsPBgdEfQbcUyHUhbcWnjqMqVhf9B1VFgMnZNvkqL3hKcExm/Tftco/dO1TG55dCRH7XAmr2Oui/hPwsXyIqvvLp3ee8IympNuFbrzP52h79EmmMtvC8cxgYmvgmgPAA5hNyBllUzVcaHOfQ425BKsayBF+kus6LUKaH1oZGxLvtGnj3XZIHHEMe4KHXpAM8Z5qMBVm1WSVicAS+HqhJ2HLVdiIwgcP5iWfuA/O"
+                "thoughtSignature": "CsICAQw51sfOMe1NXmavuZE0ft8ZH97kti99tkmk6v2+IJjHT3Sj+j/MRh6Lbo4w4qFxVaa4fqNj9D2FPCBIYlFKI59rfyhqcWv5zbIJiAYM949VS6cTJnAJbQ6hENNUyYDjOUv/4wUHpCY3WpFeC6FEhV48ET8lXG1NCw7JZ/kYzkTksOyqhtaZhR1n6C/7wgNxqnk9O2jFTsvnp+05hrVm2uona+MrLewerCPjY1XYgKx7hzrrVMOQ+DChPRDPObMzcL+KzG1Qtn4meMLTI8KmoPsVA6lV2bcaq+3BTQASuWUVPIuKV/gaEmZVNcWzUlpH3cz5XHCC0CmYl2uYfTYb4Q2HHwIfj3kgvl7xMB85ufktvJEI5MN8vqaKLWAKFHz3837irb95wZIqq0s0ohpE6O0gLAumkIagvGhgRVz/PRF2fA=="
               }
             ],
             "role": "model"
@@ -69,16 +69,16 @@ then:
       "usageMetadata": {
         "promptTokenCount": 168,
         "candidatesTokenCount": 31,
-        "totalTokenCount": 253,
+        "totalTokenCount": 286,
         "promptTokensDetails": [
           {
             "modality": "TEXT",
             "tokenCount": 168
           }
         ],
-        "thoughtsTokenCount": 54,
+        "thoughtsTokenCount": 87,
         "serviceTier": "standard"
       },
       "modelVersion": "gemini-2.5-flash",
-      "responseId": "0gkFatOnOpLrz7IPh-Wc4Q0"
+      "responseId": "HxQFaqOdJc27qtsP34_wiAw"
     }

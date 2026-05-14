@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:12 GMT
+    value: Thu, 14 May 2026 00:31:21 GMT
   - name: content-type
     value: application/json
   - name: content-length
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb526ea4b66d7af-LAX
+    value: 9fb5cca6cdfb16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,7 +37,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '885'
+    value: '915'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -55,22 +55,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 0s
   - name: x-request-id
-    value: req_ddfc45de093e4407b206ad805c435ee9
+    value: req_cd279b01e7c3483c90e22386e2b3bb2e
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_039a400d4a9abe92006a04fd53aa908191b3b9a31669276ed9",
+      "id": "resp_074653e5a83a9ca2006a0517d835248194a54f268e5bc8e686",
       "object": "response",
-      "created_at": 1778711891,
+      "created_at": 1778718680,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711892,
+      "completed_at": 1778718680,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -81,11 +81,11 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "fc_039a400d4a9abe92006a04fd543ca0819181f937267886a80a",
+          "id": "fc_074653e5a83a9ca2006a0517d8d230819493a6296e8a7887b0",
           "type": "function_call",
           "status": "completed",
           "arguments": "{\"city\":\"Tokyo, Japan\"}",
-          "call_id": "call_UGKvuwbBrFlIyZNmEQjoZMLK",
+          "call_id": "call_FUA3OuUxKiUynQxL1Wu0e98R",
           "name": "get_weather"
         }
       ],
@@ -156,20 +156,20 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"type":"function_call","id":"fc_039a400d4a9abe92006a04fd543ca0819181f937267886a80a","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_UGKvuwbBrFlIyZNmEQjoZMLK","name":"get_weather","status":"completed"},{"type":"function_call_output","call_id":"call_UGKvuwbBrFlIyZNmEQjoZMLK","output":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed"}],"model":"gpt-5.2","max_output_tokens":4096,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true,"description":"Get the current weather for a city. Must be called for weather questions."}],"include":["reasoning.encrypted_content"],"reasoning":{"effort":"high"}}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}]},{"type":"function_call","id":"fc_074653e5a83a9ca2006a0517d8d230819493a6296e8a7887b0","arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_FUA3OuUxKiUynQxL1Wu0e98R","name":"get_weather","status":"completed"},{"type":"function_call_output","call_id":"call_FUA3OuUxKiUynQxL1Wu0e98R","output":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed"}],"model":"gpt-5.2","max_output_tokens":4096,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"],"additionalProperties":false},"strict":true,"description":"Get the current weather for a city. Must be called for weather questions."}],"include":["reasoning.encrypted_content"],"reasoning":{"effort":"high"}}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:14 GMT
+    value: Thu, 14 May 2026 00:31:23 GMT
   - name: content-type
     value: application/json
   - name: content-length
-    value: '2355'
+    value: '2340'
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb526f0ca8ad7af-LAX
+    value: 9fb5ccadad4016df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -187,7 +187,7 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '1637'
+    value: '1958'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
@@ -205,22 +205,22 @@ then:
   - name: x-ratelimit-reset-tokens
     value: 0s
   - name: x-request-id
-    value: req_41cde95b0a5e4876be5bba84eb2008a3
+    value: req_04a74f8176574db3a026d7ce84db710d
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |-
     {
-      "id": "resp_039a400d4a9abe92006a04fd54acb8819190e2a7d0c63c623e",
+      "id": "resp_074653e5a83a9ca2006a0517d94b848194b6b03998fdaf9c4c",
       "object": "response",
-      "created_at": 1778711892,
+      "created_at": 1778718681,
       "status": "completed",
       "background": false,
       "billing": {
         "payer": "developer"
       },
-      "completed_at": 1778711894,
+      "completed_at": 1778718682,
       "error": null,
       "frequency_penalty": 0.0,
       "incomplete_details": null,
@@ -231,7 +231,7 @@ then:
       "moderation": null,
       "output": [
         {
-          "id": "msg_039a400d4a9abe92006a04fd550d7881919322bfb080476b2c",
+          "id": "msg_074653e5a83a9ca2006a0517d9cd6481948d616ea6e0280a54",
           "type": "message",
           "status": "completed",
           "content": [
@@ -239,7 +239,7 @@ then:
               "type": "output_text",
               "annotations": [],
               "logprobs": [],
-              "text": "Current weather in **Tokyo, Japan**: **72\u00b0F (22\u00b0C)**, **sunny with light clouds**, **humidity 45%**, **wind 8 mph NW**.\n\n**What to pack:**\n- **Sunscreen:** Yes\u2014sunny conditions make it worthwhile.\n- **Umbrella:** Not necessary right now based on the current conditions (no rain indicated)."
+              "text": "Tokyo, Japan is currently **72\u00b0F (22\u00b0C)**, **sunny with light clouds**, **45% humidity**, with a **NW wind at 8 mph**.\n\n**What to pack:**\n- **Sunscreen:** Yes \u2014 it\u2019s bright and mostly sunny.\n- **Umbrella:** Not necessary based on current conditions (no rain indicated)."
             }
           ],
           "role": "assistant"
@@ -294,11 +294,11 @@ then:
         "input_tokens_details": {
           "cached_tokens": 0
         },
-        "output_tokens": 82,
+        "output_tokens": 77,
         "output_tokens_details": {
           "reasoning_tokens": 0
         },
-        "total_tokens": 288
+        "total_tokens": 283
       },
       "user": null,
       "metadata": {}

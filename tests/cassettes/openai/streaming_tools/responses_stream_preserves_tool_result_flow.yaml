@@ -11,7 +11,7 @@ then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:27 GMT
+    value: Thu, 14 May 2026 00:31:36 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: transfer-encoding
@@ -19,7 +19,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb5274d9febd7af-LAX
+    value: 9fb5cd091e7f16df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -37,38 +37,38 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '109'
+    value: '161'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
   - name: x-request-id
-    value: req_6f8b9d12b7054fc5a95ab9eaeb9ada31
+    value: req_afa71f22ba9c4919880d526470b8a6e5
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |+
     event: response.created
-    data: {"type":"response.created","response":{"id":"resp_0c04e4710e45d06a006a04fd6382bc8193bc323ef3e0927d6e","object":"response","created_at":1778711907,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+    data: {"type":"response.created","response":{"id":"resp_0d87bb021353a5ed006a0517e7f26c81a1bece6ed38b137694","object":"response","created_at":1778718695,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
 
     event: response.in_progress
-    data: {"type":"response.in_progress","response":{"id":"resp_0c04e4710e45d06a006a04fd6382bc8193bc323ef3e0927d6e","object":"response","created_at":1778711907,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+    data: {"type":"response.in_progress","response":{"id":"resp_0d87bb021353a5ed006a0517e7f26c81a1bece6ed38b137694","object":"response","created_at":1778718695,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
 
     event: response.output_item.added
-    data: {"type":"response.output_item.added","item":{"id":"fc_0c04e4710e45d06a006a04fd63fd5081939d344f4976acb2c6","type":"function_call","status":"in_progress","arguments":"","call_id":"call_coE2grLC4e1wxpBrtYklSCEh","name":"lookup_harbor_label"},"output_index":0,"sequence_number":2}
+    data: {"type":"response.output_item.added","item":{"id":"fc_0d87bb021353a5ed006a0517e8994081a1b9564fc24febe151","type":"function_call","status":"in_progress","arguments":"","call_id":"call_ZMOyf6Ra3wnDfQLjYTl8tbaZ","name":"lookup_harbor_label"},"output_index":0,"sequence_number":2}
 
     event: response.function_call_arguments.delta
-    data: {"type":"response.function_call_arguments.delta","delta":"{}","item_id":"fc_0c04e4710e45d06a006a04fd63fd5081939d344f4976acb2c6","obfuscation":"2DrWcV9WmTTM5s","output_index":0,"sequence_number":3}
+    data: {"type":"response.function_call_arguments.delta","delta":"{}","item_id":"fc_0d87bb021353a5ed006a0517e8994081a1b9564fc24febe151","obfuscation":"CcgQPhV22hZwqm","output_index":0,"sequence_number":3}
 
     event: response.function_call_arguments.done
-    data: {"type":"response.function_call_arguments.done","arguments":"{}","item_id":"fc_0c04e4710e45d06a006a04fd63fd5081939d344f4976acb2c6","output_index":0,"sequence_number":4}
+    data: {"type":"response.function_call_arguments.done","arguments":"{}","item_id":"fc_0d87bb021353a5ed006a0517e8994081a1b9564fc24febe151","output_index":0,"sequence_number":4}
 
     event: response.output_item.done
-    data: {"type":"response.output_item.done","item":{"id":"fc_0c04e4710e45d06a006a04fd63fd5081939d344f4976acb2c6","type":"function_call","status":"completed","arguments":"{}","call_id":"call_coE2grLC4e1wxpBrtYklSCEh","name":"lookup_harbor_label"},"output_index":0,"sequence_number":5}
+    data: {"type":"response.output_item.done","item":{"id":"fc_0d87bb021353a5ed006a0517e8994081a1b9564fc24febe151","type":"function_call","status":"completed","arguments":"{}","call_id":"call_ZMOyf6Ra3wnDfQLjYTl8tbaZ","name":"lookup_harbor_label"},"output_index":0,"sequence_number":5}
 
     event: response.completed
-    data: {"type":"response.completed","response":{"id":"resp_0c04e4710e45d06a006a04fd6382bc8193bc323ef3e0927d6e","object":"response","created_at":1778711907,"status":"completed","background":false,"completed_at":1778711908,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"fc_0c04e4710e45d06a006a04fd63fd5081939d344f4976acb2c6","type":"function_call","status":"completed","arguments":"{}","call_id":"call_coE2grLC4e1wxpBrtYklSCEh","name":"lookup_harbor_label"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":108,"input_tokens_details":{"cached_tokens":0},"output_tokens":14,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":122},"user":null,"metadata":{}},"sequence_number":6}
+    data: {"type":"response.completed","response":{"id":"resp_0d87bb021353a5ed006a0517e7f26c81a1bece6ed38b137694","object":"response","created_at":1778718695,"status":"completed","background":false,"completed_at":1778718696,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"fc_0d87bb021353a5ed006a0517e8994081a1b9564fc24febe151","type":"function_call","status":"completed","arguments":"{}","call_id":"call_ZMOyf6Ra3wnDfQLjYTl8tbaZ","name":"lookup_harbor_label"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":108,"input_tokens_details":{"cached_tokens":0},"output_tokens":14,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":122},"user":null,"metadata":{}},"sequence_number":6}
 
 ---
 when:
@@ -79,12 +79,12 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."}]},{"type":"function_call","id":"fc_0c04e4710e45d06a006a04fd63fd5081939d344f4976acb2c6","arguments":"{}","call_id":"call_coE2grLC4e1wxpBrtYklSCEh","name":"lookup_harbor_label","status":"completed"},{"type":"function_call_output","call_id":"call_coE2grLC4e1wxpBrtYklSCEh","output":"crimson-harbor","status":"completed"}],"model":"gpt-4o","stream":true,"tools":[{"type":"function","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true,"description":"Return the alpha signal marker."}]}'
+  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."}]},{"type":"function_call","id":"fc_0d87bb021353a5ed006a0517e8994081a1b9564fc24febe151","arguments":"{}","call_id":"call_ZMOyf6Ra3wnDfQLjYTl8tbaZ","name":"lookup_harbor_label","status":"completed"},{"type":"function_call_output","call_id":"call_ZMOyf6Ra3wnDfQLjYTl8tbaZ","output":"crimson-harbor","status":"completed"}],"model":"gpt-4o","stream":true,"tools":[{"type":"function","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true,"description":"Return the alpha signal marker."}]}'
 then:
   status: 200
   header:
   - name: date
-    value: Wed, 13 May 2026 22:38:28 GMT
+    value: Thu, 14 May 2026 00:31:37 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: transfer-encoding
@@ -92,7 +92,7 @@ then:
   - name: connection
     value: keep-alive
   - name: cf-ray
-    value: 9fb527521b54d7af-LAX
+    value: 9fb5cd0f2cc516df-LAX
   - name: cf-cache-status
     value: DYNAMIC
   - name: server
@@ -110,75 +110,75 @@ then:
   - name: openai-organization
     value: '[REDACTED]'
   - name: openai-processing-ms
-    value: '116'
+    value: '365'
   - name: openai-project
     value: '[REDACTED]'
   - name: openai-version
     value: 2020-10-01
   - name: x-request-id
-    value: req_e833e1cc2c7247658d45b7148a1f3083
+    value: req_ab07b413589e471090e4dfed041712ca
   - name: set-cookie
     value: '[REDACTED]'
   - name: alt-svc
     value: h3=":443"; ma=86400
   body: |+
     event: response.created
-    data: {"type":"response.created","response":{"id":"resp_0c04e4710e45d06a006a04fd643cb48193885e2089f3712d7b","object":"response","created_at":1778711908,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+    data: {"type":"response.created","response":{"id":"resp_0d87bb021353a5ed006a0517e926d081a18e086cdd8814cc42","object":"response","created_at":1778718697,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
 
     event: response.in_progress
-    data: {"type":"response.in_progress","response":{"id":"resp_0c04e4710e45d06a006a04fd643cb48193885e2089f3712d7b","object":"response","created_at":1778711908,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+    data: {"type":"response.in_progress","response":{"id":"resp_0d87bb021353a5ed006a0517e926d081a18e086cdd8814cc42","object":"response","created_at":1778718697,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
 
     event: response.output_item.added
-    data: {"type":"response.output_item.added","item":{"id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+    data: {"type":"response.output_item.added","item":{"id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
 
     event: response.content_part.added
-    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+    data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"MPVQm0c7O4oZf","output_index":0,"sequence_number":4}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"The","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"f65UVpwx0rtQs","output_index":0,"sequence_number":4}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" alpha","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"mHkoH6Kbnb","output_index":0,"sequence_number":5}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" alpha","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"GQ5MHvvGAW","output_index":0,"sequence_number":5}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" signal","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"eHk6TdWb4","output_index":0,"sequence_number":6}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" signal","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"t4BjT747L","output_index":0,"sequence_number":6}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" marker","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"IF1p3JLOI","output_index":0,"sequence_number":7}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" marker","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"GQVmdZUU6","output_index":0,"sequence_number":7}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"GUePHQm8ZLDJz","output_index":0,"sequence_number":8}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" is","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"HWxeiiTyoEwzP","output_index":0,"sequence_number":8}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":" \"","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"tSlkts35czxfAf","output_index":0,"sequence_number":9}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":" \"","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"bfonObvFNORWtq","output_index":0,"sequence_number":9}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"cr","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"FAWm94vTxE2DhM","output_index":0,"sequence_number":10}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"cr","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"HdaBGaF6wdXOIA","output_index":0,"sequence_number":10}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"imson","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"mgCSn8liJW0","output_index":0,"sequence_number":11}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"imson","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"m81Ypv3EEys","output_index":0,"sequence_number":11}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"-h","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"hRIKMCktnHgi1E","output_index":0,"sequence_number":12}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"-h","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"rlHph7yZnDxqMc","output_index":0,"sequence_number":12}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"ar","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"SJblcVcM0do1HP","output_index":0,"sequence_number":13}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"ar","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"ybzs5pEyofQeJ3","output_index":0,"sequence_number":13}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":"bor","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"Pdv2Az1rd7SHB","output_index":0,"sequence_number":14}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":"bor","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"C3YkOtRK8CkNS","output_index":0,"sequence_number":14}
 
     event: response.output_text.delta
-    data: {"type":"response.output_text.delta","content_index":0,"delta":".\"","item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"obfuscation":"gCWaESSTJdcEtm","output_index":0,"sequence_number":15}
+    data: {"type":"response.output_text.delta","content_index":0,"delta":".\"","item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"obfuscation":"FceztXJYXx2IhN","output_index":0,"sequence_number":15}
 
     event: response.output_text.done
-    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","logprobs":[],"output_index":0,"sequence_number":16,"text":"The alpha signal marker is \"crimson-harbor.\""}
+    data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","logprobs":[],"output_index":0,"sequence_number":16,"text":"The alpha signal marker is \"crimson-harbor.\""}
 
     event: response.content_part.done
-    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The alpha signal marker is \"crimson-harbor.\""},"sequence_number":17}
+    data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"The alpha signal marker is \"crimson-harbor.\""},"sequence_number":17}
 
     event: response.output_item.done
-    data: {"type":"response.output_item.done","item":{"id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The alpha signal marker is \"crimson-harbor.\""}],"role":"assistant"},"output_index":0,"sequence_number":18}
+    data: {"type":"response.output_item.done","item":{"id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The alpha signal marker is \"crimson-harbor.\""}],"role":"assistant"},"output_index":0,"sequence_number":18}
 
     event: response.completed
-    data: {"type":"response.completed","response":{"id":"resp_0c04e4710e45d06a006a04fd643cb48193885e2089f3712d7b","object":"response","created_at":1778711908,"status":"completed","background":false,"completed_at":1778711908,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"msg_0c04e4710e45d06a006a04fd64966881938564d9b26d8fccab","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The alpha signal marker is \"crimson-harbor.\""}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":138,"input_tokens_details":{"cached_tokens":0},"output_tokens":14,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":152},"user":null,"metadata":{}},"sequence_number":19}
+    data: {"type":"response.completed","response":{"id":"resp_0d87bb021353a5ed006a0517e926d081a18e086cdd8814cc42","object":"response","created_at":1778718697,"status":"completed","background":false,"completed_at":1778718698,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4o-2024-08-06","moderation":null,"output":[{"id":"msg_0d87bb021353a5ed006a0517ea1d0481a19d89d7a59535c319","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"The alpha signal marker is \"crimson-harbor.\""}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"type":"function","description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"type":"object","properties":{},"required":[],"additionalProperties":false},"strict":true}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":138,"input_tokens_details":{"cached_tokens":0},"output_tokens":14,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":152},"user":null,"metadata":{}},"sequence_number":19}
 
