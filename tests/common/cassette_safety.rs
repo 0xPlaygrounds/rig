@@ -3,7 +3,6 @@
 use std::path::Path;
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
-const REWRITE_ENV: &str = "RIG_REWRITE_CASSETTES";
 
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {
@@ -38,13 +37,6 @@ fn scan_dir(dir: &Path, failures: &mut Vec<String>) {
 
         let contents =
             std::fs::read_to_string(&path).expect("cassette should be readable as UTF-8");
-        let scrubbed = crate::cassettes::scrub_cassette_contents(&contents);
-
-        if std::env::var_os(REWRITE_ENV).is_some() && scrubbed != contents {
-            std::fs::write(&path, scrubbed).expect("scrubbed cassette should be writable");
-            continue;
-        }
-
         failures.extend(crate::cassettes::cassette_safety_failures(&path, &contents));
     }
 }

@@ -74,13 +74,9 @@ the shorter test name is ambiguous.
 
 ## Cassette Safety
 
-After recording or reviewing cassette changes, run the provider safety checks:
-
-```bash
-cargo test -p rig --test openai cassette_safety -- --nocapture
-cargo test -p rig --test anthropic cassette_safety -- --nocapture
-cargo test -p rig --test gemini cassette_safety -- --nocapture
-```
+Record mode scrubs and safety-checks cassette contents before writing fixtures.
+The committed cassette safety tests enforce the same scrubbed form during normal
+test runs.
 
 Review cassette diffs for:
 

@@ -173,6 +173,13 @@ impl ProviderCassette {
             .expect("provider cassette should contain at least one interaction");
         let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
         let redacted = scrub_cassette_contents(&yaml);
+        let failures = cassette_safety_failures(&self.cassette_path, &redacted);
+        assert!(
+            failures.is_empty(),
+            "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
+            self.cassette_path.display(),
+            failures.join("\n")
+        );
 
         if let Some(parent) = self.cassette_path.parent() {
             tokio::fs::create_dir_all(parent)
