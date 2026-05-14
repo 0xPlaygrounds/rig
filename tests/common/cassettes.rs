@@ -72,8 +72,7 @@ pub(crate) struct CassettePolicy {
 
 impl CassettePolicy {
     fn for_scenario(provider: &str, scenario: &str) -> Self {
-        let mut policy = Self::default();
-        policy.required_request_headers = match provider {
+        let required_request_headers = match provider {
             "openai" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
             "gemini" if scenario.starts_with("interactions_api/") => {
@@ -82,12 +81,17 @@ impl CassettePolicy {
             _ => NO_REQUIRED_REQUEST_HEADERS,
         };
 
-        // This scenario intentionally fans out concurrent equivalent provider requests.
-        if provider == "openai" && scenario.starts_with("multi_extract/") {
-            policy.replay_matching = ReplayMatching::Unordered;
-        }
+        let replay_matching = if provider == "openai" && scenario.starts_with("multi_extract/") {
+            ReplayMatching::Unordered
+        } else {
+            ReplayMatching::Ordered
+        };
 
-        policy
+        Self {
+            required_request_headers,
+            replay_matching,
+            ..Self::default()
+        }
     }
 
     fn is_sensitive_header(self, name: &str) -> bool {
@@ -315,14 +319,13 @@ impl ProviderCassette {
     }
 
     pub(crate) async fn finish_after_test(self, test_result: Result<(), PanicPayload>) {
-        let finish_result = self.finish_catching_unwind().await;
-
-        match (test_result, finish_result) {
-            (Ok(()), Ok(())) => {}
-            (Ok(()), Err(payload)) => resume_unwind(payload),
-            (Err(payload), Ok(())) => resume_unwind(payload),
-            (Err(payload), Err(finish_payload)) => {
-                report_suppressed_finish_panic(&finish_payload);
+        match test_result {
+            Ok(()) => {
+                if let Err(payload) = self.finish_catching_unwind().await {
+                    resume_unwind(payload);
+                }
+            }
+            Err(payload) => {
                 resume_unwind(payload);
             }
         }
@@ -332,43 +335,20 @@ impl ProviderCassette {
         self,
         test_result: Result<Result<(), E>, PanicPayload>,
     ) -> Result<(), E> {
-        let finish_result = self.finish_catching_unwind().await;
-
-        match (test_result, finish_result) {
-            (Ok(Ok(())), Ok(())) => Ok(()),
-            (Ok(Ok(())), Err(payload)) => resume_unwind(payload),
-            (Ok(Err(error)), Ok(())) => Err(error),
-            (Ok(Err(error)), Err(finish_payload)) => {
-                report_suppressed_finish_panic(&finish_payload);
-                Err(error)
+        match test_result {
+            Ok(Ok(())) => {
+                if let Err(payload) = self.finish_catching_unwind().await {
+                    resume_unwind(payload);
+                }
+                Ok(())
             }
-            (Err(payload), Ok(())) => resume_unwind(payload),
-            (Err(payload), Err(finish_payload)) => {
-                report_suppressed_finish_panic(&finish_payload);
-                resume_unwind(payload);
-            }
+            Ok(Err(error)) => Err(error),
+            Err(payload) => resume_unwind(payload),
         }
     }
 
     async fn finish_catching_unwind(self) -> Result<(), PanicPayload> {
         AssertUnwindSafe(self.finish()).catch_unwind().await
-    }
-}
-
-fn report_suppressed_finish_panic(payload: &PanicPayload) {
-    eprintln!(
-        "cassette.finish() also panicked after the test body failed; preserving original test failure. Secondary cassette failure: {}",
-        panic_payload_message(payload.as_ref())
-    );
-}
-
-fn panic_payload_message(payload: &(dyn Any + Send + 'static)) -> String {
-    if let Some(message) = payload.downcast_ref::<&'static str>() {
-        (*message).to_string()
-    } else if let Some(message) = payload.downcast_ref::<String>() {
-        message.clone()
-    } else {
-        "<non-string panic payload>".to_string()
     }
 }
 
@@ -1017,7 +997,7 @@ impl UpstreamBase {
     }
 }
 
-fn cassette_path(provider: &str, scenario: &str) -> PathBuf {
+pub(crate) fn cassette_path(provider: &str, scenario: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push(CASSETTE_ROOT);
     path.push(provider);
@@ -1974,8 +1954,10 @@ mod tests {
 
     #[test]
     fn replay_matching_can_be_explicitly_unordered() {
-        let mut policy = CassettePolicy::default();
-        policy.replay_matching = ReplayMatching::Unordered;
+        let policy = CassettePolicy {
+            replay_matching: ReplayMatching::Unordered,
+            ..CassettePolicy::default()
+        };
         let request = incoming_request("/v1/second", Bytes::new());
         let interactions = vec![
             ReplayInteraction {

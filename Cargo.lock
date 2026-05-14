@@ -9152,6 +9152,7 @@ dependencies = [
  "serde_yaml",
  "sqlite-vec",
  "sqlx",
+ "syn 2.0.117",
  "testcontainers",
  "thiserror 2.0.18",
  "tokio",
