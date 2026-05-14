@@ -1,7 +1,7 @@
 //! Live OpenAI coverage for provider file IDs in generic document messages.
 //!
 //! Run with:
-//! `cargo test -p rig --test openai openai::document_file_id -- --ignored --nocapture --test-threads=1`
+//! `cargo test -p rig --test openai openai::live::document_file_id -- --ignored --nocapture --test-threads=1`
 
 use futures::FutureExt;
 use rig::OneOrMany;

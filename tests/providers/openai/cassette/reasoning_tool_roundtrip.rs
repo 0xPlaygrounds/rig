@@ -1,7 +1,7 @@
 //! OpenAI reasoning-enabled tool roundtrip tests.
 //!
-//! Run only these cases with:
-//! `cargo test -p rig --test openai openai::reasoning_tool_roundtrip::streaming -- --ignored --nocapture`
+//! Run cassette tests in replay mode by default, or set
+//! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;

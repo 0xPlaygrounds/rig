@@ -1,7 +1,7 @@
-//! Anthropic live regression coverage for empty `end_turn` tool follow-ups.
+//! Anthropic cassette regression coverage for empty `end_turn` tool follow-ups.
 //!
-//! Run only these ignored cases with:
-//! `cargo test -p rig --test anthropic anthropic::empty_end_turn -- --ignored --nocapture --test-threads=1`
+//! Run cassette tests in replay mode by default, or set
+//! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use std::sync::{
     Arc,

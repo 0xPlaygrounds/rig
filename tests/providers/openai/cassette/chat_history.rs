@@ -1,7 +1,7 @@
 //! OpenAI high-level Chat history regression tests.
 //!
-//! Run only this case with:
-//! `cargo test -p rig --test openai openai::chat_history::chat_appends_reasoning_tool_turns_to_caller_history -- --ignored --nocapture`
+//! Run cassette tests in replay mode by default, or set
+//! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;

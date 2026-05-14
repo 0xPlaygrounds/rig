@@ -1,7 +1,7 @@
 //! Anthropic reasoning roundtrip tests.
 //!
-//! Run only these cases with:
-//! `cargo test -p rig --test anthropic anthropic::reasoning_roundtrip::streaming -- --ignored --nocapture`
+//! Run cassette tests in replay mode by default, or set
+//! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::client::CompletionClient;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;

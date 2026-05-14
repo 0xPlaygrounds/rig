@@ -1,8 +1,7 @@
 //! Gemini high-level Chat history regression tests.
 //!
-//! Run only this case with:
-//! `cargo test -p rig --test gemini gemini::chat_history::chat_appends_reasoning_tool_turns_to_caller_history -- --ignored --nocapture`
-//! `cargo test -p rig --test gemini gemini::chat_history::five_turn_chat_history_stress_preserves_context_and_tools -- --ignored --nocapture`
+//! Run cassette tests in replay mode by default, or set
+//! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
