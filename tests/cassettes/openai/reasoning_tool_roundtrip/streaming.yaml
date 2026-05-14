@@ -86,245 +86,239 @@ then:
     data: {"content_index":0,"delta":"Tokyo","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" is","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Japan","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" currently","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" is","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" currently","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"72","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"°F","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"72","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" (","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"°F","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"22","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" (","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"°C","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"22","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":")**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"°C","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":")**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"ny","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" with","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"ny","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" light","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" with","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" clouds","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" light","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"**,","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" clouds","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"**,","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"45","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"%","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"45","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" humidity","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"%","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"**,","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" humidity","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" with","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"**,","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" with","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"light","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" NW","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"NW","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" wind","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" wind","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" around","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" around","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"8","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"8","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" mph","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" mph","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".\n\n","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".\n\n","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"What","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"Packing","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" to","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" suggestion","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" pack","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":":**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":":","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Bring","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":44,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"**\n","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":44,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":45,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":45,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"s","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":46,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":46,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"uns","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":47,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"S","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":47,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"creen","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":48,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"uns","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":48,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":49,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"creen","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":49,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" (","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":50,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":":**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":50,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"it","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":51,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" Yes","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":51,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"’s","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":52,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" —","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":52,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" bright","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":53,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" with","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":53,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"/s","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":54,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" sunny","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":54,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"unny","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":55,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" conditions","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":55,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":").","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":56,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":56,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" An","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_61","output_index":0,"sequence_number":57,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" it","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_61","output_index":0,"sequence_number":57,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":58,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"’s","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":58,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"umbre","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":59,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":59,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"lla","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":60,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" good","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":60,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" isn","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":61,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" idea","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":61,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"’t","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":62,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".\n","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":62,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" necessary","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":63,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":63,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":64,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" **","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":64,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" based","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_69","output_index":0,"sequence_number":65,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"Umb","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_69","output_index":0,"sequence_number":65,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" on","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":66,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"rella","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":66,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" current","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":67,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":":**","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":67,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" conditions","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":68,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" Not","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":68,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":69,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" necessary","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":69,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" unless","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_74","output_index":0,"sequence_number":70,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" based","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_74","output_index":0,"sequence_number":70,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" you","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_75","output_index":0,"sequence_number":71,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" on","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_75","output_index":0,"sequence_number":71,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" want","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_76","output_index":0,"sequence_number":72,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_76","output_index":0,"sequence_number":72,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_77","output_index":0,"sequence_number":73,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" current","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_77","output_index":0,"sequence_number":73,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" just","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_78","output_index":0,"sequence_number":74,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" conditions","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_78","output_index":0,"sequence_number":74,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"-in","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_79","output_index":0,"sequence_number":75,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" (","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_79","output_index":0,"sequence_number":75,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"-case","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_80","output_index":0,"sequence_number":76,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"no","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_80","output_index":0,"sequence_number":76,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" item","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_81","output_index":0,"sequence_number":77,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" rain","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_81","output_index":0,"sequence_number":77,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" for","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_82","output_index":0,"sequence_number":78,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" indicated","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_82","output_index":0,"sequence_number":78,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" later","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_83","output_index":0,"sequence_number":79,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" changes","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_84","output_index":0,"sequence_number":80,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_85","output_index":0,"sequence_number":81,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":").","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_83","output_index":0,"sequence_number":79,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":82,"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **NW wind around 8 mph**.\n\n**Packing suggestion:** Bring **sunscreen** (it’s bright/sunny). An **umbrella isn’t necessary** based on current conditions, unless you want a just-in-case item for later changes.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":80,"text":"Tokyo is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **light NW wind around 8 mph**.\n\n**What to pack:**\n- **Sunscreen:** Yes — with sunny conditions, it’s a good idea.\n- **Umbrella:** Not necessary based on the current conditions (no rain indicated).","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **NW wind around 8 mph**.\n\n**Packing suggestion:** Bring **sunscreen** (it’s bright/sunny). An **umbrella isn’t necessary** based on current conditions, unless you want a just-in-case item for later changes.","type":"output_text"},"sequence_number":83,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"Tokyo is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **light NW wind around 8 mph**.\n\n**What to pack:**\n- **Sunscreen:** Yes — with sunny conditions, it’s a good idea.\n- **Umbrella:** Not necessary based on the current conditions (no rain indicated).","type":"output_text"},"sequence_number":81,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **NW wind around 8 mph**.\n\n**Packing suggestion:** Bring **sunscreen** (it’s bright/sunny). An **umbrella isn’t necessary** based on current conditions, unless you want a just-in-case item for later changes.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":84,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Tokyo is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **light NW wind around 8 mph**.\n\n**What to pack:**\n- **Sunscreen:** Yes — with sunny conditions, it’s a good idea.\n- **Umbrella:** Not necessary based on the current conditions (no rain indicated).","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":82,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5.2-2025-12-11","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **NW wind around 8 mph**.\n\n**Packing suggestion:** Bring **sunscreen** (it’s bright/sunny). An **umbrella isn’t necessary** based on current conditions, unless you want a just-in-case item for later changes.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":206,"input_tokens_details":{"cached_tokens":0},"output_tokens":82,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":288},"user":null},"sequence_number":85,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"max_tool_calls":null,"metadata":{},"model":"gpt-5.2-2025-12-11","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Tokyo is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, with a **light NW wind around 8 mph**.\n\n**What to pack:**\n- **Sunscreen:** Yes — with sunny conditions, it’s a good idea.\n- **Umbrella:** Not necessary based on the current conditions (no rain indicated).","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":"high","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":206,"input_tokens_details":{"cached_tokens":0},"output_tokens":80,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":286},"user":null},"sequence_number":83,"type":"response.completed"}
 

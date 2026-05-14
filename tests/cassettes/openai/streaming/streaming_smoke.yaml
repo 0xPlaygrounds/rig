@@ -45,7 +45,7 @@ then:
     data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Moon","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" moon","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
     data: {"content_index":0,"delta":" passes","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
@@ -66,7 +66,7 @@ then:
     data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
     data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
@@ -90,7 +90,7 @@ then:
     data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
     data: {"content_index":0,"delta":"'s","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
@@ -108,182 +108,152 @@ then:
     data: {"content_index":0,"delta":" alignment","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" can","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" causes","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" result","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" in","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" shadow","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" total","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" moon","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" partial","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" to","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" fall","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" or","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" on","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" ann","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"ular","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" Earth","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" eclipse","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" creating","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" depending","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":44,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":44,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" on","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":45,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" temporary","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":45,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":46,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" dark","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":46,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" positions","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":47,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"ening","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":47,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":48,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":48,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" distances","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":49,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":49,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":50,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" day","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":50,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":51,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":51,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Earth","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":52,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" Solar","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":52,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":53,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" eclips","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":53,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Moon","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":54,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"es","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":54,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":55,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" can","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":55,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":56,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" be","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":56,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":57,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" total","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":57,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":58,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":58,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" During","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":59,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" partial","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":59,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":60,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":60,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" total","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":61,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" or","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":61,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" solar","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":62,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" ann","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":62,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" eclipse","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":63,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"ular","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":63,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
     data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_61","output_index":0,"sequence_number":64,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":65,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" depending","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":65,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Sun","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":66,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" on","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":66,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" is","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":67,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":67,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" completely","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":68,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" alignment","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":68,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" obsc","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":69,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":69,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"ured","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":70,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" distances","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":70,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" by","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":71,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":71,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
     data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_69","output_index":0,"sequence_number":72,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" Moon","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":73,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" celestial","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":73,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":74,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" bodies","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":74,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" casting","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":75,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" involved","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":75,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":76,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" shadow","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_74","output_index":0,"sequence_number":77,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" on","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_75","output_index":0,"sequence_number":78,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" a","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_76","output_index":0,"sequence_number":79,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" specific","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_77","output_index":0,"sequence_number":80,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" area","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_78","output_index":0,"sequence_number":81,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_79","output_index":0,"sequence_number":82,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_80","output_index":0,"sequence_number":83,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" Earth's","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_81","output_index":0,"sequence_number":84,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":" surface","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_82","output_index":0,"sequence_number":85,"type":"response.output_text.delta"}
-
-    event: response.output_text.delta
-    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_83","output_index":0,"sequence_number":86,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":76,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":87,"text":"A solar eclipse occurs when the Moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment can result in a total, partial, or annular eclipse, depending on the positions and distances of the Earth, Moon, and Sun. During a total solar eclipse, the Sun is completely obscured by the Moon, casting a shadow on a specific area of the Earth's surface.","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":77,"text":"A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the shadow of the moon to fall on the Earth, creating a temporary darkening of the day. Solar eclipses can be total, partial, or annular, depending on the alignment and distances of the celestial bodies involved.","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the Moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment can result in a total, partial, or annular eclipse, depending on the positions and distances of the Earth, Moon, and Sun. During a total solar eclipse, the Sun is completely obscured by the Moon, casting a shadow on a specific area of the Earth's surface.","type":"output_text"},"sequence_number":88,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the shadow of the moon to fall on the Earth, creating a temporary darkening of the day. Solar eclipses can be total, partial, or annular, depending on the alignment and distances of the celestial bodies involved.","type":"output_text"},"sequence_number":78,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the Moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment can result in a total, partial, or annular eclipse, depending on the positions and distances of the Earth, Moon, and Sun. During a total solar eclipse, the Sun is completely obscured by the Moon, casting a shadow on a specific area of the Earth's surface.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":89,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the shadow of the moon to fall on the Earth, creating a temporary darkening of the day. Solar eclipses can be total, partial, or annular, depending on the alignment and distances of the celestial bodies involved.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":79,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the Moon passes between the Earth and the Sun, blocking all or part of the Sun's light. This alignment can result in a total, partial, or annular eclipse, depending on the positions and distances of the Earth, Moon, and Sun. During a total solar eclipse, the Sun is completely obscured by the Moon, casting a shadow on a specific area of the Earth's surface.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":35,"input_tokens_details":{"cached_tokens":0},"output_tokens":84,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":119},"user":null},"sequence_number":90,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"A solar eclipse occurs when the moon passes between the Earth and the sun, blocking all or part of the sun's light. This alignment causes the shadow of the moon to fall on the Earth, creating a temporary darkening of the day. Solar eclipses can be total, partial, or annular, depending on the alignment and distances of the celestial bodies involved.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":35,"input_tokens_details":{"cached_tokens":0},"output_tokens":74,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":109},"user":null},"sequence_number":80,"type":"response.completed"}
 

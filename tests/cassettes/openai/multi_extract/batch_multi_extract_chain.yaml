@@ -7,47 +7,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Screw you Putin!","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"topics\":[\"Putin\"]}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":153,"input_tokens_details":{"cached_tokens":0},"output_tokens":8,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":161},"user":null}'
----
-when:
-  path: /v1/responses
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
   body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m going to the store to buy some milk.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"topics\":[\"store\",\"buy\",\"milk\"]}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":158,"input_tokens_details":{"cached_tokens":0},"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":169},"user":null}'
----
-when:
-  path: /v1/responses
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m going to the store to buy some milk.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"names\":[]}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":158,"input_tokens_details":{"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":163},"user":null}'
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"topics\":[\"store\",\"buy\",\"milk\"]}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":158,"input_tokens_details":{"cached_tokens":0},"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":169},"user":null}'
 ---
 when:
   path: /v1/responses
@@ -64,58 +30,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"names\":[\"Putin\"]}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":153,"input_tokens_details":{"cached_tokens":0},"output_tokens":8,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":161},"user":null}'
----
-when:
-  path: /v1/responses
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I love my dog, but I hate my cat.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"sentiment\":-0.5,\"confidence\":0.8}","call_id":"call_REDACTED_5","id":"fc_REDACTED_5","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":165,"input_tokens_details":{"cached_tokens":0},"output_tokens":16,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":181},"user":null}'
----
-when:
-  path: /v1/responses
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m going to the store to buy some milk.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_6","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"sentiment\":0.0,\"confidence\":0.0}","call_id":"call_REDACTED_6","id":"fc_REDACTED_6","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":164,"input_tokens_details":{"cached_tokens":0},"output_tokens":15,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":179},"user":null}'
----
-when:
-  path: /v1/responses
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I love my dog, but I hate my cat.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"topics\":[\"dog\",\"cat\",\"love\",\"hate\"]}","call_id":"call_REDACTED_7","id":"fc_REDACTED_7","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":159,"input_tokens_details":{"cached_tokens":0},"output_tokens":13,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":172},"user":null}'
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"names\":[\"Putin\"]}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":153,"input_tokens_details":{"cached_tokens":0},"output_tokens":8,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":161},"user":null}'
 ---
 when:
   path: /v1/responses
@@ -132,7 +47,92 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_8","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"names\":[\"dog\",\"cat\"]}","call_id":"call_REDACTED_8","id":"fc_REDACTED_8","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":159,"input_tokens_details":{"cached_tokens":0},"output_tokens":9,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":168},"user":null}'
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"names\":[\"dog\",\"cat\"]}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":159,"input_tokens_details":{"cached_tokens":0},"output_tokens":9,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":168},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m going to the store to buy some milk.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"names\":[]}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":158,"input_tokens_details":{"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":163},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m going to the store to buy some milk.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"sentiment\":0.0,\"confidence\":0.0}","call_id":"call_REDACTED_5","id":"fc_REDACTED_5","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":164,"input_tokens_details":{"cached_tokens":0},"output_tokens":15,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":179},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Screw you Putin!","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_6","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"topics\":[\"Putin\"]}","call_id":"call_REDACTED_6","id":"fc_REDACTED_6","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":153,"input_tokens_details":{"cached_tokens":0},"output_tokens":8,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":161},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I love my dog, but I hate my cat.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_7","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"sentiment\":0.5,\"confidence\":0.8}","call_id":"call_REDACTED_7","id":"fc_REDACTED_7","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":165,"input_tokens_details":{"cached_tokens":0},"output_tokens":15,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":180},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I love my dog, but I hate my cat.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_8","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"arguments":"{\"topics\":[\"love\",\"dog\",\"hate\",\"cat\"]}","call_id":"call_REDACTED_8","id":"fc_REDACTED_8","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"additionalProperties":false,"properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":159,"input_tokens_details":{"cached_tokens":0},"output_tokens":13,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":172},"user":null}'
 ---
 when:
   path: /v1/responses

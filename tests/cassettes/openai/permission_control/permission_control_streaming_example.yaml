@@ -80,50 +80,59 @@ then:
     data: {"content_index":0,"delta":"The","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" content","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" last","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" line","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" of","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" file","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" test","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" file","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":".txt","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" `","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" is","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"test","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":":","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":".txt","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" \"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":"`","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"hello","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" contains","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":" world","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":":","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
 
     event: response.output_text.delta
-    data: {"content_index":0,"delta":"\".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+    data: {"content_index":0,"delta":" \"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"hello","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" world","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
 
     event: response.output_text.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":17,"text":"The content of the file test.txt is: \"hello world\".","type":"response.output_text.done"}
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":20,"text":"The last line of the file `test.txt` contains: \"hello world\".","type":"response.output_text.done"}
 
     event: response.content_part.done
-    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"The content of the file test.txt is: \"hello world\".","type":"output_text"},"sequence_number":18,"type":"response.content_part.done"}
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"The last line of the file `test.txt` contains: \"hello world\".","type":"output_text"},"sequence_number":21,"type":"response.content_part.done"}
 
     event: response.output_item.done
-    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The content of the file test.txt is: \"hello world\".","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":19,"type":"response.output_item.done"}
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"The last line of the file `test.txt` contains: \"hello world\".","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":22,"type":"response.output_item.done"}
 
     event: response.completed
-    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The content of the file test.txt is: \"hello world\".","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":164,"input_tokens_details":{"cached_tokens":0},"output_tokens":15,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":179},"user":null},"sequence_number":20,"type":"response.completed"}
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-mini-2024-07-18","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"The last line of the file `test.txt` contains: \"hello world\".","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":164,"input_tokens_details":{"cached_tokens":0},"output_tokens":18,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":182},"user":null},"sequence_number":23,"type":"response.completed"}
 

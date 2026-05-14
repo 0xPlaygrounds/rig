@@ -1106,38 +1106,33 @@ fn is_sse_response(headers: &[NameValue]) -> bool {
 }
 
 fn sse_body_chunks(body: &str) -> Vec<Bytes> {
-    sse_event_chunks(body)
+    fragmented_sse_body_chunks(body)
         .into_iter()
         .map(Bytes::from)
         .collect()
 }
 
-fn sse_event_chunks(body: &str) -> Vec<String> {
+fn fragmented_sse_body_chunks(body: &str) -> Vec<String> {
+    const CHUNK_SIZES: [usize; 7] = [1, 5, 2, 13, 3, 8, 21];
+
     let mut chunks = Vec::new();
     let mut start = 0;
+    let mut size_index = 0;
 
     while start < body.len() {
-        let remaining = &body[start..];
-        let Some((separator_index, separator_len)) = earliest_sse_separator(remaining) else {
-            chunks.push(remaining.to_string());
-            break;
-        };
-        let end = start + separator_index + separator_len;
+        let target_len = CHUNK_SIZES[size_index % CHUNK_SIZES.len()];
+        size_index += 1;
+
+        let mut end = (start + target_len).min(body.len());
+        while end < body.len() && !body.is_char_boundary(end) {
+            end += 1;
+        }
+
         chunks.push(body[start..end].to_string());
         start = end;
     }
 
     chunks
-}
-
-fn earliest_sse_separator(text: &str) -> Option<(usize, usize)> {
-    match (text.find("\r\n\r\n"), text.find("\n\n")) {
-        (Some(crlf), Some(lf)) if crlf < lf => Some((crlf, "\r\n\r\n".len())),
-        (Some(_), Some(lf)) => Some((lf, "\n\n".len())),
-        (Some(crlf), None) => Some((crlf, "\r\n\r\n".len())),
-        (None, Some(lf)) => Some((lf, "\n\n".len())),
-        (None, None) => None,
-    }
 }
 
 fn is_hop_by_hop_header(name: &str) -> bool {
@@ -2344,24 +2339,46 @@ mod tests {
     }
 
     #[test]
-    fn sse_event_chunks_split_on_event_boundaries() {
-        assert_eq!(
-            sse_event_chunks("data: one\n\ndata: two\r\n\r\ndata: three"),
-            vec![
-                "data: one\n\n".to_string(),
-                "data: two\r\n\r\n".to_string(),
-                "data: three".to_string(),
-            ]
+    fn sse_body_chunks_reconstruct_original_body() {
+        let body = "data: {\"text\":\"hello\"}\n\ndata: {\"text\":\"snowman ☃\"}\n\n";
+        let chunks = sse_body_chunks(body);
+        let reconstructed = chunks
+            .iter()
+            .map(|chunk| std::str::from_utf8(chunk).expect("chunk should be UTF-8"))
+            .collect::<String>();
+
+        assert_eq!(reconstructed, body);
+    }
+
+    #[test]
+    fn sse_response_body_uses_multiple_fragmented_chunks() {
+        let chunks = sse_body_chunks("data: one\n\ndata: two\n\n");
+
+        assert!(
+            chunks.len() > 2,
+            "SSE replay should fragment events, got {chunks:?}"
         );
     }
 
     #[test]
-    fn sse_response_body_uses_multiple_chunks() {
-        let chunks = sse_body_chunks("data: one\n\ndata: two\n\n");
+    fn sse_response_body_can_split_inside_event() {
+        let body = "data: one\n\ndata: two\n\n";
+        let chunks = sse_body_chunks(body);
+        let first_event_end = body
+            .find("\n\n")
+            .map(|index| index + "\n\n".len())
+            .expect("fixture should contain an event separator");
 
-        assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0], Bytes::from_static(b"data: one\n\n"));
-        assert_eq!(chunks[1], Bytes::from_static(b"data: two\n\n"));
+        let mut boundary = 0;
+        let has_inside_event_boundary = chunks.iter().any(|chunk| {
+            boundary += chunk.len();
+            boundary > 0 && boundary < first_event_end
+        });
+
+        assert!(
+            has_inside_event_boundary,
+            "SSE replay should split inside an event, got {chunks:?}"
+        );
     }
 
     #[test]
