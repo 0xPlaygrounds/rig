@@ -25,130 +25,135 @@ fn streaming_tool_params() -> serde_json::Value {
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
-    let (cassette, client) =
-        super::super::support::gemini_cassette("streaming_tools/streaming_tools_smoke").await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .preamble(STREAMING_TOOLS_PREAMBLE)
-        .tool(Adder)
-        .tool(Subtract)
-        .additional_params(streaming_tool_params())
-        .build();
+    super::super::support::with_gemini_cassette(
+        "streaming_tools/streaming_tools_smoke",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble(STREAMING_TOOLS_PREAMBLE)
+                .tool(Adder)
+                .tool(Subtract)
+                .additional_params(streaming_tool_params())
+                .build();
 
-    let mut stream = agent
-        .stream_prompt(STREAMING_TOOLS_PROMPT)
-        .multi_turn(3)
-        .await;
-    let observation = collect_stream_observation(&mut stream).await;
+            let mut stream = agent
+                .stream_prompt(STREAMING_TOOLS_PROMPT)
+                .multi_turn(3)
+                .await;
+            let observation = collect_stream_observation(&mut stream).await;
 
-    assert!(
-        observation.errors.is_empty(),
-        "stream should not emit errors: {:?}",
-        observation.errors
-    );
-    cassette.finish().await;
+            assert!(
+                observation.errors.is_empty(),
+                "stream should not emit errors: {:?}",
+                observation.errors
+            );
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let (cassette, client) = super::super::support::gemini_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = model
+                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .tool(zero_arg_tool_definition("ping"))
+                .tool_choice(ToolChoice::Required)
+                .additional_params(streaming_tool_params())
+                .build();
+            let stream = model.stream(request).await.expect("stream should start");
+
+            assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
+        },
     )
     .await;
-    let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-    let request = model
-        .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-        .tool(zero_arg_tool_definition("ping"))
-        .tool_choice(ToolChoice::Required)
-        .additional_params(streaming_tool_params())
-        .build();
-    let stream = model.stream(request).await.expect("stream should start");
-
-    assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    let (cassette, client) = super::super::support::gemini_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(AlphaSignal)
+                .tool(BetaSignal)
+                .additional_params(streaming_tool_params())
+                .build();
+
+            let mut stream = agent
+                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .multi_turn(8)
+                .await;
+            let observation = collect_stream_observation(&mut stream).await;
+
+            assert_two_tool_roundtrip_contract(
+                &observation,
+                &["lookup_harbor_label", "lookup_orchard_label"],
+                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
+            );
+        },
     )
     .await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .preamble(TWO_TOOL_STREAM_PREAMBLE)
-        .tool(AlphaSignal)
-        .tool(BetaSignal)
-        .additional_params(streaming_tool_params())
-        .build();
-
-    let mut stream = agent
-        .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-        .multi_turn(8)
-        .await;
-    let observation = collect_stream_observation(&mut stream).await;
-
-    assert_two_tool_roundtrip_contract(
-        &observation,
-        &["lookup_harbor_label", "lookup_orchard_label"],
-        &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-    );
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    let (cassette, client) = super::super::support::gemini_cassette(
+    super::super::support::with_gemini_cassette(
         "streaming_tools/streaming_tools_emit_tool_call_before_later_text",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                .tool(AlphaSignal)
+                .additional_params(streaming_tool_params())
+                .build();
+
+            let mut stream = agent
+                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .multi_turn(5)
+                .await;
+            let observation = collect_stream_observation(&mut stream).await;
+
+            assert_tool_call_precedes_later_text(
+                &observation,
+                "lookup_harbor_label",
+                &[ALPHA_SIGNAL_OUTPUT],
+            );
+        },
     )
     .await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-        .tool(AlphaSignal)
-        .additional_params(streaming_tool_params())
-        .build();
-
-    let mut stream = agent
-        .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-        .multi_turn(5)
-        .await;
-    let observation = collect_stream_observation(&mut stream).await;
-
-    assert_tool_call_precedes_later_text(
-        &observation,
-        "lookup_harbor_label",
-        &[ALPHA_SIGNAL_OUTPUT],
-    );
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn example_streaming_with_tools() {
-    let (cassette, client) =
-        super::super::support::gemini_cassette("streaming_tools/example_streaming_with_tools")
-            .await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .preamble(STREAMING_TOOLS_PREAMBLE)
-        .tool(Adder)
-        .tool(Subtract)
-        .additional_params(streaming_tool_params())
-        .build();
+    super::super::support::with_gemini_cassette(
+        "streaming_tools/example_streaming_with_tools",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble(STREAMING_TOOLS_PREAMBLE)
+                .tool(Adder)
+                .tool(Subtract)
+                .additional_params(streaming_tool_params())
+                .build();
 
-    let mut stream = agent
-        .stream_prompt(STREAMING_TOOLS_PROMPT)
-        .multi_turn(3)
-        .await;
-    let observation = collect_stream_observation(&mut stream).await;
+            let mut stream = agent
+                .stream_prompt(STREAMING_TOOLS_PROMPT)
+                .multi_turn(3)
+                .await;
+            let observation = collect_stream_observation(&mut stream).await;
 
-    assert!(
-        observation.errors.is_empty(),
-        "stream should not emit errors: {:?}",
-        observation.errors
-    );
-    cassette.finish().await;
+            assert!(
+                observation.errors.is_empty(),
+                "stream should not emit errors: {:?}",
+                observation.errors
+            );
+        },
+    )
+    .await;
 }

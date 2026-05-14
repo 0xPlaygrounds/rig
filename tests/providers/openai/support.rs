@@ -1,9 +1,11 @@
 use rig::providers::openai;
 use std::future::Future;
+use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use crate::cassettes::ProviderCassette;
+use futures::FutureExt;
 
-pub(super) async fn openai_cassette(scenario: &'static str) -> (ProviderCassette, openai::Client) {
+async fn openai_cassette(scenario: &'static str) -> (ProviderCassette, openai::Client) {
     let cassette = ProviderCassette::start("openai", scenario, "https://api.openai.com/v1").await;
     let client = openai::Client::builder()
         .api_key(cassette.api_key("OPENAI_API_KEY"))
@@ -14,7 +16,7 @@ pub(super) async fn openai_cassette(scenario: &'static str) -> (ProviderCassette
     (cassette, client)
 }
 
-pub(super) async fn openai_completions_cassette(
+async fn openai_completions_cassette(
     scenario: &'static str,
 ) -> (ProviderCassette, openai::CompletionsClient) {
     let (cassette, client) = openai_cassette(scenario).await;
@@ -27,8 +29,11 @@ where
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = openai_cassette(scenario).await;
-    test_body(client).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish().await;
+    if let Err(payload) = result {
+        resume_unwind(payload);
+    }
 }
 
 pub(super) async fn with_openai_completions_cassette<F, Fut>(scenario: &'static str, test_body: F)
@@ -37,8 +42,11 @@ where
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = openai_completions_cassette(scenario).await;
-    test_body(client).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish().await;
+    if let Err(payload) = result {
+        resume_unwind(payload);
+    }
 }
 
 pub(super) async fn with_openai_cassette_result<F, Fut, E>(
@@ -50,9 +58,12 @@ where
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = openai_cassette(scenario).await;
-    let result = test_body(client).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish().await;
-    result
+    match result {
+        Ok(result) => result,
+        Err(payload) => resume_unwind(payload),
+    }
 }
 
 pub(super) async fn with_openai_completions_cassette_result<F, Fut, E>(
@@ -64,7 +75,10 @@ where
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = openai_completions_cassette(scenario).await;
-    let result = test_body(client).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish().await;
-    result
+    match result {
+        Ok(result) => result,
+        Err(payload) => resume_unwind(payload),
+    }
 }

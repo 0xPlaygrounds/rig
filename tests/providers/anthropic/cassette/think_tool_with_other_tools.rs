@@ -271,10 +271,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
     let calculator_calls = Arc::new(AtomicUsize::new(0));
     let database_lookup_calls = Arc::new(AtomicUsize::new(0));
 
-    let (cassette, client) = super::super::support::anthropic_cassette(
-        "think_tool_with_other_tools/think_tool_with_other_tools",
-    )
-    .await;
+    super::super::support::with_anthropic_cassette_result("think_tool_with_other_tools/think_tool_with_other_tools", |client| async move {
 
     let agent = client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
@@ -356,7 +353,7 @@ async fn think_tool_with_other_tools() -> Result<()> {
         "expected shipping_rates lookup, saw {queries:?}"
     );
 
-    cassette.finish().await;
-
-    Ok(())
+        Ok(())
+    })
+    .await
 }

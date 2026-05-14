@@ -11,37 +11,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}},{"name":"lookup_orchard_label","description":"Return the beta signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:17:01 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=852
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"lookup_harbor_label\",\"args\": {}},\"thoughtSignature\": \"CiQBDDnWx8mG0P5c+mLiqtTcha1Jzri5KG8xpqdojCm3edk7cJAKVwEMOdbHXy33rCi7IfnCy5BDZvhxgxFTyEivr/h9nOPp2s27qkNUsu2SC+dGNLJDnKOrzU1jvaX1P3r6oXlkZVNDCzDjfCnOnt5c/x0tAIGuciE23w6MxAqeAQEMOdbHCYOLHH49PsDRz0TZU9yoLVOTegjkOFh7NBglKembMWvafhiWEtCD7UNpxcTt+p6HiS6x7GtDtM8yBCbmJgpRzol5ceJ7imPqDSbvYI2Uc6iUs9UoyFf3kSEurHXJ1yonhrp8jZc9dlS+9SNlEyDKbUZFSr5EdqCE1N8xTbS37FNHaJmyuWVdeEifUuJMjYfmo1UohqYxWz03\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 166,\"candidatesTokenCount\": 13,\"totalTokenCount\": 222,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 166}],\"thoughtsTokenCount\": 43,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"fBQFaqz7FsniqtsP0d2syAw\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":43,\"totalTokenCount\":222}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -56,37 +32,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx8mG0P5c+mLiqtTcha1Jzri5KG8xpqdojCm3edk7cJAKVwEMOdbHXy33rCi7IfnCy5BDZvhxgxFTyEivr/h9nOPp2s27qkNUsu2SC+dGNLJDnKOrzU1jvaX1P3r6oXlkZVNDCzDjfCnOnt5c/x0tAIGuciE23w6MxAqeAQEMOdbHCYOLHH49PsDRz0TZU9yoLVOTegjkOFh7NBglKembMWvafhiWEtCD7UNpxcTt+p6HiS6x7GtDtM8yBCbmJgpRzol5ceJ7imPqDSbvYI2Uc6iUs9UoyFf3kSEurHXJ1yonhrp8jZc9dlS+9SNlEyDKbUZFSr5EdqCE1N8xTbS37FNHaJmyuWVdeEifUuJMjYfmo1UohqYxWz03","functionCall":{"name":"lookup_harbor_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}},{"name":"lookup_orchard_label","description":"Return the beta signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:17:01 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=699
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"lookup_orchard_label\",\"args\": {}},\"thoughtSignature\": \"Cl0BDDnWx5kP7qsKVYTAvC5nZYn4uGOT8eaUmNHeGd8RVRHX5D4aIYm2Jm56fHmFdrL4mtu5bRUj/wtA08SCnI+Q5ggkiQU9lPOt/vFmrxW3H8S0oPKzA6zr73l1/xMKWQEMOdbHlcZZAEEtaTcQcUnfaxI1n8n7cgNzEyuFiLFNQI0URJHuAYovTtep9La/CXqcM+d9PSBEu2gCXfL1W32Wx3I0sOWM4YsW7FisoYeOEJm0E8pK2dOH\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 244,\"candidatesTokenCount\": 13,\"totalTokenCount\": 287,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 244}],\"thoughtsTokenCount\": 30,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"fRQFariyFPOlmtkP3JTh4Qs\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_orchard_label\"},\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":244,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":244}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":30,\"totalTokenCount\":287}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -101,34 +53,10 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx8mG0P5c+mLiqtTcha1Jzri5KG8xpqdojCm3edk7cJAKVwEMOdbHXy33rCi7IfnCy5BDZvhxgxFTyEivr/h9nOPp2s27qkNUsu2SC+dGNLJDnKOrzU1jvaX1P3r6oXlkZVNDCzDjfCnOnt5c/x0tAIGuciE23w6MxAqeAQEMOdbHCYOLHH49PsDRz0TZU9yoLVOTegjkOFh7NBglKembMWvafhiWEtCD7UNpxcTt+p6HiS6x7GtDtM8yBCbmJgpRzol5ceJ7imPqDSbvYI2Uc6iUs9UoyFf3kSEurHXJ1yonhrp8jZc9dlS+9SNlEyDKbUZFSr5EdqCE1N8xTbS37FNHaJmyuWVdeEifUuJMjYfmo1UohqYxWz03","functionCall":{"name":"lookup_harbor_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"Cl0BDDnWx5kP7qsKVYTAvC5nZYn4uGOT8eaUmNHeGd8RVRHX5D4aIYm2Jm56fHmFdrL4mtu5bRUj/wtA08SCnI+Q5ggkiQU9lPOt/vFmrxW3H8S0oPKzA6zr73l1/xMKWQEMOdbHlcZZAEEtaTcQcUnfaxI1n8n7cgNzEyuFiLFNQI0URJHuAYovTtep9La/CXqcM+d9PSBEu2gCXfL1W32Wx3I0sOWM4YsW7FisoYeOEJm0E8pK2dOH","functionCall":{"name":"lookup_orchard_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_orchard_label","response":{"result":"silver-orchard"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}},{"name":"lookup_orchard_label","description":"Return the beta signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"lookup_orchard_label"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_orchard_label","response":{"result":"silver-orchard"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:17:02 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=930
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.\",\"thoughtSignature\": \"ClUBDDnWx5X0TYS95LJw7tZXVo3E8fAbSmUrmqhL997aPsMpsT/wsG0M6tPgPc3lV+/c0LP22bAiT0pYNw+k5WnJ5nQhdmqrXrHP1PyWoYLXIfuw3shbCq4BAQw51sdLwT+zMweKjTQkswxkOq+MxOJml9V0DT1W6QTG/zBS7ICUsgZ7fon9Sq0iWWcrUwnXPLzOoIIKqaFLsgLsbX/5nA22fqxgyd6OrLLc+TglF38XPRTCYmpICsaswwFR+ON7lukxoAmQo8qDMYSNZedzN2F/ESsKWxZneXplPff9L9lFdzs/6qFRvCLvmXAgGS1usm0+yBq7/F8eZbGTRWxoEfj7xaZbq290CnIBDDnWx/9V3/e9bUjkKJYOVMqJwxiAgtZqoBep8lLj6P2B3p32YvJ0m08xBp6OVYVNvptjRzNmc0/XnQ2H1vSCL8FTIATBfkmOly7wp18LZd8tI5z4fPvze/fskqWBhPKww46ifogcv+6DeaPEUFP2PBs=\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 308,\"candidatesTokenCount\": 21,\"totalTokenCount\": 406,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 308}],\"thoughtsTokenCount\": 77,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"fhQFaoPnCOW3qtsPwMWDWA\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.\",\"thoughtSignature\":\"signature_REDACTED_3\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_3\",\"usageMetadata\":{\"candidatesTokenCount\":21,\"promptTokenCount\":308,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":308}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":77,\"totalTokenCount\":406}}\r\n\r\n"

@@ -41,49 +41,50 @@ async fn manual_multi_turn_streaming_loop() {
     let multiply_calls = Arc::new(AtomicUsize::new(0));
     let divide_calls = Arc::new(AtomicUsize::new(0));
 
-    let (cassette, client) = super::super::support::gemini_cassette(
+    super::super::support::with_gemini_cassette(
         "multi_turn_streaming/manual_multi_turn_streaming_loop",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You must use tools to answer arithmetic prompts.")
+                .tool(Add::new(add_calls.clone()))
+                .tool(Subtract::new(subtract_calls.clone()))
+                .tool(Multiply::new(multiply_calls.clone()))
+                .tool(Divide::new(divide_calls.clone()))
+                .build();
+
+            let mut stream =
+                multi_turn_prompt(agent, MULTI_TURN_STREAMING_PROMPT, Vec::new()).await;
+            let response = collect_text(&mut stream)
+                .await
+                .expect("manual multi-turn streaming should succeed");
+
+            assert_nonempty_response(&response);
+            assert!(
+                response.trim().len() >= 30,
+                "expected a substantial streamed response, got {:?}",
+                response
+            );
+            assert_mentions_expected_number(&response, MULTI_TURN_STREAMING_EXPECTED_RESULT);
+            assert!(
+                add_calls.load(Ordering::SeqCst) >= 1,
+                "add should be called"
+            );
+            assert!(
+                subtract_calls.load(Ordering::SeqCst) >= 1,
+                "subtract should be called"
+            );
+            assert!(
+                multiply_calls.load(Ordering::SeqCst) >= 1,
+                "multiply should be called"
+            );
+            assert!(
+                divide_calls.load(Ordering::SeqCst) >= 1,
+                "divide should be called"
+            );
+        },
     )
     .await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_2_5_FLASH)
-        .preamble("You must use tools to answer arithmetic prompts.")
-        .tool(Add::new(add_calls.clone()))
-        .tool(Subtract::new(subtract_calls.clone()))
-        .tool(Multiply::new(multiply_calls.clone()))
-        .tool(Divide::new(divide_calls.clone()))
-        .build();
-
-    let mut stream = multi_turn_prompt(agent, MULTI_TURN_STREAMING_PROMPT, Vec::new()).await;
-    let response = collect_text(&mut stream)
-        .await
-        .expect("manual multi-turn streaming should succeed");
-
-    assert_nonempty_response(&response);
-    assert!(
-        response.trim().len() >= 30,
-        "expected a substantial streamed response, got {:?}",
-        response
-    );
-    assert_mentions_expected_number(&response, MULTI_TURN_STREAMING_EXPECTED_RESULT);
-    assert!(
-        add_calls.load(Ordering::SeqCst) >= 1,
-        "add should be called"
-    );
-    assert!(
-        subtract_calls.load(Ordering::SeqCst) >= 1,
-        "subtract should be called"
-    );
-    assert!(
-        multiply_calls.load(Ordering::SeqCst) >= 1,
-        "multiply should be called"
-    );
-    assert!(
-        divide_calls.load(Ordering::SeqCst) >= 1,
-        "divide should be called"
-    );
-
-    cassette.finish().await;
 }
 
 async fn multi_turn_prompt<M>(

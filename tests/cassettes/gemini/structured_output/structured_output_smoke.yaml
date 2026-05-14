@@ -9,68 +9,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Return a concise event object for a local Rust meetup in Seattle."}],"role":"user"}],"toolConfig":null,"generationConfig":{"responseMimeType":"application/json","responseJsonSchema":{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","$schema":"https://json-schema.org/draft/2020-12/schema"},"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":null}'
+  body: '{"contents":[{"parts":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"responseJsonSchema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","type":"object"},"responseMimeType":"application/json","temperature":1.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
 then:
   status: 200
   header:
-  - name: x-gemini-service-tier
-    value: standard
   - name: content-type
     value: application/json; charset=UTF-8
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:17:05 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=2044
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: |
-    {
-      "candidates": [
-        {
-          "content": {
-            "parts": [
-              {
-                "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to discuss systems programming, performance, and memory safety.\"}",
-                "thoughtSignature": "EqYICqMIAQw51sdox0LN3NrSWbHhZPdVL2QJKS/2yhPZxf6m1J33gtxg9JSwWQk1PCUUiHBp/MzhRI7/1OHkqLRxFA+5G026GGtZoTDDz91hU1scj9LCfxwPLNEhTN3ReWEE5xaV4yj+Euq/TxSVKPYr6Ul+6m6qgl4YHAOHmSvYfeJ1WxjNgqGbF3GpKKvtnIFx6j8TXMWyH6jacaj81HJK9PID3ZcKLWlF2w9TTEahjmeb2rnE2qmHehvwqCo81ug0Y7DwV0f9y7JDVQkI+P36SXQ909bewqFKcMfxqtJWWCUpLoRNAZYpeSe+IKoKm1qjE90QEMrt6WsjUAa/xC0EAj7vx+E1deO0vxHIrKrspFLCHdKYRL/naW3Zlqb/tBrZ0nnl0B+5AKuft7U8UFLWhd6SjClS8ln78Fxgx02yTt/Txf2I2RqUhxg6Z+uUJqJ7kvvtiLWsWU589tNS+ZN9+/99JGVy0agWE6bN8C+ozv9a85xVjxLT5LJP6vEGJsJvOJ4VkvdiCocN3C6rnTqNtsiDsSGey6MNynIYlOD37PgnW1yXJEO67YrDRJn63bjIM9QsmpfwRaCZtlsbQWdK57qCbOmwfDKpoy/T5DWfqDGITSzA9RrYpypnvRDlqDBrRmUKfeUHUiMHoQfs3D5EsI9eHp6d5r6qEKTHw0OGdxv+YkrZsF4jSAQL+BJOJZTMKmY9REIMAAcSYRdwQPunwEEaKn3rbgiH7Bolx1oSwNhj+fsK8SZFJKkA2JZODms9ksTS7YFOteGjMgOkU4H3+qytQ+p+2pa3CKVSpNXP1P7Z524Cs2Kic2IZ1+jWhCzoYpPbk/aBceG/ts/IDCUe/vVvPJE6E41BA8R98J0SWSt8gH/68S1Li2AsJJxYmfb5eKWUuZrZoaWukbFLE0asGuPKMF1QMVcnxG802dOPOvlHezhMveB9UGCRJ/yZ/Pb/IRIYnnTkWbHG12q0hjyKreznl16bt5RUqxyly3uuwyghlQryF1Nsx3t1oqXBKNnEqe8jiKEBryB+NssTXpKF/XBrcGzN+TeYW4QnYS7lmacVzJnXjEnvOerwmrK3kvVTWVhr61kZ2De2gjWbFl6XRZYHRcvEE+i36wNBAzPl7OA3WV7SRYcQ7dhwS+exspPIC/yQHHyVwEejKygRICB4TjxLDU7izEgy1WHDTHpEGjOt18dFyjlgdMdDzhumhN2JjEnfcJOKtWfev1AYezHv3OyMgT9KuDsuUijSsQ4d/YxfD7jy5vE3oOAtNz9QduVxsFHzl7xDLFM13PfJLZFhGo+jpFXSPCxHgrblFLr0Y902JpiABsxRBg3x7FaOI/KN4gz+QDeHnlRnEPC/WvKp5LzNZfMmGhgin9a/y7Wz975t2Ou6LXB3n5wstQS/DhrCFkKM+SNd"
-              }
-            ],
-            "role": "model"
-          },
-          "finishReason": "STOP",
-          "index": 0
-        }
-      ],
-      "usageMetadata": {
-        "promptTokenCount": 14,
-        "candidatesTokenCount": 34,
-        "totalTokenCount": 288,
-        "promptTokensDetails": [
-          {
-            "modality": "TEXT",
-            "tokenCount": 14
-          }
-        ],
-        "thoughtsTokenCount": 240,
-        "serviceTier": "standard"
-      },
-      "modelVersion": "gemini-3-flash-preview",
-      "responseId": "fxQFarSzCpXMqtsP2u7koQY"
-    }
+  body: '{"candidates":[{"content":{"parts":[{"text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to discuss systems programming, performance, and memory safety.\"}","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":34,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":240,"totalTokenCount":288}}'

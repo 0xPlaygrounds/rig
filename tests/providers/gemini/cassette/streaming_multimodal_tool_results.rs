@@ -70,7 +70,7 @@ impl Tool for HybridImageTool {
 
 #[tokio::test]
 async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
-    let (cassette, client) = super::super::support::gemini_cassette("streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts").await;
+    super::super::support::with_gemini_cassette("streaming_multimodal_tool_results/streaming_history_preserves_hybrid_tool_result_image_parts", |client| async move {
     let agent = client
         .agent(MULTIMODAL_FUNCTION_RESPONSE_MODEL)
         .preamble(
@@ -177,5 +177,6 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         "hybrid tool results should preserve the image payload as ToolResultContent::Image"
     );
 
-    cassette.finish().await;
+    })
+    .await;
 }

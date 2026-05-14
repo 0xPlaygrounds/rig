@@ -18,7 +18,7 @@ use serde_json::Value;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
-use crate::cassettes::ProviderCassette;
+use super::super::support::with_anthropic_files_cassette;
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 const ANTHROPIC_FILES_BETA: &str = "files-api-2025-04-14";
@@ -43,37 +43,6 @@ struct UploadedFile {
     mime_type: String,
     size_bytes: u64,
     downloadable: bool,
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> String {
-    let trimmed = base_url.trim_end_matches('/');
-
-    if let Some(stripped) = trimmed.strip_suffix("/v1/messages") {
-        stripped.to_string()
-    } else if let Some(stripped) = trimmed.strip_suffix("/messages") {
-        stripped.to_string()
-    } else if let Some(stripped) = trimmed.strip_suffix("/v1") {
-        stripped.to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
-async fn anthropic_files_cassette(
-    scenario: &'static str,
-) -> (ProviderCassette, anthropic::Client, String, String) {
-    let cassette =
-        ProviderCassette::start("anthropic", scenario, "https://api.anthropic.com").await;
-    let base_url = normalize_anthropic_base_url(&cassette.base_url());
-    let api_key = cassette.api_key("ANTHROPIC_API_KEY");
-    let client = anthropic::Client::builder()
-        .api_key(&api_key)
-        .base_url(&base_url)
-        .anthropic_beta(ANTHROPIC_FILES_BETA)
-        .build()
-        .expect("client should build");
-
-    (cassette, client, base_url, api_key)
 }
 
 async fn upload_pdf_for_file_id_test(base_url: &str, api_key: &str) -> UploadedFile {
@@ -418,78 +387,93 @@ fn document_file_id_wire_assertions_cover_roundtrip_paths() {
 
 #[tokio::test]
 async fn messages_document_file_id_roundtrip_live() {
-    let (cassette, client, base_url, api_key) =
-        anthropic_files_cassette("document_file_id/messages_document_file_id_roundtrip_live").await;
-    with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(DOCUMENT_PREAMBLE)
-            .build();
-        let mut history = Vec::new();
+    with_anthropic_files_cassette(
+        "document_file_id/messages_document_file_id_roundtrip_live",
+        ANTHROPIC_FILES_BETA,
+        |parts| async move {
+            let client = parts.client;
+            let base_url = parts.base_url;
+            let api_key = parts.api_key;
+            with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
+                let agent = client
+                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .preamble(DOCUMENT_PREAMBLE)
+                    .build();
+                let mut history = Vec::new();
 
-        let direct_message = direct_file_id_document_question(&file_id, 2);
-        assert_no_verifier_leaked_into_prompt(&direct_message);
-        assert_anthropic_wire_file_source(direct_message, &file_id);
+                let direct_message = direct_file_id_document_question(&file_id, 2);
+                assert_no_verifier_leaked_into_prompt(&direct_message);
+                assert_anthropic_wire_file_source(direct_message, &file_id);
 
-        let provider_native_content = provider_file_content_as_generic_document(&file_id);
-        let provider_native_roundtrip_message = document_question(provider_native_content, 2);
-        assert_no_verifier_leaked_into_prompt(&provider_native_roundtrip_message);
-        assert_generic_message_has_file_id(&provider_native_roundtrip_message, &file_id);
-        assert_anthropic_wire_file_source(provider_native_roundtrip_message.clone(), &file_id);
+                let provider_native_content = provider_file_content_as_generic_document(&file_id);
+                let provider_native_roundtrip_message =
+                    document_question(provider_native_content, 2);
+                assert_no_verifier_leaked_into_prompt(&provider_native_roundtrip_message);
+                assert_generic_message_has_file_id(&provider_native_roundtrip_message, &file_id);
+                assert_anthropic_wire_file_source(
+                    provider_native_roundtrip_message.clone(),
+                    &file_id,
+                );
 
-        let response = agent
-            .chat(provider_native_roundtrip_message, &mut history)
-            .await
-            .expect("Messages API should read uploaded PDF by file_id");
-        assert_verifier_response(&response, PAGE_TWO_VERIFIER);
-        assert_history_preserves_single_file_id(&history, &file_id);
+                let response = agent
+                    .chat(provider_native_roundtrip_message, &mut history)
+                    .await
+                    .expect("Messages API should read uploaded PDF by file_id");
+                assert_verifier_response(&response, PAGE_TWO_VERIFIER);
+                assert_history_preserves_single_file_id(&history, &file_id);
 
-        let follow_up = agent
-            .chat(
-                "Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.",
-                &mut history,
-            )
-            .await
-            .expect("Messages API should reuse file_id document from chat history");
-        assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
-        assert_history_preserves_single_file_id(&history, &file_id);
+                let follow_up = agent
+                    .chat(
+                        "Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.",
+                        &mut history,
+                    )
+                    .await
+                    .expect("Messages API should reuse file_id document from chat history");
+                assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
+                assert_history_preserves_single_file_id(&history, &file_id);
 
-        let direct_prompt = direct_file_id_document_question(&file_id, 1);
-        assert_no_verifier_leaked_into_prompt(&direct_prompt);
-        assert_anthropic_wire_file_source(direct_prompt.clone(), &file_id);
-        let direct_response = agent
-            .prompt(direct_prompt)
-            .await
-            .expect("Messages API should read direct generic file_id document");
-        assert_verifier_response(&direct_response, PAGE_ONE_VERIFIER);
-    })
+                let direct_prompt = direct_file_id_document_question(&file_id, 1);
+                assert_no_verifier_leaked_into_prompt(&direct_prompt);
+                assert_anthropic_wire_file_source(direct_prompt.clone(), &file_id);
+                let direct_response = agent
+                    .prompt(direct_prompt)
+                    .await
+                    .expect("Messages API should read direct generic file_id document");
+                assert_verifier_response(&direct_response, PAGE_ONE_VERIFIER);
+            })
+            .await;
+        },
+    )
     .await;
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn streaming_document_file_id_roundtrip_live() {
-    let (cassette, client, base_url, api_key) =
-        anthropic_files_cassette("document_file_id/streaming_document_file_id_roundtrip_live")
+    with_anthropic_files_cassette(
+        "document_file_id/streaming_document_file_id_roundtrip_live",
+        ANTHROPIC_FILES_BETA,
+        |parts| async move {
+            let client = parts.client;
+            let base_url = parts.base_url;
+            let api_key = parts.api_key;
+            with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
+                let agent = client
+                    .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .preamble(DOCUMENT_PREAMBLE)
+                    .build();
+
+                let stream_prompt = direct_file_id_document_question(&file_id, 2);
+                assert_no_verifier_leaked_into_prompt(&stream_prompt);
+                assert_anthropic_wire_file_source(stream_prompt.clone(), &file_id);
+
+                let mut stream = agent.stream_prompt(stream_prompt).await;
+                let response = collect_stream_final_response(&mut stream)
+                    .await
+                    .expect("streaming Messages API should read uploaded PDF by file_id");
+                assert_verifier_response(&response, PAGE_TWO_VERIFIER);
+            })
             .await;
-    with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-        let agent = client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(DOCUMENT_PREAMBLE)
-            .build();
-
-        let stream_prompt = direct_file_id_document_question(&file_id, 2);
-        assert_no_verifier_leaked_into_prompt(&stream_prompt);
-        assert_anthropic_wire_file_source(stream_prompt.clone(), &file_id);
-
-        let mut stream = agent.stream_prompt(stream_prompt).await;
-        let response = collect_stream_final_response(&mut stream)
-            .await
-            .expect("streaming Messages API should read uploaded PDF by file_id");
-        assert_verifier_response(&response, PAGE_TWO_VERIFIER);
-    })
+        },
+    )
     .await;
-
-    cassette.finish().await;
 }

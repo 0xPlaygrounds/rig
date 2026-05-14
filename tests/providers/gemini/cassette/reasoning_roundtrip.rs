@@ -5,38 +5,37 @@
 
 use rig::client::CompletionClient;
 
+use super::super::support::with_gemini_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 #[tokio::test]
 async fn streaming() {
-    let (cassette, client) =
-        super::super::support::gemini_cassette("reasoning_roundtrip/streaming").await;
-    reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        client.completion_model("gemini-2.5-flash"),
-        Some(serde_json::json!({
-            "generationConfig": {
-                "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
-            }
-        })),
-    ))
+    with_gemini_cassette("reasoning_roundtrip/streaming", |client| async move {
+        reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
+            client.completion_model("gemini-2.5-flash"),
+            Some(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
+                }
+            })),
+        ))
+        .await;
+    })
     .await;
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn nonstreaming() {
-    let (cassette, client) =
-        super::super::support::gemini_cassette("reasoning_roundtrip/nonstreaming").await;
-    reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-        client.completion_model("gemini-2.5-flash"),
-        Some(serde_json::json!({
-            "generationConfig": {
-                "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
-            }
-        })),
-    ))
+    with_gemini_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
+        reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
+            client.completion_model("gemini-2.5-flash"),
+            Some(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
+                }
+            })),
+        ))
+        .await;
+    })
     .await;
-
-    cassette.finish().await;
 }

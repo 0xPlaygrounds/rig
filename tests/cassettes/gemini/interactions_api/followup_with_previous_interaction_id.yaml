@@ -1,79 +1,33 @@
 when:
   path: /v1beta/interactions
   method: POST
+  query_param: []
   header:
   - name: accept
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Give me one short fact about hummingbirds."}]}],"stream":false,"store":true}'
+  body: '{"input":[{"content":[{"text":"Give me one short fact about hummingbirds.","type":"text"}],"role":"user"}],"model":"gemini-3-flash-preview","store":true,"stream":false}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:34 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=1978
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: '{"id":"v1_ChdKQlFGYW9TWkZhdW1tdGtQbnFydHdRcxIXSkJRRmFvU1pGYXVtbXRrUG5xcnR3UXM","status":"completed","outputs":[{"signature":"EuUECuIEAQw51sfLpTHwnQPopPlQqRwueos/tvxht+VJQsG5agG35WAli1kA4b47NJweEC0sjuhVhgMl4FkCVuQA7uEPx4VxizquGBfB6/2M6YiNGfTqPDJp2kb0ChY5Ehg+im4n2722h5VcruNyquxWQ51WfNm4BOJoJGXxTu6e+RtVJtEfP79+r5DZpWkJTrt6tgs4F4JDzBR9O5pHGYT6zr3CHxNNC3lqpO+5O6vq+Bl7gObrB3PSPcJJE1fs1bHdiDf/imtkKFO7F1DrEikkg5iEGVCaVe93MA+JJxJw3I5g3eWbW2gQeEJngF+5pnbtgPfjzB6expV+u/lY9XGgm2VRGfRZ79svZ+VR2tNeBfERCgAwRv1XaU62Q7ELH8/qf/i9V0FmevZNtfisl5LlHOy1QnGiCR3wAx+qIGqnmoUNolHIQzd4u9YvWlZatbzc5TY7v5bZF9dFty9lAQRo0oFX9sG6wzq53wIIY3BZ+Eep2Pe+k6YkCJ1g/LILN/iOZNbdXX9QqosRqSZUEg1QT0udd4YwBFy3KfP80kmMyqfSn3JiWh83YsmTFH5sFAyWm2H4NM5D1R+IlLrVi3/duEhHAEfbuUM/HH5bm1nbKFFOcLXnJuom3V/FGbeW3cKvLwSi5NjNj19YyiLD6SEPWsAhjiGTL5KLyVbGUgtufzODtZqQYdeU5KHyZR8OCShXj7fAm9dh2gDdJfbz1dvAYBNlDtsOw5PQn6sevvtb+bbsk6uc7KOLsYqJidOMI99rnzRVAASuqwXQ740FXiDX7n4+7QgATtqz7gU3MkPGNZAnxYnBTg==","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backward.","type":"text"}],"usage":{"total_tokens":179,"total_input_tokens":10,"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_output_tokens":12,"total_tool_use_tokens":0,"total_thought_tokens":157},"role":"model","created":"2026-05-14T00:15:34Z","updated":"2026-05-14T00:15:34Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_1","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backward.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_input_tokens":10,"total_output_tokens":12,"total_thought_tokens":157,"total_tokens":179,"total_tool_use_tokens":0}}'
 ---
 when:
   path: /v1beta/interactions
   method: POST
+  query_param: []
   header:
   - name: accept
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Now answer with a short analogy."}]}],"stream":false,"previous_interaction_id":"v1_ChdKQlFGYW9TWkZhdW1tdGtQbnFydHdRcxIXSkJRRmFvU1pGYXVtbXRrUG5xcnR3UXM"}'
+  body: '{"input":[{"content":[{"text":"Now answer with a short analogy.","type":"text"}],"role":"user"}],"model":"gemini-3-flash-preview","previous_interaction_id":"v1_REDACTED_1","stream":false}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:36 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=2213
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: '{"id":"v1_ChdKQlFGYW9TWkZhdW1tdGtQbnFydHdRcxIXSmhRRmF1bUxHdGFJcXRzUGthUGItUXc","status":"completed","outputs":[{"signature":"ErcFCrQFAQw51sdvEeitkA7nO4eQw1guHR7tLHlLGC4sPJCL+u3BnM11KXVDA8dWzjhlQi9HdvAnMPdNorhi6tOgma9UsvCMh8YC2zo+Y43fETMdV8hVsdDPYo5RE2k8+xKBTJ7m0/EgqFSVcxwD87FT4O3S8IFjtQjJ/AqA27VJZZsDOuMB0LVLFFmqDDvNQYThvoMFy3N1uSWuRVBBFrzlJeigNQEH5YAbH23GHj2V4a6J437Chd4tf1UaEJT5fyyv7rIPe/CqWOcXun4y5ZJShzwWUiW7NFqQTrXYDUWiP1GyS809UnP1gXJlhz+GDZ7UkC9PuRzlOUFOAHBAgTqhqLmKymPdCoNoWKf4OK9EKcOqQCV4bTJKon8mZwigkY900gwVFf31R7LGWz1kI38w4ieGr/z/d0f/ei+6WtE6GgKEFF39qn4WQqSWzddsSZ/ThsXYvOCemeP8hpjoCwc3cB8z+ii6aZIkViVUW0wMBoT8fUAha0FPSvboyVpTI2p3C9cOx3B7ZCiV+XCN1DfJxYcYle96rxh6AZ0R7rVspa5t/EVzfa4gdCep3ua6os+1kHCsL+npwGdLRpeGXn/cyotvlBNnUMlLcufOnZrDfJ4+7lomXx3OP2JJtTy2M6UxrvJ2TMm87K8RAkag3hKvyPTHAavPgmrUlJWBBQBQILW5J9HIrP8m5zBpyQUSeocmYv9mtD74mRcl01bhqvSLnY7xxZWWGXvzoNLqmR/AYYFYrUCzPyl/rpiHOWwg8YMAK5VLbM7D3sR2YaaLeyoHbB4dnOsHKIuCN3VaF9dNN3KubR6wIdnUXBsQ80YO2BGhPtQVgG/9yiD/Tgdd/EoB56hlz1ibHUOkb9G9x3AzVByZlMk8P1RSAmdrb7YqOdDbE9k0ctpz2LFCQPBh5Uj5YU3851xbL9Y=","type":"thought"},{"text":"A hummingbird is like a tiny, feathery helicopter.","type":"text"}],"usage":{"total_tokens":174,"total_input_tokens":8,"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_output_tokens":11,"total_tool_use_tokens":0,"total_thought_tokens":155},"role":"model","created":"2026-05-14T00:15:36Z","updated":"2026-05-14T00:15:36Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_2","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_2","type":"thought"},{"text":"A hummingbird is like a tiny, feathery helicopter.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_input_tokens":8,"total_output_tokens":11,"total_thought_tokens":155,"total_tokens":174,"total_tool_use_tokens":0}}'

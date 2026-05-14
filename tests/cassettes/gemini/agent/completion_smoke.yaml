@@ -9,67 +9,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters."}],"role":"user"}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a concise assistant. Answer directly."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
 then:
   status: 200
   header:
-  - name: x-gemini-service-tier
-    value: standard
   - name: content-type
     value: application/json; charset=UTF-8
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:12 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=2469
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: |
-    {
-      "candidates": [
-        {
-          "content": {
-            "parts": [
-              {
-                "text": "Rust is a systems programming language known for its focus on safety, performance, and concurrency. Memory safety is crucial because it prevents common programming errors like null pointer dereferences and data races, which can lead to crashes, security vulnerabilities, and undefined behavior."
-              }
-            ],
-            "role": "model"
-          },
-          "finishReason": "STOP",
-          "index": 0
-        }
-      ],
-      "usageMetadata": {
-        "promptTokenCount": 29,
-        "candidatesTokenCount": 50,
-        "totalTokenCount": 458,
-        "promptTokensDetails": [
-          {
-            "modality": "TEXT",
-            "tokenCount": 29
-          }
-        ],
-        "thoughtsTokenCount": 379,
-        "serviceTier": "standard"
-      },
-      "modelVersion": "gemini-2.5-flash",
-      "responseId": "DRQFaurWOKWJqtsP04u-qQ0"
-    }
+  body: '{"candidates":[{"content":{"parts":[{"text":"Rust is a systems programming language known for its focus on safety, performance, and concurrency. Memory safety is crucial because it prevents common programming errors like null pointer dereferences and data races, which can lead to crashes, security vulnerabilities, and undefined behavior."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":50,"promptTokenCount":29,"promptTokensDetails":[{"modality":"TEXT","tokenCount":29}],"serviceTier":"standard","thoughtsTokenCount":379,"totalTokenCount":458}}'

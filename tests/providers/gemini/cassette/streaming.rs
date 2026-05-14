@@ -23,25 +23,24 @@ async fn streaming_smoke() {
     };
     let additional_params = AdditionalParameters::default().with_config(thinking_config);
 
-    let (cassette, client) =
-        super::super::support::gemini_cassette("streaming/streaming_smoke").await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
-        .preamble(STREAMING_PREAMBLE)
-        .additional_params(
-            serde_json::to_value(additional_params)
-                .expect("Gemini thinking config should serialize"),
-        )
-        .build();
+    super::super::support::with_gemini_cassette("streaming/streaming_smoke", |client| async move {
+        let agent = client
+            .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            .preamble(STREAMING_PREAMBLE)
+            .additional_params(
+                serde_json::to_value(additional_params)
+                    .expect("Gemini thinking config should serialize"),
+            )
+            .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-    let response = collect_stream_final_response(&mut stream)
-        .await
-        .expect("streaming prompt should succeed");
+        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let response = collect_stream_final_response(&mut stream)
+            .await
+            .expect("streaming prompt should succeed");
 
-    assert_nonempty_response(&response);
-
-    cassette.finish().await;
+        assert_nonempty_response(&response);
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -55,23 +54,25 @@ async fn example_streaming_prompt() {
         ..Default::default()
     };
     let params = AdditionalParameters::default().with_config(generation_config);
-    let (cassette, client) =
-        super::super::support::gemini_cassette("streaming/example_streaming_prompt").await;
-    let agent = client
-        .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
-        .preamble("Be precise and concise.")
-        .temperature(0.5)
-        .additional_params(serde_json::to_value(params).expect("params should serialize"))
-        .build();
+    super::super::support::with_gemini_cassette(
+        "streaming/example_streaming_prompt",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .preamble("Be precise and concise.")
+                .temperature(0.5)
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                .build();
 
-    let mut stream = agent
-        .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await;
-    let response = collect_stream_final_response(&mut stream)
-        .await
-        .expect("streaming prompt should succeed");
+            let mut stream = agent
+                .stream_prompt("When and where and what type is the next solar eclipse?")
+                .await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
 
-    assert_nonempty_response(&response);
-
-    cassette.finish().await;
+            assert_nonempty_response(&response);
+        },
+    )
+    .await;
 }

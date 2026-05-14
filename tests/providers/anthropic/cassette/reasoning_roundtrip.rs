@@ -6,34 +6,33 @@
 use rig::client::CompletionClient;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
+use super::super::support::with_anthropic_cassette;
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 #[tokio::test]
 async fn streaming() {
-    let (cassette, client) =
-        super::super::support::anthropic_cassette("reasoning_roundtrip/streaming").await;
-    reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        client.completion_model(CLAUDE_SONNET_4_6),
-        Some(serde_json::json!({
-            "thinking": { "type": "adaptive" }
-        })),
-    ))
+    with_anthropic_cassette("reasoning_roundtrip/streaming", |client| async move {
+        reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
+            client.completion_model(CLAUDE_SONNET_4_6),
+            Some(serde_json::json!({
+                "thinking": { "type": "adaptive" }
+            })),
+        ))
+        .await;
+    })
     .await;
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn nonstreaming() {
-    let (cassette, client) =
-        super::super::support::anthropic_cassette("reasoning_roundtrip/nonstreaming").await;
-    reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-        client.completion_model(CLAUDE_SONNET_4_6),
-        Some(serde_json::json!({
-            "thinking": { "type": "adaptive" }
-        })),
-    ))
+    with_anthropic_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
+        reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
+            client.completion_model(CLAUDE_SONNET_4_6),
+            Some(serde_json::json!({
+                "thinking": { "type": "adaptive" }
+            })),
+        ))
+        .await;
+    })
     .await;
-
-    cassette.finish().await;
 }

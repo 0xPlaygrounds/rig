@@ -11,37 +11,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:16:58 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=767
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"lookup_harbor_label\",\"args\": {}},\"thoughtSignature\": \"CiQBDDnWx25nva6qglbJvIm9imG7cmrQuVqzRLHQR4AIYICMFvEKawEMOdbHNNFRTWL58At7umLY2/ytBalh5b8g78QNFm+YIRrx6I0FmvM/SkUiqeRwhHsST+t4mj4OLyXpH80SFsHVqnOPxTS9b91hUH8xl08DvcZTGCVgJc0x43Gd/U2Vi0aUi3cjkebW8hBMCo8BAQw51sdouhTlz4nLrRbiY1iFilqtkKOZ5thqO+jqJC14Unt9743PxjIMpTBD9YqKeNy0cuj6YTYPtmuC9KT6HECyxkGQ9sD4VsYU5tIs+7JmtKHlBjmOhQIyOpqWP0p8avt8X79AiANDHA9CdRke+tW/x6MA9Aos+gQwfa3u+HRIaBc4/lNUTuynPUZNqP8=\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 103,\"candidatesTokenCount\": 13,\"totalTokenCount\": 158,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 103}],\"thoughtsTokenCount\": 42,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"eRQFar32IZymmtkP_5eN8Qw\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":103,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":103}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":42,\"totalTokenCount\":158}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -56,34 +32,10 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx25nva6qglbJvIm9imG7cmrQuVqzRLHQR4AIYICMFvEKawEMOdbHNNFRTWL58At7umLY2/ytBalh5b8g78QNFm+YIRrx6I0FmvM/SkUiqeRwhHsST+t4mj4OLyXpH80SFsHVqnOPxTS9b91hUH8xl08DvcZTGCVgJc0x43Gd/U2Vi0aUi3cjkebW8hBMCo8BAQw51sdouhTlz4nLrRbiY1iFilqtkKOZ5thqO+jqJC14Unt9743PxjIMpTBD9YqKeNy0cuj6YTYPtmuC9KT6HECyxkGQ9sD4VsYU5tIs+7JmtKHlBjmOhQIyOpqWP0p8avt8X79AiANDHA9CdRke+tW/x6MA9Aos+gQwfa3u+HRIaBc4/lNUTuynPUZNqP8=","functionCall":{"name":"lookup_harbor_label","args":{}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"lookup_harbor_label","description":"Return the alpha signal marker.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:16:58 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=471
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The alpha signal marker\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 180,\"candidatesTokenCount\": 4,\"totalTokenCount\": 184,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 180}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"ehQFaoTsFKbMqtsP75j8mA0\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" is crimson-harbor.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 180,\"candidatesTokenCount\": 10,\"totalTokenCount\": 190,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 180}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"ehQFaoTsFKbMqtsP75j8mA0\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The alpha signal marker\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":4,\"promptTokenCount\":180,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":180}],\"serviceTier\":\"standard\",\"totalTokenCount\":184}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" is crimson-harbor.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":10,\"promptTokenCount\":180,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":180}],\"serviceTier\":\"standard\",\"totalTokenCount\":190}}\r\n\r\n"

@@ -11,37 +11,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y)","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must use tools to answer arithmetic prompts."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:15:50 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=1114
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"subtract\",\"args\": {\"x\": 10,\"y\": 4}},\"thoughtSignature\": \"CnMBDDnWx7YpXSTQyLk4MRe/xQrzQae1+cWINm4QYvQ9f8Vz3EE6ZO7OwbjzrZFd1L/qiZ3GbT9fPMbGK/V9Pm6YU+NyXcwphTqDhueIHo9JTPjwHY+4Ugt2AkMafiG19YwzkxwhE3Yyo5I/B9pWslG9QqsyCtsBAQw51sfvQVuRYm8ZXib60J2ibOl8NfXjBWUzlAeiolFhUdyETI8qVmuiyLsti33hCtMLFMs4HRAyIfJItrYAWoKmTevMFi7vJXSLgFQOOJF6UT5+b3KC1zWt7dV6hVO+FkHdV+c0QaWE9BY4666sluo9Z1sbmwAbYxCjUEtq6ApY/m1c5keLy2caAeMpJHW7EB4QaHiDqQSuF0l6K+PAfIYt3kcsZM0HubjpWgkdP9j0FVtwYu7Pc9K4OpBnD1uYWAm076QyghFzxFRrlRYNBsV/CPHXJMw3+mChCt8BAQw51sdydqaV+5CbdVcZF3j5iN2g8ceAIktuIGKuKBK1uh7KDPfM9NUlGRiNZNoOmfsRGDkitIOrOjsdPIrinKJzrhl3pxYtJbDAVvKXAv9VqAquSoidde0vG/mvK6z8A49fEbmBqXkZFA7IeEekbFTDuEDLL9QRlv4RqIgJgSjeWVIMKWxznLGuYkCkAft+x3DK0IciJqQQ6Zta/L9l43k6seaLZXjVF3bZYBWBe3GegkWGeDdDgu3OZsIWITpO7WZ9FajWrbt5gStmqnXW2yjjazoJ33klhP1z3kohUApDAQw51seXdnRzgUcS3QwlCqa11UHQz7VI970ggn5yovZRpjzLY21mD/1wLc2H5QqXxL8jj16nAg0KR7Asbdupl2mDsA==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 244,\"candidatesTokenCount\": 19,\"totalTokenCount\": 389,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 244}],\"thoughtsTokenCount\": 126,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"NRQFavurL_GeqtsPq5r2qQ0\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":10,\"y\":4},\"name\":\"subtract\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":244,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":244}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":126,\"totalTokenCount\":389}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -56,37 +32,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CnMBDDnWx7YpXSTQyLk4MRe/xQrzQae1+cWINm4QYvQ9f8Vz3EE6ZO7OwbjzrZFd1L/qiZ3GbT9fPMbGK/V9Pm6YU+NyXcwphTqDhueIHo9JTPjwHY+4Ugt2AkMafiG19YwzkxwhE3Yyo5I/B9pWslG9QqsyCtsBAQw51sfvQVuRYm8ZXib60J2ibOl8NfXjBWUzlAeiolFhUdyETI8qVmuiyLsti33hCtMLFMs4HRAyIfJItrYAWoKmTevMFi7vJXSLgFQOOJF6UT5+b3KC1zWt7dV6hVO+FkHdV+c0QaWE9BY4666sluo9Z1sbmwAbYxCjUEtq6ApY/m1c5keLy2caAeMpJHW7EB4QaHiDqQSuF0l6K+PAfIYt3kcsZM0HubjpWgkdP9j0FVtwYu7Pc9K4OpBnD1uYWAm076QyghFzxFRrlRYNBsV/CPHXJMw3+mChCt8BAQw51sdydqaV+5CbdVcZF3j5iN2g8ceAIktuIGKuKBK1uh7KDPfM9NUlGRiNZNoOmfsRGDkitIOrOjsdPIrinKJzrhl3pxYtJbDAVvKXAv9VqAquSoidde0vG/mvK6z8A49fEbmBqXkZFA7IeEekbFTDuEDLL9QRlv4RqIgJgSjeWVIMKWxznLGuYkCkAft+x3DK0IciJqQQ6Zta/L9l43k6seaLZXjVF3bZYBWBe3GegkWGeDdDgu3OZsIWITpO7WZ9FajWrbt5gStmqnXW2yjjazoJ33klhP1z3kohUApDAQw51seXdnRzgUcS3QwlCqa11UHQz7VI970ggn5yovZRpjzLY21mD/1wLc2H5QqXxL8jj16nAg0KR7Asbdupl2mDsA==","functionCall":{"name":"subtract","args":{"x":10,"y":4}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":6}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y)","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must use tools to answer arithmetic prompts."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:15:51 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=765
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"add\",\"args\": {\"x\": 3,\"y\": 5}},\"thoughtSignature\": \"CkwBDDnWxzI6dUzEVodJvlKOo/AJHvfzHFtOwIqvXUKSZKtHC0ljnKuPV95DsGbOLnnvYcRxR1S3K9z3Yu5ALrtNAy6vvHNn36lxJZh1CmIBDDnWx0ot0LsEBLE9TTmpPuwRmtEe3N1i7Nra2rV3enK/YanE5ohU/x1sF697cbM2CN3dGGP7tkvn3NPDuGbM+ecZomjW/CdN7JiCmMOPW6by5ZK8pFDQy/4DNgoBYF3g7Q==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 402,\"candidatesTokenCount\": 18,\"totalTokenCount\": 460,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 402}],\"thoughtsTokenCount\": 40,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"NhQFavbsPLG2qtsP_fuzoQs\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":3,\"y\":5},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":402,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":402}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":40,\"totalTokenCount\":460}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -101,37 +53,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CnMBDDnWx7YpXSTQyLk4MRe/xQrzQae1+cWINm4QYvQ9f8Vz3EE6ZO7OwbjzrZFd1L/qiZ3GbT9fPMbGK/V9Pm6YU+NyXcwphTqDhueIHo9JTPjwHY+4Ugt2AkMafiG19YwzkxwhE3Yyo5I/B9pWslG9QqsyCtsBAQw51sfvQVuRYm8ZXib60J2ibOl8NfXjBWUzlAeiolFhUdyETI8qVmuiyLsti33hCtMLFMs4HRAyIfJItrYAWoKmTevMFi7vJXSLgFQOOJF6UT5+b3KC1zWt7dV6hVO+FkHdV+c0QaWE9BY4666sluo9Z1sbmwAbYxCjUEtq6ApY/m1c5keLy2caAeMpJHW7EB4QaHiDqQSuF0l6K+PAfIYt3kcsZM0HubjpWgkdP9j0FVtwYu7Pc9K4OpBnD1uYWAm076QyghFzxFRrlRYNBsV/CPHXJMw3+mChCt8BAQw51sdydqaV+5CbdVcZF3j5iN2g8ceAIktuIGKuKBK1uh7KDPfM9NUlGRiNZNoOmfsRGDkitIOrOjsdPIrinKJzrhl3pxYtJbDAVvKXAv9VqAquSoidde0vG/mvK6z8A49fEbmBqXkZFA7IeEekbFTDuEDLL9QRlv4RqIgJgSjeWVIMKWxznLGuYkCkAft+x3DK0IciJqQQ6Zta/L9l43k6seaLZXjVF3bZYBWBe3GegkWGeDdDgu3OZsIWITpO7WZ9FajWrbt5gStmqnXW2yjjazoJ33klhP1z3kohUApDAQw51seXdnRzgUcS3QwlCqa11UHQz7VI970ggn5yovZRpjzLY21mD/1wLc2H5QqXxL8jj16nAg0KR7Asbdupl2mDsA==","functionCall":{"name":"subtract","args":{"x":10,"y":4}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":6}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CkwBDDnWxzI6dUzEVodJvlKOo/AJHvfzHFtOwIqvXUKSZKtHC0ljnKuPV95DsGbOLnnvYcRxR1S3K9z3Yu5ALrtNAy6vvHNn36lxJZh1CmIBDDnWx0ot0LsEBLE9TTmpPuwRmtEe3N1i7Nra2rV3enK/YanE5ohU/x1sF697cbM2CN3dGGP7tkvn3NPDuGbM+ecZomjW/CdN7JiCmMOPW6by5ZK8pFDQy/4DNgoBYF3g7Q==","functionCall":{"name":"add","args":{"x":3,"y":5}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"add","response":{"result":8}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y)","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must use tools to answer arithmetic prompts."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:15:52 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=754
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"multiply\",\"args\": {\"x\": 6,\"y\": 8}},\"thoughtSignature\": \"CiQBDDnWx839cv27Q9TeD91eq5KYT1pAk1hYmfp62scH8Yome1kKSwEMOdbHMZOyU6wEO4AzUYAcspnIlnBbVtjAgvsaUXwXcjRZKHpXhxbhag/CmN16oi+Nd6Ev8nAhNtMlnAApY5GAWq6rWHVg+P6qdAqHAQEMOdbHWRXpmyENI4Ag5u4NkC/Ue9Y/+AtP10rdYFpVEZAhBb8U0vdYbcwa9xz5RI7N77WxTIQmEGXv5nuSsUhi5umNYd8SrsylbAZUmwHexhrMTtrkryNSMxUVxyZ6KZzRlMKEpMWQqToM6iqqkmBo8R5fhSvBAsRaodMwYQ887ZIJUL1Yxw==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 473,\"candidatesTokenCount\": 18,\"totalTokenCount\": 538,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 473}],\"thoughtsTokenCount\": 47,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"NxQFasb0MMiMqtsP3qqoiAM\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":6,\"y\":8},\"name\":\"multiply\"},\"thoughtSignature\":\"signature_REDACTED_3\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_3\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":473,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":473}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":47,\"totalTokenCount\":538}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -146,37 +74,13 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CnMBDDnWx7YpXSTQyLk4MRe/xQrzQae1+cWINm4QYvQ9f8Vz3EE6ZO7OwbjzrZFd1L/qiZ3GbT9fPMbGK/V9Pm6YU+NyXcwphTqDhueIHo9JTPjwHY+4Ugt2AkMafiG19YwzkxwhE3Yyo5I/B9pWslG9QqsyCtsBAQw51sfvQVuRYm8ZXib60J2ibOl8NfXjBWUzlAeiolFhUdyETI8qVmuiyLsti33hCtMLFMs4HRAyIfJItrYAWoKmTevMFi7vJXSLgFQOOJF6UT5+b3KC1zWt7dV6hVO+FkHdV+c0QaWE9BY4666sluo9Z1sbmwAbYxCjUEtq6ApY/m1c5keLy2caAeMpJHW7EB4QaHiDqQSuF0l6K+PAfIYt3kcsZM0HubjpWgkdP9j0FVtwYu7Pc9K4OpBnD1uYWAm076QyghFzxFRrlRYNBsV/CPHXJMw3+mChCt8BAQw51sdydqaV+5CbdVcZF3j5iN2g8ceAIktuIGKuKBK1uh7KDPfM9NUlGRiNZNoOmfsRGDkitIOrOjsdPIrinKJzrhl3pxYtJbDAVvKXAv9VqAquSoidde0vG/mvK6z8A49fEbmBqXkZFA7IeEekbFTDuEDLL9QRlv4RqIgJgSjeWVIMKWxznLGuYkCkAft+x3DK0IciJqQQ6Zta/L9l43k6seaLZXjVF3bZYBWBe3GegkWGeDdDgu3OZsIWITpO7WZ9FajWrbt5gStmqnXW2yjjazoJ33klhP1z3kohUApDAQw51seXdnRzgUcS3QwlCqa11UHQz7VI970ggn5yovZRpjzLY21mD/1wLc2H5QqXxL8jj16nAg0KR7Asbdupl2mDsA==","functionCall":{"name":"subtract","args":{"x":10,"y":4}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":6}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CkwBDDnWxzI6dUzEVodJvlKOo/AJHvfzHFtOwIqvXUKSZKtHC0ljnKuPV95DsGbOLnnvYcRxR1S3K9z3Yu5ALrtNAy6vvHNn36lxJZh1CmIBDDnWx0ot0LsEBLE9TTmpPuwRmtEe3N1i7Nra2rV3enK/YanE5ohU/x1sF697cbM2CN3dGGP7tkvn3NPDuGbM+ecZomjW/CdN7JiCmMOPW6by5ZK8pFDQy/4DNgoBYF3g7Q==","functionCall":{"name":"add","args":{"x":3,"y":5}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"add","response":{"result":8}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx839cv27Q9TeD91eq5KYT1pAk1hYmfp62scH8Yome1kKSwEMOdbHMZOyU6wEO4AzUYAcspnIlnBbVtjAgvsaUXwXcjRZKHpXhxbhag/CmN16oi+Nd6Ev8nAhNtMlnAApY5GAWq6rWHVg+P6qdAqHAQEMOdbHWRXpmyENI4Ag5u4NkC/Ue9Y/+AtP10rdYFpVEZAhBb8U0vdYbcwa9xz5RI7N77WxTIQmEGXv5nuSsUhi5umNYd8SrsylbAZUmwHexhrMTtrkryNSMxUVxyZ6KZzRlMKEpMWQqToM6iqqkmBo8R5fhSvBAsRaodMwYQ887ZIJUL1Yxw==","functionCall":{"name":"multiply","args":{"x":6,"y":8}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"multiply","response":{"result":48}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y)","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must use tools to answer arithmetic prompts."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":6,"y":8},"name":"multiply"},"thought":false,"thoughtSignature":"signature_REDACTED_3"}],"role":"model"},{"parts":[{"functionResponse":{"name":"multiply","response":{"result":48}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:15:53 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=750
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"divide\",\"args\": {\"x\": 48,\"y\": 3}},\"thoughtSignature\": \"CiQBDDnWx2Kj7rWcK6Ca3cpz50t0twcZfqcWPXrxYylOBOkL88wKRQEMOdbHithXRrlg+62dRPTen2jI+NZ7woB1sDt3+zcdKAUlVXfZxf0Ys6xeTwi4KVy5qAghe025tr3fYCi8LkstTRpttAqJAQEMOdbHP4q+AXI45f2GCTaOGk5ZOtqKDsd74HL8SOF1X8ihtMzpH7wKGzl5HFiIEmiP8GQkk70/I32IvL+AoRUFCYUbbewZdFdt7O+6zYzeQtBEoto2FDtCNtGh53SGjY6rkA/VaDzS0aGCsUTc5NDYVykJeXivMBmH/2HcWxerQEcg5sHwL/IG\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 552,\"candidatesTokenCount\": 19,\"totalTokenCount\": 627,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 552}],\"thoughtsTokenCount\": 56,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"OBQFauDGJamkmtkPnJCTuQs\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":48,\"y\":3},\"name\":\"divide\"},\"thoughtSignature\":\"signature_REDACTED_4\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_4\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":552,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":552}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":56,\"totalTokenCount\":627}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -191,34 +95,10 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CnMBDDnWx7YpXSTQyLk4MRe/xQrzQae1+cWINm4QYvQ9f8Vz3EE6ZO7OwbjzrZFd1L/qiZ3GbT9fPMbGK/V9Pm6YU+NyXcwphTqDhueIHo9JTPjwHY+4Ugt2AkMafiG19YwzkxwhE3Yyo5I/B9pWslG9QqsyCtsBAQw51sfvQVuRYm8ZXib60J2ibOl8NfXjBWUzlAeiolFhUdyETI8qVmuiyLsti33hCtMLFMs4HRAyIfJItrYAWoKmTevMFi7vJXSLgFQOOJF6UT5+b3KC1zWt7dV6hVO+FkHdV+c0QaWE9BY4666sluo9Z1sbmwAbYxCjUEtq6ApY/m1c5keLy2caAeMpJHW7EB4QaHiDqQSuF0l6K+PAfIYt3kcsZM0HubjpWgkdP9j0FVtwYu7Pc9K4OpBnD1uYWAm076QyghFzxFRrlRYNBsV/CPHXJMw3+mChCt8BAQw51sdydqaV+5CbdVcZF3j5iN2g8ceAIktuIGKuKBK1uh7KDPfM9NUlGRiNZNoOmfsRGDkitIOrOjsdPIrinKJzrhl3pxYtJbDAVvKXAv9VqAquSoidde0vG/mvK6z8A49fEbmBqXkZFA7IeEekbFTDuEDLL9QRlv4RqIgJgSjeWVIMKWxznLGuYkCkAft+x3DK0IciJqQQ6Zta/L9l43k6seaLZXjVF3bZYBWBe3GegkWGeDdDgu3OZsIWITpO7WZ9FajWrbt5gStmqnXW2yjjazoJ33klhP1z3kohUApDAQw51seXdnRzgUcS3QwlCqa11UHQz7VI970ggn5yovZRpjzLY21mD/1wLc2H5QqXxL8jj16nAg0KR7Asbdupl2mDsA==","functionCall":{"name":"subtract","args":{"x":10,"y":4}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"subtract","response":{"result":6}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CkwBDDnWxzI6dUzEVodJvlKOo/AJHvfzHFtOwIqvXUKSZKtHC0ljnKuPV95DsGbOLnnvYcRxR1S3K9z3Yu5ALrtNAy6vvHNn36lxJZh1CmIBDDnWx0ot0LsEBLE9TTmpPuwRmtEe3N1i7Nra2rV3enK/YanE5ohU/x1sF697cbM2CN3dGGP7tkvn3NPDuGbM+ecZomjW/CdN7JiCmMOPW6by5ZK8pFDQy/4DNgoBYF3g7Q==","functionCall":{"name":"add","args":{"x":3,"y":5}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"add","response":{"result":8}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx839cv27Q9TeD91eq5KYT1pAk1hYmfp62scH8Yome1kKSwEMOdbHMZOyU6wEO4AzUYAcspnIlnBbVtjAgvsaUXwXcjRZKHpXhxbhag/CmN16oi+Nd6Ev8nAhNtMlnAApY5GAWq6rWHVg+P6qdAqHAQEMOdbHWRXpmyENI4Ag5u4NkC/Ue9Y/+AtP10rdYFpVEZAhBb8U0vdYbcwa9xz5RI7N77WxTIQmEGXv5nuSsUhi5umNYd8SrsylbAZUmwHexhrMTtrkryNSMxUVxyZ6KZzRlMKEpMWQqToM6iqqkmBo8R5fhSvBAsRaodMwYQ887ZIJUL1Yxw==","functionCall":{"name":"multiply","args":{"x":6,"y":8}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"multiply","response":{"result":48}}}],"role":"user"},{"parts":[{"thought":false,"thoughtSignature":"CiQBDDnWx2Kj7rWcK6Ca3cpz50t0twcZfqcWPXrxYylOBOkL88wKRQEMOdbHithXRrlg+62dRPTen2jI+NZ7woB1sDt3+zcdKAUlVXfZxf0Ys6xeTwi4KVy5qAghe025tr3fYCi8LkstTRpttAqJAQEMOdbHP4q+AXI45f2GCTaOGk5ZOtqKDsd74HL8SOF1X8ihtMzpH7wKGzl5HFiIEmiP8GQkk70/I32IvL+AoRUFCYUbbewZdFdt7O+6zYzeQtBEoto2FDtCNtGh53SGjY6rkA/VaDzS0aGCsUTc5NDYVykJeXivMBmH/2HcWxerQEcg5sHwL/IG","functionCall":{"name":"divide","args":{"x":48,"y":3}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"divide","response":{"result":16}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"add","description":"Add x and y together","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y)","parameters":{"type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","parameters":{"type":"object","properties":{"y":{"type":"integer","format":"int32"},"x":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You must use tools to answer arithmetic prompts."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":6,"y":8},"name":"multiply"},"thought":false,"thoughtSignature":"signature_REDACTED_3"}],"role":"model"},{"parts":[{"functionResponse":{"name":"multiply","response":{"result":48}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":48,"y":3},"name":"divide"},"thought":false,"thoughtSignature":"signature_REDACTED_4"}],"role":"model"},{"parts":[{"functionResponse":{"name":"divide","response":{"result":16}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:15:54 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=751
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The calculation of ((10 - 4) * (3 + 5)) / 3 yields a result of 16. This was achieved by first subtracting 4 from \",\"thoughtSignature\": \"ClwBDDnWx1wZq+Ugjx6gDJgLG6wQTCGMpChqmeBB3K76/JjpP2D5YmmN6PhNLDfLu86YoGLdgeeaMzrk95tITEiLN60s6Xt4iTxSy6I2aeuvTbBe+ATSAKdH0F1KHwpaAQw51sdymFr7bR6tjNaCjfQgYVKEDo0APsQbXuOcxmtpQLeWjDG32oqTDcDHzSCDrrSbikTDILXHU5Cuok+636u6O5KooooOSHOUDdEg2ldRdEb8uZMtTv4s\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 641,\"candidatesTokenCount\": 37,\"totalTokenCount\": 705,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 641}],\"thoughtsTokenCount\": 27,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"ORQFasONG4S-qtsPo5flqQg\"}\r\n\r\ndata: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"10 to get 6, then adding 3 and 5 to get 8, multiplying these two results to get 48, and finally dividing 48 by 3.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 641,\"candidatesTokenCount\": 76,\"totalTokenCount\": 744,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 641}],\"thoughtsTokenCount\": 27,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"ORQFasONG4S-qtsPo5flqQg\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The calculation of ((10 - 4) * (3 + 5)) / 3 yields a result of 16. This was achieved by first subtracting 4 from \",\"thoughtSignature\":\"signature_REDACTED_5\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_5\",\"usageMetadata\":{\"candidatesTokenCount\":37,\"promptTokenCount\":641,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":641}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":27,\"totalTokenCount\":705}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"10 to get 6, then adding 3 and 5 to get 8, multiplying these two results to get 48, and finally dividing 48 by 3.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_5\",\"usageMetadata\":{\"candidatesTokenCount\":76,\"promptTokenCount\":641,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":641}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":27,\"totalTokenCount\":744}}\r\n\r\n"

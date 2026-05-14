@@ -11,34 +11,10 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Call the ping tool with no arguments. Do not answer with normal text before the tool call."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"ping","description":"A zero-argument tool named ping.","parameters":{"type":"object","properties":{},"required":[]}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":null}'
+  body: '{"contents":[{"parts":[{"text":"Call the ping tool with no arguments. Do not answer with normal text before the tool call.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":null,"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
-  - name: content-disposition
-    value: attachment
-  - name: vary
-    value: Origin
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: transfer-encoding
-    value: chunked
-  - name: date
-    value: Thu, 14 May 2026 00:16:57 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=834
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  body: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\": {\"name\": \"ping\",\"args\": {}},\"thoughtSignature\": \"Cl4BDDnWx/MjfYNZpy5xiOicXj3pxKdSYVciHVmP1QPm+vQvVu93m3ELuYmnZVB/0GmEuJTbP/ASZXY6iqdpIGvxWLZr0UHN3xWtSoa/LB5JX3cKD+TjTLwxO9MjKc86CrIBAQw51sedrA5G0o03oFcpiPORiefFIBstpsR1Z8crizfMZI1hhLBqPmtPRBsCpC6vl6ijjFE/BQjvgRz46rXOVsMOk41wFAOOpjmd6oIpmEIBsYQ6Kgv1ljcvX60XmcBPImOVZafN2bgF6/733VUO4n3AJivCGMq5SAY5L+Uush4nhFzLzxEoCqxB84bKLqoP5tpuogr04o3iWxH+CuDDEXwGvXnb9rvbAXpZwot1pYBWCA==\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\": 47,\"candidatesTokenCount\": 8,\"totalTokenCount\": 106,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 47}],\"thoughtsTokenCount\": 51,\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash\",\"responseId\": \"eBQFatjaKIKsqtsPoaDAgA0\"}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"ping\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":8,\"promptTokenCount\":47,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":47}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":51,\"totalTokenCount\":106}}\r\n\r\n"

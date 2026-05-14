@@ -11,7 +11,7 @@ use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use axum::{Router, routing::any};
 use httpmock::MockServer;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -172,7 +172,7 @@ impl ProviderCassette {
             .expect("provider cassette should export")
             .expect("provider cassette should contain at least one interaction");
         let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
-        let redacted = redact_secrets(&yaml);
+        let redacted = scrub_cassette_contents(&yaml);
 
         if let Some(parent) = self.cassette_path.parent() {
             tokio::fs::create_dir_all(parent)
@@ -254,13 +254,13 @@ struct ReplayState {
     interactions: Vec<ReplayInteraction>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct CassetteInteraction {
     when: CassetteRequest,
     then: CassetteResponse,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct CassetteRequest {
     path: String,
     method: String,
@@ -271,7 +271,7 @@ struct CassetteRequest {
     body: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct CassetteResponse {
     status: u16,
     #[serde(default)]
@@ -279,7 +279,7 @@ struct CassetteResponse {
     body: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct NameValue {
     name: String,
     value: String,
@@ -292,6 +292,17 @@ struct ReplayInteraction {
 }
 
 fn parse_cassette(cassette_path: &Path, contents: &str) -> Vec<ReplayInteraction> {
+    parse_cassette_interactions(cassette_path, contents)
+        .into_iter()
+        .map(|interaction| ReplayInteraction {
+            when: interaction.when,
+            then: interaction.then,
+            consumed: false,
+        })
+        .collect()
+}
+
+fn parse_cassette_interactions(cassette_path: &Path, contents: &str) -> Vec<CassetteInteraction> {
     serde_yaml::Deserializer::from_str(contents)
         .map(|document| {
             CassetteInteraction::deserialize(document).unwrap_or_else(|error| {
@@ -300,11 +311,6 @@ fn parse_cassette(cassette_path: &Path, contents: &str) -> Vec<ReplayInteraction
                     cassette_path.display()
                 )
             })
-        })
-        .map(|interaction| ReplayInteraction {
-            when: interaction.when,
-            then: interaction.then,
-            consumed: false,
         })
         .collect()
 }
@@ -724,90 +730,808 @@ fn sanitize_path_segment(segment: &str) -> String {
         .collect()
 }
 
-fn redact_secrets(yaml: &str) -> String {
-    let mut redacted = Vec::new();
-    let mut redact_next_value = false;
+pub(crate) fn scrub_cassette_contents(yaml: &str) -> String {
+    let mut interactions = parse_cassette_interactions(Path::new("<cassette>"), yaml);
+    let mut scrubber = CassetteScrubber::default();
 
-    for line in yaml.lines() {
-        let trimmed = line.trim_start();
-        let lower = trimmed.to_ascii_lowercase();
-        let is_sensitive_header_name = lower.starts_with("- name: set-cookie")
-            || lower.starts_with("- name: openai-organization")
-            || lower.starts_with("- name: openai-project")
-            || lower.starts_with("- name: anthropic-organization-id")
-            || lower.starts_with("- name: x-api-key")
-            || lower.starts_with("- name: x-goog-api-key")
-            || lower.starts_with("- name: key");
-
-        let line = if redact_next_value && lower.starts_with("value:") {
-            redact_next_value = false;
-            let indentation_len = line.len() - trimmed.len();
-            format!("{}value: '{}'", &line[..indentation_len], REDACTED)
-        } else if lower.starts_with("authorization:")
-            || lower.starts_with("x-api-key:")
-            || lower.starts_with("api-key:")
-            || lower.starts_with("x-goog-api-key:")
-            || lower.starts_with("ocp-apim-subscription-key:")
-            || lower.starts_with("set-cookie:")
-            || lower.starts_with("openai-organization:")
-            || lower.starts_with("openai-project:")
-            || lower.starts_with("anthropic-organization-id:")
-        {
-            let indentation_len = line.len() - trimmed.len();
-            format!(
-                "{}{}: {}",
-                &line[..indentation_len],
-                key_before_colon(trimmed),
-                REDACTED
-            )
-        } else {
-            if is_sensitive_header_name {
-                redact_next_value = true;
-            }
-            redact_query_api_key(line)
-        };
-
-        redacted.push(line);
+    for interaction in &mut interactions {
+        scrubber.scrub_request(&mut interaction.when);
+        scrubber.scrub_response(&mut interaction.then);
     }
 
-    let mut output = redacted.join("\n");
-    if yaml.ends_with('\n') {
-        output.push('\n');
+    serialize_cassette_interactions(&interactions)
+}
+
+pub(crate) fn cassette_safety_failures(cassette_path: &Path, contents: &str) -> Vec<String> {
+    let mut failures = Vec::new();
+    let scrubbed = scrub_cassette_contents(contents);
+
+    if scrubbed != contents {
+        failures.push(format!(
+            "{} is not in scrubbed cassette form",
+            cassette_path.display()
+        ));
     }
+
+    let lower = contents.to_ascii_lowercase();
+    for pattern in FORBIDDEN_CASSETTE_PATTERNS {
+        if lower.contains(pattern) {
+            failures.push(format!("{} contains {pattern:?}", cassette_path.display()));
+        }
+    }
+
+    for token in generated_tokens(contents) {
+        failures.push(format!(
+            "{} contains unsanitized provider artifact {token:?}",
+            cassette_path.display()
+        ));
+    }
+
+    for token in google_api_key_tokens(contents) {
+        failures.push(format!(
+            "{} contains Google API key-shaped token {token:?}",
+            cassette_path.display()
+        ));
+    }
+
+    failures
+}
+
+fn serialize_cassette_interactions(interactions: &[CassetteInteraction]) -> String {
+    let mut output = String::new();
+
+    for (index, interaction) in interactions.iter().enumerate() {
+        if index > 0 {
+            output.push_str("---\n");
+        }
+        output.push_str(
+            &serde_yaml::to_string(interaction)
+                .expect("scrubbed cassette interaction should serialize"),
+        );
+    }
+
     output
 }
 
-fn key_before_colon(line: &str) -> &str {
-    line.split_once(':')
-        .map(|(key, _)| key)
-        .expect("redacted header line should contain colon")
+const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
+    "authorization:",
+    "bearer ",
+    "sk-",
+    "x-api-key:",
+    "x-goog-api-key:",
+    "openai_api_key",
+    "anthropic_api_key",
+    "gemini_api_key",
+    "__cf_bm=",
+    "proj_",
+    "set-cookie",
+    "openai-organization",
+    "openai-project",
+    "anthropic-organization-id",
+];
+
+const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type"];
+
+const VOLATILE_JSON_KEYS: &[&str] = &[
+    "completed_at",
+    "created",
+    "created_at",
+    "updated",
+    "updated_at",
+];
+
+const SENSITIVE_STRING_KEYS: &[&str] = &[
+    "encrypted_content",
+    "encryptedcontent",
+    "obfuscation",
+    "signature",
+    "thoughtsignature",
+];
+
+const GENERATED_ID_KEYS: &[&str] = &[
+    "call_id",
+    "item_id",
+    "previous_interaction_id",
+    "previous_response_id",
+    "request_id",
+    "response_id",
+    "responseid",
+    "tool_call_id",
+    "tool_use_id",
+];
+
+const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
+    TokenPrefix::new("chatcmpl-", "chatcmpl-", 8),
+    TokenPrefix::new("resp_", "resp_", 8),
+    TokenPrefix::new("msg_", "msg_", 8),
+    TokenPrefix::new("call_", "call_", 8),
+    TokenPrefix::new("toolu_", "toolu_", 8),
+    TokenPrefix::new("file_", "file_", 6),
+    TokenPrefix::new("req_", "req_", 8),
+    TokenPrefix::new("rs_", "rs_", 8),
+    TokenPrefix::new("fc_", "fc_", 8),
+    TokenPrefix::new("fp_", "fp_", 6),
+    TokenPrefix::new("v1_", "v1_", 8),
+    TokenPrefix::new("run_", "run_", 8),
+    TokenPrefix::new("step_", "step_", 8),
+    TokenPrefix::new("thread_", "thread_", 8),
+    TokenPrefix::new("asst_", "asst_", 8),
+    TokenPrefix::new("batch_", "batch_", 8),
+    TokenPrefix::new("upload_", "upload_", 8),
+];
+
+#[derive(Clone, Copy)]
+struct TokenPrefix {
+    raw: &'static str,
+    placeholder_prefix: &'static str,
+    min_suffix_len: usize,
 }
 
-fn redact_query_api_key(line: &str) -> String {
-    redact_query_param(line, "key")
+impl TokenPrefix {
+    const fn new(
+        raw: &'static str,
+        placeholder_prefix: &'static str,
+        min_suffix_len: usize,
+    ) -> Self {
+        Self {
+            raw,
+            placeholder_prefix,
+            min_suffix_len,
+        }
+    }
 }
 
-fn redact_query_param(line: &str, key: &str) -> String {
-    let mut output = String::with_capacity(line.len());
-    let mut remainder = line;
+#[derive(Default)]
+struct CassetteScrubber {
+    placeholders: BTreeMap<String, String>,
+    counters: BTreeMap<&'static str, usize>,
+}
 
-    while let Some(index) = remainder.find(&format!("{key}=")) {
+impl CassetteScrubber {
+    fn scrub_request(&mut self, request: &mut CassetteRequest) {
+        request.path = self.scrub_text(&request.path);
+        scrub_headers(&mut request.header, HeaderMode::Request);
+        scrub_query_params(&mut request.query_param);
+
+        for query_param in &mut request.query_param {
+            query_param.value = self.scrub_text(&query_param.value);
+        }
+
+        if let Some(body) = &mut request.body {
+            *body = self.scrub_body(body);
+        }
+    }
+
+    fn scrub_response(&mut self, response: &mut CassetteResponse) {
+        scrub_headers(&mut response.header, HeaderMode::Response);
+
+        if let Some(body) = &mut response.body {
+            *body = self.scrub_body(body);
+        }
+    }
+
+    fn scrub_body(&mut self, body: &str) -> String {
+        if let Some(mut json) = canonical_json(body) {
+            self.scrub_json_value(None, &mut json);
+            return serde_json::to_string(&json).expect("scrubbed JSON body should serialize");
+        }
+
+        if body
+            .lines()
+            .any(|line| line.trim_start().starts_with("data:"))
+        {
+            return self.scrub_sse_body(body);
+        }
+
+        self.scrub_text(body)
+    }
+
+    fn scrub_sse_body(&mut self, body: &str) -> String {
+        let mut output = String::with_capacity(body.len());
+
+        for line in body.split_inclusive('\n') {
+            let (line_without_newline, newline) = line
+                .strip_suffix('\n')
+                .map(|line| (line, "\n"))
+                .unwrap_or((line, ""));
+            let (line_without_cr, cr) = line_without_newline
+                .strip_suffix('\r')
+                .map(|line| (line, "\r"))
+                .unwrap_or((line_without_newline, ""));
+            let trimmed = line_without_cr.trim_start();
+            let indentation_len = line_without_cr.len() - trimmed.len();
+
+            if let Some(payload) = trimmed.strip_prefix("data:") {
+                let payload = payload.trim_start();
+                if payload == "[DONE]" {
+                    output.push_str(line_without_cr);
+                } else if let Some(mut json) = canonical_json(payload) {
+                    self.scrub_json_value(None, &mut json);
+                    output.push_str(&line_without_cr[..indentation_len]);
+                    output.push_str("data: ");
+                    output.push_str(
+                        &serde_json::to_string(&json)
+                            .expect("scrubbed SSE JSON payload should serialize"),
+                    );
+                } else {
+                    output.push_str(&self.scrub_text(line_without_cr));
+                }
+            } else {
+                output.push_str(&self.scrub_text(line_without_cr));
+            }
+
+            output.push_str(cr);
+            output.push_str(newline);
+        }
+
+        output
+    }
+
+    fn scrub_json_value(&mut self, key: Option<&str>, value: &mut Value) {
+        let key_lower = key.map(|key| key.to_ascii_lowercase());
+
+        match value {
+            Value::Object(map) => {
+                let object_type = map
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .map(str::to_ascii_lowercase);
+                let object_name = map
+                    .get("object")
+                    .and_then(Value::as_str)
+                    .map(str::to_ascii_lowercase);
+
+                for (key, value) in map {
+                    if key == "id"
+                        && should_scrub_id_for_object(
+                            value.as_str(),
+                            object_type.as_deref(),
+                            object_name.as_deref(),
+                        )
+                    {
+                        if let Value::String(id) = value {
+                            *id = self.placeholder(
+                                id,
+                                placeholder_kind_for_id(
+                                    id,
+                                    object_type.as_deref(),
+                                    object_name.as_deref(),
+                                ),
+                            );
+                        }
+                        continue;
+                    }
+
+                    self.scrub_json_value(Some(key), value);
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    self.scrub_json_value(key, value);
+                }
+            }
+            Value::String(text) => {
+                if is_redacted_placeholder(text) {
+                    return;
+                }
+
+                if let Some(key) = key_lower.as_deref() {
+                    if VOLATILE_JSON_KEYS.contains(&key) {
+                        *text = "1970-01-01T00:00:00Z".to_string();
+                        return;
+                    }
+
+                    if SENSITIVE_STRING_KEYS.contains(&key) || GENERATED_ID_KEYS.contains(&key) {
+                        *text = self.placeholder(text, placeholder_kind_for_value(text, key));
+                        return;
+                    }
+
+                    if key == "url" && text.contains("grounding-api-redirect/") {
+                        *text = self.placeholder(text, "url");
+                        return;
+                    }
+                }
+
+                *text = self.scrub_text(text);
+            }
+            Value::Number(number) => {
+                if key_lower
+                    .as_deref()
+                    .is_some_and(|key| VOLATILE_JSON_KEYS.contains(&key))
+                {
+                    *value = Value::Number(0.into());
+                } else {
+                    let _ = number;
+                }
+            }
+            Value::Bool(_) | Value::Null => {}
+        }
+    }
+
+    fn scrub_text(&mut self, text: &str) -> String {
+        let scrubbed = scrub_query_param(text, "key", REDACTED);
+        let scrubbed = self.scrub_grounding_redirects(&scrubbed);
+        self.scrub_generated_tokens(&scrubbed)
+    }
+
+    fn scrub_grounding_redirects(&mut self, text: &str) -> String {
+        const PREFIX: &str = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/";
+        let mut output = String::with_capacity(text.len());
+        let mut remaining = text;
+
+        while let Some(index) = remaining.find(PREFIX) {
+            let (before, after_before) = remaining.split_at(index);
+            output.push_str(before);
+
+            let end = after_before
+                .find(['"', '\'', '<', ' ', '\n', '\r'])
+                .unwrap_or(after_before.len());
+            let token = &after_before[..end];
+            output.push_str(&self.placeholder(token, "url"));
+            remaining = &after_before[end..];
+        }
+
+        output.push_str(remaining);
+        output
+    }
+
+    fn scrub_generated_tokens(&mut self, text: &str) -> String {
+        let mut output = String::with_capacity(text.len());
+        let mut index = 0;
+
+        while index < text.len() {
+            if !text.is_char_boundary(index) {
+                index += 1;
+                continue;
+            }
+
+            if let Some(prefix) = matching_generated_prefix(text, index) {
+                let end = token_end(text, index);
+                let token = &text[index..end];
+
+                if is_generated_token(token, prefix) {
+                    output.push_str(&self.placeholder(token, prefix.placeholder_prefix));
+                    index = end;
+                    continue;
+                }
+            }
+
+            let ch = text[index..]
+                .chars()
+                .next()
+                .expect("index should be on a char boundary");
+            output.push(ch);
+            index += ch.len_utf8();
+        }
+
+        output
+    }
+
+    fn placeholder(&mut self, original: &str, kind: &'static str) -> String {
+        if let Some(existing) = self.placeholders.get(original) {
+            return existing.clone();
+        }
+
+        let counter = self.counters.entry(kind).or_insert(0);
+        *counter += 1;
+        let placeholder = format!("{kind}REDACTED_{counter}");
+        self.placeholders
+            .insert(original.to_string(), placeholder.clone());
+        placeholder
+    }
+}
+
+#[derive(Clone, Copy)]
+enum HeaderMode {
+    Request,
+    Response,
+}
+
+fn scrub_headers(headers: &mut Vec<NameValue>, mode: HeaderMode) {
+    match mode {
+        HeaderMode::Request => {
+            for header in headers {
+                if is_sensitive_header(&header.name) {
+                    header.value = REDACTED.to_string();
+                }
+            }
+        }
+        HeaderMode::Response => {
+            headers.retain(|header| {
+                RESPONSE_HEADER_ALLOWLIST
+                    .iter()
+                    .any(|allowed| header.name.eq_ignore_ascii_case(allowed))
+            });
+        }
+    }
+}
+
+fn is_sensitive_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "authorization"
+            | "x-api-key"
+            | "api-key"
+            | "x-goog-api-key"
+            | "ocp-apim-subscription-key"
+            | "set-cookie"
+            | "openai-organization"
+            | "openai-project"
+            | "anthropic-organization-id"
+            | "key"
+    )
+}
+
+fn scrub_query_params(query_params: &mut [NameValue]) {
+    for query_param in query_params {
+        if is_sensitive_query_param(&query_param.name) {
+            query_param.value = REDACTED.to_string();
+        }
+    }
+}
+
+fn is_sensitive_query_param(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "key" | "api_key" | "apikey" | "access_token"
+    )
+}
+
+fn should_scrub_id_for_object(
+    value: Option<&str>,
+    object_type: Option<&str>,
+    object_name: Option<&str>,
+) -> bool {
+    let Some(value) = value else {
+        return false;
+    };
+
+    if is_redacted_placeholder(value) {
+        return false;
+    }
+
+    if placeholder_kind_from_generated_token(value).is_some() {
+        return true;
+    }
+
+    matches!(
+        object_type,
+        Some("function_call")
+            | Some("function")
+            | Some("message")
+            | Some("tool_use")
+            | Some("reasoning")
+            | Some("file")
+    ) || matches!(
+        object_name,
+        Some("response")
+            | Some("chat.completion")
+            | Some("chat.completion.chunk")
+            | Some("interaction")
+    )
+}
+
+fn placeholder_kind_for_value(value: &str, fallback: &str) -> &'static str {
+    placeholder_kind_from_generated_token(value).unwrap_or_else(|| match fallback {
+        "call_id" | "tool_call_id" => "call_",
+        "encrypted_content" | "encryptedcontent" => "encrypted_content_",
+        "item_id" => "item_",
+        "obfuscation" => "obfuscation_",
+        "previous_interaction_id" | "previous_response_id" | "response_id" | "responseid" => "id_",
+        "request_id" => "req_",
+        "signature" | "thoughtsignature" => "signature_",
+        "system_fingerprint" => "fp_",
+        "tool_use_id" => "toolu_",
+        "url" => "url_",
+        _ => "id_",
+    })
+}
+
+fn placeholder_kind_for_id(
+    value: &str,
+    object_type: Option<&str>,
+    object_name: Option<&str>,
+) -> &'static str {
+    placeholder_kind_from_generated_token(value).unwrap_or_else(|| match object_type {
+        Some("file") => "file_",
+        Some("function") => "call_",
+        Some("function_call") => "fc_",
+        Some("message") => "msg_",
+        Some("tool_use") => "toolu_",
+        _ => match object_name {
+            Some("chat.completion") | Some("chat.completion.chunk") => "chatcmpl-",
+            Some("interaction") => "v1_",
+            Some("response") => "resp_",
+            _ => "id_",
+        },
+    })
+}
+
+fn placeholder_kind_from_generated_token(value: &str) -> Option<&'static str> {
+    GENERATED_TOKEN_PREFIXES
+        .iter()
+        .find(|prefix| is_generated_token(value, **prefix))
+        .map(|prefix| prefix.placeholder_prefix)
+}
+
+fn matching_generated_prefix(text: &str, index: usize) -> Option<TokenPrefix> {
+    if index > 0 {
+        let previous = text[..index].chars().next_back()?;
+        if is_token_char(previous) {
+            return None;
+        }
+    }
+
+    GENERATED_TOKEN_PREFIXES
+        .iter()
+        .copied()
+        .find(|prefix| text[index..].starts_with(prefix.raw))
+}
+
+fn token_end(text: &str, start: usize) -> usize {
+    let mut end = start;
+
+    for (offset, ch) in text[start..].char_indices() {
+        if offset == 0 || is_token_char(ch) {
+            end = start + offset + ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    end
+}
+
+fn is_token_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
+}
+
+fn is_generated_token(token: &str, prefix: TokenPrefix) -> bool {
+    if is_redacted_placeholder(token) {
+        return false;
+    }
+
+    let Some(suffix) = token.strip_prefix(prefix.raw) else {
+        return false;
+    };
+
+    suffix.len() >= prefix.min_suffix_len
+        && suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+        && suffix.chars().any(|ch| ch.is_ascii_digit())
+}
+
+fn is_redacted_placeholder(value: &str) -> bool {
+    let Some((kind, counter)) = value.split_once("REDACTED_") else {
+        return false;
+    };
+
+    !kind.is_empty()
+        && !counter.is_empty()
+        && kind
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+        && counter.chars().all(|ch| ch.is_ascii_digit())
+}
+
+fn generated_tokens(contents: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut index = 0;
+
+    while index < contents.len() {
+        if !contents.is_char_boundary(index) {
+            index += 1;
+            continue;
+        }
+
+        if let Some(prefix) = matching_generated_prefix(contents, index) {
+            let end = token_end(contents, index);
+            let token = &contents[index..end];
+            if is_generated_token(token, prefix) && !token.contains("REDACTED_") {
+                tokens.push(token.to_string());
+            }
+            index = end;
+            continue;
+        }
+
+        let ch = contents[index..]
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        index += ch.len_utf8();
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+fn google_api_key_tokens(contents: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut remaining = contents;
+    const PREFIX: &str = "AIza";
+    const MIN_SUFFIX_LEN: usize = 20;
+
+    while let Some(index) = remaining.find(PREFIX) {
+        let after_prefix = &remaining[index + PREFIX.len()..];
+        let suffix_len = after_prefix
+            .chars()
+            .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let token = &remaining[index..index + PREFIX.len() + suffix_len];
+
+        if suffix_len >= MIN_SUFFIX_LEN {
+            tokens.push(token.to_string());
+        }
+
+        remaining = &remaining[index + PREFIX.len()..];
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+fn scrub_query_param(input: &str, key: &str, replacement: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut remainder = input;
+    let needle = format!("{key}=");
+
+    while let Some(index) = find_query_param(remainder, &needle) {
         let (prefix, after_prefix) = remainder.split_at(index);
         output.push_str(prefix);
         output.push_str(key);
         output.push('=');
 
-        let value_start = key.len() + 1;
+        let value_start = needle.len();
         let after_value_start = &after_prefix[value_start..];
         let value_end = after_value_start
-            .find(['&', '"', '\'', ' ', '\n'])
+            .find(['&', '"', '\'', ' ', '\n', '\r', '<'])
             .unwrap_or(after_value_start.len());
-        output.push_str(REDACTED);
+        output.push_str(replacement);
         remainder = &after_value_start[value_end..];
     }
 
     output.push_str(remainder);
     output
+}
+
+fn find_query_param(input: &str, needle: &str) -> Option<usize> {
+    let mut search_start = 0;
+
+    while let Some(relative_index) = input[search_start..].find(needle) {
+        let index = search_start + relative_index;
+        let starts_param = index == 0
+            || input[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| matches!(ch, '?' | '&' | '"' | '\'' | ' '));
+
+        if starts_param {
+            return Some(index);
+        }
+
+        search_start = index + needle.len();
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrubber_preserves_repeated_ids_across_json_bodies() {
+        let cassette = r#"when:
+  path: /v1/files
+  method: POST
+then:
+  status: 200
+  body: '{"id":"file_011Cb1W1wnAxQP1a6AuVcPx5","type":"file","created_at":"2026-05-14T00:18:05Z"}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  body: '{"source":{"type":"file","file_id":"file_011Cb1W1wnAxQP1a6AuVcPx5"}}'
+then:
+  status: 200
+  body: '{"id":"msg_01D9wgWnWe16jLatSL7ce5Gm","content":[{"type":"text","text":"rig-file-id-page-two-verifier-8c27"}]}'
+---
+when:
+  path: /v1/files/file_011Cb1W1wnAxQP1a6AuVcPx5
+  method: DELETE
+  query_param:
+  - name: resource
+    value: file_011Cb1W1wnAxQP1a6AuVcPx5
+then:
+  status: 200
+  body: '{"id":"file_011Cb1W1wnAxQP1a6AuVcPx5","type":"file_deleted"}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(!scrubbed.contains("file_011Cb1W1wnAxQP1a6AuVcPx5"));
+        assert_eq!(scrubbed.matches("file_REDACTED_1").count(), 5);
+        assert!(scrubbed.contains("msg_REDACTED_1"));
+        assert!(scrubbed.contains("rig-file-id-page-two-verifier-8c27"));
+        assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
+    }
+
+    #[test]
+    fn scrubber_scrubs_sse_json_payloads() {
+        let cassette = r#"when:
+  path: /v1/chat/completions
+  method: POST
+then:
+  status: 200
+  header:
+  - name: date
+    value: Thu, 14 May 2026 00:00:00 GMT
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"id\":\"chatcmpl-DfEFWCScgKdeItzBxcAl2DTWsWPwj\",\"created\":1778718594,\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_vJUubymOrhXJwTYjJvSnqzAe\",\"type\":\"function\"}]}}],\"system_fingerprint\":\"fp_c27f75025a\"}\n\ndata: [DONE]\n"
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(!scrubbed.contains("chatcmpl-DfEFWCScgKdeItzBxcAl2DTWsWPwj"));
+        assert!(!scrubbed.contains("call_vJUubymOrhXJwTYjJvSnqzAe"));
+        assert!(!scrubbed.contains("fp_c27f75025a"));
+        assert!(!scrubbed.contains("date"));
+        assert!(scrubbed.contains("chatcmpl-REDACTED_1"));
+        assert!(scrubbed.contains("call_REDACTED_1"));
+        assert!(scrubbed.contains("data: [DONE]"));
+        assert!(scrubbed.contains("content-type"));
+    }
+
+    #[test]
+    fn scrubber_keeps_public_model_ids() {
+        let cassette = r#"when:
+  path: /v1/models
+  method: GET
+then:
+  status: 200
+  body: '{"data":[{"type":"model","id":"gpt-5.2"},{"type":"model","id":"claude-sonnet-4-6"}]}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(scrubbed.contains("gpt-5.2"));
+        assert!(scrubbed.contains("claude-sonnet-4-6"));
+        assert!(!scrubbed.contains("id_REDACTED"));
+    }
+
+    #[test]
+    fn scrubber_removes_volatile_headers_and_sensitive_query_params() {
+        let cassette = r#"when:
+  path: /v1beta/models
+  method: GET
+  query_param:
+  - name: key
+    value: AIzaSySecret
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_abc123456789
+  - name: set-cookie
+    value: __cf_bm=secret
+  body: '{}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(scrubbed.contains("value: '[REDACTED]'"));
+        assert!(!scrubbed.contains("AIzaSySecret"));
+        assert!(!scrubbed.contains("x-request-id"));
+        assert!(!scrubbed.contains("set-cookie"));
+        assert!(scrubbed.contains("content-type"));
+    }
 }
 
 #[allow(unused)]

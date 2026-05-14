@@ -1,39 +1,16 @@
 when:
   path: /v1beta/interactions
   method: POST
+  query_param: []
   header:
   - name: accept
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"model":"gemini-3-flash-preview","input":[{"role":"user","content":[{"type":"text","text":"Give me two fun facts about hummingbirds."}]}],"system_instruction":"Be concise.","stream":false,"store":true}'
+  body: '{"input":[{"content":[{"text":"Give me two fun facts about hummingbirds.","type":"text"}],"role":"user"}],"model":"gemini-3-flash-preview","store":true,"stream":false,"system_instruction":"Be concise."}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:32 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=2619
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: '{"id":"v1_ChdJUlFGYXN5eUtZU21tdGtQaDZYbndRcxIXSVJRRmFzeXlLWVNtbXRrUGg2WG53UXM","status":"completed","outputs":[{"signature":"ErYGCrMGAQw51sfPuFe+r5jpRKvGq3yljpV0Xd8fTc3W+HD5b+EcvFwAY4cvPuE5YrfJCEXeyBdbOJpTRgiOKXkLZGidXGjjGuvwWo3aq3ucTKLZ5zZL5HENnoVfO2Afc+/U7P1nKtfondgZdHrqPN6U6zwlrtmyCvZUU0COAerAcF5hoSh7894DD1zZjTWJiXLwRp61YFtiU6fihxHRCy+eyUbfEemVYDOzEIu6f0ng5my2sOvZf3GpiJdc2IJtOEGa6J1v5IRaWftd4EdjDZIJK627kYHI9DQxVwlNpxueCZkn/uTQMHTRQRTRxtengSPB2p3sperurRZtoBERRHidLYPqvblIKcKF9cUn7YB47Y/PRDZM4s0ZyLZVvHnpXsKVU3Ym1o0p267X8ORYgx/95mGnJhEZJuh1P+9NxC621BtHFHiznbnJMqCOFRBGMtPl62kBX9+6Chh2uJUcYpMv2OrBtB/sWsycN6Jj51jMk0c0aHrSNU3fOThT2qlqIIdaOobmB6w6ROvKZ7ZFwHoonNcAC+WcJ1K+Wab2grwpLPLRKNvOGTSXDAykR9VFAffCzj9IuuwllOfTYmaleo9HSSrXX1hyuDXsHI/LaCmQVU6SyqO20Ao+fxF9RYqokgdOOamkHOBZF12tESKhj6V6nNf2+bjmqbhzCWyqRfqVnHWmMZW9omvKhEqtXRCXZbbpyCT34mUoz9RLXEDsVMHbKQZGKKPgNzT9Vf+yJGJOk/vsokMg1J9xgOXjTFXUijP0gqB9bqaZ/SN5UoGjEuGplEZF3YITUrDN1Ue9tdCLQHpNz8zGsiTEpsphWsK5HnaHuw29OReIfHQUTUGwdgl/eRvd0NpMerORflqijha37HjyUZQe5+DJJsBg/xKTcvNOEIQ8iaPQUnp0qflpWmVSuuKO/EvAz1mzo0nhmygVh2igazDkiZ1MWKzWzH8hBsISgeu2pPTT/a2c4+Wpmc8lpUG5ZtYtYqwaQ1C7q4WVIGIWG0REHz7JaHovSm5TM2BI6kY83vautsJr/FjF+OxuNWCXzsLpNXC2qOfmKjqEEcH0JsWwyF5HT9i8hJ0XJsXQVZQMlue1","type":"thought"},{"text":"1. **Backward Flight:** Hummingbirds are the only birds capable of flying backward and upside down.\n2. **Rapid Heartbeat:** Their hearts can beat up to 1,260 times per minute—about 21 beats per second.","type":"text"}],"usage":{"total_tokens":293,"total_input_tokens":14,"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_output_tokens":52,"total_tool_use_tokens":0,"total_thought_tokens":227},"role":"model","created":"2026-05-14T00:15:32Z","updated":"2026-05-14T00:15:32Z","service_tier":"standard","object":"interaction","model":"gemini-3-flash-preview"}'
+  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_1","type":"thought"},{"text":"1. **Backward Flight:** Hummingbirds are the only birds capable of flying backward and upside down.\n2. **Rapid Heartbeat:** Their hearts can beat up to 1,260 times per minute—about 21 beats per second.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":14}],"total_cached_tokens":0,"total_input_tokens":14,"total_output_tokens":52,"total_thought_tokens":227,"total_tokens":293,"total_tool_use_tokens":0}}'

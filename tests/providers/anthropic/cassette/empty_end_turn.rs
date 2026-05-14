@@ -130,125 +130,122 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
 
 #[tokio::test]
 async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
-    let (cassette, client) = super::super::support::anthropic_cassette(
+    super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
+        |client| async move {
+            let model = client.completion_model(CLAUDE_SONNET_4_6);
+
+            let first_turn = model
+                .completion_request(TERMINAL_NOTIFY_PROMPT)
+                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
+                .max_tokens(1024)
+                .tool(notify_tool_definition())
+                .send()
+                .await
+                .expect("first Anthropic turn should succeed");
+
+            let tool_call = first_turn
+                .choice
+                .iter()
+                .find_map(|item| match item {
+                    AssistantContent::ToolCall(tool_call) => Some(tool_call.clone()),
+                    _ => None,
+                })
+                .expect("first Anthropic turn should emit a notify tool call");
+
+            let followup = model
+                .completion_request(Message::tool_result_with_call_id(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    "sent: deploy finished",
+                ))
+                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
+                .max_tokens(1024)
+                .message(Message::Assistant {
+                    id: first_turn.message_id.clone(),
+                    content: first_turn.choice.clone(),
+                })
+                .send()
+                .await
+                .expect("follow-up Anthropic turn should not error on empty end_turn");
+
+            assert_eq!(
+                followup.choice.len(),
+                1,
+                "expected normalized empty follow-up choice, got {:?}",
+                followup.choice
+            );
+
+            match followup.choice.first() {
+                AssistantContent::Text(text) => assert!(
+                    text.text.is_empty(),
+                    "expected empty follow-up text sentinel, got {:?}",
+                    text.text
+                ),
+                other => panic!("expected empty text sentinel, got {other:?}"),
+            }
+        },
     )
     .await;
-    let model = client.completion_model(CLAUDE_SONNET_4_6);
-
-    let first_turn = model
-        .completion_request(TERMINAL_NOTIFY_PROMPT)
-        .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-        .max_tokens(1024)
-        .tool(notify_tool_definition())
-        .send()
-        .await
-        .expect("first Anthropic turn should succeed");
-
-    let tool_call = first_turn
-        .choice
-        .iter()
-        .find_map(|item| match item {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call.clone()),
-            _ => None,
-        })
-        .expect("first Anthropic turn should emit a notify tool call");
-
-    let followup = model
-        .completion_request(Message::tool_result_with_call_id(
-            tool_call.id.clone(),
-            tool_call.call_id.clone(),
-            "sent: deploy finished",
-        ))
-        .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-        .max_tokens(1024)
-        .message(Message::Assistant {
-            id: first_turn.message_id.clone(),
-            content: first_turn.choice.clone(),
-        })
-        .send()
-        .await
-        .expect("follow-up Anthropic turn should not error on empty end_turn");
-
-    assert_eq!(
-        followup.choice.len(),
-        1,
-        "expected normalized empty follow-up choice, got {:?}",
-        followup.choice
-    );
-
-    match followup.choice.first() {
-        AssistantContent::Text(text) => assert!(
-            text.text.is_empty(),
-            "expected empty follow-up text sentinel, got {:?}",
-            text.text
-        ),
-        other => panic!("expected empty text sentinel, got {other:?}"),
-    }
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let (cassette, client) = super::super::support::anthropic_cassette(
+    super::super::support::with_anthropic_cassette(
         "empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result",
+        |client| async move {
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble(TERMINAL_NOTIFY_PREAMBLE)
+                .max_tokens(1024)
+                .tool(Notify::new(call_count.clone()))
+                .build();
+
+            let response = agent
+                .prompt(TERMINAL_NOTIFY_PROMPT)
+                .max_turns(5)
+                .extended_details()
+                .await
+                .expect("agent prompt should not fail on an empty terminal Anthropic turn");
+
+            assert!(
+                response.output.trim().is_empty(),
+                "expected empty final output for the terminal tool prompt, got {:?}",
+                response.output
+            );
+            assert!(
+                call_count.load(Ordering::SeqCst) >= 1,
+                "notify should be called at least once"
+            );
+
+            let messages = response
+                .messages
+                .expect("extended details should include history");
+            assert!(
+                messages.iter().any(assistant_message_has_notify_tool_call),
+                "expected notify tool call in history, got {:?}",
+                messages
+            );
+            assert!(
+                messages.iter().any(message_has_tool_result),
+                "expected tool result in history, got {:?}",
+                messages
+            );
+            assert!(
+                !history_has_empty_assistant_text(&messages),
+                "history should not contain the normalized empty assistant sentinel: {:?}",
+                messages
+            );
+        },
     )
     .await;
-    let agent = client
-        .agent(CLAUDE_SONNET_4_6)
-        .preamble(TERMINAL_NOTIFY_PREAMBLE)
-        .max_tokens(1024)
-        .tool(Notify::new(call_count.clone()))
-        .build();
-
-    let response = agent
-        .prompt(TERMINAL_NOTIFY_PROMPT)
-        .max_turns(5)
-        .extended_details()
-        .await
-        .expect("agent prompt should not fail on an empty terminal Anthropic turn");
-
-    assert!(
-        response.output.trim().is_empty(),
-        "expected empty final output for the terminal tool prompt, got {:?}",
-        response.output
-    );
-    assert!(
-        call_count.load(Ordering::SeqCst) >= 1,
-        "notify should be called at least once"
-    );
-
-    let messages = response
-        .messages
-        .expect("extended details should include history");
-    assert!(
-        messages.iter().any(assistant_message_has_notify_tool_call),
-        "expected notify tool call in history, got {:?}",
-        messages
-    );
-    assert!(
-        messages.iter().any(message_has_tool_result),
-        "expected tool result in history, got {:?}",
-        messages
-    );
-    assert!(
-        !history_has_empty_assistant_text(&messages),
-        "history should not contain the normalized empty assistant sentinel: {:?}",
-        messages
-    );
-
-    cassette.finish().await;
 }
 
 #[tokio::test]
 async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let (cassette, client) = super::super::support::anthropic_cassette(
-        "empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty",
-    )
-    .await;
+    super::super::support::with_anthropic_cassette("empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty", |client| async move {
     let agent = client
         .agent(CLAUDE_SONNET_4_6)
         .preamble(TERMINAL_NOTIFY_WITH_ACK_PREAMBLE)
@@ -294,5 +291,6 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
         messages
     );
 
-    cassette.finish().await;
+    })
+    .await;
 }

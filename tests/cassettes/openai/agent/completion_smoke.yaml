@@ -1,135 +1,16 @@
 when:
   path: /v1/responses
   method: POST
+  query_param: []
   header:
   - name: accept
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a concise assistant. Answer directly."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"In one or two sentences, explain what Rust programming language is and why memory safety matters."}]}],"model":"gpt-4o"}'
+  body: '{"input":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o"}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:29:45 GMT
   - name: content-type
     value: application/json
-  - name: content-length
-    value: '1810'
-  - name: connection
-    value: keep-alive
-  - name: cf-ray
-    value: 9fb5ca4f0b810f27-LAX
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: server
-    value: cloudflare
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-processing-ms
-    value: '959'
-  - name: openai-project
-    value: '[REDACTED]'
-  - name: openai-version
-    value: 2020-10-01
-  - name: x-ratelimit-limit-requests
-    value: '10000'
-  - name: x-ratelimit-limit-tokens
-    value: '2000000'
-  - name: x-ratelimit-remaining-requests
-    value: '9999'
-  - name: x-ratelimit-remaining-tokens
-    value: '1999943'
-  - name: x-ratelimit-reset-requests
-    value: 6ms
-  - name: x-ratelimit-reset-tokens
-    value: 1ms
-  - name: x-request-id
-    value: req_75323420717b4fe3aaca555b757e3c43
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: alt-svc
-    value: h3=":443"; ma=86400
-  body: |-
-    {
-      "id": "resp_094a4e10a19b4460006a051778fe388192941e47a265672802",
-      "object": "response",
-      "created_at": 1778718585,
-      "status": "completed",
-      "background": false,
-      "billing": {
-        "payer": "developer"
-      },
-      "completed_at": 1778718585,
-      "error": null,
-      "frequency_penalty": 0.0,
-      "incomplete_details": null,
-      "instructions": null,
-      "max_output_tokens": null,
-      "max_tool_calls": null,
-      "model": "gpt-4o-2024-08-06",
-      "moderation": null,
-      "output": [
-        {
-          "id": "msg_094a4e10a19b4460006a05177970f48192bc59e14201816d58",
-          "type": "message",
-          "status": "completed",
-          "content": [
-            {
-              "type": "output_text",
-              "annotations": [],
-              "logprobs": [],
-              "text": "Rust is a systems programming language focused on safety and performance, offering memory safety without a garbage collector. Memory safety prevents common bugs like null pointer dereferencing and buffer overflows, enhancing program reliability and security."
-            }
-          ],
-          "role": "assistant"
-        }
-      ],
-      "parallel_tool_calls": true,
-      "presence_penalty": 0.0,
-      "previous_response_id": null,
-      "prompt_cache_key": null,
-      "prompt_cache_retention": "in_memory",
-      "reasoning": {
-        "effort": null,
-        "summary": null
-      },
-      "safety_identifier": null,
-      "service_tier": "default",
-      "store": true,
-      "temperature": 1.0,
-      "text": {
-        "format": {
-          "type": "text"
-        },
-        "verbosity": "medium"
-      },
-      "tool_choice": "auto",
-      "tools": [],
-      "top_logprobs": 0,
-      "top_p": 1.0,
-      "truncation": "disabled",
-      "usage": {
-        "input_tokens": 38,
-        "input_tokens_details": {
-          "cached_tokens": 0
-        },
-        "output_tokens": 42,
-        "output_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "total_tokens": 80
-      },
-      "user": null,
-      "metadata": {}
-    }
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Rust is a systems programming language focused on safety and performance, offering memory safety without a garbage collector. Memory safety prevents common bugs like null pointer dereferencing and buffer overflows, enhancing program reliability and security.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":38,"input_tokens_details":{"cached_tokens":0},"output_tokens":42,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":80},"user":null}'

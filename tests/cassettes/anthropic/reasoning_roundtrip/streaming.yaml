@@ -1,6 +1,7 @@
 when:
   path: /v1/messages
   method: POST
+  query_param: []
   header:
   - name: accept
     value: text/event-stream
@@ -8,184 +9,129 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You are a helpful math tutor. Be concise."}],"thinking":{"type":"adaptive"}}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a helpful math tutor. Be concise.","type":"text"}],"thinking":{"type":"adaptive"}}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:21:33 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
-  - name: transfer-encoding
-    value: chunked
-  - name: connection
-    value: keep-alive
-  - name: cache-control
-    value: no-cache
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-14T00:21:32Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-14T00:21:32Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-14T00:21:32Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-14T00:21:32Z
-  - name: request-id
-    value: req_011Cb1WHBsRCShzsoEZjCQvJ
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: anthropic-organization-id
-    value: '[REDACTED]'
-  - name: traceresponse
-    value: 00-51fd3c0d490802fdf052ec5e85de42dc-e9cbd0dd4553f9fb-01
-  - name: server
-    value: cloudflare
-  - name: x-envoy-upstream-service-time
-    value: '1037'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: x-robots-tag
-    value: none
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: cf-ray
-    value: 9fb5be4c39e1d908-LAX
   body: |+
     event: message_start
-    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01Ki7pM2t6yELDxCsCZzkYPF","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":79,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global"}}        }
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":79,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}             }
+    data: {"content_block":{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let"}          }
+    data: {"delta":{"thinking":"Let","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" me set up the problem. Train 1 leaves Station A at 60 km/h. Train 2 leaves Station"}              }
+    data: {"delta":{"thinking":" me set up the problem. Train 1 leaves Station A at 60 km/h. Train 2 leaves Station","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" B (300 km away) 30 minutes later at 90 km/h heading toward Station A.\n\nLet t = time in"}       }
+    data: {"delta":{"thinking":" B (300 km away) 30 minutes later at 90 km/h heading toward Station A.\n\nLet t = time in","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" hours after Train 2 departs.\n\nWhen Train 2 departs, Train 1 has already traveled: 60 ×"}        }
+    data: {"delta":{"thinking":" hours after Train 2 departs.\n\nWhen Train 2 departs, Train 1 has already traveled: 60 ×","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 0.5 = 30 km\n\nRemaining distance between them: 300 - 30 = 270 km\n\nThey"} }
+    data: {"delta":{"thinking":" 0.5 = 30 km\n\nRemaining distance between them: 300 - 30 = 270 km\n\nThey","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" approach each other at combined speed: 60 + 90 = 150 km/h\n\nTime to meet: 270/"}     }
+    data: {"delta":{"thinking":" approach each other at combined speed: 60 + 90 = 150 km/h\n\nTime to meet: 270/","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"150 = 1.8 hours = 1 hour 48 minutes after Train 2 departs.\n"}}
+    data: {"delta":{"thinking":"150 = 1.8 hours = 1 hour 48 minutes after Train 2 departs.\n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nNow"}       }
+    data: {"delta":{"thinking":"\n\nNow","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" I'm calculating where they actually meet. Train 1 covers an additional 108 km during"}        }
+    data: {"delta":{"thinking":" I'm calculating where they actually meet. Train 1 covers an additional 108 km during","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" those 1.8 hours, putting it 138 km from Station A. I can verify this checks"}               }
+    data: {"delta":{"thinking":" those 1.8 hours, putting it 138 km from Station A. I can verify this checks","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" out since Train 2 travels 162 km from Station B, and 138 + 162 equals the full "}               }
+    data: {"delta":{"thinking":" out since Train 2 travels 162 km from Station B, and 138 + 162 equals the full ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"300 km distance."}         }
+    data: {"delta":{"thinking":"300 km distance.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nFor the timing, if"}     }
+    data: {"delta":{"thinking":"\n\nFor the timing, if","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" Train 1 departs at 12:00 and Train 2 leaves at 12:30, they meet at 14:18—which is 2 hours and 18 minutes after Train"}}
+    data: {"delta":{"thinking":" Train 1 departs at 12:00 and Train 2 leaves at 12:30, they meet at 14:18—which is 2 hours and 18 minutes after Train","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 1 started its journey."} }
+    data: {"delta":{"thinking":" 1 started its journey.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EsYIClsIDRgCKkCesZ6agr+Wi/gUWPhYFEOPosEsNwQh/PlzSBw1GJdmEB8AvDCpLUkdXexDjuvRShUQcrr0uv0lZqW9CXDOjxhCMhFjbGF1ZGUtc29ubmV0LTQtNjgAEgz4PfySybTSY1h0BmcaDHfKlGFgZV6kOSnSxCIwXh1pJBoUjBTUQhlRmPCcBCLvxehIHXchz/BbkOM+xBO4l49pk6S5J/YUhU/ZbdavKpgHgWnl0dULHgeSl9soPGeJrzPEI9pNSC22xrQ3ujCKzhe50BEODKJTv7RTpJmgmxG91SaBWRCsBA9z/CQwC2pGPP+TCmuEU1OZIkUam/VbSWC+bInrYk8yNOw2c8sKPQhERKj/dLfPWhkVTt7HETK2jHyiA3sWR6A5evy+U3pcFb3cKCKEd8qtOF24SBZbM73DRe+gx+6Hd7Eav+3wwzMmdyNhEwx64mlWiDC0ihsrxHdrViavrSope8UoHE9jS5Dsye8ornfrlYz++ngHVjBBDLRZ2cQxjoT/6kpGGrV0T+/xQ1K52uSXs3s/qbf138LwuBbGfS7STmR9Pko8e1BIalRq64+oPl8tqelMnZpIYHiZDcXAm6+Oxz/NHIJQFOK+e0fmFF2QRl8AMNqfBaUGq1T6rS7JFKNlsQO/cvdbgsyUyHWBv/tqy5TV9Tlk4TrC6Eifca6sygkj4xZ+NrDxjZtf9q1C7mdMXapvyEeqnwibaWTMhs48I3ZkvOipiwjRK29SZF9qX7q7QZ0eJUavJZWpA3can2FsdgvHl/CQMzByp1YMNUrtXwuiAOp61Totvf2cbSwBeIoOp2ArWFkCQqgqhUREvQ0KMLQJ/9xRIgZkO94hWKDDZoMj9WuJqMoJS0pv+xpIO3FgMPCKSiGbWyOhWHVRwG8IhyJXsuvAuij9Sk0IMjXM3H36UVt2Shq9Wks2N5zBXsfMV2os6fcDkeM7kG4A5NsWngJcms0Nde7pvpujyO9LcyFmef/9a76VDOQqtPDrDIP4wBxXvw9F5eEf5GclDqyRpLAJ2iFAuBOLhI46Qu3jV3coTus+/pye2XVFIcHVM6lthdbLSkpM/lS2GVevbAyB0+RhWqhRakzGWTobe1em0h1PgBA+FNWOfGouIlNm/+Q7A4p6cXF3Hvbaosv4bGsXhbg0ix0TrlGF4xGK44/w7voS2ixmrNR87kP1X+Yr6apQGDpuUNHNpFLpmNCJkqItwOIW758oxkbZhUJmUXNphc3AdniD3es3Nq5aYUBdZIBjP5klTUQ4ZjEgD5/WLG+W6c7WRjFmk7ecNsXDiEIdTlCz4bnLAXRtqcJvCpqhR4BD2CnAMsPS8pW+m59FO/dinQ5JUiPTDB/q3S25tIxax5+f9Mjd/zd6kI1WxLKiV/bxsGuEIVmUMb+R6DdcaPcGvX92z9uPXvbJyRWMb2zz/BRiH6L/+VzxwMgomCYwHkcYAQ=="}              }
+    data: {"delta":{"signature":"signature_REDACTED_2","type":"signature_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":0               }
+    data: {"index":0,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}        }
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"# Train Meeting Problem\n\n## Setting Up the Problem"}}
+    data: {"delta":{"text":"# Train Meeting Problem\n\n## Setting Up the Problem","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\n\n**Let t = hours elapsed after Train 2 departs**\n\n**Head start"}    }
+    data: {"delta":{"text":"\n\n**Let t = hours elapsed after Train 2 departs**\n\n**Head start","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" of Train 1:** In the 30 minutes before Train 2 leaves:\n$$"}           }
+    data: {"delta":{"text":" of Train 1:** In the 30 minutes before Train 2 leaves:\n$$","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"d_{headstart} = 60 \\times 0.5 = 30 \\text{ km}$$\n\n**Gap"}              }
+    data: {"delta":{"text":"d_{headstart} = 60 \\times 0.5 = 30 \\text{ km}$$\n\n**Gap","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" remaining when Train 2 departs:**\n$$300 - 30 = 270 \\text{ km}$$\n\n## Finding Meeting"}           }
+    data: {"delta":{"text":" remaining when Train 2 departs:**\n$$300 - 30 = 270 \\text{ km}$$\n\n## Finding Meeting","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Time\n\nSince both trains move **toward each other**, their speeds combine:\n$$v_{closing"}       }
+    data: {"delta":{"text":" Time\n\nSince both trains move **toward each other**, their speeds combine:\n$$v_{closing","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"} = 60 + 90 = 150 \\text{ km/h}$$\n\n$$t = \\frac{270 \\text{ km}}{150 \\text{ km/h}} = 1.8 \\text{"}     }
+    data: {"delta":{"text":"} = 60 + 90 = 150 \\text{ km/h}$$\n\n$$t = \\frac{270 \\text{ km}}{150 \\text{ km/h}} = 1.8 \\text{","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" hours} = \\textbf{1 hour 48 minutes}$$\n\nThis is **2 hours "}         }
+    data: {"delta":{"text":" hours} = \\textbf{1 hour 48 minutes}$$\n\nThis is **2 hours ","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"18 minutes** after Train 1 departed.\n\n## Distance from Station A\n\n$$d = 60 \\text{ km/"}        }
+    data: {"delta":{"text":"18 minutes** after Train 1 departed.\n\n## Distance from Station A\n\n$$d = 60 \\text{ km/","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"h} \\times 2.3 \\text{ h} = \\boxed{138 \\text{ km from"}        }
+    data: {"delta":{"text":"h} \\times 2.3 \\text{ h} = \\boxed{138 \\text{ km from","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Station A}}$$\n\n## Verification ✓\n\n| Train | Distance Traveled |\n|-------|------------------|\n| Train 1 | 60"}           }
+    data: {"delta":{"text":" Station A}}$$\n\n## Verification ✓\n\n| Train | Distance Traveled |\n|-------|------------------|\n| Train 1 | 60","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" × 2.3 h = **138 km** from A |\n| Train 2 | 90 × 1.8 h = **"}     }
+    data: {"delta":{"text":" × 2.3 h = **138 km** from A |\n| Train 2 | 90 × 1.8 h = **","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"162 km** from B |\n| **Total** | 138 + 162 = **300 km** ✓ |"}        }
+    data: {"delta":{"text":"162 km** from B |\n| **Total** | 138 + 162 = **300 km** ✓ |","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":1       }
+    data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":79,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":747}            }
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":79,"output_tokens":747}}
 
     event: message_stop
-    data: {"type":"message_stop"           }
+    data: {"type":"message_stop"}
 
 ---
 when:
   path: /v1/messages
   method: POST
+  query_param: []
   header:
   - name: accept
     value: text/event-stream
@@ -193,336 +139,280 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work."}]},{"role":"assistant","content":[{"type":"thinking","thinking":"Let me set up the problem. Train 1 leaves Station A at 60 km/h. Train 2 leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A.\n\nLet t = time in hours after Train 2 departs.\n\nWhen Train 2 departs, Train 1 has already traveled: 60 × 0.5 = 30 km\n\nRemaining distance between them: 300 - 30 = 270 km\n\nThey approach each other at combined speed: 60 + 90 = 150 km/h\n\nTime to meet: 270/150 = 1.8 hours = 1 hour 48 minutes after Train 2 departs.\n\n\nNow I''m calculating where they actually meet. Train 1 covers an additional 108 km during those 1.8 hours, putting it 138 km from Station A. I can verify this checks out since Train 2 travels 162 km from Station B, and 138 + 162 equals the full 300 km distance.\n\nFor the timing, if Train 1 departs at 12:00 and Train 2 leaves at 12:30, they meet at 14:18—which is 2 hours and 18 minutes after Train 1 started its journey.","signature":"EsYIClsIDRgCKkCesZ6agr+Wi/gUWPhYFEOPosEsNwQh/PlzSBw1GJdmEB8AvDCpLUkdXexDjuvRShUQcrr0uv0lZqW9CXDOjxhCMhFjbGF1ZGUtc29ubmV0LTQtNjgAEgz4PfySybTSY1h0BmcaDHfKlGFgZV6kOSnSxCIwXh1pJBoUjBTUQhlRmPCcBCLvxehIHXchz/BbkOM+xBO4l49pk6S5J/YUhU/ZbdavKpgHgWnl0dULHgeSl9soPGeJrzPEI9pNSC22xrQ3ujCKzhe50BEODKJTv7RTpJmgmxG91SaBWRCsBA9z/CQwC2pGPP+TCmuEU1OZIkUam/VbSWC+bInrYk8yNOw2c8sKPQhERKj/dLfPWhkVTt7HETK2jHyiA3sWR6A5evy+U3pcFb3cKCKEd8qtOF24SBZbM73DRe+gx+6Hd7Eav+3wwzMmdyNhEwx64mlWiDC0ihsrxHdrViavrSope8UoHE9jS5Dsye8ornfrlYz++ngHVjBBDLRZ2cQxjoT/6kpGGrV0T+/xQ1K52uSXs3s/qbf138LwuBbGfS7STmR9Pko8e1BIalRq64+oPl8tqelMnZpIYHiZDcXAm6+Oxz/NHIJQFOK+e0fmFF2QRl8AMNqfBaUGq1T6rS7JFKNlsQO/cvdbgsyUyHWBv/tqy5TV9Tlk4TrC6Eifca6sygkj4xZ+NrDxjZtf9q1C7mdMXapvyEeqnwibaWTMhs48I3ZkvOipiwjRK29SZF9qX7q7QZ0eJUavJZWpA3can2FsdgvHl/CQMzByp1YMNUrtXwuiAOp61Totvf2cbSwBeIoOp2ArWFkCQqgqhUREvQ0KMLQJ/9xRIgZkO94hWKDDZoMj9WuJqMoJS0pv+xpIO3FgMPCKSiGbWyOhWHVRwG8IhyJXsuvAuij9Sk0IMjXM3H36UVt2Shq9Wks2N5zBXsfMV2os6fcDkeM7kG4A5NsWngJcms0Nde7pvpujyO9LcyFmef/9a76VDOQqtPDrDIP4wBxXvw9F5eEf5GclDqyRpLAJ2iFAuBOLhI46Qu3jV3coTus+/pye2XVFIcHVM6lthdbLSkpM/lS2GVevbAyB0+RhWqhRakzGWTobe1em0h1PgBA+FNWOfGouIlNm/+Q7A4p6cXF3Hvbaosv4bGsXhbg0ix0TrlGF4xGK44/w7voS2ixmrNR87kP1X+Yr6apQGDpuUNHNpFLpmNCJkqItwOIW758oxkbZhUJmUXNphc3AdniD3es3Nq5aYUBdZIBjP5klTUQ4ZjEgD5/WLG+W6c7WRjFmk7ecNsXDiEIdTlCz4bnLAXRtqcJvCpqhR4BD2CnAMsPS8pW+m59FO/dinQ5JUiPTDB/q3S25tIxax5+f9Mjd/zd6kI1WxLKiV/bxsGuEIVmUMb+R6DdcaPcGvX92z9uPXvbJyRWMb2zz/BRiH6L/+VzxwMgomCYwHkcYAQ=="},{"type":"text","text":"# Train Meeting Problem\n\n## Setting Up the Problem\n\n**Let t = hours elapsed after Train 2 departs**\n\n**Head start of Train 1:** In the 30 minutes before Train 2 leaves:\n$$d_{headstart} = 60 \\times 0.5 = 30 \\text{ km}$$\n\n**Gap remaining when Train 2 departs:**\n$$300 - 30 = 270 \\text{ km}$$\n\n## Finding Meeting Time\n\nSince both trains move **toward each other**, their speeds combine:\n$$v_{closing} = 60 + 90 = 150 \\text{ km/h}$$\n\n$$t = \\frac{270 \\text{ km}}{150 \\text{ km/h}} = 1.8 \\text{ hours} = \\textbf{1 hour 48 minutes}$$\n\nThis is **2 hours 18 minutes** after Train 1 departed.\n\n## Distance from Station A\n\n$$d = 60 \\text{ km/h} \\times 2.3 \\text{ h} = \\boxed{138 \\text{ km from Station A}}$$\n\n## Verification ✓\n\n| Train | Distance Traveled |\n|-------|------------------|\n| Train 1 | 60 × 2.3 h = **138 km** from A |\n| Train 2 | 90 × 1.8 h = **162 km** from B |\n| **Total** | 138 + 162 = **300 km** ✓ |"}]},{"role":"user","content":[{"type":"text","text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?"}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You are a helpful math tutor. Be concise."}],"thinking":{"type":"adaptive"}}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","type":"text"}],"role":"user"},{"content":[{"signature":"signature_REDACTED_2","thinking":"Let me set up the problem. Train 1 leaves Station A at 60 km/h. Train 2 leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A.\n\nLet t = time in hours after Train 2 departs.\n\nWhen Train 2 departs, Train 1 has already traveled: 60 × 0.5 = 30 km\n\nRemaining distance between them: 300 - 30 = 270 km\n\nThey approach each other at combined speed: 60 + 90 = 150 km/h\n\nTime to meet: 270/150 = 1.8 hours = 1 hour 48 minutes after Train 2 departs.\n\n\nNow I''m calculating where they actually meet. Train 1 covers an additional 108 km during those 1.8 hours, putting it 138 km from Station A. I can verify this checks out since Train 2 travels 162 km from Station B, and 138 + 162 equals the full 300 km distance.\n\nFor the timing, if Train 1 departs at 12:00 and Train 2 leaves at 12:30, they meet at 14:18—which is 2 hours and 18 minutes after Train 1 started its journey.","type":"thinking"},{"text":"# Train Meeting Problem\n\n## Setting Up the Problem\n\n**Let t = hours elapsed after Train 2 departs**\n\n**Head start of Train 1:** In the 30 minutes before Train 2 leaves:\n$$d_{headstart} = 60 \\times 0.5 = 30 \\text{ km}$$\n\n**Gap remaining when Train 2 departs:**\n$$300 - 30 = 270 \\text{ km}$$\n\n## Finding Meeting Time\n\nSince both trains move **toward each other**, their speeds combine:\n$$v_{closing} = 60 + 90 = 150 \\text{ km/h}$$\n\n$$t = \\frac{270 \\text{ km}}{150 \\text{ km/h}} = 1.8 \\text{ hours} = \\textbf{1 hour 48 minutes}$$\n\nThis is **2 hours 18 minutes** after Train 1 departed.\n\n## Distance from Station A\n\n$$d = 60 \\text{ km/h} \\times 2.3 \\text{ h} = \\boxed{138 \\text{ km from Station A}}$$\n\n## Verification ✓\n\n| Train | Distance Traveled |\n|-------|------------------|\n| Train 1 | 60 × 2.3 h = **138 km** from A |\n| Train 2 | 90 × 1.8 h = **162 km** from B |\n| **Total** | 138 + 162 = **300 km** ✓ |","type":"text"}],"role":"assistant"},{"content":[{"text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a helpful math tutor. Be concise.","type":"text"}],"thinking":{"type":"adaptive"}}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:21:45 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
-  - name: transfer-encoding
-    value: chunked
-  - name: connection
-    value: keep-alive
-  - name: cache-control
-    value: no-cache
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-14T00:21:44Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-14T00:21:44Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-14T00:21:44Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-14T00:21:44Z
-  - name: request-id
-    value: req_011Cb1WJ7ARQ4QXqUQpTG9j8
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: anthropic-organization-id
-    value: '[REDACTED]'
-  - name: traceresponse
-    value: 00-7c904ca6260c2e8237b7848ed43aa8e9-f1056a52d034737e-01
-  - name: server
-    value: cloudflare
-  - name: x-envoy-upstream-service-time
-    value: '920'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: x-robots-tag
-    value: none
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: cf-ray
-    value: 9fb5be9a1a4ad908-LAX
   body: |+
     event: message_start
-    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01XMEPbo5f5m6Dwfisc1su33","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":855,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":8,"service_tier":"standard","inference_geo":"global"}}           }
+    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":855,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}      }
+    data: {"content_block":{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let"}          }
+    data: {"delta":{"thinking":"Let","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" me re-read the problem. Both trains slow down by 10 km/h after traveling half the original distance (300 km), so"} }
+    data: {"delta":{"thinking":" me re-read the problem. Both trains slow down by 10 km/h after traveling half the original distance (300 km), so","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" after traveling 150 km each.\n\nSo:\n- Train 1: travels at 60 km/h for the"}             }
+    data: {"delta":{"thinking":" after traveling 150 km each.\n\nSo:\n- Train 1: travels at 60 km/h for the","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" first 150 km, then 50 km/h\n- Train 2: travels at 90 km/h for the first 150 km, then 80 km/h\n\nTrain 1"}          }
+    data: {"delta":{"thinking":" first 150 km, then 50 km/h\n- Train 2: travels at 90 km/h for the first 150 km, then 80 km/h\n\nTrain 1","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" leaves Station A at time 0.\nTrain 2 leaves Station B at time 0.5 hours (30 minutes later).\n\nLet"}            }
+    data: {"delta":{"thinking":" leaves Station A at time 0.\nTrain 2 leaves Station B at time 0.5 hours (30 minutes later).\n\nLet","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" me find when each train reaches the 150 km mark.\n"}         }
+    data: {"delta":{"thinking":" me find when each train reaches the 150 km mark.\n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nTrain"}  }
+    data: {"delta":{"thinking":"\n\nTrain","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 1 reaches 150 km after 2.5 hours, while Train 2 reaches it after about 1"}      }
+    data: {"delta":{"thinking":" 1 reaches 150 km after 2.5 hours, while Train 2 reaches it after about 1","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":".67 hours from its own departure, or 2.17 hours from when Train 1 left"}            }
+    data: {"delta":{"thinking":".67 hours from its own departure, or 2.17 hours from when Train 1 left","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":". Now I'll set up a coordinate system with Station A at position 0 and Station B at position 300, then"}      }
+    data: {"delta":{"thinking":". Now I'll set up a coordinate system with Station A at position 0 and Station B at position 300, then","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" track each train's position over time to find where they meet."}       }
+    data: {"delta":{"thinking":" track each train's position over time to find where they meet.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" I"}          }
+    data: {"delta":{"thinking":" I","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"'m checking the positions at t = 13/6 hours: Train 1 is at 130 km while"}            }
+    data: {"delta":{"thinking":"'m checking the positions at t = 13/6 hours: Train 1 is at 130 km while","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" Train 2 reaches the 150 km halfway point and begins slowing to 80 km/h."}         }
+    data: {"delta":{"thinking":" Train 2 reaches the 150 km halfway point and begins slowing to 80 km/h.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" But I should verify whether they've already crossed paths before this moment, since"}  }
+    data: {"delta":{"thinking":" But I should verify whether they've already crossed paths before this moment, since","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" without the slowdown they'd meet around t = 2.3 hours at 138 km from station A."}         }
+    data: {"delta":{"thinking":" without the slowdown they'd meet around t = 2.3 hours at 138 km from station A.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" They"}  }
+    data: {"delta":{"thinking":" They","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" must meet between those two time points since Train"} }
+    data: {"delta":{"thinking":" must meet between those two time points since Train","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 1 has caught up. During this interval, Train 1 continues at 60 km/h while Train 2 is traveling"}               }
+    data: {"delta":{"thinking":" 1 has caught up. During this interval, Train 1 continues at 60 km/h while Train 2 is traveling","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" at 80 km/h in the opposite direction, so I need to find the exact moment their"}         }
+    data: {"delta":{"thinking":" at 80 km/h in the opposite direction, so I need to find the exact moment their","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" positions coincide."}            }
+    data: {"delta":{"thinking":" positions coincide.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nThe"}          }
+    data: {"delta":{"thinking":"\n\nThe","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" gap at t = 13/6 is 20 km and they're closing it at a combined rate"}      }
+    data: {"delta":{"thinking":" gap at t = 13/6 is 20 km and they're closing it at a combined rate","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" of 140 km/h, which means they meet 1/7 hours later at"}               }
+    data: {"delta":{"thinking":" of 140 km/h, which means they meet 1/7 hours later at","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" t = 97/42 hours, or about 2 hours and 19 minutes after Train 1 departs"}      }
+    data: {"delta":{"thinking":" t = 97/42 hours, or about 2 hours and 19 minutes after Train 1 departs","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"."}           }
+    data: {"delta":{"thinking":".","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nI"}           }
+    data: {"delta":{"thinking":"\n\nI","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"'m verifying this by calculating where each train is at the meeting time—"}            }
+    data: {"delta":{"thinking":"'m verifying this by calculating where each train is at the meeting time—","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"both reach approximately 138.57 km from Station A, confirming they meet at that location."}        }
+    data: {"delta":{"thinking":"both reach approximately 138.57 km from Station A, confirming they meet at that location.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nNow"}    }
+    data: {"delta":{"thinking":"\n\nNow","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" I need to clarify what \"half the original distance\" means in the problem. The"}            }
+    data: {"delta":{"thinking":" I need to clarify what \"half the original distance\" means in the problem. The","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" trains slow down after traveling 150 km each, but I should"}}
+    data: {"delta":{"thinking":" trains slow down after traveling 150 km each, but I should","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" double-check whether this refers to half of the total 300 km distance or half of each train's individual journey"}  }
+    data: {"delta":{"thinking":" double-check whether this refers to half of the total 300 km distance or half of each train's individual journey","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"."}        }
+    data: {"delta":{"thinking":".","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" The"}             }
+    data: {"delta":{"thinking":" The","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" gap closes at 140 km/h, so they meet about 1/7 hour later at roughly"}       }
+    data: {"delta":{"thinking":" gap closes at 140 km/h, so they meet about 1/7 hour later at roughly","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 138.6 km from station A. That puts the meeting time at 97/42 hours after Train 1 departs, or"}              }
+    data: {"delta":{"thinking":" 138.6 km from station A. That puts the meeting time at 97/42 hours after Train 1 departs, or","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" around 2 hours and 18 minutes. Let me set up a clean timeline with"}  }
+    data: {"delta":{"thinking":" around 2 hours and 18 minutes. Let me set up a clean timeline with","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" Train 1 departing at t = 0 and work through each phase systematically."}           }
+    data: {"delta":{"thinking":" Train 1 departing at t = 0 and work through each phase systematically.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nTrain"}   }
+    data: {"delta":{"thinking":"\n\nTrain","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 1 starts from position 0 at 60 km/h, while Train 2 starts from position "}      }
+    data: {"delta":{"thinking":" 1 starts from position 0 at 60 km/h, while Train 2 starts from position ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"300 km at 90 km/h toward A, but doesn't leave until t = 0.5 hours."}             }
+    data: {"delta":{"thinking":"300 km at 90 km/h toward A, but doesn't leave until t = 0.5 hours.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" Train 1 reaches its slowdown point at 150 km after 2.5 hours, while Train"}   }
+    data: {"delta":{"thinking":" Train 1 reaches its slowdown point at 150 km after 2.5 hours, while Train","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" 2 reaches its slowdown point after traveling 150 km, which happens at t = 13/6 hours when it"} }
+    data: {"delta":{"thinking":" 2 reaches its slowdown point after traveling 150 km, which happens at t = 13/6 hours when it","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"'s at position 150 km. Since Train 1 is only at "}    }
+    data: {"delta":{"thinking":"'s at position 150 km. Since Train 1 is only at ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"130 km by that time, they haven't crossed paths yet."}       }
+    data: {"delta":{"thinking":"130 km by that time, they haven't crossed paths yet.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nOnce"}}
+    data: {"delta":{"thinking":"\n\nOnce","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" Train 2 slows to 80 km/h while Train 1 is still at 60 km/h, the gap between them is 20"}  }
+    data: {"delta":{"thinking":" Train 2 slows to 80 km/h while Train 1 is still at 60 km/h, the gap between them is 20","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" km and they're closing at 140 km/h combined, so they meet"}     }
+    data: {"delta":{"thinking":" km and they're closing at 140 km/h combined, so they meet","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" after 1/7 hour. This puts the meeting at t"}            }
+    data: {"delta":{"thinking":" after 1/7 hour. This puts the meeting at t","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" = 97/42 hours from Train 1's departure, which is before Train 1 itself slows down at 2"}            }
+    data: {"delta":{"thinking":" = 97/42 hours from Train 1's departure, which is before Train 1 itself slows down at 2","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":".5 hours. The meeting occurs at approximately 138.57 km from point A."}          }
+    data: {"delta":{"thinking":".5 hours. The meeting occurs at approximately 138.57 km from point A.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"\n\nConverting"}   }
+    data: {"delta":{"thinking":"\n\nConverting","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" to clock time, 97/42 hours is about 2 hours and 18 minutes, which is"}             }
+    data: {"delta":{"thinking":" to clock time, 97/42 hours is about 2 hours and 18 minutes, which is","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" roughly 34 seconds later than my initial estimate. The trains meet about 0.57 km further along"}          }
+    data: {"delta":{"thinking":" roughly 34 seconds later than my initial estimate. The trains meet about 0.57 km further along","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" the route than I first calculated, which makes sense given that Train 2's slowdown delays"}  }
+    data: {"delta":{"thinking":" the route than I first calculated, which makes sense given that Train 2's slowdown delays","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" the meeting slightly."}         }
+    data: {"delta":{"thinking":" the meeting slightly.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"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"}        }
+    data: {"delta":{"signature":"signature_REDACTED_3","type":"signature_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":0  }
+    data: {"index":0,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""} }
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"# Modified Train Problem: Speed"}        }
+    data: {"delta":{"text":"# Modified Train Problem: Speed","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Reduction at 150 km\n\n## Setup: When Does Each Train Slow Down?"}             }
+    data: {"delta":{"text":" Reduction at 150 km\n\n## Setup: When Does Each Train Slow Down?","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\n\nHalf the original distance = **150 km**\n\n| Train | Original Speed | Reduced Speed | Slows"}         }
+    data: {"delta":{"text":"\n\nHalf the original distance = **150 km**\n\n| Train | Original Speed | Reduced Speed | Slows","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" after traveling 150 km |\n|-------|---------------|---------------|------------------------------|\n| Train 1 | 60 km/h | 50 km/h | t = 150"}        }
+    data: {"delta":{"text":" after traveling 150 km |\n|-------|---------------|---------------|------------------------------|\n| Train 1 | 60 km/h | 50 km/h | t = 150","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"/60 = **2.5 h** after Train 1 departs |\n| Train 2 | 90 km/h | 80 km/h | t = 0.5 + 150/90"}     }
+    data: {"delta":{"text":"/60 = **2.5 h** after Train 1 departs |\n| Train 2 | 90 km/h | 80 km/h | t = 0.5 + 150/90","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" = **13/6 ≈ 2.167 h** after Train 1 departs |\n\n**Train 2 slows down first** — so"}           }
+    data: {"delta":{"text":" = **13/6 ≈ 2.167 h** after Train 1 departs |\n\n**Train 2 slows down first** — so","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" I need to check if they've already met.\n\n---\n\n## Phase 1: Both at"}        }
+    data: {"delta":{"text":" I need to check if they've already met.\n\n---\n\n## Phase 1: Both at","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Full Speed (t = 0 to t = 13/6 h)\n\nAt **t = 13/6 h**"}           }
+    data: {"delta":{"text":" Full Speed (t = 0 to t = 13/6 h)\n\nAt **t = 13/6 h**","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" (when Train 2 hits 150 km):\n\n$$\\text{Train 1 position: } 60 \\times \\tfrac{13}{6} = 130 \\text{ km from"}     }
+    data: {"delta":{"text":" (when Train 2 hits 150 km):\n\n$$\\text{Train 1 position: } 60 \\times \\tfrac{13}{6} = 130 \\text{ km from","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" A}$$\n$$\\text{Train 2 position: } 300 - 150 = 150 \\text{ km from A}$$\n\n✅ **Not"}              }
+    data: {"delta":{"text":" A}$$\n$$\\text{Train 2 position: } 300 - 150 = 150 \\text{ km from A}$$\n\n✅ **Not","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" yet met** — gap = **20 km** remaining\n\n---\n\n## Phase 2: Train 1 at 60"}              }
+    data: {"delta":{"text":" yet met** — gap = **20 km** remaining\n\n---\n\n## Phase 2: Train 1 at 60","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" km/h, Train 2 at 80 km/h\n\n$$\\text{Closing speed} = 60 + 80 = 140 \\text{ km/h}$$\n\n$$t"}             }
+    data: {"delta":{"text":" km/h, Train 2 at 80 km/h\n\n$$\\text{Closing speed} = 60 + 80 = 140 \\text{ km/h}$$\n\n$$t","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_{gap} = \\frac{20}{140} = \\frac{1}{7} \\text{ h}$$\n\n**Check:** Does Train 1"}   }
+    data: {"delta":{"text":"_{gap} = \\frac{20}{140} = \\frac{1}{7} \\text{ h}$$\n\n**Check:** Does Train 1","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" slow before they meet?\n$$\\tfrac{13}{6} + \\tfrac{1}{7} = \\tfrac{97"}   }
+    data: {"delta":{"text":" slow before they meet?\n$$\\tfrac{13}{6} + \\tfrac{1}{7} = \\tfrac{97","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"}{42} \\approx 2.31 \\text{ h} \\quad < \\quad 2.5 \\text{ h} \\checkmark$$\n\n---"}              }
+    data: {"delta":{"text":"}{42} \\approx 2.31 \\text{ h} \\quad < \\quad 2.5 \\text{ h} \\checkmark$$\n\n---","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\n\n## Results\n\n$$\\boxed{t = \\frac{97}{42} \\approx 2 \\text{ h } 18 \\text{ min } 34 "}    }
+    data: {"delta":{"text":"\n\n## Results\n\n$$\\boxed{t = \\frac{97}{42} \\approx 2 \\text{ h } 18 \\text{ min } 34 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\text{ s after Train 1 departs}}$$\n\n$$\\text{Distance from A} = "}         }
+    data: {"delta":{"text":"\\text{ s after Train 1 departs}}$$\n\n$$\\text{Distance from A} = ","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"60 \\times \\frac{97}{42} = \\frac{970}{7} \\approx \\boxed{138.6 \\text{ km}}$$\n\n---\n\n## Comparison"}       }
+    data: {"delta":{"text":"60 \\times \\frac{97}{42} = \\frac{970}{7} \\approx \\boxed{138.6 \\text{ km}}$$\n\n---\n\n## Comparison","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" with Original\n\n| Scenario | Meeting Time | Distance from A |\n|----------|-------------|-----------------|\n| Original | "}     }
+    data: {"delta":{"text":" with Original\n\n| Scenario | Meeting Time | Distance from A |\n|----------|-------------|-----------------|\n| Original | ","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"2 h 18 min 00 s | 138.0 km |\n| With slowdown | 2 h "}}
+    data: {"delta":{"text":"2 h 18 min 00 s | 138.0 km |\n| With slowdown | 2 h ","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"18 min 34 s | 138.6 km |\n| **Difference** | **+34 seconds** | **+0.6 km** |\n\n> **"}               }
+    data: {"delta":{"text":"18 min 34 s | 138.6 km |\n| **Difference** | **+34 seconds** | **+0.6 km** |\n\n> **","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Intuition:** Train 2 slows first, reducing closing speed from 150 → 140 km/h,"}               }
+    data: {"delta":{"text":"Intuition:** Train 2 slows first, reducing closing speed from 150 → 140 km/h,","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" so they meet slightly later and slightly farther from A."}    }
+    data: {"delta":{"text":" so they meet slightly later and slightly farther from A.","type":"text_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":1         }
+    data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":855,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3688}             }
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":855,"output_tokens":3688}}
 
     event: message_stop
-    data: {"type":"message_stop"  }
+    data: {"type":"message_stop"}
 

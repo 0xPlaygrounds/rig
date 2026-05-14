@@ -3,29 +3,7 @@
 use std::path::Path;
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
-
-const FORBIDDEN_PATTERNS: &[&str] = &[
-    "Authorization:",
-    "Bearer ",
-    "sk-",
-    "x-api-key:",
-    "x-goog-api-key:",
-    "OPENAI_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "GEMINI_API_KEY",
-    "AIza",
-    "__cf_bm=",
-    "proj_",
-];
-
-const REDACTED_HEADER_NAMES: &[&str] = &[
-    "anthropic-organization-id",
-    "openai-organization",
-    "openai-project",
-    "set-cookie",
-    "x-api-key",
-    "x-goog-api-key",
-];
+const REWRITE_ENV: &str = "RIG_REWRITE_CASSETTES";
 
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {
@@ -60,28 +38,13 @@ fn scan_dir(dir: &Path, failures: &mut Vec<String>) {
 
         let contents =
             std::fs::read_to_string(&path).expect("cassette should be readable as UTF-8");
+        let scrubbed = crate::cassettes::scrub_cassette_contents(&contents);
 
-        for pattern in FORBIDDEN_PATTERNS {
-            if contents.contains(pattern) {
-                failures.push(format!("{} contains {pattern:?}", path.display()));
-            }
+        if std::env::var_os(REWRITE_ENV).is_some() && scrubbed != contents {
+            std::fs::write(&path, scrubbed).expect("scrubbed cassette should be writable");
+            continue;
         }
 
-        for header in REDACTED_HEADER_NAMES {
-            let leaked_values = contents.lines().enumerate().any(|(index, line)| {
-                line.trim() == format!("- name: {header}")
-                    && contents
-                        .lines()
-                        .nth(index + 1)
-                        .is_some_and(|next| next.trim() != "value: '[REDACTED]'")
-            });
-
-            if leaked_values {
-                failures.push(format!(
-                    "{} contains unredacted {header} header",
-                    path.display()
-                ));
-            }
-        }
+        failures.extend(crate::cassettes::cassette_safety_failures(&path, &contents));
     }
 }

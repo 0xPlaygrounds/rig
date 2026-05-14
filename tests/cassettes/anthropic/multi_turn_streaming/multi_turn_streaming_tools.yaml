@@ -1,6 +1,7 @@
 when:
   path: /v1/messages
   method: POST
+  query_param: []
   header:
   - name: accept
     value: text/event-stream
@@ -8,139 +9,84 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You must use tools for arithmetic."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"tool_choice":{"type":"auto"}}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:18:33 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
-  - name: transfer-encoding
-    value: chunked
-  - name: connection
-    value: keep-alive
-  - name: cache-control
-    value: no-cache
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '1999000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-14T00:18:32Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-14T00:18:32Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-14T00:18:32Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2399000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-14T00:18:32Z
-  - name: request-id
-    value: req_011Cb1W3vPtLRFVBofBCL9nM
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: anthropic-organization-id
-    value: '[REDACTED]'
-  - name: traceresponse
-    value: 00-8d2d41baa6d5ea53eb464da940b8ffc1-7353b085a8dced1e-01
-  - name: server
-    value: cloudflare
-  - name: x-envoy-upstream-service-time
-    value: '707'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: x-robots-tag
-    value: none
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: cf-ray
-    value: 9fb5b9e76e9ed908-LAX
   body: |+
     event: message_start
-    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_017X3eXMTYM3CMX1Khn4H89r","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1001,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":3,"service_tier":"standard","inference_geo":"global"}}          }
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1001,"output_tokens":3,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I'll solve"}        }
+    data: {"delta":{"text":"I'll solve","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" this step-by-step! Let me start by computing the two independent operations in"}        }
+    data: {"delta":{"text":" this step-by-step! Let me start by computing the two independent operations in","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" parentheses first — **10 - 4** and **3 + 5** — simultaneously"}    }
+    data: {"delta":{"text":" parentheses first — **10 - 4** and **3 + 5** — simultaneously","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":":"}   }
+    data: {"delta":{"text":":","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":0}
+    data: {"index":0,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","name":"subtract","input":{},"caller":{"type":"direct"}}         }
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"subtract","type":"tool_use"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}           }
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"x\": 10"}           }
+    data: {"delta":{"partial_json":"{\"x\": 10","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":", \"y\""}    }
+    data: {"delta":{"partial_json":", \"y\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":": 4}"} }
+    data: {"delta":{"partial_json":": 4}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":1  }
+    data: {"index":1,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_017CFDsogyHpKDakUjehC8qJ","name":"add","input":{},"caller":{"type":"direct"}}              }
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{},"name":"add","type":"tool_use"},"index":2,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":""}           }
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"x\": 3"}       }
+    data: {"delta":{"partial_json":"{\"x\": 3","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":", \"y\""}          }
+    data: {"delta":{"partial_json":", \"y\"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":": 5}"}              }
+    data: {"delta":{"partial_json":": 5}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":2      }
+    data: {"index":2,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":1001,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":163}   }
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1001,"output_tokens":163}}
 
     event: message_stop
-    data: {"type":"message_stop"            }
+    data: {"type":"message_stop"}
 
 ---
 when:
   path: /v1/messages
   method: POST
+  query_param: []
   header:
   - name: accept
     value: text/event-stream
@@ -148,118 +94,63 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:"},{"type":"tool_use","id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","name":"subtract","input":{"x":10,"y":4}},{"type":"tool_use","id":"toolu_017CFDsogyHpKDakUjehC8qJ","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","content":[{"type":"text","text":"6"}]}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_017CFDsogyHpKDakUjehC8qJ","content":[{"type":"text","text":"8"}]}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You must use tools for arithmetic."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"tool_choice":{"type":"auto"}}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:18:36 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
-  - name: transfer-encoding
-    value: chunked
-  - name: connection
-    value: keep-alive
-  - name: cache-control
-    value: no-cache
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '1999000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-14T00:18:35Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-14T00:18:35Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-14T00:18:35Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2399000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-14T00:18:35Z
-  - name: request-id
-    value: req_011Cb1W4Ao4PwiyZbQ6YJic1
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: anthropic-organization-id
-    value: '[REDACTED]'
-  - name: traceresponse
-    value: 00-e047cc6b5ab67845be22cee0aeae41dd-b55e7367324bef6b-01
-  - name: server
-    value: cloudflare
-  - name: x-envoy-upstream-service-time
-    value: '828'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: x-robots-tag
-    value: none
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: cf-ray
-    value: 9fb5b9fc6d8bd908-LAX
   body: |+
     event: message_start
-    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_016pe1FcWwfK5Y9X4ok11ARa","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1225,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard","inference_geo":"global"}}             }
+    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1225,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}       }
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Got"}           }
+    data: {"delta":{"text":"Got","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" **6** and **8**! Now I'll multiply them together:"}          }
+    data: {"delta":{"text":" **6** and **8**! Now I'll multiply them together:","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":0             }
+    data: {"index":0,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_016uVkbWqcX8XQbe2afngbZg","name":"multiply","input":{},"caller":{"type":"direct"}}        }
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_3","input":{},"name":"multiply","type":"tool_use"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}            }
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\""}        }
+    data: {"delta":{"partial_json":"{\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"x\": 6"}   }
+    data: {"delta":{"partial_json":"x\": 6","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":", \"y\":"}               }
+    data: {"delta":{"partial_json":", \"y\":","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" 8}"}          }
+    data: {"delta":{"partial_json":" 8}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":1    }
+    data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":1225,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":85}   }
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1225,"output_tokens":85}}
 
     event: message_stop
-    data: {"type":"message_stop"     }
+    data: {"type":"message_stop"}
 
 ---
 when:
   path: /v1/messages
   method: POST
+  query_param: []
   header:
   - name: accept
     value: text/event-stream
@@ -267,115 +158,60 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:"},{"type":"tool_use","id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","name":"subtract","input":{"x":10,"y":4}},{"type":"tool_use","id":"toolu_017CFDsogyHpKDakUjehC8qJ","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","content":[{"type":"text","text":"6"}]}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_017CFDsogyHpKDakUjehC8qJ","content":[{"type":"text","text":"8"}]}]},{"role":"assistant","content":[{"type":"text","text":"Got **6** and **8**! Now I''ll multiply them together:"},{"type":"tool_use","id":"toolu_016uVkbWqcX8XQbe2afngbZg","name":"multiply","input":{"x":6,"y":8}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_016uVkbWqcX8XQbe2afngbZg","content":[{"type":"text","text":"48"}]}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You must use tools for arithmetic."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"tool_choice":{"type":"auto"}}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Got **6** and **8**! Now I''ll multiply them together:","type":"text"},{"id":"toolu_REDACTED_3","input":{"x":6,"y":8},"name":"multiply","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"48","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:18:38 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
-  - name: transfer-encoding
-    value: chunked
-  - name: connection
-    value: keep-alive
-  - name: cache-control
-    value: no-cache
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '1999000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-14T00:18:37Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-14T00:18:37Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-14T00:18:37Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2399000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-14T00:18:37Z
-  - name: request-id
-    value: req_011Cb1W4JcMzwQ7pk9BdSmCj
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: anthropic-organization-id
-    value: '[REDACTED]'
-  - name: traceresponse
-    value: 00-d799c51fc44378da8524ac8f0c955cb3-56f139e6c277f466-01
-  - name: server
-    value: cloudflare
-  - name: x-envoy-upstream-service-time
-    value: '848'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: x-robots-tag
-    value: none
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: cf-ray
-    value: 9fb5ba07ec91d908-LAX
   body: |+
     event: message_start
-    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01XohtjakqoNC8uHjAZ4GzFp","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1323,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard","inference_geo":"global"}}              }
+    data: {"message":{"content":[],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1323,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}       }
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Got"}       }
+    data: {"delta":{"text":"Got","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" **48**! Finally, I'll divide that by 3:"}    }
+    data: {"delta":{"text":" **48**! Finally, I'll divide that by 3:","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":0         }
+    data: {"index":0,"type":"content_block_stop"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_0114KwuyWT4ySLLnGhHYveE3","name":"divide","input":{},"caller":{"type":"direct"}}           }
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_4","input":{},"name":"divide","type":"tool_use"},"index":1,"type":"content_block_start"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}         }
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\""}     }
+    data: {"delta":{"partial_json":"{\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"x\": 48"}          }
+    data: {"delta":{"partial_json":"x\": 48","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":", \"y\": 3}"}            }
+    data: {"delta":{"partial_json":", \"y\": 3}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":1           }
+    data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":1323,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":84}              }
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1323,"output_tokens":84}}
 
     event: message_stop
-    data: {"type":"message_stop"          }
+    data: {"type":"message_stop"}
 
 ---
 when:
   path: /v1/messages
   method: POST
+  query_param: []
   header:
   - name: accept
     value: text/event-stream
@@ -383,102 +219,46 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph."}]},{"role":"assistant","content":[{"type":"text","text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:"},{"type":"tool_use","id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","name":"subtract","input":{"x":10,"y":4}},{"type":"tool_use","id":"toolu_017CFDsogyHpKDakUjehC8qJ","name":"add","input":{"x":3,"y":5}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01QM4phqWvXNUzYMuhaYKwyX","content":[{"type":"text","text":"6"}]}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_017CFDsogyHpKDakUjehC8qJ","content":[{"type":"text","text":"8"}]}]},{"role":"assistant","content":[{"type":"text","text":"Got **6** and **8**! Now I''ll multiply them together:"},{"type":"tool_use","id":"toolu_016uVkbWqcX8XQbe2afngbZg","name":"multiply","input":{"x":6,"y":8}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_016uVkbWqcX8XQbe2afngbZg","content":[{"type":"text","text":"48"}]}]},{"role":"assistant","content":[{"type":"text","text":"Got **48**! Finally, I''ll divide that by 3:"},{"type":"tool_use","id":"toolu_0114KwuyWT4ySLLnGhHYveE3","name":"divide","input":{"x":48,"y":3}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_0114KwuyWT4ySLLnGhHYveE3","content":[{"type":"text","text":"16"}]}]}],"max_tokens":64000,"stream":true,"system":[{"type":"text","text":"You must use tools for arithmetic."}],"tools":[{"name":"add","description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"subtract","description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"multiply","description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}},{"name":"divide","description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"OperationArgs","type":"object","properties":{"x":{"type":"integer","format":"int32"},"y":{"type":"integer","format":"int32"}},"required":["x","y"]}}],"tool_choice":{"type":"auto"}}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Got **6** and **8**! Now I''ll multiply them together:","type":"text"},{"id":"toolu_REDACTED_3","input":{"x":6,"y":8},"name":"multiply","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"48","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"},{"content":[{"text":"Got **48**! Finally, I''ll divide that by 3:","type":"text"},{"id":"toolu_REDACTED_4","input":{"x":48,"y":3},"name":"divide","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"16","type":"text"}],"tool_use_id":"toolu_REDACTED_4","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:18:39 GMT
   - name: content-type
     value: text/event-stream; charset=utf-8
-  - name: transfer-encoding
-    value: chunked
-  - name: connection
-    value: keep-alive
-  - name: cache-control
-    value: no-cache
-  - name: anthropic-ratelimit-input-tokens-limit
-    value: '2000000'
-  - name: anthropic-ratelimit-input-tokens-remaining
-    value: '1999000'
-  - name: anthropic-ratelimit-input-tokens-reset
-    value: 2026-05-14T00:18:39Z
-  - name: anthropic-ratelimit-output-tokens-limit
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-remaining
-    value: '400000'
-  - name: anthropic-ratelimit-output-tokens-reset
-    value: 2026-05-14T00:18:39Z
-  - name: anthropic-ratelimit-requests-limit
-    value: '4000'
-  - name: anthropic-ratelimit-requests-remaining
-    value: '3999'
-  - name: anthropic-ratelimit-requests-reset
-    value: 2026-05-14T00:18:39Z
-  - name: anthropic-ratelimit-tokens-limit
-    value: '2400000'
-  - name: anthropic-ratelimit-tokens-remaining
-    value: '2399000'
-  - name: anthropic-ratelimit-tokens-reset
-    value: 2026-05-14T00:18:39Z
-  - name: request-id
-    value: req_011Cb1W4RTs1fJ3aANPpY9oz
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: anthropic-organization-id
-    value: '[REDACTED]'
-  - name: traceresponse
-    value: 00-d5a3ad35d4f561fd457eb8c7ce89c3f6-d07877378441aa37-01
-  - name: server
-    value: cloudflare
-  - name: x-envoy-upstream-service-time
-    value: '890'
-  - name: content-security-policy
-    value: default-src 'none'; frame-ancestors 'none'
-  - name: vary
-    value: Accept-Encoding
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: x-robots-tag
-    value: none
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: cf-ray
-    value: 9fb5ba11eaa2d908-LAX
   body: |+
     event: message_start
-    data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","id":"msg_01Lqj64yLJ56usitdp9ThFLy","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":1420,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":1,"service_tier":"standard","inference_geo":"global"}}}
+    data: {"message":{"content":[],"id":"msg_REDACTED_4","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1420,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}               }
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
 
     event: ping
-    data: {"type": "ping"}
+    data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Here"}  }
+    data: {"delta":{"text":"Here","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"'s a summary of the full calculation:\n\nThe expression **((10 - 4) × (3 + 5)) ÷ 3** was"}              }
+    data: {"delta":{"text":"'s a summary of the full calculation:\n\nThe expression **((10 - 4) × (3 + 5)) ÷ 3** was","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" solved step by step: first, the two parent"}           }
+    data: {"delta":{"text":" solved step by step: first, the two parent","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"heses were evaluated independently — **(10 - 4) = 6** and **(3 + 5) = 8** — then their product *"}     }
+    data: {"delta":{"text":"heses were evaluated independently — **(10 - 4) = 6** and **(3 + 5) = 8** — then their product *","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"*(6 × 8 = 48)** was computed, and finally dividing **48 by 3** yielded a"}  }
+    data: {"delta":{"text":"*(6 × 8 = 48)** was computed, and finally dividing **48 by 3** yielded a","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" clean, whole-number result of **16**."}        }
+    data: {"delta":{"text":" clean, whole-number result of **16**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
-    data: {"type":"content_block_stop","index":0               }
+    data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null},"usage":{"input_tokens":1420,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":124}}
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1420,"output_tokens":124}}
 
     event: message_stop
-    data: {"type":"message_stop"             }
+    data: {"type":"message_stop"}
 

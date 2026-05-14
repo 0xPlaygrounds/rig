@@ -9,76 +9,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Hello, my name is Ada Lovelace and I work as a mathematician."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"submit","description":"Submit the structured data you extracted from the provided text.","parameters":{"type":"object","properties":{"last_name":{"type":"string"},"first_name":{"type":"string"},"job":{"type":"string"}},"required":["first_name","last_name","job"]}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Hello, my name is Ada Lovelace and I work as a mathematician.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","thought":false}],"role":"model"},"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"properties":{"first_name":{"type":"string"},"job":{"type":"string"},"last_name":{"type":"string"}},"required":["first_name","last_name","job"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
-  - name: x-gemini-service-tier
-    value: standard
   - name: content-type
     value: application/json; charset=UTF-8
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:28 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=1002
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: |
-    {
-      "candidates": [
-        {
-          "content": {
-            "parts": [
-              {
-                "functionCall": {
-                  "name": "submit",
-                  "args": {
-                    "job": "mathematician",
-                    "last_name": "Lovelace",
-                    "first_name": "Ada"
-                  }
-                },
-                "thoughtSignature": "CsICAQw51sfOMe1NXmavuZE0ft8ZH97kti99tkmk6v2+IJjHT3Sj+j/MRh6Lbo4w4qFxVaa4fqNj9D2FPCBIYlFKI59rfyhqcWv5zbIJiAYM949VS6cTJnAJbQ6hENNUyYDjOUv/4wUHpCY3WpFeC6FEhV48ET8lXG1NCw7JZ/kYzkTksOyqhtaZhR1n6C/7wgNxqnk9O2jFTsvnp+05hrVm2uona+MrLewerCPjY1XYgKx7hzrrVMOQ+DChPRDPObMzcL+KzG1Qtn4meMLTI8KmoPsVA6lV2bcaq+3BTQASuWUVPIuKV/gaEmZVNcWzUlpH3cz5XHCC0CmYl2uYfTYb4Q2HHwIfj3kgvl7xMB85ufktvJEI5MN8vqaKLWAKFHz3837irb95wZIqq0s0ohpE6O0gLAumkIagvGhgRVz/PRF2fA=="
-              }
-            ],
-            "role": "model"
-          },
-          "finishReason": "STOP",
-          "index": 0,
-          "finishMessage": "Model generated function call(s)."
-        }
-      ],
-      "usageMetadata": {
-        "promptTokenCount": 168,
-        "candidatesTokenCount": 31,
-        "totalTokenCount": 286,
-        "promptTokensDetails": [
-          {
-            "modality": "TEXT",
-            "tokenCount": 168
-          }
-        ],
-        "thoughtsTokenCount": 87,
-        "serviceTier": "standard"
-      },
-      "modelVersion": "gemini-2.5-flash",
-      "responseId": "HxQFaqOdJc27qtsP34_wiAw"
-    }
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"first_name":"Ada","job":"mathematician","last_name":"Lovelace"},"name":"submit"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":31,"promptTokenCount":168,"promptTokensDetails":[{"modality":"TEXT","tokenCount":168}],"serviceTier":"standard","thoughtsTokenCount":87,"totalTokenCount":286}}'

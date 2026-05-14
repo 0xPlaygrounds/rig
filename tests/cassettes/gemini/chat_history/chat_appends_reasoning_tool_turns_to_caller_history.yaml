@@ -9,81 +9,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":4096,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":4096}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
-  - name: x-gemini-service-tier
-    value: standard
   - name: content-type
     value: application/json; charset=UTF-8
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:14 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=1920
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: |
-    {
-      "candidates": [
-        {
-          "content": {
-            "parts": [
-              {
-                "text": "**Analyzing the Weather Query**\n\nOkay, so the user wants the weather in Tokyo, Japan, and a packing recommendation. Easy enough! The `get_weather` tool is exactly what I need here. I'll call it with the city \"Tokyo, Japan\" to fetch the current weather data. Once I have that information, I'll be able to tell the user what the weather is like and, based on that, advise them on whether to bring an umbrella or sunscreen. This should be a straightforward task, leveraging the available tools efficiently. Let's get that weather data and craft a concise, helpful response.\n",
-                "thought": true
-              },
-              {
-                "functionCall": {
-                  "name": "get_weather",
-                  "args": {
-                    "city": "Tokyo, Japan"
-                  }
-                },
-                "thoughtSignature": "CroDAQw51sdI2eIp1ZVfle5EgW9iGZLWM8p1rWhmKyVKTbB8xw8Wt5rMXl+Agd59ot6q1iPr0ch1uyrlLxm2AFRceciZhrOpqBEuefwyLrvsmiTua0GrFMMH5UiEnVACDOV0lcj+jid5FhkTaZTzVFaDjyrKVLt0+UsIhgRuv2Pbvoo1fjoWacMEfLDrLLVQHjjKzLqppgkKxJTCX40iEtdFd79BlncuwVRPdnihr3FiBs9ZPRQidgwmMrM5NvIWeiLN7krMxLrg50078xOGKPgoKXRLeKrqA2rgYppL+ZjXlO4sn4Ra1ctv+qMOnWXuE5PKWVUJ4fmaN13NxgF/6bA6xjrv00KzknTd+nYGBaoSdi2t4I6knv088B2uzvOx1N1ZURKGnHervq7C7JhnFd7skor8cJrkif/f8z0vwG9OScE/LSmqJ6CiU6r7pNOkmbvXNi6HflhGV2JQDZXoiknHsna1sp2RmUr8fe0SJoGbO3tdDRjs9efn6cX+lRMcIrnWLcaFZ1SB0Q0qwSDe0PoBuiG1NidG5PItaQK0G4QDf0Rcihzh2Rk9CQO7Eu6VZ8yrGeQeKehtMBHmGQ=="
-              }
-            ],
-            "role": "model"
-          },
-          "finishReason": "STOP",
-          "index": 0,
-          "finishMessage": "Model generated function call(s)."
-        }
-      ],
-      "usageMetadata": {
-        "promptTokenCount": 144,
-        "candidatesTokenCount": 17,
-        "totalTokenCount": 250,
-        "promptTokensDetails": [
-          {
-            "modality": "TEXT",
-            "tokenCount": 144
-          }
-        ],
-        "thoughtsTokenCount": 89,
-        "serviceTier": "standard"
-      },
-      "modelVersion": "gemini-2.5-flash",
-      "responseId": "EBQFatDtGcammtkP7_bnqQ0"
-    }
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Analyzing the Weather Query**\n\nOkay, so the user wants the weather in Tokyo, Japan, and a packing recommendation. Easy enough! The `get_weather` tool is exactly what I need here. I''ll call it with the city \"Tokyo, Japan\" to fetch the current weather data. Once I have that information, I''ll be able to tell the user what the weather is like and, based on that, advise them on whether to bring an umbrella or sunscreen. This should be a straightforward task, leveraging the available tools efficiently. Let''s get that weather data and craft a concise, helpful response.\n","thought":true},{"functionCall":{"args":{"city":"Tokyo, Japan"},"name":"get_weather"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":17,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","thoughtsTokenCount":89,"totalTokenCount":250}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -96,66 +28,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering."}],"role":"user"},{"parts":[{"thought":true,"text":"**Analyzing the Weather Query**\n\nOkay, so the user wants the weather in Tokyo, Japan, and a packing recommendation. Easy enough! The `get_weather` tool is exactly what I need here. I''ll call it with the city \"Tokyo, Japan\" to fetch the current weather data. Once I have that information, I''ll be able to tell the user what the weather is like and, based on that, advise them on whether to bring an umbrella or sunscreen. This should be a straightforward task, leveraging the available tools efficiently. Let''s get that weather data and craft a concise, helpful response.\n"},{"thought":false,"thoughtSignature":"CroDAQw51sdI2eIp1ZVfle5EgW9iGZLWM8p1rWhmKyVKTbB8xw8Wt5rMXl+Agd59ot6q1iPr0ch1uyrlLxm2AFRceciZhrOpqBEuefwyLrvsmiTua0GrFMMH5UiEnVACDOV0lcj+jid5FhkTaZTzVFaDjyrKVLt0+UsIhgRuv2Pbvoo1fjoWacMEfLDrLLVQHjjKzLqppgkKxJTCX40iEtdFd79BlncuwVRPdnihr3FiBs9ZPRQidgwmMrM5NvIWeiLN7krMxLrg50078xOGKPgoKXRLeKrqA2rgYppL+ZjXlO4sn4Ra1ctv+qMOnWXuE5PKWVUJ4fmaN13NxgF/6bA6xjrv00KzknTd+nYGBaoSdi2t4I6knv088B2uzvOx1N1ZURKGnHervq7C7JhnFd7skor8cJrkif/f8z0vwG9OScE/LSmqJ6CiU6r7pNOkmbvXNi6HflhGV2JQDZXoiknHsna1sp2RmUr8fe0SJoGbO3tdDRjs9efn6cX+lRMcIrnWLcaFZ1SB0Q0qwSDe0PoBuiG1NidG5PItaQK0G4QDf0Rcihzh2Rk9CQO7Eu6VZ8yrGeQeKehtMBHmGQ==","functionCall":{"name":"get_weather","args":{"city":"Tokyo, Japan"}}}],"role":"model"},{"parts":[{"thought":false,"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}}}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"get_weather","description":"Get the current weather for a city. Must be called for weather questions.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"City name to get weather for"}},"required":["city"]}}],"codeExecution":null}],"toolConfig":null,"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"thinkingBudget":4096,"includeThoughts":true}},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather."}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"},{"parts":[{"text":"**Analyzing the Weather Query**\n\nOkay, so the user wants the weather in Tokyo, Japan, and a packing recommendation. Easy enough! The `get_weather` tool is exactly what I need here. I''ll call it with the city \"Tokyo, Japan\" to fetch the current weather data. Once I have that information, I''ll be able to tell the user what the weather is like and, based on that, advise them on whether to bring an umbrella or sunscreen. This should be a straightforward task, leveraging the available tools efficiently. Let''s get that weather data and craft a concise, helpful response.\n","thought":true},{"functionCall":{"args":{"city":"Tokyo, Japan"},"name":"get_weather"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":4096}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
 then:
   status: 200
   header:
-  - name: x-gemini-service-tier
-    value: standard
   - name: content-type
     value: application/json; charset=UTF-8
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:15 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=843
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: |
-    {
-      "candidates": [
-        {
-          "content": {
-            "parts": [
-              {
-                "text": "The weather in Tokyo, Japan is 72°F (22°C), sunny with light clouds, 45% humidity, and a wind of 8 mph NW. You should pack sunscreen."
-              }
-            ],
-            "role": "model"
-          },
-          "finishReason": "STOP",
-          "index": 0
-        }
-      ],
-      "usageMetadata": {
-        "promptTokenCount": 333,
-        "candidatesTokenCount": 43,
-        "totalTokenCount": 376,
-        "promptTokensDetails": [
-          {
-            "modality": "TEXT",
-            "tokenCount": 333
-          }
-        ],
-        "serviceTier": "standard"
-      },
-      "modelVersion": "gemini-2.5-flash",
-      "responseId": "EhQFaoXrF8-CmtkPq6Kw4Aw"
-    }
+  body: '{"candidates":[{"content":{"parts":[{"text":"The weather in Tokyo, Japan is 72°F (22°C), sunny with light clouds, 45% humidity, and a wind of 8 mph NW. You should pack sunscreen."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":43,"promptTokenCount":333,"promptTokensDetails":[{"modality":"TEXT","tokenCount":333}],"serviceTier":"standard","totalTokenCount":376}}'

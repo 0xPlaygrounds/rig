@@ -27,55 +27,58 @@ Key Features:
 
 #[tokio::test]
 async fn plaintext_document_prompt() {
-    let (cassette, client) =
-        super::super::support::anthropic_cassette("plaintext_document/plaintext_document_prompt")
-            .await;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-        .preamble("You are a helpful assistant that analyzes documents.")
-        .temperature(0.5)
-        .build();
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/plaintext_document_prompt",
+        |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble("You are a helpful assistant that analyzes documents.")
+                .temperature(0.5)
+                .build();
 
-    let document = Document {
-        data: DocumentSourceKind::String(rust_document()),
-        media_type: Some(DocumentMediaType::TXT),
-        additional_params: None,
-    };
-    let response = agent
-        .prompt(document)
-        .await
-        .expect("document prompt should succeed");
+            let document = Document {
+                data: DocumentSourceKind::String(rust_document()),
+                media_type: Some(DocumentMediaType::TXT),
+                additional_params: None,
+            };
+            let response = agent
+                .prompt(document)
+                .await
+                .expect("document prompt should succeed");
 
-    assert_nonempty_response(&response);
-    assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
-
-    cassette.finish().await;
+            assert_nonempty_response(&response);
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn plaintext_document_with_instruction() {
-    let (cassette, client) = super::super::support::anthropic_cassette(
+    super::super::support::with_anthropic_cassette(
         "plaintext_document/plaintext_document_with_instruction",
+        |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble("You are a helpful assistant that analyzes documents.")
+                .temperature(0.5)
+                .build();
+
+            let response = agent
+                .prompt(Message::User {
+                    content: OneOrMany::many(vec![
+                        UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
+                        UserContent::text(
+                            "List the three main goals of Rust mentioned in this document.",
+                        ),
+                    ])
+                    .expect("content should be non-empty"),
+                })
+                .await
+                .expect("instruction prompt should succeed");
+
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
     )
     .await;
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-        .preamble("You are a helpful assistant that analyzes documents.")
-        .temperature(0.5)
-        .build();
-
-    let response = agent
-        .prompt(Message::User {
-            content: OneOrMany::many(vec![
-                UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
-                UserContent::text("List the three main goals of Rust mentioned in this document."),
-            ])
-            .expect("content should be non-empty"),
-        })
-        .await
-        .expect("instruction prompt should succeed");
-
-    assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
-
-    cassette.finish().await;
 }

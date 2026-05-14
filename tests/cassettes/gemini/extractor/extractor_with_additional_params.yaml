@@ -9,76 +9,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"thought":false,"text":"Hello my name is John Doe! I am a software engineer."}],"role":"user"}],"tools":[{"functionDeclarations":[{"name":"submit","description":"Submit the structured data you extracted from the provided text.","parameters":{"type":"object","properties":{"first_name":{"type":"string"},"last_name":{"type":"string"},"job":{"type":"string"}}}}],"codeExecution":null}],"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"thought":false,"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                "}],"role":"model"}}'
+  body: '{"contents":[{"parts":[{"text":"Hello my name is John Doe! I am a software engineer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","thought":false}],"role":"model"},"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"properties":{"first_name":{"type":"string"},"job":{"type":"string"},"last_name":{"type":"string"}},"type":"object"}}]}]}'
 then:
   status: 200
   header:
-  - name: x-gemini-service-tier
-    value: standard
   - name: content-type
     value: application/json; charset=UTF-8
-  - name: vary
-    value: X-Origin
-  - name: vary
-    value: Referer
-  - name: vary
-    value: Origin,Accept-Encoding
-  - name: date
-    value: Thu, 14 May 2026 00:15:29 GMT
-  - name: server
-    value: scaffolding on HTTPServer2
-  - name: x-xss-protection
-    value: '0'
-  - name: x-frame-options
-    value: SAMEORIGIN
-  - name: x-content-type-options
-    value: nosniff
-  - name: server-timing
-    value: gfet4t7; dur=891
-  - name: alt-svc
-    value: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-  - name: accept-ranges
-    value: none
-  - name: transfer-encoding
-    value: chunked
-  body: |
-    {
-      "candidates": [
-        {
-          "content": {
-            "parts": [
-              {
-                "functionCall": {
-                  "name": "submit",
-                  "args": {
-                    "first_name": "John",
-                    "job": "software engineer",
-                    "last_name": "Doe"
-                  }
-                },
-                "thoughtSignature": "CowCAQw51sf1tbIgpqnYh1jCkMvHvKPjcWAAskdXmc43By8g5vohSoLg2vvC424l9iNMBAj2w7s/LOG+wKFMEo7pH69A4JpevqJLa6xxk/AwydF6C/we+wCP7Mr4hwr/EBiAGdqNkWTSa1obJMQJvbPn9yzc7NDUcEYvan34MHl8ak3r6kNwEs+I2bp2OgSVb8j5v7WqRMLNRPeA8zSsauks1KCXvLMFTqaJ0U9CEkvHy0yO5wBT7QGPxpm/GpUualJLsxAqhMZMFRRGHPU7GeM3JZnLK/rs2GI+yqqFcDYD3Zmr1YiqHIqmeH2kT9GHNxq5FvK5FfiB6bsMViN/EfeEwVyJLuhHMKdN5b5aCA=="
-              }
-            ],
-            "role": "model"
-          },
-          "finishReason": "STOP",
-          "index": 0,
-          "finishMessage": "Model generated function call(s)."
-        }
-      ],
-      "usageMetadata": {
-        "promptTokenCount": 178,
-        "candidatesTokenCount": 28,
-        "totalTokenCount": 271,
-        "promptTokensDetails": [
-          {
-            "modality": "TEXT",
-            "tokenCount": 178
-          }
-        ],
-        "thoughtsTokenCount": 65,
-        "serviceTier": "standard"
-      },
-      "modelVersion": "gemini-2.5-flash",
-      "responseId": "IBQFap2RKL2tmtkPpb3h0As"
-    }
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"first_name":"John","job":"software engineer","last_name":"Doe"},"name":"submit"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":28,"promptTokenCount":178,"promptTokensDetails":[{"modality":"TEXT","tokenCount":178}],"serviceTier":"standard","thoughtsTokenCount":65,"totalTokenCount":271}}'

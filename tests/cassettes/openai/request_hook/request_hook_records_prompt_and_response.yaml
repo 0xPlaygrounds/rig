@@ -1,135 +1,16 @@
 when:
   path: /v1/responses
   method: POST
+  query_param: []
   header:
   - name: accept
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"type":"message","role":"system","content":[{"type":"input_text","text":"You are a comedian here to entertain the user using humour and jokes."}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"Entertain me!"}]}],"model":"gpt-4o"}'
+  body: '{"input":[{"content":[{"text":"You are a comedian here to entertain the user using humour and jokes.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Entertain me!","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-4o"}'
 then:
   status: 200
   header:
-  - name: date
-    value: Thu, 14 May 2026 00:31:28 GMT
   - name: content-type
     value: application/json
-  - name: content-length
-    value: '1860'
-  - name: connection
-    value: keep-alive
-  - name: cf-ray
-    value: 9fb5cccfaae616df-LAX
-  - name: cf-cache-status
-    value: DYNAMIC
-  - name: server
-    value: cloudflare
-  - name: strict-transport-security
-    value: max-age=31536000; includeSubDomains; preload
-  - name: x-content-type-options
-    value: nosniff
-  - name: access-control-expose-headers
-    value: X-Request-ID
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: access-control-expose-headers
-    value: CF-Ray
-  - name: openai-organization
-    value: '[REDACTED]'
-  - name: openai-processing-ms
-    value: '1386'
-  - name: openai-project
-    value: '[REDACTED]'
-  - name: openai-version
-    value: 2020-10-01
-  - name: x-ratelimit-limit-requests
-    value: '10000'
-  - name: x-ratelimit-limit-tokens
-    value: '2000000'
-  - name: x-ratelimit-remaining-requests
-    value: '9999'
-  - name: x-ratelimit-remaining-tokens
-    value: '1999952'
-  - name: x-ratelimit-reset-requests
-    value: 6ms
-  - name: x-ratelimit-reset-tokens
-    value: 1ms
-  - name: x-request-id
-    value: req_1d5dcc5d46544127bd521a3a23526451
-  - name: set-cookie
-    value: '[REDACTED]'
-  - name: alt-svc
-    value: h3=":443"; ma=86400
-  body: |-
-    {
-      "id": "resp_063e5511e6712885006a0517debf4c8193b85a36739dc0ae75",
-      "object": "response",
-      "created_at": 1778718686,
-      "status": "completed",
-      "background": false,
-      "billing": {
-        "payer": "developer"
-      },
-      "completed_at": 1778718687,
-      "error": null,
-      "frequency_penalty": 0.0,
-      "incomplete_details": null,
-      "instructions": null,
-      "max_output_tokens": null,
-      "max_tool_calls": null,
-      "model": "gpt-4o-2024-08-06",
-      "moderation": null,
-      "output": [
-        {
-          "id": "msg_063e5511e6712885006a0517df18dc8193956231a0911d1f14",
-          "type": "message",
-          "status": "completed",
-          "content": [
-            {
-              "type": "output_text",
-              "annotations": [],
-              "logprobs": [],
-              "text": "Why don't scientists trust atoms?\n\nBecause they make up everything! \ud83d\ude04\n\nAnd here's a classic for you: Why was the math book sad?\n\nIt had too many problems! \ud83d\udcda\n\nIf you're up for a riddle: What do you call fake spaghetti?\n\nAn impasta! \ud83c\udf5d\n\nLet me know if you want more!"
-            }
-          ],
-          "role": "assistant"
-        }
-      ],
-      "parallel_tool_calls": true,
-      "presence_penalty": 0.0,
-      "previous_response_id": null,
-      "prompt_cache_key": null,
-      "prompt_cache_retention": "in_memory",
-      "reasoning": {
-        "effort": null,
-        "summary": null
-      },
-      "safety_identifier": null,
-      "service_tier": "default",
-      "store": true,
-      "temperature": 1.0,
-      "text": {
-        "format": {
-          "type": "text"
-        },
-        "verbosity": "medium"
-      },
-      "tool_choice": "auto",
-      "tools": [],
-      "top_logprobs": 0,
-      "top_p": 1.0,
-      "truncation": "disabled",
-      "usage": {
-        "input_tokens": 29,
-        "input_tokens_details": {
-          "cached_tokens": 0
-        },
-        "output_tokens": 69,
-        "output_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "total_tokens": 98
-      },
-      "user": null,
-      "metadata": {}
-    }
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Why don''t scientists trust atoms?\n\nBecause they make up everything! 😄\n\nAnd here''s a classic for you: Why was the math book sad?\n\nIt had too many problems! 📚\n\nIf you''re up for a riddle: What do you call fake spaghetti?\n\nAn impasta! 🍝\n\nLet me know if you want more!","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":29,"input_tokens_details":{"cached_tokens":0},"output_tokens":69,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":98},"user":null}'

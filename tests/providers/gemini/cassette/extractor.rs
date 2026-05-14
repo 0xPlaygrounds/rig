@@ -22,56 +22,57 @@ async fn extractor_smoke() {
     let additional_params =
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
-    let (cassette, client) =
-        super::super::support::gemini_cassette("extractor/extractor_smoke").await;
-    let extractor = client
-        .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
-        .additional_params(
-            serde_json::to_value(additional_params)
-                .expect("Gemini additional params should serialize"),
-        )
-        .build();
+    super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
+        let extractor = client
+            .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
+            .additional_params(
+                serde_json::to_value(additional_params)
+                    .expect("Gemini additional params should serialize"),
+            )
+            .build();
 
-    let person = extractor
-        .extract(EXTRACTOR_TEXT)
-        .await
-        .expect("extractor request should succeed");
+        let person = extractor
+            .extract(EXTRACTOR_TEXT)
+            .await
+            .expect("extractor request should succeed");
 
-    let first_name = person
-        .first_name
-        .as_deref()
-        .expect("first_name should be present");
-    let last_name = person
-        .last_name
-        .as_deref()
-        .expect("last_name should be present");
-    let job = person.job.as_deref().expect("job should be present");
+        let first_name = person
+            .first_name
+            .as_deref()
+            .expect("first_name should be present");
+        let last_name = person
+            .last_name
+            .as_deref()
+            .expect("last_name should be present");
+        let job = person.job.as_deref().expect("job should be present");
 
-    assert_nonempty_response(first_name);
-    assert_nonempty_response(last_name);
-    assert_nonempty_response(job);
-
-    cassette.finish().await;
+        assert_nonempty_response(first_name);
+        assert_nonempty_response(last_name);
+        assert_nonempty_response(job);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn extractor_with_additional_params() {
     let params = AdditionalParameters::default().with_config(GenerationConfig::default());
-    let (cassette, client) =
-        super::super::support::gemini_cassette("extractor/extractor_with_additional_params").await;
-    let extractor = client
-        .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
-        .additional_params(serde_json::to_value(params).expect("params should serialize"))
-        .build();
+    super::super::support::with_gemini_cassette(
+        "extractor/extractor_with_additional_params",
+        |client| async move {
+            let extractor = client
+                .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                .build();
 
-    let person = extractor
-        .extract("Hello my name is John Doe! I am a software engineer.")
-        .await
-        .expect("extract should succeed");
+            let person = extractor
+                .extract("Hello my name is John Doe! I am a software engineer.")
+                .await
+                .expect("extract should succeed");
 
-    assert_eq!(person.first_name.as_deref(), Some("John"));
-    assert_eq!(person.last_name.as_deref(), Some("Doe"));
-    assert_nonempty_response(person.job.as_deref().unwrap_or_default());
-
-    cassette.finish().await;
+            assert_eq!(person.first_name.as_deref(), Some("John"));
+            assert_eq!(person.last_name.as_deref(), Some("Doe"));
+            assert_nonempty_response(person.job.as_deref().unwrap_or_default());
+        },
+    )
+    .await;
 }
