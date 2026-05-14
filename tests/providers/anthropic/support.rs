@@ -3,7 +3,7 @@ use rig::providers::anthropic;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
-use crate::cassettes::ProviderCassette;
+use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 pub(super) struct AnthropicFilesCassette {
     pub(super) client: anthropic::Client,
@@ -11,9 +11,10 @@ pub(super) struct AnthropicFilesCassette {
     pub(super) api_key: String,
 }
 
-async fn anthropic_cassette(scenario: &'static str) -> (ProviderCassette, anthropic::Client) {
-    let cassette =
-        ProviderCassette::start("anthropic", scenario, "https://api.anthropic.com").await;
+async fn anthropic_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, anthropic::Client) {
+    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
         .base_url(cassette.base_url())
@@ -23,39 +24,38 @@ async fn anthropic_cassette(scenario: &'static str) -> (ProviderCassette, anthro
     (cassette, client)
 }
 
-pub(super) async fn with_anthropic_cassette<F, Fut>(scenario: &'static str, test_body: F)
+pub(super) async fn with_anthropic_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = anthropic_cassette(scenario).await;
+    let (cassette, client) = anthropic_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
 pub(super) async fn with_anthropic_cassette_result<F, Fut, E>(
-    scenario: &'static str,
+    spec: impl Into<CassetteSpec>,
     test_body: F,
 ) -> Result<(), E>
 where
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = anthropic_cassette(scenario).await;
+    let (cassette, client) = anthropic_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
 pub(super) async fn with_anthropic_files_cassette<F, Fut>(
-    scenario: &'static str,
+    spec: impl Into<CassetteSpec>,
     beta_header: &'static str,
     test_body: F,
 ) where
     F: FnOnce(AnthropicFilesCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette =
-        ProviderCassette::start("anthropic", scenario, "https://api.anthropic.com").await;
+    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
     let base_url = normalize_anthropic_base_url(&cassette.base_url());
     let api_key = cassette.api_key("ANTHROPIC_API_KEY");
     let client = anthropic::Client::builder()

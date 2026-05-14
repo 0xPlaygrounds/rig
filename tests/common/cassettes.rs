@@ -5,29 +5,34 @@
 //! fixtures. Record mode overwrites existing cassette files.
 #![allow(dead_code)]
 
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use axum::{Router, routing::any};
-use futures::FutureExt;
+use futures::{FutureExt, stream};
 use httpmock::MockServer;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::any::Any;
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fmt;
 use std::net::SocketAddr;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
+use tokio::task::JoinHandle;
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const CASSETTE_ROOT: &str = "tests/cassettes";
 const REDACTED: &str = "[REDACTED]";
 const DUMMY_API_KEY: &str = REDACTED;
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 type PanicPayload = Box<dyn Any + Send + 'static>;
 
@@ -58,6 +63,32 @@ enum ReplayMatching {
     Unordered,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CassetteSpec {
+    scenario: &'static str,
+    replay_matching: ReplayMatching,
+}
+
+impl CassetteSpec {
+    pub(crate) const fn new(scenario: &'static str) -> Self {
+        Self {
+            scenario,
+            replay_matching: ReplayMatching::Ordered,
+        }
+    }
+
+    pub(crate) const fn unordered(mut self) -> Self {
+        self.replay_matching = ReplayMatching::Unordered;
+        self
+    }
+}
+
+impl From<&'static str> for CassetteSpec {
+    fn from(scenario: &'static str) -> Self {
+        Self::new(scenario)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CassettePolicy {
     recorded_request_headers: &'static [&'static str],
@@ -71,7 +102,7 @@ pub(crate) struct CassettePolicy {
 }
 
 impl CassettePolicy {
-    fn for_scenario(provider: &str, scenario: &str) -> Self {
+    fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
         let required_request_headers = match provider {
             "openai" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
@@ -79,12 +110,6 @@ impl CassettePolicy {
                 GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
             }
             _ => NO_REQUIRED_REQUEST_HEADERS,
-        };
-
-        let replay_matching = if provider == "openai" && scenario.starts_with("multi_extract/") {
-            ReplayMatching::Unordered
-        } else {
-            ReplayMatching::Ordered
         };
 
         Self {
@@ -209,11 +234,13 @@ impl fmt::Debug for ProviderCassette {
 impl ProviderCassette {
     pub(crate) async fn start(
         provider: &'static str,
-        scenario: &'static str,
+        spec: impl Into<CassetteSpec>,
         real_base_url: &str,
     ) -> Self {
+        let spec = spec.into();
+        let scenario = spec.scenario;
         let mode = CassetteMode::current();
-        let policy = CassettePolicy::for_scenario(provider, scenario);
+        let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
         let cassette_path = cassette_path(provider, scenario);
         let upstream = UpstreamBase::parse(real_base_url);
         let (server, recording_id) = if mode.records() {
@@ -277,43 +304,49 @@ impl ProviderCassette {
     }
 
     pub(crate) async fn finish(self) {
-        if let CassetteServer::Replay(server) = &self.server {
-            server.assert_consumed(&self.cassette_path).await;
-            return;
-        }
+        let Self {
+            server,
+            cassette_path,
+            policy,
+            recording_id,
+            ..
+        } = self;
 
-        let Some(recording_id) = self.recording_id else {
+        let server = match server {
+            CassetteServer::Replay(mut server) => {
+                let result = AssertUnwindSafe(server.assert_consumed(&cassette_path))
+                    .catch_unwind()
+                    .await;
+                server.shutdown().await;
+                if let Err(payload) = result {
+                    resume_unwind(payload);
+                }
+                return;
+            }
+            CassetteServer::Recording(server) => server,
+        };
+
+        let Some(recording_id) = recording_id else {
             return;
         };
 
-        let CassetteServer::Recording(server) = &self.server else {
-            return;
-        };
-
-        let recording = httpmock::Recording::new(recording_id, server);
+        let recording = httpmock::Recording::new(recording_id, &server);
         let bytes = recording
             .export_async()
             .await
             .expect("provider cassette should export")
             .expect("provider cassette should contain at least one interaction");
         let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
-        let redacted = scrub_cassette_contents_with_policy(self.policy, &yaml);
-        let failures =
-            cassette_safety_failures_with_policy(self.policy, &self.cassette_path, &redacted);
+        let redacted = scrub_cassette_contents_with_policy(policy, &yaml);
+        let failures = cassette_safety_failures_with_policy(policy, &cassette_path, &redacted);
         assert!(
             failures.is_empty(),
             "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
-            self.cassette_path.display(),
+            cassette_path.display(),
             failures.join("\n")
         );
 
-        if let Some(parent) = self.cassette_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .expect("cassette directory should be created");
-        }
-
-        tokio::fs::write(&self.cassette_path, redacted)
+        write_cassette_atomically(&cassette_path, redacted.as_bytes())
             .await
             .expect("provider cassette should be written");
     }
@@ -355,6 +388,8 @@ impl ProviderCassette {
 struct ReplayServer {
     addr: SocketAddr,
     state: Arc<Mutex<ReplayState>>,
+    shutdown: Option<oneshot::Sender<()>>,
+    task: Option<JoinHandle<()>>,
 }
 
 impl ReplayServer {
@@ -369,7 +404,9 @@ impl ReplayServer {
             });
         let interactions = parse_cassette(cassette_path, &contents);
         let state = Arc::new(Mutex::new(ReplayState {
+            cassette_path: cassette_path.to_path_buf(),
             interactions,
+            misses: Vec::new(),
             policy,
         }));
         let app = Router::new()
@@ -382,13 +419,26 @@ impl ReplayServer {
             .local_addr()
             .expect("replay server address should be available");
 
-        tokio::spawn(async move {
-            axum::serve(listener, app)
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let task = tokio::spawn(async move {
+            let result = axum::serve(listener, app)
+                .with_graceful_shutdown(async {
+                    let _ = shutdown_rx.await;
+                })
                 .await
-                .expect("replay server should run");
+                .map_err(|error| format!("replay server should run: {error}"));
+
+            if let Err(error) = result {
+                panic!("{error}");
+            }
         });
 
-        Self { addr, state }
+        Self {
+            addr,
+            state,
+            shutdown: Some(shutdown_tx),
+            task: Some(task),
+        }
     }
 
     fn base_url(&self) -> String {
@@ -397,31 +447,38 @@ impl ReplayServer {
 
     async fn assert_consumed(&self, cassette_path: &Path) {
         let state = self.state.lock().await;
-        let unused = state
-            .interactions
-            .iter()
-            .enumerate()
-            .filter(|(_, interaction)| !interaction.consumed)
-            .map(|(index, interaction)| {
-                format!(
-                    "[{index}] {} {}",
-                    interaction.when.method, interaction.when.path
-                )
-            })
-            .collect::<Vec<_>>();
+        assert_replay_finished(cassette_path, &state.interactions, &state.misses);
+    }
 
-        assert!(
-            unused.is_empty(),
-            "provider cassette {} left unused interactions:\n{}",
-            cassette_path.display(),
-            unused.join("\n")
-        );
+    async fn shutdown(&mut self) {
+        if let Some(shutdown) = self.shutdown.take() {
+            let _ = shutdown.send(());
+        }
+
+        if let Some(task) = self.task.take() {
+            let _ = task.await;
+        }
+    }
+}
+
+impl Drop for ReplayServer {
+    fn drop(&mut self) {
+        if let Some(shutdown) = self.shutdown.take() {
+            let _ = shutdown.send(());
+        }
     }
 }
 
 struct ReplayState {
+    cassette_path: PathBuf,
     interactions: Vec<ReplayInteraction>,
+    misses: Vec<ReplayMiss>,
     policy: CassettePolicy,
+}
+
+#[derive(Clone, Debug)]
+struct ReplayMiss {
+    diagnostic: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -459,6 +516,59 @@ struct ReplayInteraction {
     when: CassetteRequest,
     then: CassetteResponse,
     consumed: bool,
+}
+
+fn assert_replay_finished(
+    cassette_path: &Path,
+    interactions: &[ReplayInteraction],
+    misses: &[ReplayMiss],
+) {
+    if let Some(message) = replay_completion_failure_message(cassette_path, interactions, misses) {
+        panic!("{message}");
+    }
+}
+
+fn replay_completion_failure_message(
+    cassette_path: &Path,
+    interactions: &[ReplayInteraction],
+    misses: &[ReplayMiss],
+) -> Option<String> {
+    let mut failures = Vec::new();
+    let unused = interactions
+        .iter()
+        .enumerate()
+        .filter(|(_, interaction)| !interaction.consumed)
+        .map(|(index, interaction)| {
+            format!(
+                "[{index}] {} {}",
+                interaction.when.method, interaction.when.path
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if !unused.is_empty() {
+        failures.push(format!("left unused interactions:\n{}", unused.join("\n")));
+    }
+
+    if !misses.is_empty() {
+        let formatted_misses = misses
+            .iter()
+            .enumerate()
+            .map(|(index, miss)| format!("[{index}] {}", miss.diagnostic))
+            .collect::<Vec<_>>()
+            .join("\n");
+        failures.push(format!(
+            "received unexpected replay request(s):\n{formatted_misses}"
+        ));
+    }
+
+    (!failures.is_empty()).then(|| {
+        format!(
+            "provider cassette replay failed for {}:\n{}",
+            cassette_path.display(),
+            failures.join("\n\n")
+        )
+    })
 }
 
 fn parse_cassette(cassette_path: &Path, contents: &str) -> Vec<ReplayInteraction> {
@@ -503,16 +613,20 @@ async fn replay_request(
 
     let Some(index) = matching_interaction_index(policy, &state.interactions, &request) else {
         let message = replay_miss_message(policy, &request, &state.interactions);
+        state.misses.push(ReplayMiss {
+            diagnostic: message.clone(),
+        });
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")
-            .body(message.into())
+            .body(Body::from(message))
             .expect("replay miss response should build");
     };
 
+    let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];
     interaction.consumed = true;
-    cassette_response(&interaction.then)
+    cassette_response(&interaction.then, &cassette_path)
 }
 
 fn matching_interaction_index(
@@ -941,24 +1055,89 @@ fn scrub_name_values_for_diagnostics(
     values
 }
 
-fn cassette_response(response: &CassetteResponse) -> Response {
+fn cassette_response(response: &CassetteResponse, cassette_path: &Path) -> Response {
     let mut builder = Response::builder().status(response.status);
     for header in &response.header {
         if is_hop_by_hop_header(&header.name) {
             continue;
         }
-        let Ok(name) = HeaderName::from_bytes(header.name.as_bytes()) else {
-            continue;
-        };
-        let Ok(value) = HeaderValue::from_str(&header.value) else {
-            continue;
-        };
+        let name = HeaderName::from_bytes(header.name.as_bytes()).unwrap_or_else(|error| {
+            panic!(
+                "provider cassette {} contains invalid response header name {:?}: {error}",
+                cassette_path.display(),
+                header.name
+            )
+        });
+        let value = HeaderValue::from_str(&header.value).unwrap_or_else(|error| {
+            panic!(
+                "provider cassette {} contains invalid value for response header {:?}: {error}",
+                cassette_path.display(),
+                header.name
+            )
+        });
         builder = builder.header(name, value);
     }
 
-    builder
-        .body(response.body.clone().unwrap_or_default().into())
-        .expect("cassette response should build")
+    let body = response_body(response);
+    builder.body(body).expect("cassette response should build")
+}
+
+fn response_body(response: &CassetteResponse) -> Body {
+    let body = response.body.clone().unwrap_or_default();
+    if is_sse_response(&response.header) {
+        let chunks = sse_body_chunks(&body)
+            .into_iter()
+            .map(Ok::<Bytes, Infallible>);
+        Body::from_stream(stream::iter(chunks))
+    } else {
+        Body::from(body)
+    }
+}
+
+fn is_sse_response(headers: &[NameValue]) -> bool {
+    headers.iter().any(|header| {
+        header.name.eq_ignore_ascii_case("content-type")
+            && header
+                .value
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("text/event-stream")
+    })
+}
+
+fn sse_body_chunks(body: &str) -> Vec<Bytes> {
+    sse_event_chunks(body)
+        .into_iter()
+        .map(Bytes::from)
+        .collect()
+}
+
+fn sse_event_chunks(body: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+
+    while start < body.len() {
+        let remaining = &body[start..];
+        let Some((separator_index, separator_len)) = earliest_sse_separator(remaining) else {
+            chunks.push(remaining.to_string());
+            break;
+        };
+        let end = start + separator_index + separator_len;
+        chunks.push(body[start..end].to_string());
+        start = end;
+    }
+
+    chunks
+}
+
+fn earliest_sse_separator(text: &str) -> Option<(usize, usize)> {
+    match (text.find("\r\n\r\n"), text.find("\n\n")) {
+        (Some(crlf), Some(lf)) if crlf < lf => Some((crlf, "\r\n\r\n".len())),
+        (Some(_), Some(lf)) => Some((lf, "\n\n".len())),
+        (Some(crlf), None) => Some((crlf, "\r\n\r\n".len())),
+        (None, Some(lf)) => Some((lf, "\n\n".len())),
+        (None, None) => None,
+    }
 }
 
 fn is_hop_by_hop_header(name: &str) -> bool {
@@ -1116,6 +1295,44 @@ fn serialize_cassette_interactions(interactions: &[CassetteInteraction]) -> Stri
     }
 
     output
+}
+
+async fn write_cassette_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let temp_path = temporary_cassette_path(path);
+    let result = async {
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .await?;
+        file.write_all(contents).await?;
+        file.flush().await?;
+        file.sync_all().await?;
+        drop(file);
+        tokio::fs::rename(&temp_path, path).await
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&temp_path).await;
+    }
+
+    result
+}
+
+fn temporary_cassette_path(path: &Path) -> PathBuf {
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("cassette.yaml");
+    let temp_name = format!(".{file_name}.tmp-{}-{counter}", std::process::id());
+
+    path.with_file_name(temp_name)
 }
 
 const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
@@ -1980,7 +2197,11 @@ mod tests {
 
     #[test]
     fn replay_matching_requires_provider_auth_header_presence_without_recorded_value() {
-        let policy = CassettePolicy::for_scenario("openai", "agent/completion_smoke");
+        let policy = CassettePolicy::for_scenario(
+            "openai",
+            "agent/completion_smoke",
+            ReplayMatching::Ordered,
+        );
         let interaction = ReplayInteraction {
             when: cassette_request("/v1/responses"),
             then: cassette_response(),
@@ -2010,7 +2231,11 @@ mod tests {
 
     #[test]
     fn gemini_interactions_policy_requires_api_key_header() {
-        let policy = CassettePolicy::for_scenario("gemini", "interactions_api/tool_result");
+        let policy = CassettePolicy::for_scenario(
+            "gemini",
+            "interactions_api/tool_result",
+            ReplayMatching::Ordered,
+        );
         let mut request = incoming_request("/v1beta/models", Bytes::new());
 
         assert_eq!(
@@ -2051,7 +2276,11 @@ mod tests {
 
     #[test]
     fn replay_miss_diagnostics_report_missing_required_headers_without_values() {
-        let policy = CassettePolicy::for_scenario("anthropic", "agent/completion_smoke");
+        let policy = CassettePolicy::for_scenario(
+            "anthropic",
+            "agent/completion_smoke",
+            ReplayMatching::Ordered,
+        );
         let request = incoming_request("/v1/messages", Bytes::new());
         let interactions = vec![ReplayInteraction {
             when: cassette_request("/v1/messages"),
@@ -2065,6 +2294,123 @@ mod tests {
         assert!(message.contains("missing_required_headers"));
         assert!(!message.contains("Bearer"));
         assert!(!message.contains("secret"));
+    }
+
+    #[test]
+    fn replay_finish_fails_when_replay_misses_were_recorded() {
+        let misses = vec![ReplayMiss {
+            diagnostic:
+                r#"{"actual_path":"/v1/miss","message":"Request did not match any route or mock"}"#
+                    .to_string(),
+        }];
+
+        let result = std::panic::catch_unwind(|| {
+            assert_replay_finished(Path::new("fixture.yaml"), &[], &misses);
+        });
+
+        assert!(result.is_err());
+        let message = replay_completion_failure_message(Path::new("fixture.yaml"), &[], &misses)
+            .expect("recorded replay miss should produce a failure message");
+        assert!(message.contains("unexpected replay request"));
+        assert!(message.contains("/v1/miss"));
+    }
+
+    #[tokio::test]
+    async fn replay_request_records_unexpected_misses() {
+        let state = Arc::new(Mutex::new(ReplayState {
+            cassette_path: PathBuf::from("fixture.yaml"),
+            interactions: vec![ReplayInteraction {
+                when: cassette_request("/v1/expected"),
+                then: cassette_response(),
+                consumed: false,
+            }],
+            misses: Vec::new(),
+            policy: CassettePolicy::default(),
+        }));
+
+        let response = replay_request(
+            State(state.clone()),
+            Method::POST,
+            "/v1/unexpected".parse().expect("test URI should parse"),
+            axum::http::HeaderMap::new(),
+            Bytes::new(),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let state = state.lock().await;
+        assert_eq!(state.misses.len(), 1);
+        assert!(state.misses[0].diagnostic.contains("/v1/unexpected"));
+    }
+
+    #[test]
+    fn sse_event_chunks_split_on_event_boundaries() {
+        assert_eq!(
+            sse_event_chunks("data: one\n\ndata: two\r\n\r\ndata: three"),
+            vec![
+                "data: one\n\n".to_string(),
+                "data: two\r\n\r\n".to_string(),
+                "data: three".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn sse_response_body_uses_multiple_chunks() {
+        let chunks = sse_body_chunks("data: one\n\ndata: two\n\n");
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0], Bytes::from_static(b"data: one\n\n"));
+        assert_eq!(chunks[1], Bytes::from_static(b"data: two\n\n"));
+    }
+
+    #[test]
+    fn cassette_response_rejects_invalid_response_header_name() {
+        let mut response = cassette_response();
+        response.header.push(NameValue {
+            name: "bad header".to_string(),
+            value: "ok".to_string(),
+        });
+
+        let result = std::panic::catch_unwind(|| {
+            super::cassette_response(&response, Path::new("fixture.yaml"));
+        });
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cassette_response_rejects_invalid_response_header_value() {
+        let mut response = cassette_response();
+        response.header.push(NameValue {
+            name: "x-valid-name".to_string(),
+            value: "bad\nvalue".to_string(),
+        });
+
+        let result = std::panic::catch_unwind(|| {
+            super::cassette_response(&response, Path::new("fixture.yaml"));
+        });
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn cassette_response_preserves_non_sse_body() {
+        let response = CassetteResponse {
+            status: 200,
+            header: vec![NameValue {
+                name: "content-type".to_string(),
+                value: "application/json".to_string(),
+            }],
+            body: Some(r#"{"ok":true}"#.to_string()),
+        };
+
+        let response = super::cassette_response(&response, Path::new("fixture.yaml"));
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("non-SSE cassette body should collect");
+
+        assert_eq!(body, Bytes::from_static(br#"{"ok":true}"#));
     }
 
     #[test]

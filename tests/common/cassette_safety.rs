@@ -227,10 +227,13 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
             && self.wrapper_names.contains(&wrapper_name.as_str())
         {
             match node.args.first() {
-                Some(Expr::Lit(ExprLit {
-                    lit: Lit::Str(scenario),
-                    ..
-                })) => self.scenarios.push(scenario.value()),
+                Some(expr) => match cassette_scenario_value(expr) {
+                    Some(scenario) => self.scenarios.push(scenario),
+                    None => self.failures.push(format!(
+                        "{} calls {wrapper_name} without a string-literal cassette scenario",
+                        display_repo_path(self.path)
+                    )),
+                },
                 _ => self.failures.push(format!(
                     "{} calls {wrapper_name} without a string-literal cassette scenario",
                     display_repo_path(self.path)
@@ -240,6 +243,42 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
 
         visit::visit_expr_call(self, node);
     }
+}
+
+fn cassette_scenario_value(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Lit(ExprLit {
+            lit: Lit::Str(scenario),
+            ..
+        }) => Some(scenario.value()),
+        Expr::Call(call) if is_cassette_spec_new(call) => call.args.first().and_then(|expr| {
+            let Expr::Lit(ExprLit {
+                lit: Lit::Str(scenario),
+                ..
+            }) = expr
+            else {
+                return None;
+            };
+
+            Some(scenario.value())
+        }),
+        Expr::MethodCall(method_call) => cassette_scenario_value(&method_call.receiver),
+        Expr::Paren(paren) => cassette_scenario_value(&paren.expr),
+        _ => None,
+    }
+}
+
+fn is_cassette_spec_new(call: &ExprCall) -> bool {
+    let Expr::Path(path) = call.func.as_ref() else {
+        return false;
+    };
+
+    let mut segments = path.path.segments.iter().rev();
+    matches!(
+        (segments.next(), segments.next()),
+        (Some(method), Some(receiver))
+            if method.ident == "new" && receiver.ident == "CassetteSpec"
+    )
 }
 
 fn cassette_wrapper_name(node: &ExprCall) -> Option<String> {
