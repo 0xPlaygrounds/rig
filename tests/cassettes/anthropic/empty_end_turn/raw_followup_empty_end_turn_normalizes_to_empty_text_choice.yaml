@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"msg":"Deploy completed."},"name":"notify","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":628,"output_tokens":53,"service_tier":"standard"}}'
+  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"msg":"Deploy finished."},"name":"notify","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":628,"output_tokens":53,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -28,7 +28,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":1024,"messages":[{"content":[{"id":"toolu_REDACTED_1","input":{"msg":"Deploy completed."},"name":"notify","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"sent: deploy finished","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"When the user reports their status, call `notify` with a short summary. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}]}'
+  body: '{"max_tokens":1024,"messages":[{"content":[{"id":"toolu_REDACTED_1","input":{"msg":"Deploy finished."},"name":"notify","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"sent: deploy finished","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"When the user reports their status, call `notify` with a short summary. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}]}'
 then:
   status: 200
   header:

@@ -13,7 +13,7 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_1","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backward.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_input_tokens":10,"total_output_tokens":12,"total_thought_tokens":157,"total_tokens":179,"total_tool_use_tokens":0}}'
+  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_1","type":"thought"},{"text":"Hummingbirds are the only birds that can fly backward.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":10}],"total_cached_tokens":0,"total_input_tokens":10,"total_output_tokens":12,"total_thought_tokens":179,"total_tokens":201,"total_tool_use_tokens":0}}'
 ---
 when:
   path: /v1beta/interactions
@@ -30,4 +30,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_2","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_2","type":"thought"},{"text":"A hummingbird is like a tiny, feathery helicopter.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_input_tokens":8,"total_output_tokens":11,"total_thought_tokens":155,"total_tokens":174,"total_tool_use_tokens":0}}'
+  body: '{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_2","model":"gemini-3-flash-preview","object":"interaction","outputs":[{"signature":"signature_REDACTED_2","type":"thought"},{"text":"A hummingbird is like a tiny, feathered helicopter.","type":"text"}],"role":"model","service_tier":"standard","status":"completed","updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":8}],"total_cached_tokens":0,"total_input_tokens":8,"total_output_tokens":10,"total_thought_tokens":156,"total_tokens":174,"total_tool_use_tokens":0}}'

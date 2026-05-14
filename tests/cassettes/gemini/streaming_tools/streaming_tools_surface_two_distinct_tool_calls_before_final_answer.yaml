@@ -17,7 +17,7 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":43,\"totalTokenCount\":222}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":72,\"totalTokenCount\":251}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -38,7 +38,7 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_orchard_label\"},\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":244,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":244}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":30,\"totalTokenCount\":287}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_orchard_label\"},\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":273,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":273}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":41,\"totalTokenCount\":327}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -59,4 +59,4 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.\",\"thoughtSignature\":\"signature_REDACTED_3\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_3\",\"usageMetadata\":{\"candidatesTokenCount\":21,\"promptTokenCount\":308,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":308}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":77,\"totalTokenCount\":406}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The signals are crimson-harbor and silver-orchard.\",\"thoughtSignature\":\"signature_REDACTED_3\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_3\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":348,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":348}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":77,\"totalTokenCount\":438}}\r\n\r\n"

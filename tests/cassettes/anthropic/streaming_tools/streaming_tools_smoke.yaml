@@ -17,34 +17,43 @@ then:
     value: text/event-stream; charset=utf-8
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":703,"output_tokens":60,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":703,"output_tokens":7,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"subtract","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"I'll calculate 2 -","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":"x\": 2","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":", \"y\": ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":"5}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" 5 right away!","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"subtract","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"x\":","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":" 2","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":", \"y\": 5}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":703,"output_tokens":69}}
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":703,"output_tokens":82}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -61,7 +70,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"x":2,"y":5},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"-3","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll calculate 2 - 5 right away!","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":2,"y":5},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"-3","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
 then:
   status: 200
   header:
@@ -69,7 +78,7 @@ then:
     value: text/event-stream; charset=utf-8
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":786,"output_tokens":7,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":799,"output_tokens":3,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -78,16 +87,16 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"text":"The result of 2 -","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"The result of","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" 5 is **-3**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" 2 - 5 is **-3**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":786,"output_tokens":18}}
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":799,"output_tokens":18}}
 
     event: message_stop
     data: {"type":"message_stop"}

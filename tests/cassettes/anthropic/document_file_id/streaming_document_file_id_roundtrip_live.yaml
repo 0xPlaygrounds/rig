@@ -6,12 +6,12 @@ when:
   - name: accept
     value: '*/*'
   - name: content-type
-    value: multipart/form-data; boundary=4a7ccb6df3e0a4da-49aad16a7960904e-51844e396aa66183-96776a0a1d58e74e
+    value: multipart/form-data; boundary=533d57d4f4fbf6ce-f37e6af0ba924d73-cc0fbe2bfa9f3ebd-38afad8742756dde
   - name: anthropic-version
     value: 2023-06-01
   - name: anthropic-beta
     value: files-api-2025-04-14
-  body: "--4a7ccb6df3e0a4da-49aad16a7960904e-51844e396aa66183-96776a0a1d58e74e\r\nContent-Disposition: form-data; name=\"file\"; filename=\"rig-file-id-verifiers.pdf\"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>\nendobj\n3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 66 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-one-verifier-3a91) Tj\nET\nendstream\nendobj\n6 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>\nendobj\n7 0 obj\n<< /Length 66 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-two-verifier-8c27) Tj\nET\nendstream\nendobj\n8 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>\nendobj\n9 0 obj\n<< /Length 68 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-three-verifier-f54e) Tj\nET\nendstream\nendobj\nxref\n0 10\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000127 00000 n \n0000000197 00000 n \n0000000323 00000 n \n0000000438 00000 n \n0000000564 00000 n \n0000000679 00000 n \n0000000805 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R >>\nstartxref\n922\n%%EOF\n\r\n--4a7ccb6df3e0a4da-49aad16a7960904e-51844e396aa66183-96776a0a1d58e74e--\r\n"
+  body: "--533d57d4f4fbf6ce-f37e6af0ba924d73-cc0fbe2bfa9f3ebd-38afad8742756dde\r\nContent-Disposition: form-data; name=\"file\"; filename=\"rig-file-id-verifiers.pdf\"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>\nendobj\n3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 66 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-one-verifier-3a91) Tj\nET\nendstream\nendobj\n6 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>\nendobj\n7 0 obj\n<< /Length 66 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-two-verifier-8c27) Tj\nET\nendstream\nendobj\n8 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>\nendobj\n9 0 obj\n<< /Length 68 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-three-verifier-f54e) Tj\nET\nendstream\nendobj\nxref\n0 10\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000127 00000 n \n0000000197 00000 n \n0000000323 00000 n \n0000000438 00000 n \n0000000564 00000 n \n0000000679 00000 n \n0000000805 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R >>\nstartxref\n922\n%%EOF\n\r\n--533d57d4f4fbf6ce-f37e6af0ba924d73-cc0fbe2bfa9f3ebd-38afad8742756dde--\r\n"
 then:
   status: 200
   header:
@@ -49,10 +49,7 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"text":"rig-file-id-page-two-verifier-8","type":"text_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"text":"c27","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"rig-file-id-page-two-verifier-8c27","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}

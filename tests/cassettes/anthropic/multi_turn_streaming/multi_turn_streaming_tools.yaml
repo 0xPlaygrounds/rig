@@ -29,13 +29,10 @@ then:
     data: {"delta":{"text":"I'll solve","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" this step-by-step! Let me start by computing the two independent operations in","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" this step by step! Let me start by computing the two independent sub-expressions **(10 - 4)","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" parentheses first — **10 - 4** and **3 + 5** — simultaneously","type":"text_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"text":":","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"** and **(3 + 5)** simultaneously.","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -50,10 +47,7 @@ then:
     data: {"delta":{"partial_json":"{\"x\": 10","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", \"y\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":": 4}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", \"y\": 4}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":1,"type":"content_block_stop"}
@@ -68,16 +62,19 @@ then:
     data: {"delta":{"partial_json":"{\"x\": 3","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", \"y\"","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", \"y","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":": 5}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\":","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":" 5}","type":"input_json_delta"},"index":2,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":2,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1001,"output_tokens":163}}
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1001,"output_tokens":160}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -94,7 +91,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step by step! Let me start by computing the two independent sub-expressions **(10 - 4)** and **(3 + 5)** simultaneously.","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
@@ -102,7 +99,7 @@ then:
     value: text/event-stream; charset=utf-8
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1225,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1222,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -111,10 +108,10 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"text":"Got","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"Great","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" **6** and **8**! Now I'll multiply them together:","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"! Now I'll multiply the two results **(6 * 8)**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -126,22 +123,19 @@ then:
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"x\": 6","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"x\": 6","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", ","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", \"y\":","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":" 8}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"\"y\": 8}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1225,"output_tokens":85}}
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1222,"output_tokens":87}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -158,7 +152,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Got **6** and **8**! Now I''ll multiply them together:","type":"text"},{"id":"toolu_REDACTED_3","input":{"x":6,"y":8},"name":"multiply","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"48","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step by step! Let me start by computing the two independent sub-expressions **(10 - 4)** and **(3 + 5)** simultaneously.","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Great! Now I''ll multiply the two results **(6 * 8)**.","type":"text"},{"id":"toolu_REDACTED_3","input":{"x":6,"y":8},"name":"multiply","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"48","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
@@ -166,7 +160,7 @@ then:
     value: text/event-stream; charset=utf-8
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1323,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"content":[],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1322,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -175,10 +169,10 @@ then:
     data: {"type":"ping"}
 
     event: content_block_delta
-    data: {"delta":{"text":"Got","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"Now","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" **48**! Finally, I'll divide that by 3:","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" I'll divide the product by 3 **(48 / 3)**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -190,10 +184,13 @@ then:
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"x\"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"x\": 48","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":": 4","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"8","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
 
     event: content_block_delta
     data: {"delta":{"partial_json":", \"y\": 3}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
@@ -202,7 +199,7 @@ then:
     data: {"index":1,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1323,"output_tokens":84}}
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1322,"output_tokens":88}}
 
     event: message_stop
     data: {"type":"message_stop"}
@@ -219,7 +216,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step-by-step! Let me start by computing the two independent operations in parentheses first — **10 - 4** and **3 + 5** — simultaneously:","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Got **6** and **8**! Now I''ll multiply them together:","type":"text"},{"id":"toolu_REDACTED_3","input":{"x":6,"y":8},"name":"multiply","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"48","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"},{"content":[{"text":"Got **48**! Finally, I''ll divide that by 3:","type":"text"},{"id":"toolu_REDACTED_4","input":{"x":48,"y":3},"name":"divide","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"16","type":"text"}],"tool_use_id":"toolu_REDACTED_4","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll solve this step by step! Let me start by computing the two independent sub-expressions **(10 - 4)** and **(3 + 5)** simultaneously.","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":10,"y":4},"name":"subtract","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"x":3,"y":5},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"6","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"content":[{"text":"8","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Great! Now I''ll multiply the two results **(6 * 8)**.","type":"text"},{"id":"toolu_REDACTED_3","input":{"x":6,"y":8},"name":"multiply","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"48","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll divide the product by 3 **(48 / 3)**.","type":"text"},{"id":"toolu_REDACTED_4","input":{"x":48,"y":3},"name":"divide","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"16","type":"text"}],"tool_use_id":"toolu_REDACTED_4","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You must use tools for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"subtract"},{"description":"Compute the product of x and y (i.e.: x * y).","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"multiply"},{"description":"Compute the quotient of x and y.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"title":"OperationArgs","type":"object"},"name":"divide"}]}'
 then:
   status: 200
   header:
@@ -227,7 +224,7 @@ then:
     value: text/event-stream; charset=utf-8
   body: |+
     event: message_start
-    data: {"message":{"content":[],"id":"msg_REDACTED_4","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1420,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"content":[],"id":"msg_REDACTED_4","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1423,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -239,25 +236,25 @@ then:
     data: {"delta":{"text":"Here","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"'s a summary of the full calculation:\n\nThe expression **((10 - 4) × (3 + 5)) ÷ 3** was","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"'s a summary of the result:\n\nThe expression **((10 - 4) × (3 + 5)) / 3** evalu","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" solved step by step: first, the two parent","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":"ates to **16**. Starting with the parentheses, **10 - 4 = 6**","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"heses were evaluated independently — **(10 - 4) = 6** and **(3 + 5) = 8** — then their product *","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" and **3 + 5 = 8**; multiplying those gives **48**, which when","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":"*(6 × 8 = 48)** was computed, and finally dividing **48 by 3** yielded a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" divided by **3** yields a clean, whole number result of **16**","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"text":" clean, whole-number result of **16**.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"text":" — a perfect power of 2 (2⁴).","type":"text_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
 
     event: message_delta
-    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1420,"output_tokens":124}}
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1423,"output_tokens":111}}
 
     event: message_stop
     data: {"type":"message_stop"}
