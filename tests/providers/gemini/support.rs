@@ -1,7 +1,7 @@
 use futures::FutureExt;
 use rig::providers::gemini;
 use std::future::Future;
-use std::panic::{AssertUnwindSafe, resume_unwind};
+use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::ProviderCassette;
 
@@ -35,10 +35,7 @@ where
 {
     let (cassette, client) = gemini_cassette(scenario).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
-    cassette.finish().await;
-    if let Err(payload) = result {
-        resume_unwind(payload);
-    }
+    cassette.finish_after_test(result).await;
 }
 
 pub(super) async fn with_gemini_interactions_cassette<F, Fut>(scenario: &'static str, test_body: F)
@@ -48,8 +45,5 @@ where
 {
     let (cassette, client) = gemini_interactions_cassette(scenario).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
-    cassette.finish().await;
-    if let Err(payload) = result {
-        resume_unwind(payload);
-    }
+    cassette.finish_after_test(result).await;
 }

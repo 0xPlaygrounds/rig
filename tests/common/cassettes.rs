@@ -10,12 +10,15 @@ use axum::extract::State;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 use axum::{Router, routing::any};
+use futures::FutureExt;
 use httpmock::MockServer;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::net::SocketAddr;
+use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -25,6 +28,126 @@ const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const CASSETTE_ROOT: &str = "tests/cassettes";
 const REDACTED: &str = "[REDACTED]";
 const DUMMY_API_KEY: &str = REDACTED;
+
+type PanicPayload = Box<dyn Any + Send + 'static>;
+
+#[derive(Clone, Copy, Debug)]
+struct TokenPrefix {
+    raw: &'static str,
+    placeholder_prefix: &'static str,
+    min_suffix_len: usize,
+}
+
+impl TokenPrefix {
+    const fn new(
+        raw: &'static str,
+        placeholder_prefix: &'static str,
+        min_suffix_len: usize,
+    ) -> Self {
+        Self {
+            raw,
+            placeholder_prefix,
+            min_suffix_len,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReplayMatching {
+    Ordered,
+    Unordered,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CassettePolicy {
+    recorded_request_headers: &'static [&'static str],
+    required_request_headers: &'static [&'static str],
+    sensitive_headers: &'static [&'static str],
+    sensitive_query_params: &'static [&'static str],
+    response_header_allowlist: &'static [&'static str],
+    forbidden_patterns: &'static [&'static str],
+    generated_token_prefixes: &'static [TokenPrefix],
+    replay_matching: ReplayMatching,
+}
+
+impl CassettePolicy {
+    fn for_scenario(provider: &str, scenario: &str) -> Self {
+        let mut policy = Self::default();
+        policy.required_request_headers = match provider {
+            "openai" => OPENAI_REQUIRED_REQUEST_HEADERS,
+            "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
+            "gemini" if scenario.starts_with("interactions_api/") => {
+                GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
+            }
+            _ => NO_REQUIRED_REQUEST_HEADERS,
+        };
+
+        // This scenario intentionally fans out concurrent equivalent provider requests.
+        if provider == "openai" && scenario.starts_with("multi_extract/") {
+            policy.replay_matching = ReplayMatching::Unordered;
+        }
+
+        policy
+    }
+
+    fn is_sensitive_header(self, name: &str) -> bool {
+        contains_case_insensitive(self.sensitive_headers, name)
+    }
+
+    fn required_request_headers(self) -> &'static [&'static str] {
+        self.required_request_headers
+    }
+
+    fn is_sensitive_query_param(self, name: &str) -> bool {
+        contains_case_insensitive(self.sensitive_query_params, name)
+    }
+
+    fn is_allowed_response_header(self, name: &str) -> bool {
+        contains_case_insensitive(self.response_header_allowlist, name)
+    }
+
+    fn generated_prefix_for(self, value: &str) -> Option<TokenPrefix> {
+        self.generated_token_prefixes
+            .iter()
+            .copied()
+            .find(|prefix| is_generated_token(value, *prefix))
+    }
+
+    fn matching_generated_prefix(self, text: &str, index: usize) -> Option<TokenPrefix> {
+        if index > 0 {
+            let previous = text[..index].chars().next_back()?;
+            if is_token_char(previous) {
+                return None;
+            }
+        }
+
+        self.generated_token_prefixes
+            .iter()
+            .copied()
+            .find(|prefix| text[index..].starts_with(prefix.raw))
+    }
+}
+
+impl Default for CassettePolicy {
+    fn default() -> Self {
+        Self {
+            recorded_request_headers: RECORDED_REQUEST_HEADERS,
+            required_request_headers: NO_REQUIRED_REQUEST_HEADERS,
+            sensitive_headers: SENSITIVE_HEADER_NAMES,
+            sensitive_query_params: SENSITIVE_QUERY_PARAMS,
+            response_header_allowlist: RESPONSE_HEADER_ALLOWLIST,
+            forbidden_patterns: FORBIDDEN_CASSETTE_PATTERNS,
+            generated_token_prefixes: GENERATED_TOKEN_PREFIXES,
+            replay_matching: ReplayMatching::Ordered,
+        }
+    }
+}
+
+fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {
+    values
+        .iter()
+        .any(|value| needle.eq_ignore_ascii_case(value))
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CassetteMode {
@@ -52,6 +175,7 @@ pub(crate) struct ProviderCassette {
     cassette_path: PathBuf,
     base_path: String,
     mode: CassetteMode,
+    policy: CassettePolicy,
     recording_id: Option<usize>,
 }
 
@@ -85,6 +209,7 @@ impl ProviderCassette {
         real_base_url: &str,
     ) -> Self {
         let mode = CassetteMode::current();
+        let policy = CassettePolicy::for_scenario(provider, scenario);
         let cassette_path = cassette_path(provider, scenario);
         let upstream = UpstreamBase::parse(real_base_url);
         let (server, recording_id) = if mode.records() {
@@ -97,18 +222,13 @@ impl ProviderCassette {
                 })
                 .await;
 
+            let recorded_request_headers = policy.recorded_request_headers.to_vec();
             let recording = server
-                .record_async(|rule| {
-                    rule.record_request_headers(vec![
-                        "accept",
-                        "content-type",
-                        "anthropic-version",
-                        "anthropic-beta",
-                        "openai-beta",
-                    ])
-                    .filter(|when| {
-                        when.any_request();
-                    });
+                .record_async(move |rule| {
+                    rule.record_request_headers(recorded_request_headers)
+                        .filter(|when| {
+                            when.any_request();
+                        });
                 })
                 .await;
 
@@ -123,7 +243,7 @@ impl ProviderCassette {
                 );
             }
             (
-                CassetteServer::Replay(ReplayServer::start(&cassette_path).await),
+                CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await),
                 None,
             )
         };
@@ -133,6 +253,7 @@ impl ProviderCassette {
             cassette_path,
             base_path: upstream.path,
             mode,
+            policy,
             recording_id,
         }
     }
@@ -172,8 +293,9 @@ impl ProviderCassette {
             .expect("provider cassette should export")
             .expect("provider cassette should contain at least one interaction");
         let yaml = String::from_utf8(bytes.to_vec()).expect("cassette YAML should be UTF-8");
-        let redacted = scrub_cassette_contents(&yaml);
-        let failures = cassette_safety_failures(&self.cassette_path, &redacted);
+        let redacted = scrub_cassette_contents_with_policy(self.policy, &yaml);
+        let failures =
+            cassette_safety_failures_with_policy(self.policy, &self.cassette_path, &redacted);
         assert!(
             failures.is_empty(),
             "provider cassette {} still contains unsafe artifacts after scrubbing:\n{}",
@@ -191,6 +313,63 @@ impl ProviderCassette {
             .await
             .expect("provider cassette should be written");
     }
+
+    pub(crate) async fn finish_after_test(self, test_result: Result<(), PanicPayload>) {
+        let finish_result = self.finish_catching_unwind().await;
+
+        match (test_result, finish_result) {
+            (Ok(()), Ok(())) => {}
+            (Ok(()), Err(payload)) => resume_unwind(payload),
+            (Err(payload), Ok(())) => resume_unwind(payload),
+            (Err(payload), Err(finish_payload)) => {
+                report_suppressed_finish_panic(&finish_payload);
+                resume_unwind(payload);
+            }
+        }
+    }
+
+    pub(crate) async fn finish_after_test_result<E>(
+        self,
+        test_result: Result<Result<(), E>, PanicPayload>,
+    ) -> Result<(), E> {
+        let finish_result = self.finish_catching_unwind().await;
+
+        match (test_result, finish_result) {
+            (Ok(Ok(())), Ok(())) => Ok(()),
+            (Ok(Ok(())), Err(payload)) => resume_unwind(payload),
+            (Ok(Err(error)), Ok(())) => Err(error),
+            (Ok(Err(error)), Err(finish_payload)) => {
+                report_suppressed_finish_panic(&finish_payload);
+                Err(error)
+            }
+            (Err(payload), Ok(())) => resume_unwind(payload),
+            (Err(payload), Err(finish_payload)) => {
+                report_suppressed_finish_panic(&finish_payload);
+                resume_unwind(payload);
+            }
+        }
+    }
+
+    async fn finish_catching_unwind(self) -> Result<(), PanicPayload> {
+        AssertUnwindSafe(self.finish()).catch_unwind().await
+    }
+}
+
+fn report_suppressed_finish_panic(payload: &PanicPayload) {
+    eprintln!(
+        "cassette.finish() also panicked after the test body failed; preserving original test failure. Secondary cassette failure: {}",
+        panic_payload_message(payload.as_ref())
+    );
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send + 'static)) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
 }
 
 struct ReplayServer {
@@ -199,7 +378,7 @@ struct ReplayServer {
 }
 
 impl ReplayServer {
-    async fn start(cassette_path: &Path) -> Self {
+    async fn start(cassette_path: &Path, policy: CassettePolicy) -> Self {
         let contents = tokio::fs::read_to_string(cassette_path)
             .await
             .unwrap_or_else(|error| {
@@ -209,7 +388,10 @@ impl ReplayServer {
                 )
             });
         let interactions = parse_cassette(cassette_path, &contents);
-        let state = Arc::new(Mutex::new(ReplayState { interactions }));
+        let state = Arc::new(Mutex::new(ReplayState {
+            interactions,
+            policy,
+        }));
         let app = Router::new()
             .fallback(any(replay_request))
             .with_state(state.clone());
@@ -259,6 +441,7 @@ impl ReplayServer {
 
 struct ReplayState {
     interactions: Vec<ReplayInteraction>,
+    policy: CassettePolicy,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -336,11 +519,10 @@ async fn replay_request(
         headers,
         body,
     };
+    let policy = state.policy;
 
-    let Some(index) = state.interactions.iter().position(|interaction| {
-        !interaction.consumed && request_matches(&request, &interaction.when)
-    }) else {
-        let message = replay_miss_message(&request, &state.interactions);
+    let Some(index) = matching_interaction_index(policy, &state.interactions, &request) else {
+        let message = replay_miss_message(policy, &request, &state.interactions);
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")
@@ -353,7 +535,29 @@ async fn replay_request(
     cassette_response(&interaction.then)
 }
 
-fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteraction]) -> String {
+fn matching_interaction_index(
+    policy: CassettePolicy,
+    interactions: &[ReplayInteraction],
+    request: &IncomingRequest,
+) -> Option<usize> {
+    match policy.replay_matching {
+        ReplayMatching::Ordered => {
+            let index = interactions
+                .iter()
+                .position(|interaction| !interaction.consumed)?;
+            request_matches(policy, request, &interactions[index].when).then_some(index)
+        }
+        ReplayMatching::Unordered => interactions.iter().position(|interaction| {
+            !interaction.consumed && request_matches(policy, request, &interaction.when)
+        }),
+    }
+}
+
+fn replay_miss_message(
+    policy: CassettePolicy,
+    request: &IncomingRequest,
+    interactions: &[ReplayInteraction],
+) -> String {
     let candidates = interactions
         .iter()
         .enumerate()
@@ -365,7 +569,9 @@ fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteract
             let path_matches = request.uri.path() == interaction.when.path;
             let query_matches = query_matches(request.uri.query(), &interaction.when.query_param);
             let headers_match = headers_match(&request.headers, &interaction.when.header);
+            let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
+                policy,
                 &request.headers,
                 &interaction.when.header,
                 &request.body,
@@ -378,12 +584,13 @@ fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteract
                 "method_matches": method_matches,
                 "path_matches": path_matches,
                 "query_matches": query_matches,
-                "expected_query_params": &interaction.when.query_param,
+                "expected_query_params": scrub_name_values_for_diagnostics(policy, &interaction.when.query_param),
                 "headers_match": headers_match,
+                "required_headers_match": required_headers_match,
                 "body_matches": body_matches,
                 "expected_method": interaction.when.method,
                 "expected_path": interaction.when.path,
-                "expected_body_preview": interaction.when.body.as_deref().map(body_preview),
+                "expected_body_preview": interaction.when.body.as_deref().map(|body| body_preview_for_diagnostics(policy, body)),
             })
         })
         .collect::<Vec<_>>();
@@ -392,9 +599,11 @@ fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteract
         "message": "Request did not match any route or mock",
         "actual_method": request.method.as_str(),
         "actual_path": request.uri.path(),
-        "actual_query": request.uri.query(),
-        "actual_query_params": parsed_query_pairs(request.uri.query()),
-        "actual_body_preview": body_preview_bytes(&request.body),
+        "actual_query": request.uri.query().map(|query| scrub_text_for_diagnostics(policy, query)),
+        "actual_query_params": scrub_query_pairs_for_diagnostics(policy, request.uri.query()),
+        "required_headers": policy.required_request_headers(),
+        "missing_required_headers": missing_required_headers(policy, &request.headers),
+        "actual_body_preview": body_preview_bytes_for_diagnostics(policy, &request.body),
         "candidates": candidates,
     })
     .to_string()
@@ -407,7 +616,11 @@ struct IncomingRequest {
     body: Bytes,
 }
 
-fn request_matches(request: &IncomingRequest, expected: &CassetteRequest) -> bool {
+fn request_matches(
+    policy: CassettePolicy,
+    request: &IncomingRequest,
+    expected: &CassetteRequest,
+) -> bool {
     request
         .method
         .as_str()
@@ -415,7 +628,9 @@ fn request_matches(request: &IncomingRequest, expected: &CassetteRequest) -> boo
         && request.uri.path() == expected.path
         && query_matches(request.uri.query(), &expected.query_param)
         && headers_match(&request.headers, &expected.header)
+        && required_headers_present(policy, &request.headers)
         && body_matches(
+            policy,
             &request.headers,
             &expected.header,
             &request.body,
@@ -470,14 +685,42 @@ fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool
     })
 }
 
+fn required_headers_present(policy: CassettePolicy, actual: &axum::http::HeaderMap) -> bool {
+    missing_required_headers(policy, actual).is_empty()
+}
+
+fn missing_required_headers(
+    policy: CassettePolicy,
+    actual: &axum::http::HeaderMap,
+) -> Vec<&'static str> {
+    policy
+        .required_request_headers()
+        .iter()
+        .copied()
+        .filter(|required| !has_nonempty_header(actual, required))
+        .collect()
+}
+
+fn has_nonempty_header(actual: &axum::http::HeaderMap, name: &str) -> bool {
+    let Ok(name) = HeaderName::from_bytes(name.as_bytes()) else {
+        return false;
+    };
+
+    actual
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
 fn body_matches(
+    _policy: CassettePolicy,
     actual_headers: &axum::http::HeaderMap,
     expected_headers: &[NameValue],
     actual: &[u8],
     expected: Option<&str>,
 ) -> bool {
     let Some(expected) = expected else {
-        return true;
+        return actual.is_empty();
     };
     if is_multipart_request(actual_headers, expected_headers) {
         return multipart_bodies_match(
@@ -666,11 +909,56 @@ fn body_preview(body: &str) -> String {
     preview
 }
 
-fn body_preview_bytes(body: &[u8]) -> String {
+fn body_preview_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
+    body_preview(&scrub_body_for_diagnostics(policy, body))
+}
+
+fn body_preview_bytes_for_diagnostics(policy: CassettePolicy, body: &[u8]) -> String {
     match std::str::from_utf8(body) {
-        Ok(body) => body_preview(body),
+        Ok(body) => body_preview_for_diagnostics(policy, body),
         Err(_) => format!("<{} bytes of non-UTF-8 body>", body.len()),
     }
+}
+
+fn scrub_body_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
+    CassetteScrubber::new(policy).scrub_body(body)
+}
+
+fn scrub_text_for_diagnostics(policy: CassettePolicy, text: &str) -> String {
+    CassetteScrubber::new(policy).scrub_text(text)
+}
+
+fn scrub_query_pairs_for_diagnostics(
+    policy: CassettePolicy,
+    query: Option<&str>,
+) -> Vec<NameValue> {
+    let mut pairs = parsed_query_pairs(query)
+        .into_iter()
+        .map(|(name, value)| NameValue { name, value })
+        .collect::<Vec<_>>();
+    scrub_query_params(policy, &mut pairs);
+    for pair in &mut pairs {
+        pair.value = scrub_text_for_diagnostics(policy, &pair.value);
+    }
+    pairs
+}
+
+fn scrub_name_values_for_diagnostics(
+    policy: CassettePolicy,
+    values: &[NameValue],
+) -> Vec<NameValue> {
+    let mut values = values
+        .iter()
+        .map(|value| NameValue {
+            name: value.name.clone(),
+            value: value.value.clone(),
+        })
+        .collect::<Vec<_>>();
+    scrub_query_params(policy, &mut values);
+    for value in &mut values {
+        value.value = scrub_text_for_diagnostics(policy, &value.value);
+    }
+    values
 }
 
 fn cassette_response(response: &CassetteResponse) -> Response {
@@ -754,8 +1042,12 @@ fn sanitize_path_segment(segment: &str) -> String {
 }
 
 pub(crate) fn scrub_cassette_contents(yaml: &str) -> String {
+    scrub_cassette_contents_with_policy(CassettePolicy::default(), yaml)
+}
+
+fn scrub_cassette_contents_with_policy(policy: CassettePolicy, yaml: &str) -> String {
     let mut interactions = parse_cassette_interactions(Path::new("<cassette>"), yaml);
-    let mut scrubber = CassetteScrubber::default();
+    let mut scrubber = CassetteScrubber::new(policy);
 
     for interaction in &mut interactions {
         scrubber.scrub_request(&mut interaction.when);
@@ -766,8 +1058,16 @@ pub(crate) fn scrub_cassette_contents(yaml: &str) -> String {
 }
 
 pub(crate) fn cassette_safety_failures(cassette_path: &Path, contents: &str) -> Vec<String> {
+    cassette_safety_failures_with_policy(CassettePolicy::default(), cassette_path, contents)
+}
+
+fn cassette_safety_failures_with_policy(
+    policy: CassettePolicy,
+    cassette_path: &Path,
+    contents: &str,
+) -> Vec<String> {
     let mut failures = Vec::new();
-    let scrubbed = scrub_cassette_contents(contents);
+    let scrubbed = scrub_cassette_contents_with_policy(policy, contents);
 
     if scrubbed != contents {
         failures.push(format!(
@@ -777,23 +1077,45 @@ pub(crate) fn cassette_safety_failures(cassette_path: &Path, contents: &str) -> 
     }
 
     let lower = contents.to_ascii_lowercase();
-    for pattern in FORBIDDEN_CASSETTE_PATTERNS {
+    for pattern in policy.forbidden_patterns {
         if lower.contains(pattern) {
             failures.push(format!("{} contains {pattern:?}", cassette_path.display()));
         }
     }
 
-    for token in generated_tokens(contents) {
+    let generated_tokens = generated_tokens(policy, contents);
+    if !generated_tokens.is_empty() {
         failures.push(format!(
-            "{} contains unsanitized provider artifact {token:?}",
-            cassette_path.display()
+            "{} contains {} unsanitized provider artifact(s)",
+            cassette_path.display(),
+            generated_tokens.len()
         ));
     }
 
-    for token in google_api_key_tokens(contents) {
+    let openai_api_key_tokens = openai_api_key_tokens(contents);
+    if !openai_api_key_tokens.is_empty() {
         failures.push(format!(
-            "{} contains Google API key-shaped token {token:?}",
-            cassette_path.display()
+            "{} contains {} OpenAI API key-shaped token(s)",
+            cassette_path.display(),
+            openai_api_key_tokens.len()
+        ));
+    }
+
+    let anthropic_api_key_tokens = anthropic_api_key_tokens(contents);
+    if !anthropic_api_key_tokens.is_empty() {
+        failures.push(format!(
+            "{} contains {} Anthropic API key-shaped token(s)",
+            cassette_path.display(),
+            anthropic_api_key_tokens.len()
+        ));
+    }
+
+    let google_api_key_tokens = google_api_key_tokens(contents);
+    if !google_api_key_tokens.is_empty() {
+        failures.push(format!(
+            "{} contains {} Google API key-shaped token(s)",
+            cassette_path.display(),
+            google_api_key_tokens.len()
         ));
     }
 
@@ -819,7 +1141,6 @@ fn serialize_cassette_interactions(interactions: &[CassetteInteraction]) -> Stri
 const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "authorization:",
     "bearer ",
-    "sk-",
     "x-api-key:",
     "x-goog-api-key:",
     "openai_api_key",
@@ -832,6 +1153,34 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "openai-project",
     "anthropic-organization-id",
 ];
+
+const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
+const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
+const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
+const GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
+
+const RECORDED_REQUEST_HEADERS: &[&str] = &[
+    "accept",
+    "content-type",
+    "anthropic-version",
+    "anthropic-beta",
+    "openai-beta",
+];
+
+const SENSITIVE_HEADER_NAMES: &[&str] = &[
+    "authorization",
+    "x-api-key",
+    "api-key",
+    "x-goog-api-key",
+    "ocp-apim-subscription-key",
+    "set-cookie",
+    "openai-organization",
+    "openai-project",
+    "anthropic-organization-id",
+    "key",
+];
+
+const SENSITIVE_QUERY_PARAMS: &[&str] = &["key", "api_key", "apikey", "access_token"];
 
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type"];
 
@@ -883,38 +1232,25 @@ const GENERATED_TOKEN_PREFIXES: &[TokenPrefix] = &[
     TokenPrefix::new("upload_", "upload_", 8),
 ];
 
-#[derive(Clone, Copy)]
-struct TokenPrefix {
-    raw: &'static str,
-    placeholder_prefix: &'static str,
-    min_suffix_len: usize,
-}
-
-impl TokenPrefix {
-    const fn new(
-        raw: &'static str,
-        placeholder_prefix: &'static str,
-        min_suffix_len: usize,
-    ) -> Self {
-        Self {
-            raw,
-            placeholder_prefix,
-            min_suffix_len,
-        }
-    }
-}
-
-#[derive(Default)]
 struct CassetteScrubber {
+    policy: CassettePolicy,
     placeholders: BTreeMap<String, String>,
     counters: BTreeMap<&'static str, usize>,
 }
 
 impl CassetteScrubber {
+    fn new(policy: CassettePolicy) -> Self {
+        Self {
+            policy,
+            placeholders: BTreeMap::new(),
+            counters: BTreeMap::new(),
+        }
+    }
+
     fn scrub_request(&mut self, request: &mut CassetteRequest) {
         request.path = self.scrub_text(&request.path);
-        scrub_headers(&mut request.header, HeaderMode::Request);
-        scrub_query_params(&mut request.query_param);
+        scrub_headers(self.policy, &mut request.header, HeaderMode::Request);
+        scrub_query_params(self.policy, &mut request.query_param);
 
         for query_param in &mut request.query_param {
             query_param.value = self.scrub_text(&query_param.value);
@@ -926,7 +1262,7 @@ impl CassetteScrubber {
     }
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
-        scrub_headers(&mut response.header, HeaderMode::Response);
+        scrub_headers(self.policy, &mut response.header, HeaderMode::Response);
 
         if let Some(body) = &mut response.body {
             *body = self.scrub_body(body);
@@ -1007,6 +1343,7 @@ impl CassetteScrubber {
                 for (key, value) in map {
                     if key == "id"
                         && should_scrub_id_for_object(
+                            self.policy,
                             value.as_str(),
                             object_type.as_deref(),
                             object_name.as_deref(),
@@ -1016,6 +1353,7 @@ impl CassetteScrubber {
                             *id = self.placeholder(
                                 id,
                                 placeholder_kind_for_id(
+                                    self.policy,
                                     id,
                                     object_type.as_deref(),
                                     object_name.as_deref(),
@@ -1045,7 +1383,8 @@ impl CassetteScrubber {
                     }
 
                     if SENSITIVE_STRING_KEYS.contains(&key) || GENERATED_ID_KEYS.contains(&key) {
-                        *text = self.placeholder(text, placeholder_kind_for_value(text, key));
+                        *text = self
+                            .placeholder(text, placeholder_kind_for_value(self.policy, text, key));
                         return;
                     }
 
@@ -1072,7 +1411,10 @@ impl CassetteScrubber {
     }
 
     fn scrub_text(&mut self, text: &str) -> String {
-        let scrubbed = scrub_query_param(text, "key", REDACTED);
+        let mut scrubbed = text.to_string();
+        for key in self.policy.sensitive_query_params {
+            scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
+        }
         let scrubbed = self.scrub_grounding_redirects(&scrubbed);
         self.scrub_generated_tokens(&scrubbed)
     }
@@ -1108,7 +1450,7 @@ impl CassetteScrubber {
                 continue;
             }
 
-            if let Some(prefix) = matching_generated_prefix(text, index) {
+            if let Some(prefix) = self.policy.matching_generated_prefix(text, index) {
                 let end = token_end(text, index);
                 let token = &text[index..end];
 
@@ -1150,57 +1492,31 @@ enum HeaderMode {
     Response,
 }
 
-fn scrub_headers(headers: &mut Vec<NameValue>, mode: HeaderMode) {
+fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: HeaderMode) {
     match mode {
         HeaderMode::Request => {
             for header in headers {
-                if is_sensitive_header(&header.name) {
+                if policy.is_sensitive_header(&header.name) {
                     header.value = REDACTED.to_string();
                 }
             }
         }
         HeaderMode::Response => {
-            headers.retain(|header| {
-                RESPONSE_HEADER_ALLOWLIST
-                    .iter()
-                    .any(|allowed| header.name.eq_ignore_ascii_case(allowed))
-            });
+            headers.retain(|header| policy.is_allowed_response_header(&header.name));
         }
     }
 }
 
-fn is_sensitive_header(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "authorization"
-            | "x-api-key"
-            | "api-key"
-            | "x-goog-api-key"
-            | "ocp-apim-subscription-key"
-            | "set-cookie"
-            | "openai-organization"
-            | "openai-project"
-            | "anthropic-organization-id"
-            | "key"
-    )
-}
-
-fn scrub_query_params(query_params: &mut [NameValue]) {
+fn scrub_query_params(policy: CassettePolicy, query_params: &mut [NameValue]) {
     for query_param in query_params {
-        if is_sensitive_query_param(&query_param.name) {
+        if policy.is_sensitive_query_param(&query_param.name) {
             query_param.value = REDACTED.to_string();
         }
     }
 }
 
-fn is_sensitive_query_param(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "key" | "api_key" | "apikey" | "access_token"
-    )
-}
-
 fn should_scrub_id_for_object(
+    policy: CassettePolicy,
     value: Option<&str>,
     object_type: Option<&str>,
     object_name: Option<&str>,
@@ -1213,7 +1529,7 @@ fn should_scrub_id_for_object(
         return false;
     }
 
-    if placeholder_kind_from_generated_token(value).is_some() {
+    if placeholder_kind_from_generated_token(policy, value).is_some() {
         return true;
     }
 
@@ -1234,8 +1550,8 @@ fn should_scrub_id_for_object(
     )
 }
 
-fn placeholder_kind_for_value(value: &str, fallback: &str) -> &'static str {
-    placeholder_kind_from_generated_token(value).unwrap_or(match fallback {
+fn placeholder_kind_for_value(policy: CassettePolicy, value: &str, fallback: &str) -> &'static str {
+    placeholder_kind_from_generated_token(policy, value).unwrap_or(match fallback {
         "call_id" | "tool_call_id" => "call_",
         "encrypted_content" | "encryptedcontent" => "encrypted_content_",
         "item_id" => "item_",
@@ -1251,11 +1567,12 @@ fn placeholder_kind_for_value(value: &str, fallback: &str) -> &'static str {
 }
 
 fn placeholder_kind_for_id(
+    policy: CassettePolicy,
     value: &str,
     object_type: Option<&str>,
     object_name: Option<&str>,
 ) -> &'static str {
-    placeholder_kind_from_generated_token(value).unwrap_or(match object_type {
+    placeholder_kind_from_generated_token(policy, value).unwrap_or(match object_type {
         Some("file") => "file_",
         Some("function") => "call_",
         Some("function_call") => "fc_",
@@ -1270,25 +1587,13 @@ fn placeholder_kind_for_id(
     })
 }
 
-fn placeholder_kind_from_generated_token(value: &str) -> Option<&'static str> {
-    GENERATED_TOKEN_PREFIXES
-        .iter()
-        .find(|prefix| is_generated_token(value, **prefix))
+fn placeholder_kind_from_generated_token(
+    policy: CassettePolicy,
+    value: &str,
+) -> Option<&'static str> {
+    policy
+        .generated_prefix_for(value)
         .map(|prefix| prefix.placeholder_prefix)
-}
-
-fn matching_generated_prefix(text: &str, index: usize) -> Option<TokenPrefix> {
-    if index > 0 {
-        let previous = text[..index].chars().next_back()?;
-        if is_token_char(previous) {
-            return None;
-        }
-    }
-
-    GENERATED_TOKEN_PREFIXES
-        .iter()
-        .copied()
-        .find(|prefix| text[index..].starts_with(prefix.raw))
 }
 
 fn token_end(text: &str, start: usize) -> usize {
@@ -1338,7 +1643,7 @@ fn is_redacted_placeholder(value: &str) -> bool {
         && counter.chars().all(|ch| ch.is_ascii_digit())
 }
 
-fn generated_tokens(contents: &str) -> Vec<String> {
+fn generated_tokens(policy: CassettePolicy, contents: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut index = 0;
 
@@ -1348,7 +1653,7 @@ fn generated_tokens(contents: &str) -> Vec<String> {
             continue;
         }
 
-        if let Some(prefix) = matching_generated_prefix(contents, index) {
+        if let Some(prefix) = policy.matching_generated_prefix(contents, index) {
             let end = token_end(contents, index);
             let token = &contents[index..end];
             if is_generated_token(token, prefix) && !token.contains("REDACTED_") {
@@ -1368,6 +1673,105 @@ fn generated_tokens(contents: &str) -> Vec<String> {
     tokens.sort();
     tokens.dedup();
     tokens
+}
+
+fn openai_api_key_tokens(contents: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut index = 0;
+
+    while let Some(relative_index) = contents[index..].find("sk-") {
+        let start = index + relative_index;
+        if start > 0
+            && contents[..start]
+                .chars()
+                .next_back()
+                .is_some_and(is_token_char)
+        {
+            index = start + "sk-".len();
+            continue;
+        }
+
+        let end = token_end(contents, start);
+        let token = &contents[start..end];
+        if is_openai_api_key_token(token) {
+            tokens.push(token.to_string());
+        }
+        index = end;
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+fn is_openai_api_key_token(token: &str) -> bool {
+    if is_redacted_placeholder(token) {
+        return false;
+    }
+
+    if let Some(suffix) = token.strip_prefix("sk-proj-") {
+        return token_suffix_is_plausible_secret(suffix, 16);
+    }
+
+    if let Some(suffix) = token.strip_prefix("sk-svcacct-") {
+        return token_suffix_is_plausible_secret(suffix, 16);
+    }
+
+    let Some(suffix) = token.strip_prefix("sk-") else {
+        return false;
+    };
+    if suffix.starts_with("ant-") {
+        return false;
+    }
+    token_suffix_is_plausible_secret(suffix, 32)
+}
+
+fn anthropic_api_key_tokens(contents: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut index = 0;
+
+    while let Some(relative_index) = contents[index..].find("sk-ant-") {
+        let start = index + relative_index;
+        if start > 0
+            && contents[..start]
+                .chars()
+                .next_back()
+                .is_some_and(is_token_char)
+        {
+            index = start + "sk-ant-".len();
+            continue;
+        }
+
+        let end = token_end(contents, start);
+        let token = &contents[start..end];
+        if is_anthropic_api_key_token(token) {
+            tokens.push(token.to_string());
+        }
+        index = end;
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
+fn is_anthropic_api_key_token(token: &str) -> bool {
+    if is_redacted_placeholder(token) {
+        return false;
+    }
+
+    let Some(suffix) = token.strip_prefix("sk-ant-") else {
+        return false;
+    };
+    token_suffix_is_plausible_secret(suffix, 16)
+}
+
+fn token_suffix_is_plausible_secret(suffix: &str, min_len: usize) -> bool {
+    suffix.len() >= min_len
+        && suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+        && suffix.chars().any(|ch| ch.is_ascii_alphabetic())
 }
 
 fn google_api_key_tokens(contents: &str) -> Vec<String> {
@@ -1405,10 +1809,9 @@ fn scrub_query_param(input: &str, key: &str, replacement: &str) -> String {
     while let Some(index) = find_query_param(remainder, &needle) {
         let (prefix, after_prefix) = remainder.split_at(index);
         output.push_str(prefix);
-        output.push_str(key);
-        output.push('=');
 
         let value_start = needle.len();
+        output.push_str(&after_prefix[..value_start]);
         let after_value_start = &after_prefix[value_start..];
         let value_end = after_value_start
             .find(['&', '"', '\'', ' ', '\n', '\r', '<'])
@@ -1424,7 +1827,7 @@ fn scrub_query_param(input: &str, key: &str, replacement: &str) -> String {
 fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     let mut search_start = 0;
 
-    while let Some(relative_index) = input[search_start..].find(needle) {
+    while let Some(relative_index) = find_ascii_case_insensitive(&input[search_start..], needle) {
         let index = search_start + relative_index;
         let starts_param = index == 0
             || input[..index]
@@ -1442,6 +1845,15 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     None
 }
 
+fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
+    let input = input.as_bytes();
+    let needle = needle.as_bytes();
+
+    input
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle))
+}
+
 #[allow(unused)]
 fn assert_path_is_repo_relative(path: &Path) {
     assert!(path.starts_with(env!("CARGO_MANIFEST_DIR")));
@@ -1455,6 +1867,33 @@ mod tests {
         NameValue {
             name: name.to_string(),
             value: value.to_string(),
+        }
+    }
+
+    fn cassette_request(path: &str) -> CassetteRequest {
+        CassetteRequest {
+            path: path.to_string(),
+            method: "POST".to_string(),
+            query_param: Vec::new(),
+            header: Vec::new(),
+            body: None,
+        }
+    }
+
+    fn cassette_response() -> CassetteResponse {
+        CassetteResponse {
+            status: 200,
+            header: Vec::new(),
+            body: None,
+        }
+    }
+
+    fn incoming_request(path: &str, body: impl Into<Bytes>) -> IncomingRequest {
+        IncomingRequest {
+            method: Method::POST,
+            uri: path.parse().expect("test URI should parse"),
+            headers: axum::http::HeaderMap::new(),
+            body: body.into(),
         }
     }
 
@@ -1493,6 +1932,256 @@ mod tests {
         assert!(query_matches(None, &[]));
         assert!(query_matches(Some(""), &[]));
         assert!(!query_matches(Some("a=1"), &[]));
+    }
+
+    #[test]
+    fn bodyless_cassette_request_only_matches_empty_actual_body() {
+        let policy = CassettePolicy::default();
+        let headers = axum::http::HeaderMap::new();
+
+        assert!(body_matches(policy, &headers, &[], &[], None));
+        assert!(!body_matches(
+            policy,
+            &headers,
+            &[],
+            br#"{"unexpected":true}"#,
+            None
+        ));
+    }
+
+    #[test]
+    fn replay_matching_is_ordered_by_default() {
+        let policy = CassettePolicy::default();
+        let request = incoming_request("/v1/second", Bytes::new());
+        let interactions = vec![
+            ReplayInteraction {
+                when: cassette_request("/v1/first"),
+                then: cassette_response(),
+                consumed: false,
+            },
+            ReplayInteraction {
+                when: cassette_request("/v1/second"),
+                then: cassette_response(),
+                consumed: false,
+            },
+        ];
+
+        assert_eq!(
+            matching_interaction_index(policy, &interactions, &request),
+            None
+        );
+    }
+
+    #[test]
+    fn replay_matching_can_be_explicitly_unordered() {
+        let mut policy = CassettePolicy::default();
+        policy.replay_matching = ReplayMatching::Unordered;
+        let request = incoming_request("/v1/second", Bytes::new());
+        let interactions = vec![
+            ReplayInteraction {
+                when: cassette_request("/v1/first"),
+                then: cassette_response(),
+                consumed: false,
+            },
+            ReplayInteraction {
+                when: cassette_request("/v1/second"),
+                then: cassette_response(),
+                consumed: false,
+            },
+        ];
+
+        assert_eq!(
+            matching_interaction_index(policy, &interactions, &request),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn replay_matching_requires_provider_auth_header_presence_without_recorded_value() {
+        let policy = CassettePolicy::for_scenario("openai", "agent/completion_smoke");
+        let interaction = ReplayInteraction {
+            when: cassette_request("/v1/responses"),
+            then: cassette_response(),
+            consumed: false,
+        };
+        let interactions = vec![interaction];
+        let request_without_auth = incoming_request("/v1/responses", Bytes::new());
+        let mut request_with_auth = incoming_request("/v1/responses", Bytes::new());
+        request_with_auth.headers.insert(
+            axum::http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer [REDACTED]"),
+        );
+
+        assert_eq!(
+            matching_interaction_index(policy, &interactions, &request_without_auth),
+            None
+        );
+        assert_eq!(
+            missing_required_headers(policy, &request_without_auth.headers),
+            vec!["authorization"]
+        );
+        assert_eq!(
+            matching_interaction_index(policy, &interactions, &request_with_auth),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn gemini_interactions_policy_requires_api_key_header() {
+        let policy = CassettePolicy::for_scenario("gemini", "interactions_api/tool_result");
+        let mut request = incoming_request("/v1beta/models", Bytes::new());
+
+        assert_eq!(
+            missing_required_headers(policy, &request.headers),
+            vec!["x-goog-api-key"]
+        );
+
+        request
+            .headers
+            .insert("x-goog-api-key", HeaderValue::from_static("[REDACTED]"));
+
+        assert!(required_headers_present(policy, &request.headers));
+    }
+
+    #[test]
+    fn replay_miss_diagnostics_scrub_actual_request_details() {
+        let policy = CassettePolicy::default();
+        let request = incoming_request(
+            "/v1/miss?key=AIzaSyExampleSecretToken123456&api_key=raw-api-key",
+            r#"{"url":"https://example.test/file?api_key=body-secret&access_token=body-token","id":"resp_12345678"}"#,
+        );
+        let interactions = vec![ReplayInteraction {
+            when: cassette_request("/v1/other"),
+            then: cassette_response(),
+            consumed: false,
+        }];
+
+        let message = replay_miss_message(policy, &request, &interactions);
+
+        assert!(!message.contains("AIzaSyExampleSecretToken123456"));
+        assert!(!message.contains("raw-api-key"));
+        assert!(!message.contains("body-secret"));
+        assert!(!message.contains("body-token"));
+        assert!(!message.contains("resp_12345678"));
+        assert!(message.contains(REDACTED));
+        assert!(message.contains("resp_REDACTED_1"));
+    }
+
+    #[test]
+    fn replay_miss_diagnostics_report_missing_required_headers_without_values() {
+        let policy = CassettePolicy::for_scenario("anthropic", "agent/completion_smoke");
+        let request = incoming_request("/v1/messages", Bytes::new());
+        let interactions = vec![ReplayInteraction {
+            when: cassette_request("/v1/messages"),
+            then: cassette_response(),
+            consumed: false,
+        }];
+
+        let message = replay_miss_message(policy, &request, &interactions);
+
+        assert!(message.contains("x-api-key"));
+        assert!(message.contains("missing_required_headers"));
+        assert!(!message.contains("Bearer"));
+        assert!(!message.contains("secret"));
+    }
+
+    #[test]
+    fn safety_detects_token_shaped_openai_keys_without_echoing_value() {
+        let cassette = scrub_cassette_contents(
+            r#"when:
+  path: /v1/responses
+  method: POST
+then:
+  status: 200
+  body: '{"leaked":"sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"}'
+"#,
+        );
+
+        let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
+
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("OpenAI API key-shaped token(s)"))
+        );
+        assert!(
+            failures
+                .iter()
+                .all(|failure| !failure.contains("sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"))
+        );
+    }
+
+    #[test]
+    fn safety_detects_token_shaped_anthropic_keys_without_echoing_value() {
+        let cassette = scrub_cassette_contents(
+            r#"when:
+  path: /v1/messages
+  method: POST
+then:
+  status: 200
+  body: '{"leaked":"sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"}'
+"#,
+        );
+
+        let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
+
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("Anthropic API key-shaped token(s)"))
+        );
+        assert!(
+            failures
+                .iter()
+                .all(|failure| !failure
+                    .contains("sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"))
+        );
+        assert!(
+            failures
+                .iter()
+                .all(|failure| !failure.contains("OpenAI API key-shaped token(s)"))
+        );
+    }
+
+    #[test]
+    fn safety_detects_google_api_keys_without_echoing_value() {
+        let cassette = scrub_cassette_contents(
+            r#"when:
+  path: /v1beta/models/gemini
+  method: POST
+then:
+  status: 200
+  body: '{"leaked":"AIzaSyExampleSecretToken1234567890"}'
+"#,
+        );
+
+        let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
+
+        assert!(
+            failures
+                .iter()
+                .any(|failure| failure.contains("Google API key-shaped token(s)"))
+        );
+        assert!(
+            failures
+                .iter()
+                .all(|failure| !failure.contains("AIzaSyExampleSecretToken1234567890"))
+        );
+    }
+
+    #[test]
+    fn safety_does_not_flag_short_sk_substrings() {
+        let cassette = scrub_cassette_contents(
+            r#"when:
+  path: /v1/responses
+  method: POST
+then:
+  status: 200
+  body: '{"text":"the sk-etch marker is harmless"}'
+"#,
+        );
+
+        assert!(cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty());
     }
 
     #[test]
@@ -1603,5 +2292,25 @@ then:
         assert!(!scrubbed.contains("x-request-id"));
         assert!(!scrubbed.contains("set-cookie"));
         assert!(scrubbed.contains("content-type"));
+    }
+
+    #[test]
+    fn scrubber_removes_sensitive_query_params_embedded_in_body_text() {
+        let cassette = r#"when:
+  path: /v1beta/models
+  method: POST
+  body: '{"url":"https://example.test/download?KEY=AIzaSyExampleSecretToken123456&API_KEY=body-secret&apikey=body-secret-2&access_token=body-token"}'
+then:
+  status: 200
+  body: '{}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(!scrubbed.contains("AIzaSyExampleSecretToken123456"));
+        assert!(!scrubbed.contains("body-secret"));
+        assert!(!scrubbed.contains("body-secret-2"));
+        assert!(!scrubbed.contains("body-token"));
+        assert_eq!(scrubbed.matches(REDACTED).count(), 4);
     }
 }

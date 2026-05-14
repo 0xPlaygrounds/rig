@@ -1,7 +1,7 @@
 use futures::FutureExt;
 use rig::providers::anthropic;
 use std::future::Future;
-use std::panic::{AssertUnwindSafe, resume_unwind};
+use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::ProviderCassette;
 
@@ -30,10 +30,7 @@ where
 {
     let (cassette, client) = anthropic_cassette(scenario).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
-    cassette.finish().await;
-    if let Err(payload) = result {
-        resume_unwind(payload);
-    }
+    cassette.finish_after_test(result).await;
 }
 
 pub(super) async fn with_anthropic_cassette_result<F, Fut, E>(
@@ -46,11 +43,7 @@ where
 {
     let (cassette, client) = anthropic_cassette(scenario).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
-    cassette.finish().await;
-    match result {
-        Ok(result) => result,
-        Err(payload) => resume_unwind(payload),
-    }
+    cassette.finish_after_test_result(result).await
 }
 
 pub(super) async fn with_anthropic_files_cassette<F, Fut>(
@@ -78,10 +71,7 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
         api_key,
     };
     let result = AssertUnwindSafe(test_body(parts)).catch_unwind().await;
-    cassette.finish().await;
-    if let Err(payload) = result {
-        resume_unwind(payload);
-    }
+    cassette.finish_after_test(result).await;
 }
 
 fn normalize_anthropic_base_url(base_url: &str) -> String {
