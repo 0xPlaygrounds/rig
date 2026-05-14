@@ -378,6 +378,7 @@ fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteract
                 "method_matches": method_matches,
                 "path_matches": path_matches,
                 "query_matches": query_matches,
+                "expected_query_params": &interaction.when.query_param,
                 "headers_match": headers_match,
                 "body_matches": body_matches,
                 "expected_method": interaction.when.method,
@@ -392,6 +393,7 @@ fn replay_miss_message(request: &IncomingRequest, interactions: &[ReplayInteract
         "actual_method": request.method.as_str(),
         "actual_path": request.uri.path(),
         "actual_query": request.uri.query(),
+        "actual_query_params": parsed_query_pairs(request.uri.query()),
         "actual_body_preview": body_preview_bytes(&request.body),
         "candidates": candidates,
     })
@@ -422,15 +424,29 @@ fn request_matches(request: &IncomingRequest, expected: &CassetteRequest) -> boo
 }
 
 fn query_matches(query: Option<&str>, expected: &[NameValue]) -> bool {
-    let actual = url::form_urlencoded::parse(query.unwrap_or_default().as_bytes())
-        .into_owned()
-        .collect::<Vec<_>>();
+    let actual = parsed_query_pairs(query);
+    query_pair_counts(actual)
+        == query_pair_counts(
+            expected
+                .iter()
+                .map(|pair| (pair.name.clone(), pair.value.clone())),
+        )
+}
 
-    expected.iter().all(|expected| {
-        actual
-            .iter()
-            .any(|(name, value)| name == &expected.name && value == &expected.value)
-    })
+fn parsed_query_pairs(query: Option<&str>) -> Vec<(String, String)> {
+    url::form_urlencoded::parse(query.unwrap_or_default().as_bytes())
+        .into_owned()
+        .collect()
+}
+
+fn query_pair_counts(
+    pairs: impl IntoIterator<Item = (String, String)>,
+) -> BTreeMap<(String, String), usize> {
+    let mut counts = BTreeMap::new();
+    for pair in pairs {
+        *counts.entry(pair).or_insert(0) += 1;
+    }
+    counts
 }
 
 fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool {
@@ -1219,7 +1235,7 @@ fn should_scrub_id_for_object(
 }
 
 fn placeholder_kind_for_value(value: &str, fallback: &str) -> &'static str {
-    placeholder_kind_from_generated_token(value).unwrap_or_else(|| match fallback {
+    placeholder_kind_from_generated_token(value).unwrap_or(match fallback {
         "call_id" | "tool_call_id" => "call_",
         "encrypted_content" | "encryptedcontent" => "encrypted_content_",
         "item_id" => "item_",
@@ -1239,7 +1255,7 @@ fn placeholder_kind_for_id(
     object_type: Option<&str>,
     object_name: Option<&str>,
 ) -> &'static str {
-    placeholder_kind_from_generated_token(value).unwrap_or_else(|| match object_type {
+    placeholder_kind_from_generated_token(value).unwrap_or(match object_type {
         Some("file") => "file_",
         Some("function") => "call_",
         Some("function_call") => "fc_",
@@ -1426,9 +1442,58 @@ fn find_query_param(input: &str, needle: &str) -> Option<usize> {
     None
 }
 
+#[allow(unused)]
+fn assert_path_is_repo_relative(path: &Path) {
+    assert!(path.starts_with(env!("CARGO_MANIFEST_DIR")));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn query_pair(name: &str, value: &str) -> NameValue {
+        NameValue {
+            name: name.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    #[test]
+    fn query_matches_exact_pairs_in_any_order() {
+        let expected = [query_pair("a", "1"), query_pair("b", "2")];
+
+        assert!(query_matches(Some("b=2&a=1"), &expected));
+    }
+
+    #[test]
+    fn query_matches_counts_duplicate_pairs() {
+        let expected = [query_pair("a", "1"), query_pair("a", "1")];
+
+        assert!(query_matches(Some("a=1&a=1"), &expected));
+        assert!(!query_matches(Some("a=1"), &expected));
+        assert!(!query_matches(Some("a=1&a=2"), &expected));
+    }
+
+    #[test]
+    fn query_matches_rejects_extra_actual_params() {
+        let expected = [query_pair("a", "1")];
+
+        assert!(!query_matches(Some("a=1&b=2"), &expected));
+    }
+
+    #[test]
+    fn query_matches_rejects_missing_actual_params() {
+        let expected = [query_pair("a", "1"), query_pair("b", "2")];
+
+        assert!(!query_matches(Some("a=1"), &expected));
+    }
+
+    #[test]
+    fn query_matches_empty_expected_only_matches_empty_actual_query() {
+        assert!(query_matches(None, &[]));
+        assert!(query_matches(Some(""), &[]));
+        assert!(!query_matches(Some("a=1"), &[]));
+    }
 
     #[test]
     fn scrubber_preserves_repeated_ids_across_json_bodies() {
@@ -1539,9 +1604,4 @@ then:
         assert!(!scrubbed.contains("set-cookie"));
         assert!(scrubbed.contains("content-type"));
     }
-}
-
-#[allow(unused)]
-fn assert_path_is_repo_relative(path: &Path) {
-    assert!(path.starts_with(env!("CARGO_MANIFEST_DIR")));
 }
