@@ -133,20 +133,10 @@ impl Tool for Adder {
         ToolDefinition {
             name: "add".to_string(),
             description: "Add x and y together".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The first number to add"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The second number to add"
-                    }
-                },
-                "required": ["x", "y"]
-            }),
+            parameters: serde_json::from_str(
+                r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
+            )
+            .expect("adder schema should deserialize"),
         }
     }
 
@@ -168,20 +158,10 @@ impl Tool for Subtract {
         ToolDefinition {
             name: "subtract".to_string(),
             description: "Subtract y from x (i.e.: x - y)".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "number",
-                        "description": "The number to subtract from"
-                    },
-                    "y": {
-                        "type": "number",
-                        "description": "The number to subtract"
-                    }
-                },
-                "required": ["x", "y"]
-            }),
+            parameters: serde_json::from_str(
+                r#"{"type":"object","properties":{"x":{"type":"number","description":"The number to subtract from"},"y":{"type":"number","description":"The number to subtract"}},"required":["x","y"]}"#,
+            )
+            .expect("subtract schema should deserialize"),
         }
     }
 

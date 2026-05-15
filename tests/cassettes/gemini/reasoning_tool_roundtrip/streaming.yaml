@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":4096}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Determining Tokyo's Weather**\\n\\nI'm focusing on the user's weather inquiry for Tokyo. My next step is to use the `get_weather` tool. I'm going to set the `city` argument.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":144,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":144}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":67,\"totalTokenCount\":211}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Analyzing Weather Request**\\n\\nI've determined the user needs a weather check for Tokyo, specifically for packing advice. The `get_weather` tool is the way to go, and I'll specify 'Tokyo, Japan' as the city. My analysis will focus on rain and sun, to offer concise packing suggestions based on the weather data retrieved. I'm ready to use the tool.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":144,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":144}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":124,\"totalTokenCount\":268}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"city\":\"Tokyo, Japan\"},\"name\":\"get_weather\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":15,\"promptTokenCount\":144,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":144}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":124,\"totalTokenCount\":283}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"},{"parts":[{"text":"**Determining Tokyo''s Weather**\n\nI''m focusing on the user''s weather inquiry for Tokyo. My next step is to use the `get_weather` tool. I''m going to set the `city` argument.\n\n\n**Analyzing Weather Request**\n\nI''ve determined the user needs a weather check for Tokyo, specifically for packing advice. The `get_weather` tool is the way to go, and I''ll specify ''Tokyo, Japan'' as the city. My analysis will focus on rain and sun, to offer concise packing suggestions based on the weather data retrieved. I''m ready to use the tool.\n\n\n","thought":true},{"functionCall":{"args":{"city":"Tokyo, Japan"},"name":"get_weather"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":4096}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Assessing Tokyo's Climate**\\n\\nOkay, I've successfully accessed the weather data for Tokyo. It's showing a pleasant 72F (22C) with sunshine and light clouds, along with 45% humidity. This seems pretty clear - an umbrella isn't necessary, but sunscreen might be a good idea given the sunshine. I'll pass this along to the user.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"promptTokenCount\":461,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":461}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":65,\"totalTokenCount\":526}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Analyzing Weather & Packing**\\n\\nI've refined the weather summary to \\\"sunny with light clouds and gentle wind, 72F (22C).\\\" My analysis indicates sunscreen is advisable due to the sunshine. Rain isn't mentioned, so an umbrella is unlikely to be needed. I will prepare this response for the user.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"promptTokenCount\":461,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":461}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":185,\"totalTokenCount\":646}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The weather in Tokyo, Japan is 72F (22C), sunny with light clouds, humidity 4\",\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":22,\"promptTokenCount\":461,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":461}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":185,\"totalTokenCount\":668}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5%, and wind 8 mph NW. You should pack sunscreen.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":36,\"promptTokenCount\":461,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":461}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":185,\"totalTokenCount\":682}}\r\n\r\n"

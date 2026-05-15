@@ -1,7 +1,7 @@
 //! OpenRouter model listing smoke test.
 //!
 //! Run with:
-//! `cargo test -p rig --test openrouter openrouter::models::list_models_smoke -- --ignored --nocapture`
+//! `cargo test -p rig --test openrouter list_models_smoke -- --ignored --nocapture`
 
 use rig::client::{ModelListingClient, ProviderClient};
 use rig::providers::openrouter;

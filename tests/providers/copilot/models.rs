@@ -6,19 +6,19 @@
 //! **API key:**
 //! ```sh
 //! GITHUB_COPILOT_API_KEY=<key> \
-//!   cargo test --test providers -- copilot::models::list_models_smoke --ignored --nocapture
+//!   cargo test -p rig --test copilot list_models_smoke -- --ignored --nocapture
 //! ```
 //!
 //! **GitHub personal access token:**
 //! ```sh
 //! COPILOT_GITHUB_ACCESS_TOKEN=<token> \
-//!   cargo test --test providers -- copilot::models::list_models_smoke --ignored --nocapture
+//!   cargo test -p rig --test copilot list_models_smoke -- --ignored --nocapture
 //! ```
 //!
 //! **OAuth (device code flow):** leave the env vars unset; the test will open a
 //! browser prompt for authorization, or reuse a cached token from a previous run.
 //! ```sh
-//! cargo test --test providers -- copilot::models::list_models_smoke --ignored --nocapture
+//! cargo test -p rig --test copilot list_models_smoke -- --ignored --nocapture
 //! ```
 
 use crate::copilot::live_client;

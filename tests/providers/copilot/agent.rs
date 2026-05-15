@@ -23,7 +23,7 @@ async fn completion_smoke() {
 }
 
 /// Command to run
-/// cargo test --test copilot -- copilot::agent::all_models_completion_smoke --ignored --nocapture
+/// cargo test -p rig --test copilot all_models_completion_smoke -- --ignored --nocapture
 #[tokio::test]
 #[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn all_models_completion_smoke() {

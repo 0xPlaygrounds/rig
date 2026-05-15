@@ -1,0 +1,37 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":16384,"messages":[{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"thinking":{"type":"adaptive"},"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"name":"get_weather"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"signature":"signature_REDACTED_1","thinking":"The user wants to know the current weather in Tokyo, Japan. I''ll call the get_weather tool with \"Tokyo\" as the city.","type":"thinking"},{"text":"Sure! Let me check the current weather in Tokyo right away!","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"city":"Tokyo"},"name":"get_weather","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":671,"output_tokens":111,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":16384,"messages":[{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"text"}],"role":"user"},{"content":[{"signature":"signature_REDACTED_1","thinking":"The user wants to know the current weather in Tokyo, Japan. I''ll call the get_weather tool with \"Tokyo\" as the city.","type":"thinking"},{"text":"Sure! Let me check the current weather in Tokyo right away!","type":"text"},{"id":"toolu_REDACTED_1","input":{"city":"Tokyo"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"thinking":{"type":"adaptive"},"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","input_schema":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"name":"get_weather"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"Here''s the current weather report for **Tokyo, Japan** 🇯🇵:\n\n| Detail | Condition |\n|---|---|\n| 🌡️ Temperature | 72°F (22°C) |\n| ☁️ Sky | Sunny with light clouds |\n| 💧 Humidity | 45% |\n| 💨 Wind | 8 mph, Northwest |\n\n---\n\n### 🧳 Packing Recommendation:\n\n**Pack the sunscreen! 🧴☀️**\n\nHere''s why:\n- **Sunny skies** with only light clouds mean you''ll be getting a good amount of direct sun exposure.\n- A **comfortable 72°F (22°C)** is perfect sightseeing weather, meaning you''ll likely be spending a lot of time outdoors.\n- **Low humidity at 45%** means it feels dry and pleasant — no rain in sight!\n- There''s **no indication of rain**, so an umbrella isn''t a priority right now.\n\n> **Pro Tip:** While you may not need an umbrella for rain, a light **UV-protection umbrella or hat** could be handy for shielding yourself from the sun during extended outdoor activities! Enjoy your trip to Tokyo! 🗼","type":"text"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":821,"output_tokens":293,"service_tier":"standard"}}'

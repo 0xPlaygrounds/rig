@@ -1,0 +1,102 @@
+when:
+  path: /v1/files
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=1d43ee73ddd2c15c-9c41504fc236d1c3-af1be9b8a6a68962-53d9e88c2494723e
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: files-api-2025-04-14
+  body: "--1d43ee73ddd2c15c-9c41504fc236d1c3-af1be9b8a6a68962-53d9e88c2494723e\r\nContent-Disposition: form-data; name=\"file\"; filename=\"rig-file-id-verifiers.pdf\"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R] /Count 3 >>\nendobj\n3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 66 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-one-verifier-3a91) Tj\nET\nendstream\nendobj\n6 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>\nendobj\n7 0 obj\n<< /Length 66 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-two-verifier-8c27) Tj\nET\nendstream\nendobj\n8 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>\nendobj\n9 0 obj\n<< /Length 68 >>\nstream\nBT\n/F1 18 Tf\n72 720 Td\n(rig-file-id-page-three-verifier-f54e) Tj\nET\nendstream\nendobj\nxref\n0 10\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000127 00000 n \n0000000197 00000 n \n0000000323 00000 n \n0000000438 00000 n \n0000000564 00000 n \n0000000679 00000 n \n0000000805 00000 n \ntrailer\n<< /Size 10 /Root 1 0 R >>\nstartxref\n922\n%%EOF\n\r\n--1d43ee73ddd2c15c-9c41504fc236d1c3-af1be9b8a6a68962-53d9e88c2494723e--\r\n"
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"created_at":"1970-01-01T00:00:00Z","downloadable":false,"filename":"rig-file-id-verifiers.pdf","id":"file_REDACTED_1","mime_type":"application/pdf","size_bytes":1187,"type":"file"}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: files-api-2025-04-14
+  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"file_id":"file_REDACTED_1","type":"file"},"type":"document"},{"text":"What verifier token is printed on page 2? Reply with only the exact token.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Answer using only the attached PDF. Keep answers short and return exact visible tokens.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"rig-file-id-page-two-verifier-8c27","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":4772,"output_tokens":20,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: files-api-2025-04-14
+  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"file_id":"file_REDACTED_1","type":"file"},"type":"document"},{"text":"What verifier token is printed on page 2? Reply with only the exact token.","type":"text"}],"role":"user"},{"content":[{"text":"rig-file-id-page-two-verifier-8c27","type":"text"}],"role":"assistant"},{"content":[{"text":"Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Answer using only the attached PDF. Keep answers short and return exact visible tokens.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"rig-file-id-page-three-verifier-f54e","type":"text"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":4822,"output_tokens":20,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: files-api-2025-04-14
+  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"file_id":"file_REDACTED_1","type":"file"},"type":"document"},{"text":"What verifier token is printed on page 1? Reply with only the exact token.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Answer using only the attached PDF. Keep answers short and return exact visible tokens.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"rig-file-id-page-one-verifier-3a91","type":"text"}],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":4772,"output_tokens":20,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/files/file_REDACTED_1
+  method: DELETE
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: files-api-2025-04-14
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"id":"file_REDACTED_1","type":"file_deleted"}'

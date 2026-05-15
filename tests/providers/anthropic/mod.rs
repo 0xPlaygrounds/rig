@@ -1,16 +1,22 @@
-mod agent;
-mod default_max_turns;
-mod document_file_id;
-mod empty_end_turn;
-mod image;
-mod models;
-mod multi_turn_streaming;
-mod opus_4_7;
-mod plaintext_document;
-mod reasoning_roundtrip;
-mod reasoning_tool_roundtrip;
-mod streaming;
-mod streaming_tools;
-mod structured_output;
-mod think_tool;
-mod think_tool_with_other_tools;
+mod support;
+
+mod cassette {
+    mod agent;
+    mod default_max_turns;
+    mod document_file_id;
+    mod empty_end_turn;
+    mod image;
+    mod models;
+    mod multi_turn_streaming;
+    mod opus_4_7;
+    mod plaintext_document;
+    mod reasoning_roundtrip;
+    mod reasoning_tool_roundtrip;
+    mod streaming;
+    mod streaming_tools;
+    mod structured_output;
+    mod think_tool;
+    mod think_tool_with_other_tools;
+}
+
+mod live {}
