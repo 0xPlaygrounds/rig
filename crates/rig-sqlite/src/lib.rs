@@ -15,7 +15,6 @@ use rig_core::{Embed, OneOrMany};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
@@ -118,7 +117,6 @@ pub trait SqliteVectorStoreTable: Send + Sync + Clone {
 /// higher-is-better: [`SqliteDistanceMetric::Cosine`] returns cosine similarity
 /// (`1 - cosine_distance`), while [`SqliteDistanceMetric::L2`] and
 /// [`SqliteDistanceMetric::L1`] return the negative sqlite-vec distance.
-/// sqlite-vec's L2 distance is squared L2 distance.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SqliteDistanceMetric {
     /// Cosine similarity, returned as `1 - cosine_distance`.
@@ -218,6 +216,16 @@ impl SqliteMetadataType {
             Self::Float => "FLOAT",
             Self::Boolean => "BOOLEAN",
         }
+    }
+
+    fn supports_native_comparison(self, op: SqliteComparisonOp) -> bool {
+        !matches!(
+            (self, op),
+            (
+                Self::Boolean,
+                SqliteComparisonOp::Gt | SqliteComparisonOp::Lt
+            )
+        )
     }
 }
 
@@ -662,7 +670,7 @@ enum SqliteSearchFilterExpr {
     },
 }
 
-#[derive(Clone, Copy, Deserialize, Serialize, Debug)]
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize, Debug)]
 enum SqliteComparisonOp {
     Eq,
     Gt,
@@ -860,33 +868,37 @@ impl SqliteSearchFilter {
         &self,
         metadata_columns: &[SqliteMetadataColumn],
     ) -> Result<SqliteRenderedFilters, FilterError> {
-        let metadata_column_names = metadata_columns
-            .iter()
-            .map(|column| column.name)
-            .collect::<HashSet<_>>();
-
-        self.expr.render_split(&metadata_column_names)
+        self.expr.render_split(metadata_columns)
     }
 }
 
 impl SqliteSearchFilterExpr {
     fn render_split(
         &self,
-        metadata_column_names: &HashSet<&'static str>,
+        metadata_columns: &[SqliteMetadataColumn],
     ) -> Result<SqliteRenderedFilters, FilterError> {
         match self {
-            Self::Comparison { key, .. }
-                if metadata_column_names.contains(key.as_str())
-                    && !sqlite_key_is_qualified(key) =>
-            {
-                Ok(SqliteRenderedFilters {
-                    native: vec![self.render(SqliteFilterTarget::VectorMetadata)?],
-                    post: Vec::new(),
-                })
+            Self::Comparison { key, op, .. } if !sqlite_key_is_qualified(key) => {
+                let metadata_column = metadata_columns
+                    .iter()
+                    .find(|column| column.name == key.as_str());
+
+                match metadata_column {
+                    Some(column) if column.metadata_type.supports_native_comparison(*op) => {
+                        Ok(SqliteRenderedFilters {
+                            native: vec![self.render(SqliteFilterTarget::VectorMetadata)?],
+                            post: Vec::new(),
+                        })
+                    }
+                    _ => Ok(SqliteRenderedFilters {
+                        native: Vec::new(),
+                        post: vec![self.render(SqliteFilterTarget::Document)?],
+                    }),
+                }
             }
             Self::And(lhs, rhs) => {
-                let mut rendered = lhs.render_split(metadata_column_names)?;
-                rendered.extend(rhs.render_split(metadata_column_names)?);
+                let mut rendered = lhs.render_split(metadata_columns)?;
+                rendered.extend(rhs.render_split(metadata_columns)?);
                 Ok(rendered)
             }
             Self::Or(_, _) | Self::Not(_) => Ok(SqliteRenderedFilters {
@@ -1548,6 +1560,8 @@ mod tests {
     use rig_core::embeddings::EmbeddingError;
     use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
     use sqlite_vec::sqlite3_vec_init;
+    use std::cmp::Ordering;
+    use std::collections::HashMap;
     use std::sync::Once;
     use tokio_rusqlite::Connection;
 
@@ -1556,6 +1570,23 @@ mod tests {
             name: "category",
             metadata_type: SqliteMetadataType::Text,
         }]
+    }
+
+    fn typed_metadata_columns() -> Vec<SqliteMetadataColumn> {
+        vec![
+            SqliteMetadataColumn {
+                name: "priority",
+                metadata_type: SqliteMetadataType::Integer,
+            },
+            SqliteMetadataColumn {
+                name: "rating",
+                metadata_type: SqliteMetadataType::Float,
+            },
+            SqliteMetadataColumn {
+                name: "published",
+                metadata_type: SqliteMetadataType::Boolean,
+            },
+        ]
     }
 
     #[test]
@@ -1687,6 +1718,37 @@ mod tests {
         anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
         anyhow::ensure!(
             params.get(3) == Some(&Value::Text("docs".to_string())),
+            "unexpected filter param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn boolean_range_filter_uses_document_constraint() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::gt(
+                "published",
+                serde_json::json!(false),
+            ))
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &typed_metadata_columns(),
+        )?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ? AND (d.published > ?)",
+            "boolean range filters are not legal sqlite-vec metadata constraints: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Integer(0)),
             "unexpected filter param: {params:?}"
         );
 
@@ -1945,6 +2007,222 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_boolean_range_filter_stays_on_document_table() -> anyhow::Result<()> {
+        let index = live_typed_test_index(
+            "live_boolean_range_filter_stays_on_document_table",
+            vec![
+                typed_row(
+                    1,
+                    "misc",
+                    1,
+                    0.5,
+                    false,
+                    "nearest unpublished doc",
+                    vec![1.0, 0.0],
+                ),
+                typed_row(2, "docs", 2, 0.7, true, "published doc", vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(2)
+            .filter(SqliteSearchFilter::gt(
+                "published",
+                serde_json::json!(false),
+            ))
+            .build();
+
+        let results = index.top_n::<TypedTestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["2"],
+            "boolean range filters should not be pushed to sqlite-vec: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["2"],
+            "top_n_ids should keep boolean range filters off sqlite-vec: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_matches_exact_oracle_for_metrics_filters_and_thresholds() -> anyhow::Result<()> {
+        let query = vec![1.0, 0.0];
+        let rows = oracle_test_rows();
+        let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs"))
+            .and(SqliteSearchFilter::lt("priority", serde_json::json!(10)))
+            .and(SqliteSearchFilter::gt("rating", serde_json::json!(0.8)))
+            .and(SqliteSearchFilter::gt(
+                "published",
+                serde_json::json!(false),
+            ));
+
+        for distance_metric in [
+            SqliteDistanceMetric::Cosine,
+            SqliteDistanceMetric::L2,
+            SqliteDistanceMetric::L1,
+        ] {
+            let threshold = oracle_threshold(distance_metric);
+            let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+                .query("needle")
+                .samples(u64::try_from(rows.len())?)
+                .threshold(threshold)
+                .filter(filter.clone())
+                .build();
+            let expected = exact_oracle_results(
+                &rows,
+                &query,
+                distance_metric,
+                threshold,
+                rows.len(),
+                |row| {
+                    row.category == "docs" && row.priority < 10 && row.rating > 0.8 && row.published
+                },
+            )?;
+            let test_name =
+                format!("live_matches_exact_oracle_for_{distance_metric:?}").to_ascii_lowercase();
+            let index = live_typed_test_index_with_metric(
+                &test_name,
+                sqlite_oracle_rows(&rows),
+                distance_metric,
+            )
+            .await?;
+
+            let results = index.top_n::<TypedTestDocument>(req.clone()).await?;
+            let scored_ids = results
+                .iter()
+                .map(|(score, id, doc)| {
+                    anyhow::ensure!(
+                        id == &doc.id.to_string(),
+                        "top_n returned mismatched id and document: id={id}, doc={doc:?}"
+                    );
+                    Ok((*score, id.clone()))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            assert_scored_ids_match(&scored_ids, &expected, distance_metric, "top_n")?;
+
+            let id_results = index.top_n_ids(req).await?;
+            assert_scored_ids_match(&id_results, &expected, distance_metric, "top_n_ids")?;
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore = "set RIG_SQLITE_VECTOR_FIXTURE to a JSON vector fixture generated from a benchmark dataset"]
+    async fn external_vector_fixture_matches_ground_truth() -> anyhow::Result<()> {
+        let fixture_path = std::env::var("RIG_SQLITE_VECTOR_FIXTURE").map_err(|_| {
+            anyhow::anyhow!(
+                "set RIG_SQLITE_VECTOR_FIXTURE to a JSON fixture with documents, queries, and optional expected_ids"
+            )
+        })?;
+        let fixture_contents = read_vector_fixture(&fixture_path)?;
+        let fixture: VectorFixture = serde_json::from_str(&fixture_contents)?;
+        fixture.validate()?;
+
+        register_sqlite_vec_extension();
+
+        let distance_metric = fixture.metric.into();
+        let model = FixtureEmbeddingModel::from_fixture(&fixture)?;
+        let conn =
+            Connection::open("file:external_vector_fixture_matches_ground_truth?mode=memory")
+                .await?;
+        let vector_store: SqliteVectorStore<_, FixtureDocument> =
+            SqliteVectorStore::with_distance_metric(conn, &model, distance_metric).await?;
+        vector_store.add_rows(fixture_sqlite_rows(&fixture)).await?;
+        let index = vector_store.index(model);
+
+        for query in &fixture.queries {
+            let threshold = query.threshold.unwrap_or(f64::NEG_INFINITY);
+            let expected = fixture_expected_results(
+                &fixture.documents,
+                &query.embedding,
+                distance_metric,
+                threshold,
+                usize::try_from(query.k)?,
+                query.filter.as_ref(),
+            )?;
+            let expected_ids = expected
+                .iter()
+                .map(|result| result.id.clone())
+                .collect::<Vec<_>>();
+            if let Some(provided_ids) = &query.expected_ids {
+                anyhow::ensure!(
+                    provided_ids == &expected_ids,
+                    "fixture query `{}` expected_ids disagree with the exact oracle: fixture={provided_ids:?}, oracle={expected_ids:?}",
+                    query.id
+                );
+            }
+
+            let mut request_builder = VectorSearchRequest::<SqliteSearchFilter>::builder()
+                .query(query.text.clone())
+                .samples(query.k);
+            if let Some(threshold) = query.threshold {
+                request_builder = request_builder.threshold(threshold);
+            }
+            if let Some(filter) = query
+                .filter
+                .as_ref()
+                .and_then(VectorFixtureFilter::to_sqlite_filter)
+            {
+                request_builder = request_builder.filter(filter);
+            }
+            let request = request_builder.build();
+
+            let results = index.top_n::<FixtureDocument>(request.clone()).await?;
+            let scored_ids = results
+                .iter()
+                .map(|(score, id, doc)| {
+                    anyhow::ensure!(
+                        id == &doc.id,
+                        "fixture query `{}` returned mismatched id and document: id={id}, doc={doc:?}",
+                        query.id
+                    );
+                    Ok((*score, id.clone()))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            assert_scored_ids_match(
+                &scored_ids,
+                &expected,
+                distance_metric,
+                &format!("fixture query `{}` top_n", query.id),
+            )?;
+            assert_relevance_matches(
+                &scored_ids,
+                query,
+                &format!("fixture query `{}` top_n", query.id),
+            )?;
+
+            let id_results = index.top_n_ids(request).await?;
+            assert_scored_ids_match(
+                &id_results,
+                &expected,
+                distance_metric,
+                &format!("fixture query `{}` top_n_ids", query.id),
+            )?;
+            assert_relevance_matches(
+                &id_results,
+                query,
+                &format!("fixture query `{}` top_n_ids", query.id),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_or_filter_without_threshold_does_not_bypass_vector_constraints()
     -> anyhow::Result<()> {
         let index = live_test_index(
@@ -2023,12 +2301,20 @@ mod tests {
         name: &str,
         rows: Vec<(TypedTestDocument, OneOrMany<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
+        live_typed_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
+    }
+
+    async fn live_typed_test_index_with_metric(
+        name: &str,
+        rows: Vec<(TypedTestDocument, OneOrMany<Embedding>)>,
+        distance_metric: SqliteDistanceMetric,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
         let vector_store: SqliteVectorStore<_, TypedTestDocument> =
-            SqliteVectorStore::new(conn, &model).await?;
+            SqliteVectorStore::with_distance_metric(conn, &model, distance_metric).await?;
 
         vector_store.add_rows(rows).await?;
 
@@ -2081,6 +2367,646 @@ mod tests {
                 vec,
             }),
         )
+    }
+
+    #[derive(Clone, Debug)]
+    struct OracleRow {
+        document: TypedTestDocument,
+        embedding: Vec<f64>,
+    }
+
+    #[derive(Debug)]
+    struct ExpectedScoredId {
+        id: String,
+        score: f64,
+    }
+
+    fn oracle_test_rows() -> Vec<OracleRow> {
+        vec![
+            oracle_row(1, "docs", 1, 0.95, true, "exact match", vec![1.0, 0.0]),
+            oracle_row(2, "docs", 2, 0.90, true, "close match", vec![0.8, 0.6]),
+            oracle_row(3, "docs", 3, 0.81, true, "borderline match", vec![0.5, 0.5]),
+            oracle_row(
+                4,
+                "docs",
+                4,
+                0.70,
+                true,
+                "filtered by rating",
+                vec![0.95, 0.05],
+            ),
+            oracle_row(
+                5,
+                "docs",
+                15,
+                0.99,
+                true,
+                "filtered by priority",
+                vec![1.0, 0.0],
+            ),
+            oracle_row(
+                6,
+                "docs",
+                5,
+                0.99,
+                false,
+                "filtered by published",
+                vec![1.0, 0.0],
+            ),
+            oracle_row(
+                7,
+                "misc",
+                1,
+                0.99,
+                true,
+                "filtered by category",
+                vec![1.0, 0.0],
+            ),
+            oracle_row(8, "docs", 5, 0.95, true, "far match", vec![0.0, 1.0]),
+        ]
+    }
+
+    fn oracle_row(
+        id: i64,
+        category: impl Into<String>,
+        priority: i64,
+        rating: f64,
+        published: bool,
+        title: impl Into<String>,
+        embedding: Vec<f64>,
+    ) -> OracleRow {
+        OracleRow {
+            document: TypedTestDocument {
+                id,
+                category: category.into(),
+                priority,
+                rating,
+                published,
+                title: title.into(),
+            },
+            embedding,
+        }
+    }
+
+    fn sqlite_oracle_rows(rows: &[OracleRow]) -> Vec<(TypedTestDocument, OneOrMany<Embedding>)> {
+        rows.iter()
+            .map(|row| {
+                (
+                    row.document.clone(),
+                    OneOrMany::one(Embedding {
+                        document: row.document.title.clone(),
+                        vec: row.embedding.clone(),
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    fn oracle_threshold(distance_metric: SqliteDistanceMetric) -> f64 {
+        match distance_metric {
+            SqliteDistanceMetric::Cosine => 0.75,
+            SqliteDistanceMetric::L2 => -0.8,
+            SqliteDistanceMetric::L1 => -0.9,
+        }
+    }
+
+    fn exact_oracle_results(
+        rows: &[OracleRow],
+        query: &[f64],
+        distance_metric: SqliteDistanceMetric,
+        threshold: f64,
+        samples: usize,
+        filter: impl Fn(&TypedTestDocument) -> bool,
+    ) -> anyhow::Result<Vec<ExpectedScoredId>> {
+        let mut expected = Vec::new();
+        for row in rows {
+            if !filter(&row.document) {
+                continue;
+            }
+
+            let score = oracle_score(distance_metric, query, &row.embedding)?;
+            if score > threshold {
+                expected.push(ExpectedScoredId {
+                    id: row.document.id.to_string(),
+                    score,
+                });
+            }
+        }
+
+        sort_expected_scores(&mut expected);
+        expected.truncate(samples);
+        Ok(expected)
+    }
+
+    fn fixture_expected_results(
+        rows: &[VectorFixtureDocument],
+        query: &[f64],
+        distance_metric: SqliteDistanceMetric,
+        threshold: f64,
+        samples: usize,
+        filter: Option<&VectorFixtureFilter>,
+    ) -> anyhow::Result<Vec<ExpectedScoredId>> {
+        let mut expected = Vec::new();
+        for row in rows {
+            if filter
+                .map(|filter| filter.matches_document(&row.document))
+                .is_some_and(|matches| !matches)
+            {
+                continue;
+            }
+
+            let score = oracle_score(distance_metric, query, &row.embedding)?;
+            if score > threshold {
+                expected.push(ExpectedScoredId {
+                    id: row.document.id.clone(),
+                    score,
+                });
+            }
+        }
+
+        sort_expected_scores(&mut expected);
+        expected.truncate(samples);
+        Ok(expected)
+    }
+
+    fn sort_expected_scores(expected: &mut [ExpectedScoredId]) {
+        expected.sort_by(|lhs, rhs| {
+            rhs.score
+                .partial_cmp(&lhs.score)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| lhs.id.cmp(&rhs.id))
+        });
+    }
+
+    fn oracle_score(
+        distance_metric: SqliteDistanceMetric,
+        query: &[f64],
+        embedding: &[f64],
+    ) -> anyhow::Result<f64> {
+        anyhow::ensure!(
+            query.len() == embedding.len(),
+            "query and embedding dimensions differ: query={}, embedding={}",
+            query.len(),
+            embedding.len()
+        );
+
+        let query = query.iter().map(|value| *value as f32).collect::<Vec<_>>();
+        let embedding = embedding
+            .iter()
+            .map(|value| *value as f32)
+            .collect::<Vec<_>>();
+
+        let score = match distance_metric {
+            SqliteDistanceMetric::Cosine => {
+                let dot = query
+                    .iter()
+                    .zip(&embedding)
+                    .map(|(lhs, rhs)| lhs * rhs)
+                    .sum::<f32>();
+                let query_norm = query.iter().map(|value| value * value).sum::<f32>().sqrt();
+                let embedding_norm = embedding
+                    .iter()
+                    .map(|value| value * value)
+                    .sum::<f32>()
+                    .sqrt();
+                anyhow::ensure!(
+                    query_norm > 0.0 && embedding_norm > 0.0,
+                    "cosine oracle requires non-zero vectors"
+                );
+                dot / (query_norm * embedding_norm)
+            }
+            SqliteDistanceMetric::L2 => -query
+                .iter()
+                .zip(&embedding)
+                .map(|(lhs, rhs)| {
+                    let delta = lhs - rhs;
+                    delta * delta
+                })
+                .sum::<f32>()
+                .sqrt(),
+            SqliteDistanceMetric::L1 => -query
+                .iter()
+                .zip(&embedding)
+                .map(|(lhs, rhs)| (lhs - rhs).abs())
+                .sum::<f32>(),
+        };
+
+        Ok(f64::from(score))
+    }
+
+    fn assert_scored_ids_match(
+        actual: &[(f64, String)],
+        expected: &[ExpectedScoredId],
+        distance_metric: SqliteDistanceMetric,
+        context: &str,
+    ) -> anyhow::Result<()> {
+        const SCORE_EPSILON: f64 = 1e-5;
+
+        let actual_ids = actual.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>();
+        let expected_ids = expected
+            .iter()
+            .map(|expected| expected.id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            actual_ids == expected_ids,
+            "{context} ids for {distance_metric:?} did not match exact oracle: actual={actual:?}, expected={expected:?}"
+        );
+
+        for ((actual_score, actual_id), expected) in actual.iter().zip(expected) {
+            anyhow::ensure!(
+                (actual_score - expected.score).abs() <= SCORE_EPSILON,
+                "{context} score for {distance_metric:?} id `{actual_id}` did not match exact oracle: actual={actual_score}, expected={}",
+                expected.score
+            );
+        }
+
+        Ok(())
+    }
+
+    fn assert_relevance_matches(
+        actual: &[(f64, String)],
+        query: &VectorFixtureQuery,
+        context: &str,
+    ) -> anyhow::Result<()> {
+        let Some(min_recall) = query.min_recall else {
+            return Ok(());
+        };
+        let Some(relevant_ids) = &query.relevant_ids else {
+            anyhow::bail!("{context} has min_recall but no relevant_ids");
+        };
+
+        let hits = actual
+            .iter()
+            .filter(|(_, id)| relevant_ids.contains(id))
+            .count();
+        let recall = hits as f64 / relevant_ids.len() as f64;
+        anyhow::ensure!(
+            recall >= min_recall,
+            "{context} recall below threshold: recall={recall}, min_recall={min_recall}, actual={actual:?}, relevant_ids={relevant_ids:?}"
+        );
+
+        Ok(())
+    }
+
+    #[derive(Clone, Copy, Debug, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    enum VectorFixtureMetric {
+        Cosine,
+        L2,
+        L1,
+    }
+
+    impl Default for VectorFixtureMetric {
+        fn default() -> Self {
+            Self::Cosine
+        }
+    }
+
+    impl From<VectorFixtureMetric> for SqliteDistanceMetric {
+        fn from(metric: VectorFixtureMetric) -> Self {
+            match metric {
+                VectorFixtureMetric::Cosine => Self::Cosine,
+                VectorFixtureMetric::L2 => Self::L2,
+                VectorFixtureMetric::L1 => Self::L1,
+            }
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct VectorFixture {
+        #[serde(default)]
+        metric: VectorFixtureMetric,
+        dimensions: usize,
+        documents: Vec<VectorFixtureDocument>,
+        queries: Vec<VectorFixtureQuery>,
+    }
+
+    impl VectorFixture {
+        fn validate(&self) -> anyhow::Result<()> {
+            anyhow::ensure!(self.dimensions > 0, "fixture dimensions must be positive");
+            for document in &self.documents {
+                anyhow::ensure!(
+                    document.embedding.len() == self.dimensions,
+                    "document `{}` has {} dimensions, expected {}",
+                    document.document.id,
+                    document.embedding.len(),
+                    self.dimensions
+                );
+            }
+            for query in &self.queries {
+                anyhow::ensure!(
+                    query.embedding.len() == self.dimensions,
+                    "query `{}` has {} dimensions, expected {}",
+                    query.id,
+                    query.embedding.len(),
+                    self.dimensions
+                );
+                anyhow::ensure!(query.k > 0, "query `{}` must request k > 0", query.id);
+                if let Some(min_recall) = query.min_recall {
+                    anyhow::ensure!(
+                        (0.0..=1.0).contains(&min_recall),
+                        "query `{}` min_recall must be between 0 and 1",
+                        query.id
+                    );
+                    anyhow::ensure!(
+                        query
+                            .relevant_ids
+                            .as_ref()
+                            .is_some_and(|relevant_ids| !relevant_ids.is_empty()),
+                        "query `{}` min_recall requires non-empty relevant_ids",
+                        query.id
+                    );
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    struct VectorFixtureDocument {
+        #[serde(flatten)]
+        document: FixtureDocument,
+        embedding: Vec<f64>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct VectorFixtureQuery {
+        id: String,
+        text: String,
+        embedding: Vec<f64>,
+        k: u64,
+        #[serde(default)]
+        threshold: Option<f64>,
+        #[serde(default)]
+        filter: Option<VectorFixtureFilter>,
+        #[serde(default)]
+        expected_ids: Option<Vec<String>>,
+        #[serde(default)]
+        relevant_ids: Option<Vec<String>>,
+        #[serde(default)]
+        min_recall: Option<f64>,
+    }
+
+    #[derive(Clone, Debug, Default, Deserialize)]
+    struct VectorFixtureFilter {
+        category_eq: Option<String>,
+        priority_gt: Option<i64>,
+        priority_lt: Option<i64>,
+        rating_gt: Option<f64>,
+        rating_lt: Option<f64>,
+        published_eq: Option<bool>,
+    }
+
+    impl VectorFixtureFilter {
+        fn matches_document(&self, document: &FixtureDocument) -> bool {
+            if self
+                .category_eq
+                .as_ref()
+                .is_some_and(|category| &document.category != category)
+            {
+                return false;
+            }
+            if self
+                .priority_gt
+                .is_some_and(|priority| document.priority <= priority)
+            {
+                return false;
+            }
+            if self
+                .priority_lt
+                .is_some_and(|priority| document.priority >= priority)
+            {
+                return false;
+            }
+            if self
+                .rating_gt
+                .is_some_and(|rating| document.rating <= rating)
+            {
+                return false;
+            }
+            if self
+                .rating_lt
+                .is_some_and(|rating| document.rating >= rating)
+            {
+                return false;
+            }
+            if self
+                .published_eq
+                .is_some_and(|published| document.published != published)
+            {
+                return false;
+            }
+
+            true
+        }
+
+        fn to_sqlite_filter(&self) -> Option<SqliteSearchFilter> {
+            let mut filter = None;
+            if let Some(category) = &self.category_eq {
+                append_sqlite_filter(
+                    &mut filter,
+                    SqliteSearchFilter::eq("category", serde_json::json!(category)),
+                );
+            }
+            if let Some(priority) = self.priority_gt {
+                append_sqlite_filter(
+                    &mut filter,
+                    SqliteSearchFilter::gt("priority", serde_json::json!(priority)),
+                );
+            }
+            if let Some(priority) = self.priority_lt {
+                append_sqlite_filter(
+                    &mut filter,
+                    SqliteSearchFilter::lt("priority", serde_json::json!(priority)),
+                );
+            }
+            if let Some(rating) = self.rating_gt {
+                append_sqlite_filter(
+                    &mut filter,
+                    SqliteSearchFilter::gt("rating", serde_json::json!(rating)),
+                );
+            }
+            if let Some(rating) = self.rating_lt {
+                append_sqlite_filter(
+                    &mut filter,
+                    SqliteSearchFilter::lt("rating", serde_json::json!(rating)),
+                );
+            }
+            if let Some(published) = self.published_eq {
+                append_sqlite_filter(
+                    &mut filter,
+                    SqliteSearchFilter::eq("published", serde_json::json!(published)),
+                );
+            }
+
+            filter
+        }
+    }
+
+    fn append_sqlite_filter(filter: &mut Option<SqliteSearchFilter>, next: SqliteSearchFilter) {
+        *filter = Some(match filter.take() {
+            Some(filter) => filter.and(next),
+            None => next,
+        });
+    }
+
+    fn fixture_sqlite_rows(
+        fixture: &VectorFixture,
+    ) -> Vec<(FixtureDocument, OneOrMany<Embedding>)> {
+        fixture
+            .documents
+            .iter()
+            .map(|document| {
+                (
+                    document.document.clone(),
+                    OneOrMany::one(Embedding {
+                        document: document.document.title.clone(),
+                        vec: document.embedding.clone(),
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    fn read_vector_fixture(path: &str) -> anyhow::Result<String> {
+        let path = std::path::Path::new(path);
+        if path.is_absolute() {
+            return Ok(std::fs::read_to_string(path)?);
+        }
+
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_dir = manifest_dir.join("../..");
+        let candidates = [
+            path.to_path_buf(),
+            manifest_dir.join(path),
+            workspace_dir.join(path),
+        ];
+        let mut last_error = None;
+        for candidate in candidates {
+            match std::fs::read_to_string(&candidate) {
+                Ok(contents) => return Ok(contents),
+                Err(error) => {
+                    last_error = Some(format!("{}: {error}", candidate.display()));
+                }
+            }
+        }
+
+        anyhow::bail!(
+            "could not read vector fixture `{}` from current, crate, or workspace directory: {}",
+            path.display(),
+            last_error.unwrap_or_else(|| "no candidate paths were checked".to_string())
+        )
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct FixtureDocument {
+        id: String,
+        #[serde(default)]
+        category: String,
+        #[serde(default)]
+        priority: i64,
+        #[serde(default)]
+        rating: f64,
+        #[serde(default)]
+        published: bool,
+        #[serde(default)]
+        title: String,
+    }
+
+    impl SqliteVectorStoreTable for FixtureDocument {
+        fn name() -> &'static str {
+            "fixture_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("category", "TEXT").indexed(),
+                Column::new("priority", "INTEGER").indexed(),
+                Column::new("rating", "FLOAT").indexed(),
+                Column::new("published", "BOOLEAN").indexed(),
+                Column::new("title", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                ("category", Box::new(self.category.clone())),
+                ("priority", Box::new(self.priority)),
+                ("rating", Box::new(self.rating)),
+                ("published", Box::new(self.published)),
+                ("title", Box::new(self.title.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone)]
+    struct FixtureEmbeddingModel {
+        dimensions: usize,
+        query_embeddings: HashMap<String, Vec<f64>>,
+    }
+
+    impl FixtureEmbeddingModel {
+        fn from_fixture(fixture: &VectorFixture) -> anyhow::Result<Self> {
+            let mut query_embeddings = HashMap::new();
+            for query in &fixture.queries {
+                if query_embeddings
+                    .insert(query.text.clone(), query.embedding.clone())
+                    .is_some()
+                {
+                    anyhow::bail!("fixture query text `{}` is duplicated", query.text);
+                }
+            }
+
+            Ok(Self {
+                dimensions: fixture.dimensions,
+                query_embeddings,
+            })
+        }
+    }
+
+    impl EmbeddingModel for FixtureEmbeddingModel {
+        const MAX_DOCUMENTS: usize = 256;
+
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+            Self {
+                dimensions: 0,
+                query_embeddings: HashMap::new(),
+            }
+        }
+
+        fn ndims(&self) -> usize {
+            self.dimensions
+        }
+
+        async fn embed_texts(
+            &self,
+            texts: impl IntoIterator<Item = String> + WasmCompatSend,
+        ) -> Result<Vec<Embedding>, EmbeddingError> {
+            texts
+                .into_iter()
+                .map(|text| {
+                    let vec = self.query_embeddings.get(&text).cloned().ok_or_else(|| {
+                        EmbeddingError::ProviderError(format!(
+                            "fixture query text `{text}` has no embedding"
+                        ))
+                    })?;
+
+                    Ok(Embedding {
+                        document: text,
+                        vec,
+                    })
+                })
+                .collect()
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]

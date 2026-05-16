@@ -1,0 +1,67 @@
+{
+  "metric": "cosine",
+  "dimensions": 2,
+  "documents": [
+    {
+      "id": "exact",
+      "category": "docs",
+      "priority": 1,
+      "rating": 0.95,
+      "published": true,
+      "title": "exact match",
+      "embedding": [1.0, 0.0]
+    },
+    {
+      "id": "close",
+      "category": "docs",
+      "priority": 2,
+      "rating": 0.9,
+      "published": true,
+      "title": "close match",
+      "embedding": [0.8, 0.6]
+    },
+    {
+      "id": "borderline",
+      "category": "docs",
+      "priority": 3,
+      "rating": 0.81,
+      "published": true,
+      "title": "borderline match",
+      "embedding": [0.5, 0.5]
+    },
+    {
+      "id": "low-rating",
+      "category": "docs",
+      "priority": 4,
+      "rating": 0.7,
+      "published": true,
+      "title": "filtered by rating",
+      "embedding": [0.95, 0.05]
+    },
+    {
+      "id": "misc",
+      "category": "misc",
+      "priority": 1,
+      "rating": 0.99,
+      "published": true,
+      "title": "filtered by category",
+      "embedding": [1.0, 0.0]
+    }
+  ],
+  "queries": [
+    {
+      "id": "filtered-thresholded",
+      "text": "needle",
+      "embedding": [1.0, 0.0],
+      "k": 3,
+      "threshold": 0.75,
+      "filter": {
+        "category_eq": "docs",
+        "priority_lt": 10,
+        "rating_gt": 0.8,
+        "published_eq": true
+      },
+      "expected_ids": ["exact", "close"]
+    }
+  ]
+}

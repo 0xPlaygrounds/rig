@@ -1,0 +1,43 @@
+{
+  "metric": "cosine",
+  "dimensions": 2,
+  "documents": [
+    {
+      "id": "relevant-exact",
+      "category": "retrieval",
+      "priority": 1,
+      "rating": 0.0,
+      "published": true,
+      "title": "Relevant exact passage",
+      "embedding": [1.0, 0.0]
+    },
+    {
+      "id": "relevant-close",
+      "category": "retrieval",
+      "priority": 2,
+      "rating": 0.0,
+      "published": true,
+      "title": "Relevant close passage",
+      "embedding": [0.8, 0.6]
+    },
+    {
+      "id": "irrelevant-far",
+      "category": "retrieval",
+      "priority": 3,
+      "rating": 0.0,
+      "published": true,
+      "title": "Irrelevant far passage",
+      "embedding": [0.0, 1.0]
+    }
+  ],
+  "queries": [
+    {
+      "id": "semantic-query",
+      "text": "needle",
+      "embedding": [1.0, 0.0],
+      "k": 2,
+      "relevant_ids": ["relevant-exact", "relevant-close"],
+      "min_recall": 1.0
+    }
+  ]
+}
