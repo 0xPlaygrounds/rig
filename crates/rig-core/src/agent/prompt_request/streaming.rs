@@ -912,7 +912,7 @@ pub async fn stream_to_stdout<R>(
     while let Some(content) = stream.next().await {
         match content {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text },
+                Text { text, .. },
             ))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;

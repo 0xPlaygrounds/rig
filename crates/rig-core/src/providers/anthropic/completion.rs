@@ -273,6 +273,10 @@ pub enum Role {
 pub enum Content {
     Text {
         text: String,
+        /// Citations returned by Claude pointing back into the source documents.
+        /// Empty (and skipped during serialization) on request-side blocks.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        citations: Vec<Citation>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -297,6 +301,19 @@ pub enum Content {
     },
     Document {
         source: DocumentSource,
+        /// Optional document title, passed to the model but not citable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        /// Optional document context (e.g. metadata), passed to the model but
+        /// not citable. Useful for storing additional information about the
+        /// document that should not appear in citation `cited_text`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<String>,
+        /// Configuration for enabling citations on this document. When `enabled`
+        /// is true, Claude returns citation metadata on response text blocks
+        /// pointing back into this document's content.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        citations: Option<CitationsConfig>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -316,8 +333,165 @@ impl FromStr for Content {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Content::Text {
             text: s.to_owned(),
+            citations: Vec::new(),
             cache_control: None,
         })
+    }
+}
+
+/// Configuration for enabling citations on a document content block.
+///
+/// When enabled, Claude returns citation metadata on response text blocks,
+/// allowing applications to track where each piece of information in the
+/// response came from. See the [Anthropic citations documentation][docs] for
+/// details on the request/response shapes.
+///
+/// Citations must be enabled on **all or none** of the documents in a request —
+/// the API returns an error if the setting is mixed.
+///
+/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CitationsConfig {
+    /// Whether citation tracking is enabled for this document.
+    pub enabled: bool,
+}
+
+/// A citation returned by Claude pointing back to a span of source text in one
+/// of the user-supplied documents.
+///
+/// The variant determines the locator shape, which depends on the source
+/// document type:
+///
+/// - [`Citation::CharLocation`] — for plain text documents; character indices
+///   are 0-indexed with an exclusive end.
+/// - [`Citation::PageLocation`] — for PDF documents; page numbers are 1-indexed
+///   with an exclusive end.
+/// - [`Citation::ContentBlockLocation`] — for custom-content documents; block
+///   indices are 0-indexed with an exclusive end.
+///
+/// See the [Anthropic citations documentation][docs] for the exact wire format.
+///
+/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Citation {
+    /// A citation locating a character span in a plain text document.
+    CharLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_title: Option<String>,
+        /// 0-indexed character offset where the cited span begins.
+        start_char_index: usize,
+        /// Character offset where the cited span ends (exclusive).
+        end_char_index: usize,
+    },
+    /// A citation locating a page range in a PDF document.
+    PageLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_title: Option<String>,
+        /// 1-indexed page number where the cited span begins.
+        start_page_number: u32,
+        /// 1-indexed page number where the cited span ends (exclusive).
+        end_page_number: u32,
+    },
+    /// A citation locating a block range in a custom-content document.
+    ContentBlockLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        document_title: Option<String>,
+        /// 0-indexed content block index where the cited span begins.
+        start_block_index: usize,
+        /// Content block index where the cited span ends (exclusive).
+        end_block_index: usize,
+    },
+}
+
+/// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:
+/// optional `title`, optional `context`, and optional [`CitationsConfig`].
+type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfig>);
+
+/// Extract Anthropic-specific document fields (`title`, `context`, `citations`)
+/// from the generic [`message::Document::additional_params`] JSON blob.
+///
+/// Returns `Ok((None, None, None))` if `additional_params` is empty. Returns
+/// an error only if the `citations` field is present but is not a valid
+/// [`CitationsConfig`] — invalid shapes are reported instead of being silently
+/// dropped, so users notice typos.
+fn extract_anthropic_doc_params(
+    additional_params: Option<serde_json::Value>,
+) -> Result<AnthropicDocParams, MessageError> {
+    let Some(value) = additional_params else {
+        return Ok((None, None, None));
+    };
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let context = value
+        .get("context")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let citations = value
+        .get("citations")
+        .cloned()
+        .map(serde_json::from_value::<CitationsConfig>)
+        .transpose()
+        .map_err(|e| {
+            MessageError::ConversionError(format!(
+                "Document `additional_params.citations` is not a valid CitationsConfig: {e}",
+            ))
+        })?;
+    Ok((title, context, citations))
+}
+
+/// Extract Anthropic citations attached to a generic [`message::Text`] block.
+///
+/// Citations are returned by Claude on assistant text blocks when the request
+/// enabled them via [`CitationsConfig`]. Internally they are stored as JSON in
+/// [`message::Text::additional_params`] so they survive conversion through the
+/// generic [`message::AssistantContent`] surface.
+///
+/// Returns `Ok(vec![])` when no citations are attached. Returns an error if a
+/// `citations` field is present but not a valid `Vec<Citation>` — for example,
+/// when Anthropic adds a new location type this crate does not yet model.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig::completion::message::{self, AssistantContent};
+/// use rig::providers::anthropic::completion::anthropic_citations;
+///
+/// fn print_citations(content: &AssistantContent) {
+///     if let AssistantContent::Text(text) = content
+///         && let Ok(citations) = anthropic_citations(text)
+///         && !citations.is_empty()
+///     {
+///         println!("{citations:?}");
+///     }
+/// }
+/// # let _ = message::Text::new("");
+/// ```
+pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
+    match text
+        .additional_params
+        .as_ref()
+        .and_then(|v| v.get("citations"))
+    {
+        Some(c) => serde_json::from_value::<Vec<Citation>>(c.clone()),
+        None => Ok(Vec::new()),
     }
 }
 
@@ -430,6 +604,7 @@ impl From<String> for Content {
     fn from(text: String) -> Self {
         Content::Text {
             text,
+            citations: Vec::new(),
             cache_control: None,
         }
     }
@@ -509,8 +684,9 @@ impl TryFrom<message::AssistantContent> for Content {
     type Error = MessageError;
     fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text {
+            message::AssistantContent::Text(message::Text { text, .. }) => Ok(Content::Text {
                 text,
+                citations: Vec::new(),
                 cache_control: None,
             }),
             message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
@@ -535,8 +711,9 @@ fn anthropic_content_from_assistant_content(
     content: message::AssistantContent,
 ) -> Result<Vec<Content>, MessageError> {
     match content {
-        message::AssistantContent::Text(message::Text { text }) => Ok(vec![Content::Text {
+        message::AssistantContent::Text(message::Text { text, .. }) => Ok(vec![Content::Text {
             text,
+            citations: Vec::new(),
             cache_control: None,
         }]),
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
@@ -591,8 +768,9 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.try_map(|content| match content {
-                    message::UserContent::Text(message::Text { text }) => Ok(Content::Text {
+                    message::UserContent::Text(message::Text { text, .. }) => Ok(Content::Text {
                         text,
+                        citations: Vec::new(),
                         cache_control: None,
                     }),
                     message::UserContent::ToolResult(message::ToolResult {
@@ -600,7 +778,7 @@ impl TryFrom<message::Message> for Message {
                     }) => Ok(Content::ToolResult {
                         tool_use_id: id,
                         content: content.try_map(|content| match content {
-                            message::ToolResultContent::Text(message::Text { text }) => {
+                            message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
                             message::ToolResultContent::Image(image) => {
@@ -658,11 +836,19 @@ impl TryFrom<message::Message> for Message {
                         })
                     }
                     message::UserContent::Document(message::Document {
-                        data, media_type, ..
+                        data,
+                        media_type,
+                        additional_params,
                     }) => {
+                        let (title, context, citations) =
+                            extract_anthropic_doc_params(additional_params)?;
+
                         if let DocumentSourceKind::FileId(file_id) = data {
                             return Ok(Content::Document {
                                 source: DocumentSource::File { file_id },
+                                title,
+                                context,
+                                citations,
                                 cache_control: None,
                             });
                         }
@@ -712,6 +898,9 @@ impl TryFrom<message::Message> for Message {
 
                         Ok(Content::Document {
                             source,
+                            title,
+                            context,
+                            citations,
                             cache_control: None,
                         })
                     }
@@ -728,6 +917,7 @@ impl TryFrom<message::Message> for Message {
                 role: Role::User,
                 content: OneOrMany::one(Content::Text {
                     text: content,
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -761,7 +951,20 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
-            Content::Text { text, .. } => message::AssistantContent::text(text),
+            Content::Text {
+                text, citations, ..
+            } => {
+                // Preserve citation metadata on the generic text block via
+                // `additional_params` so callers going through the generic
+                // `AssistantContent` surface can still recover them (see
+                // [`anthropic_citations`]).
+                let additional_params =
+                    (!citations.is_empty()).then(|| serde_json::json!({ "citations": citations }));
+                message::AssistantContent::Text(message::Text {
+                    text,
+                    additional_params,
+                })
+            }
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
@@ -786,7 +989,7 @@ impl TryFrom<Content> for message::AssistantContent {
 impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
-            ToolResultContent::Text { text } => message::ToolResultContent::text(text),
+            ToolResultContent::Text { text, .. } => message::ToolResultContent::text(text),
             ToolResultContent::Image { source } => match source {
                 ImageSource::Base64 { data, media_type } => {
                     message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
@@ -1626,6 +1829,7 @@ mod tests {
             content.first(),
             Content::Text {
                 text: "\n\nHello there, how may I assist you today?".to_owned(),
+                citations: Vec::new(),
                 cache_control: None,
             }
         );
@@ -1782,7 +1986,7 @@ mod tests {
                 }
 
                 match iter.next().unwrap() {
-                    message::UserContent::Text(message::Text { text }) => {
+                    message::UserContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "What is in this image?");
                     }
                     _ => panic!("Expected text content"),
@@ -1814,7 +2018,7 @@ mod tests {
                 };
                 assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                 match content.first() {
-                    message::ToolResultContent::Text(message::Text { text }) => {
+                    message::ToolResultContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "15 degrees");
                     }
                     _ => panic!("Expected text content"),
@@ -1895,6 +2099,7 @@ mod tests {
         // Test Content::Text with cache_control
         let content = Content::Text {
             text: "Test message".to_string(),
+            citations: Vec::new(),
             cache_control: Some(CacheControl::ephemeral()),
         };
         let json_content = serde_json::to_string(&content).unwrap();
@@ -1910,6 +2115,7 @@ mod tests {
                 role: Role::User,
                 content: OneOrMany::one(Content::Text {
                     text: "First message".to_string(),
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -1917,6 +2123,7 @@ mod tests {
                 role: Role::Assistant,
                 content: OneOrMany::one(Content::Text {
                     text: "Response".to_string(),
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -1954,6 +2161,9 @@ mod tests {
                 data: "Hello, world!".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -1982,6 +2192,7 @@ mod tests {
             Content::Document {
                 source,
                 cache_control,
+                ..
             } => {
                 assert_eq!(
                     source,
@@ -2003,6 +2214,9 @@ mod tests {
                 data: "base64data".to_string(),
                 media_type: DocumentFormat::PDF,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -2047,6 +2261,9 @@ mod tests {
             source: DocumentSource::File {
                 file_id: "file_abc".to_string(),
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -2121,6 +2338,9 @@ mod tests {
                 source: DocumentSource::File {
                     file_id: "file_abc".to_string(),
                 },
+                title: None,
+                context: None,
+                citations: None,
                 cache_control: None,
             }),
         };
@@ -2183,6 +2403,9 @@ mod tests {
                     data: "Some plain text content".to_string(),
                     media_type: PlainTextMediaType::Plain,
                 },
+                title: None,
+                context: None,
+                citations: None,
                 cache_control: None,
             }),
         };
@@ -2298,6 +2521,9 @@ mod tests {
                 data: "cached text".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: Some(CacheControl::ephemeral()),
         };
 
@@ -2537,5 +2763,182 @@ mod tests {
         assert_eq!(image_content["source"]["type"], "base64");
         assert_eq!(image_content["source"]["media_type"], "image/png");
         assert_eq!(image_content["source"]["data"], "iVBORw0KGgo...");
+    }
+
+    // -------------------------------------------------------------------
+    // Citations (#1767)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn document_serializes_citations_and_metadata() {
+        let doc = Content::Document {
+            source: DocumentSource::Text {
+                data: "hello".into(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            title: Some("My Doc".into()),
+            context: None,
+            citations: Some(CitationsConfig { enabled: true }),
+            cache_control: None,
+        };
+        let value = serde_json::to_value(&doc).unwrap();
+        assert_eq!(value["citations"]["enabled"], true);
+        assert_eq!(value["title"], "My Doc");
+        assert!(
+            value.get("context").is_none(),
+            "context should be skipped when None"
+        );
+    }
+
+    #[test]
+    fn text_serializes_without_citations_when_empty() {
+        let content = Content::Text {
+            text: "hello".into(),
+            citations: Vec::new(),
+            cache_control: None,
+        };
+        let value = serde_json::to_value(&content).unwrap();
+        assert!(
+            value.get("citations").is_none(),
+            "empty citations vec must be skipped"
+        );
+    }
+
+    #[test]
+    fn text_deserializes_char_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "the grass is green",
+            "citations": [{
+                "type": "char_location",
+                "cited_text": "The grass is green.",
+                "document_index": 0,
+                "document_title": "Example",
+                "start_char_index": 0,
+                "end_char_index": 20
+            }]
+        });
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+        assert_eq!(citations.len(), 1);
+        let Citation::CharLocation {
+            start_char_index,
+            end_char_index,
+            ..
+        } = &citations[0]
+        else {
+            panic!("expected CharLocation");
+        };
+        assert_eq!(*start_char_index, 0);
+        assert_eq!(*end_char_index, 20);
+    }
+
+    #[test]
+    fn page_location_citation_roundtrips() {
+        let citation = Citation::PageLocation {
+            cited_text: "Water is essential for life.".into(),
+            document_index: 1,
+            document_title: Some("PDF Doc".into()),
+            start_page_number: 5,
+            end_page_number: 6,
+        };
+        let value = serde_json::to_value(&citation).unwrap();
+        assert_eq!(value["type"], "page_location");
+        assert_eq!(value["start_page_number"], 5);
+        let back: Citation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, citation);
+    }
+
+    #[test]
+    fn content_block_location_citation_roundtrips() {
+        let citation = Citation::ContentBlockLocation {
+            cited_text: "These are important findings.".into(),
+            document_index: 2,
+            document_title: None,
+            start_block_index: 0,
+            end_block_index: 1,
+        };
+        let value = serde_json::to_value(&citation).unwrap();
+        assert_eq!(value["type"], "content_block_location");
+        assert!(value.get("document_title").is_none());
+        let back: Citation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, citation);
+    }
+
+    #[test]
+    fn anthropic_citations_extracts_from_additional_params() {
+        let text = message::Text {
+            text: "the grass is green".into(),
+            additional_params: Some(json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "The grass is green.",
+                    "document_index": 0,
+                    "start_char_index": 0,
+                    "end_char_index": 20
+                }]
+            })),
+        };
+        let citations = anthropic_citations(&text).unwrap();
+        assert_eq!(citations.len(), 1);
+    }
+
+    #[test]
+    fn anthropic_citations_returns_empty_when_absent() {
+        let text = message::Text::new("hello".to_string());
+        assert!(anthropic_citations(&text).unwrap().is_empty());
+    }
+
+    #[test]
+    fn content_text_with_citations_survives_assistant_conversion() {
+        let content = Content::Text {
+            text: "the grass is green".into(),
+            citations: vec![Citation::CharLocation {
+                cited_text: "The grass is green.".into(),
+                document_index: 0,
+                document_title: None,
+                start_char_index: 0,
+                end_char_index: 20,
+            }],
+            cache_control: None,
+        };
+        let assistant: message::AssistantContent = content.try_into().unwrap();
+        let message::AssistantContent::Text(text) = assistant else {
+            panic!("expected text variant");
+        };
+        let recovered = anthropic_citations(&text).unwrap();
+        assert_eq!(recovered.len(), 1);
+    }
+
+    #[test]
+    fn document_additional_params_forward_to_anthropic_document() {
+        let doc = message::UserContent::Document(message::Document {
+            data: message::DocumentSourceKind::String("Hello world.".into()),
+            media_type: Some(message::DocumentMediaType::TXT),
+            additional_params: Some(json!({
+                "title": "Doc1",
+                "context": "ctx",
+                "citations": { "enabled": true }
+            })),
+        });
+        let msg = message::Message::User {
+            content: OneOrMany::one(doc),
+        };
+        let converted: Message = msg.try_into().unwrap();
+        let block = converted.content.first();
+        let Content::Document {
+            title,
+            context,
+            citations,
+            ..
+        } = block
+        else {
+            panic!("expected Content::Document");
+        };
+        assert_eq!(title.as_deref(), Some("Doc1"));
+        assert_eq!(context.as_deref(), Some("ctx"));
+        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
     }
 }

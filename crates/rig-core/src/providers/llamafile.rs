@@ -765,9 +765,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "Hello!".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -802,9 +800,9 @@ mod tests {
             model: None,
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What does glarb-glarb mean?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new(
+                    "What does glarb-glarb mean?".to_string(),
+                ))),
             }),
             documents: vec![
                 Document {

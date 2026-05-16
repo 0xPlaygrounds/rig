@@ -290,7 +290,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for user_content in content {
                     match user_content {
-                        crate::message::UserContent::Text(Text { text }) => {
+                        crate::message::UserContent::Text(Text { text, .. }) => {
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
@@ -309,6 +309,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             for tool_result_content in tool_content {
                                 let crate::completion::message::ToolResultContent::Text(Text {
                                     text,
+                                    ..
                                 }) = tool_result_content
                                 else {
                                     return Err(CompletionError::ProviderError(
@@ -443,13 +444,13 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text { text }) => {
+                        crate::message::AssistantContent::Text(Text { text, .. }) => {
                             let id = id.as_ref().unwrap_or(&String::default()).clone();
                             other_items.push(InputItem {
                                 role: Some(Role::Assistant),
                                 input: InputContent::Message(Message::Assistant {
                                     content: OneOrMany::one(AssistantContentType::Text(
-                                        AssistantContent::OutputText(Text { text }),
+                                        AssistantContent::OutputText(Text::new(text)),
                                     )),
                                     id,
                                     name: None,
@@ -1607,10 +1608,10 @@ impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
         match value {
             AssistantContent::Refusal { refusal } => {
-                completion::AssistantContent::Text(Text { text: refusal })
+                completion::AssistantContent::Text(Text::new(refusal))
             }
-            AssistantContent::OutputText(Text { text }) => {
-                completion::AssistantContent::Text(Text { text })
+            AssistantContent::OutputText(Text { text, .. }) => {
+                completion::AssistantContent::Text(Text::new(text))
             }
         }
     }
@@ -1717,6 +1718,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     match res {
                                         completion::message::ToolResultContent::Text(Text {
                                             text,
+                                            ..
                                         }) => text,
                                         _ => return  Err(MessageError::ConversionError("This API only currently supports text tool results".into()))
                                     }
@@ -1732,7 +1734,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                     let other_content = other_content
                         .into_iter()
                         .map(|content| match content {
-                            message::UserContent::Text(message::Text { text }) => {
+                            message::UserContent::Text(message::Text { text, .. }) => {
                                 Ok(UserContent::InputText { text })
                             }
                             message::UserContent::Image(message::Image {
@@ -1857,12 +1859,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                 })?;
 
                 match content.first() {
-                    crate::message::AssistantContent::Text(Text { text }) => {
+                    crate::message::AssistantContent::Text(Text { text, .. }) => {
                         Ok(vec![Message::Assistant {
                             id: assistant_message_id.clone(),
                             status: ToolStatus::Completed,
                             content: OneOrMany::one(AssistantContentType::Text(
-                                AssistantContent::OutputText(Text { text }),
+                                AssistantContent::OutputText(Text::new(text)),
                             )),
                             name: None,
                         }])
