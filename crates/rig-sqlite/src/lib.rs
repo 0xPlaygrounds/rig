@@ -12,8 +12,10 @@ use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchReq
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use rig_core::{Embed, OneOrMany};
+use rusqlite::OptionalExtension;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
+use std::fmt::{self, Display};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
@@ -97,6 +99,81 @@ pub trait SqliteVectorStoreTable: Send + Sync + Clone {
     fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)>;
 }
 
+/// Distance metric used by SQLite vector searches.
+///
+/// The metric is applied consistently to sqlite-vec candidate search,
+/// thresholding, ordering, and returned scores. Returned scores are
+/// higher-is-better: [`SqliteDistanceMetric::Cosine`] returns cosine similarity
+/// (`1 - cosine_distance`), while [`SqliteDistanceMetric::L2`] and
+/// [`SqliteDistanceMetric::L1`] return the negative sqlite-vec distance.
+/// sqlite-vec's L2 distance is squared L2 distance.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SqliteDistanceMetric {
+    /// Cosine similarity, returned as `1 - cosine_distance`.
+    #[default]
+    Cosine,
+    /// Negative sqlite-vec L2 distance.
+    L2,
+    /// Negative sqlite-vec L1 distance.
+    L1,
+}
+
+impl SqliteDistanceMetric {
+    fn vec0_name(self) -> &'static str {
+        match self {
+            Self::Cosine => "cosine",
+            Self::L2 => "l2",
+            Self::L1 => "l1",
+        }
+    }
+
+    fn score_expression(self, query_param: &str, embedding_expr: &str) -> String {
+        match self {
+            Self::Cosine => {
+                format!("(1 - vec_distance_cosine({query_param}, {embedding_expr}))")
+            }
+            Self::L2 => format!("(-vec_distance_l2({query_param}, {embedding_expr}))"),
+            Self::L1 => format!("(-vec_distance_l1({query_param}, {embedding_expr}))"),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SqliteDistanceMetricMismatch {
+    table_name: String,
+    requested: SqliteDistanceMetric,
+    configured: SqliteDistanceMetric,
+}
+
+impl Display for SqliteDistanceMetricMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SQLite vector table `{}` uses {:?}, but {:?} was requested",
+            self.table_name, self.configured, self.requested
+        )
+    }
+}
+
+impl std::error::Error for SqliteDistanceMetricMismatch {}
+
+#[derive(Debug)]
+struct SqliteVectorTableMissingSchema {
+    table_name: String,
+}
+
+impl Display for SqliteVectorTableMissingSchema {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SQLite vector table `{}` was created but is missing from sqlite_schema",
+            self.table_name
+        )
+    }
+}
+
+impl std::error::Error for SqliteVectorTableMissingSchema {}
+
 #[derive(Clone)]
 pub struct SqliteVectorStore<E, T>
 where
@@ -104,6 +181,7 @@ where
     T: SqliteVectorStoreTable + 'static,
 {
     conn: Connection,
+    distance_metric: SqliteDistanceMetric,
     _phantom: PhantomData<(E, T)>,
 }
 
@@ -112,10 +190,27 @@ where
     E: EmbeddingModel + Clone + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
+    /// Creates a SQLite vector store using cosine similarity.
     pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
+        Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
+    }
+
+    /// Creates a SQLite vector store with the requested distance metric.
+    ///
+    /// The metric is written into the sqlite-vec virtual table definition so
+    /// candidate search uses the same metric as thresholding, ordering, and the
+    /// returned score values.
+    pub async fn with_distance_metric(
+        conn: Connection,
+        embedding_model: &E,
+        distance_metric: SqliteDistanceMetric,
+    ) -> Result<Self, VectorStoreError> {
         let dims = embedding_model.ndims();
         let table_name = T::name();
+        let embeddings_table_name = format!("{table_name}_embeddings");
+        let embeddings_table_name_for_sql = embeddings_table_name.clone();
         let schema = T::schema();
+        let distance_metric_name = distance_metric.vec0_name();
 
         // Build the table schema
         let mut create_table = format!("CREATE TABLE IF NOT EXISTS {table_name} (");
@@ -148,30 +243,58 @@ where
             }
         }
 
-        conn.call(move |conn| {
-            conn.execute_batch("BEGIN")?;
+        let embeddings_table_sql = conn
+            .call(move |conn| {
+                conn.execute_batch("BEGIN")?;
 
-            // Create document table
-            conn.execute_batch(&create_table)?;
+                // Create document table
+                conn.execute_batch(&create_table)?;
 
-            // Create indexes
-            for index_stmt in create_indexes {
-                conn.execute_batch(&index_stmt)?;
-            }
+                // Create indexes
+                for index_stmt in create_indexes {
+                    conn.execute_batch(&index_stmt)?;
+                }
 
-            // Create embeddings table
-            conn.execute_batch(&format!(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS {table_name}_embeddings USING vec0(embedding float[{dims}])"
-            ))?;
+                // Create embeddings table
+                conn.execute_batch(&format!(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0(embedding float[{dims}] distance_metric={distance_metric_name})"
+                ))?;
 
-            conn.execute_batch("COMMIT")?;
-            Ok(())
-        })
-        .await
-        .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                conn.execute_batch("COMMIT")?;
+
+                let schema_sql = conn
+                    .query_row(
+                        "SELECT sql FROM sqlite_schema WHERE name = ?1",
+                        [&embeddings_table_name_for_sql],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?;
+
+                Ok(schema_sql)
+            })
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let schema_sql = embeddings_table_sql.ok_or_else(|| {
+            VectorStoreError::DatastoreError(Box::new(SqliteVectorTableMissingSchema {
+                table_name: embeddings_table_name.clone(),
+            }))
+        })?;
+
+        let configured = sqlite_distance_metric_from_schema(&schema_sql);
+        if configured != distance_metric {
+            return Err(VectorStoreError::DatastoreError(Box::new(
+                SqliteDistanceMetricMismatch {
+                    table_name: embeddings_table_name,
+                    requested: distance_metric,
+                    configured,
+                },
+            )));
+        }
 
         Ok(Self {
             conn,
+            distance_metric,
             _phantom: PhantomData,
         })
     }
@@ -454,7 +577,9 @@ impl SqliteSearchFilter {
 ///     vector_store::{InsertDocuments, VectorStoreIndex},
 ///     Embed,
 /// };
-/// use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+/// use rig_sqlite::{
+///     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
+/// };
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
@@ -496,7 +621,12 @@ impl SqliteSearchFilter {
 /// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 ///
 /// // Initialize vector store
-/// let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::new(conn, &model).await?;
+/// let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::with_distance_metric(
+///     conn,
+///     &model,
+///     SqliteDistanceMetric::Cosine,
+/// )
+/// .await?;
 ///
 /// // Create documents
 /// let documents = vec![
@@ -553,16 +683,31 @@ where
     }
 }
 
+fn sqlite_distance_metric_from_schema(schema_sql: &str) -> SqliteDistanceMetric {
+    let normalized = schema_sql
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+
+    if normalized.contains("distance_metric=cosine") {
+        SqliteDistanceMetric::Cosine
+    } else if normalized.contains("distance_metric=l1") {
+        SqliteDistanceMetric::L1
+    } else {
+        SqliteDistanceMetric::L2
+    }
+}
+
 fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
     query_vec: Vec<f32>,
+    distance_metric: SqliteDistanceMetric,
 ) -> Result<(String, Vec<Value>), FilterError> {
-    let threshold_filter = req.threshold().map(|threshold| {
-        SqliteSearchFilter::gt(
-            "(1 - vec_distance_cosine(?1, e.embedding))",
-            threshold.into(),
-        )
-    });
+    let score_expression = distance_metric.score_expression("?1", "e.embedding");
+    let threshold_filter = req
+        .threshold()
+        .map(|threshold| SqliteSearchFilter::gt(score_expression.as_str(), threshold.into()));
 
     let filter = match (threshold_filter, req.filter()) {
         (Some(threshold_filter), Some(filter)) => Some(threshold_filter.and(filter.clone())),
@@ -615,14 +760,16 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         // Build SELECT statement with all columns
         let select_cols = column_names.join(", ");
 
-        let (where_clause, params) = build_where_clause(&req, query_vec)?;
+        let distance_metric = self.store.distance_metric;
+        let score_expression = distance_metric.score_expression("?1", "e.embedding");
+        let (where_clause, params) = build_where_clause(&req, query_vec, distance_metric)?;
 
         let rows = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.{select_cols}, (1 - vec_distance_cosine(?, e.embedding)) as score
+                    "SELECT d.{select_cols}, {score_expression} as score
                     FROM {table_name}_embeddings e
                     JOIN {table_name} d ON e.rowid = d.rowid
                     {where_clause}
@@ -637,10 +784,10 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                             let value: String = row.get(i)?;
                             map.insert(col_name.to_string(), serde_json::Value::String(value));
                         }
-                        let distance: f64 = row.get(column_names.len())?;
+                        let score: f64 = row.get(column_names.len())?;
                         let id: String = row.get(0)?; // Assuming id is always first column
 
-                        Ok((id, serde_json::Value::Object(map), distance))
+                        Ok((id, serde_json::Value::Object(map), score))
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(rows)
@@ -650,10 +797,10 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
 
         debug!("Found {} potential matches", rows.len());
         let mut top_n = Vec::new();
-        for (id, doc_value, distance) in rows {
+        for (id, doc_value, score) in rows {
             match serde_json::from_value::<D>(doc_value) {
                 Ok(doc) => {
-                    top_n.push((distance, id, doc));
+                    top_n.push((score, id, doc));
                 }
                 Err(e) => {
                     debug!("Failed to deserialize document {}: {}", id, e);
@@ -678,14 +825,16 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         let query_vec = serialize_embedding(&embedding);
         let table_name = T::name();
 
-        let (where_clause, params) = build_where_clause(&req, query_vec)?;
+        let distance_metric = self.store.distance_metric;
+        let score_expression = distance_metric.score_expression("?1", "e.embedding");
+        let (where_clause, params) = build_where_clause(&req, query_vec, distance_metric)?;
 
         let results = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.id, (1 - vec_distance_cosine(?1, e.embedding)) as score
+                    "SELECT d.id, {score_expression} as score
                      FROM {table_name}_embeddings e
                      JOIN {table_name} d ON e.rowid = d.rowid
                      {where_clause}
@@ -738,7 +887,8 @@ mod tests {
             .threshold(0.95)
             .build();
 
-        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0])?;
+        let (where_clause, params) =
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine)?;
 
         anyhow::ensure!(
             where_clause.contains("e.embedding MATCH ?"),
@@ -762,13 +912,38 @@ mod tests {
     }
 
     #[test]
+    fn l2_threshold_filter_uses_l2_score_expression() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .threshold(-1.5)
+            .build();
+
+        let (where_clause, params) =
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2)?;
+
+        anyhow::ensure!(
+            where_clause.contains("(-vec_distance_l2(?1, e.embedding)) > ?"),
+            "threshold should use L2 score expression: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Real(-1.5)),
+            "unexpected threshold param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn no_threshold_does_not_add_similarity_predicate() -> anyhow::Result<()> {
         let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
             .query("needle")
             .samples(5)
             .build();
 
-        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0])?;
+        let (where_clause, params) =
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine)?;
 
         anyhow::ensure!(
             where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -791,7 +966,8 @@ mod tests {
             .filter(filter)
             .build();
 
-        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0])?;
+        let (where_clause, params) =
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine)?;
 
         anyhow::ensure!(
             where_clause
@@ -863,6 +1039,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_l2_metric_is_consistent() -> anyhow::Result<()> {
+        let index = live_test_index_with_metric(
+            "live_l2_metric_is_consistent",
+            vec![
+                row("exact", "docs", "exact match", vec![1.0, 0.0]),
+                row("l2-close", "docs", "l2 close match", vec![1.0, 1.0]),
+                row(
+                    "same-direction-far",
+                    "docs",
+                    "same direction far away",
+                    vec![10.0, 0.0],
+                ),
+            ],
+            SqliteDistanceMetric::L2,
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(2)
+            .threshold(-2.0)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        let exact_score = results
+            .iter()
+            .find(|(_, id, _)| id == "exact")
+            .map(|(score, _, _)| *score);
+        let close_score = results
+            .iter()
+            .find(|(_, id, _)| id == "l2-close")
+            .map(|(score, _, _)| *score);
+
+        anyhow::ensure!(
+            ids.as_slice() == ["exact", "l2-close"],
+            "L2 search should return the nearest L2 candidates: {results:?}"
+        );
+        anyhow::ensure!(
+            exact_score
+                .zip(close_score)
+                .is_some_and(|(exact, close)| exact > close && close > -2.0),
+            "expected L2 scores to be ordered and thresholded: {results:?}"
+        );
+        anyhow::ensure!(
+            results.iter().all(|(score, _, _)| *score > -2.0),
+            "threshold should be applied to L2 scores: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            result_ids.as_slice() == ["exact", "l2-close"],
+            "top_n_ids should use the same L2 metric: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_or_filter_without_threshold_does_not_bypass_vector_constraints()
     -> anyhow::Result<()> {
         let index = live_test_index(
@@ -917,11 +1160,20 @@ mod tests {
         name: &str,
         rows: Vec<(TestDocument, OneOrMany<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
+        live_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
+    }
+
+    async fn live_test_index_with_metric(
+        name: &str,
+        rows: Vec<(TestDocument, OneOrMany<Embedding>)>,
+        distance_metric: SqliteDistanceMetric,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store = SqliteVectorStore::new(conn, &model).await?;
+        let vector_store =
+            SqliteVectorStore::with_distance_metric(conn, &model, distance_metric).await?;
 
         vector_store.add_rows(rows).await?;
 

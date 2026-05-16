@@ -7,7 +7,9 @@ use rig_core::{
     providers::openai::Client,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+use rig_sqlite::{
+    Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
+};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use serde::{Deserialize, Serialize};
 use sqlite_vec::sqlite3_vec_init;
@@ -94,7 +96,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Initialize SQLite vector store
-    let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::new(conn, &model).await?;
+    let vector_store: SqliteVectorStore<_, Document> =
+        SqliteVectorStore::with_distance_metric(conn, &model, SqliteDistanceMetric::Cosine).await?;
 
     // Add embeddings to vector store
     vector_store.insert_documents(embeddings).await?;
