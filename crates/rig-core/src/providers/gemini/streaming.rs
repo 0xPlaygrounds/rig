@@ -5,7 +5,7 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
-    ContentCandidate, ModalityTokenCount, Part, PartKind, TrafficType,
+    ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
     CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
@@ -71,6 +71,10 @@ pub struct StreamGenerateContentResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
@@ -131,6 +135,8 @@ where
 
         let stream = stream! {
             let mut final_usage = None;
+            let mut final_finish_reason: Option<FinishReason> = None;
+            let mut final_model_version: Option<String> = None;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -155,8 +161,9 @@ where
                         if let Some(response_id) = data.response_id.as_deref() {
                             span.record("gen_ai.response.id", response_id);
                         }
-                        if let Some(model_version) = data.model_version.as_deref() {
-                            span.record("gen_ai.response.model", model_version);
+                        if let Some(model_version) = &data.model_version {
+                            span.record("gen_ai.response.model", model_version.as_str());
+                            final_model_version = Some(model_version.clone());
                         }
                         if let Some(usage) = data.usage_metadata.as_ref() {
                             span.record_token_usage(usage);
@@ -169,8 +176,18 @@ where
                             continue;
                         };
 
+                        // Capture before partial moves of choice fields
+                        let should_stop = choice.finish_reason.is_some();
+                        if let Some(fr) = &choice.finish_reason {
+                            final_finish_reason = Some(fr.clone());
+                        }
+
                         let Some(content) = choice.content else {
-                            tracing::debug!(finish_reason = ?choice.finish_reason, "Streaming candidate missing content");
+                            tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
+                            // Gemini's final chunk may carry finishReason with no content — break instead of skip
+                            if should_stop {
+                                break;
+                            }
                             continue;
                         };
 
@@ -232,7 +249,7 @@ where
                         }
 
                         // Check if this is the final response
-                        if choice.finish_reason.is_some() {
+                        if should_stop {
                             break;
                         }
                     }
@@ -251,7 +268,9 @@ where
             event_source.close();
 
             yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage_metadata: final_usage.unwrap_or_default()
+                usage_metadata: final_usage.unwrap_or_default(),
+                finish_reason: final_finish_reason,
+                model_version: final_model_version,
             }));
         }.instrument(span);
 
@@ -607,6 +626,31 @@ mod tests {
     }
 
     #[test]
+    fn test_streaming_completion_response_has_finish_reason_and_model_version() {
+        use super::super::completion::gemini_api_types::FinishReason;
+
+        let response = StreamingCompletionResponse {
+            usage_metadata: PartialUsage::default(),
+            finish_reason: Some(FinishReason::Stop),
+            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+        };
+
+        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(deserialized.finish_reason, Some(FinishReason::Stop)));
+        assert_eq!(
+            deserialized.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+    }
+
+    #[test]
     fn test_streaming_completion_response_token_usage() {
         let response = StreamingCompletionResponse {
             usage_metadata: PartialUsage {
@@ -622,6 +666,8 @@ mod tests {
                 tool_use_prompt_tokens_details: None,
                 traffic_type: None,
             },
+            finish_reason: None,
+            model_version: None,
         };
 
         let token_usage = response.token_usage().unwrap();
