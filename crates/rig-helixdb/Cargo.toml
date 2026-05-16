@@ -1,6 +1,6 @@
 [package]
 name = "rig-helixdb"
-version = "0.2.6"
+version = "0.2.7"
 edition.workspace = true
 license = "MIT"
 readme = "README.md"
@@ -15,7 +15,7 @@ reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.37.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.37.1", default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }

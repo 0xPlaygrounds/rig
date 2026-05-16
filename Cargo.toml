@@ -1,6 +1,6 @@
 [package]
 name = "rig"
-version = "0.37.0"
+version = "0.37.1"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -145,31 +145,31 @@ exclude-members = ["crates/rig-core", "crates/rig-derive"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "crates/rig-core", version = "0.37.0", default-features = false }
-rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.6", optional = true, default-features = false }
-rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.1", optional = true, default-features = false }
-rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.6", optional = true, default-features = false }
-rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.6", optional = true, default-features = false }
-rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.6", optional = true, default-features = false }
-rig-memory = { path = "crates/rig-memory", version = "0.1.1", optional = true, default-features = false }
-rig-milvus = { path = "crates/rig-milvus", version = "0.2.6", optional = true, default-features = false }
-rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.6", optional = true, default-features = false }
-rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.6", optional = true, default-features = false }
-rig-postgres = { path = "crates/rig-postgres", version = "0.2.6", optional = true, default-features = false }
-rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.6", optional = true, default-features = false }
-rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.6", optional = true, default-features = false }
-rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.6", optional = true, default-features = false }
-rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.6", optional = true, default-features = false }
-rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.6", optional = true, default-features = false }
-rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.6", optional = true, default-features = false }
-rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.6", optional = true, default-features = false }
+rig-core = { path = "crates/rig-core", version = "0.37.1", default-features = false }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.7", optional = true, default-features = false }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.2", optional = true, default-features = false }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.7", optional = true, default-features = false }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.7", optional = true, default-features = false }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.7", optional = true, default-features = false }
+rig-memory = { path = "crates/rig-memory", version = "0.1.2", optional = true, default-features = false }
+rig-milvus = { path = "crates/rig-milvus", version = "0.2.7", optional = true, default-features = false }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.7", optional = true, default-features = false }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.7", optional = true, default-features = false }
+rig-postgres = { path = "crates/rig-postgres", version = "0.2.7", optional = true, default-features = false }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.7", optional = true, default-features = false }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.7", optional = true, default-features = false }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.7", optional = true, default-features = false }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.7", optional = true, default-features = false }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.7", optional = true, default-features = false }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.7", optional = true, default-features = false }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.7", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
-rig-core = { path = "crates/rig-core", version = "0.37.0", default-features = false, features = [
+rig-core = { path = "crates/rig-core", version = "0.37.1", default-features = false, features = [
   "test-utils",
 ] }
 tokio = { workspace = true, features = ["full"] }
