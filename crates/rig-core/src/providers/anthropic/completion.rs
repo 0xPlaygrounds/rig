@@ -325,7 +325,7 @@ impl FromStr for Content {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
     Text { text: String },
-    Image(ImageSource),
+    Image { source: ImageSource },
 }
 
 impl FromStr for ToolResultContent {
@@ -614,10 +614,12 @@ impl TryFrom<message::Message> for Message {
                                     image.media_type.ok_or(MessageError::ConversionError(
                                         "Image media type is required".to_owned(),
                                     ))?;
-                                Ok(ToolResultContent::Image(ImageSource::Base64 {
-                                    data,
-                                    media_type: media_type.try_into()?,
-                                }))
+                                Ok(ToolResultContent::Image {
+                                    source: ImageSource::Base64 {
+                                        data,
+                                        media_type: media_type.try_into()?,
+                                    },
+                                })
                             }
                         })?,
                         is_error: None,
@@ -785,7 +787,7 @@ impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
             ToolResultContent::Text { text } => message::ToolResultContent::text(text),
-            ToolResultContent::Image(source) => match source {
+            ToolResultContent::Image { source } => match source {
                 ImageSource::Base64 { data, media_type } => {
                     message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
                 }
@@ -2496,5 +2498,44 @@ mod tests {
             err,
             CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
         ));
+    }
+
+    #[test]
+    fn test_tool_result_content_in_message_roundtrip() {
+        let message_json = r#"{
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Here is the screenshot:"
+                        },
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "iVBORw0KGgo..."
+                            }
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let message: Message = serde_json::from_str(message_json).unwrap();
+        let serialized = serde_json::to_value(&message).unwrap();
+
+        let tool_result = &serialized["content"][0];
+        assert_eq!(tool_result["type"], "tool_result");
+
+        let image_content = &tool_result["content"][1];
+        assert_eq!(image_content["type"], "image");
+        assert_eq!(image_content["source"]["type"], "base64");
+        assert_eq!(image_content["source"]["media_type"], "image/png");
+        assert_eq!(image_content["source"]["data"], "iVBORw0KGgo...");
     }
 }
