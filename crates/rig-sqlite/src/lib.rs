@@ -558,7 +558,8 @@ fn build_where_clause(
     query_vec: Vec<f32>,
 ) -> Result<(String, Vec<Value>), FilterError> {
     let thresh = req.threshold().unwrap_or(0.);
-    let thresh = SqliteSearchFilter::gt("distance", thresh.into());
+    let thresh =
+        SqliteSearchFilter::gt("(1 - vec_distance_cosine(?1, e.embedding))", thresh.into());
 
     let filter = req
         .filter()
@@ -614,11 +615,11 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.{select_cols}, (1 - vec_distance_cosine(?, e.embedding)) as distance
+                    "SELECT d.{select_cols}, (1 - vec_distance_cosine(?, e.embedding)) as score
                     FROM {table_name}_embeddings e
                     JOIN {table_name} d ON e.rowid = d.rowid
                     {where_clause}
-                    ORDER BY distance"
+                    ORDER BY score DESC"
                 ))?;
 
                 let rows = stmt
@@ -677,11 +678,11 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.id, (1 - vec_distance_cosine(?1, e.embedding)) as distance
+                    "SELECT d.id, (1 - vec_distance_cosine(?1, e.embedding)) as score
                      FROM {table_name}_embeddings e
                      JOIN {table_name} d ON e.rowid = d.rowid
                      {where_clause}
-                     ORDER BY distance"
+                     ORDER BY score DESC"
                 ))?;
 
                 let results = stmt
@@ -696,6 +697,28 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
 
         debug!("Found {} matching document IDs", results.len());
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn threshold_filter_uses_computed_similarity_expression() {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .threshold(0.95)
+            .build();
+
+        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0]).unwrap();
+
+        assert!(where_clause.contains("e.embedding MATCH ?"));
+        assert!(where_clause.contains("k = ?"));
+        assert!(where_clause.contains("(1 - vec_distance_cosine(?1, e.embedding)) > ?"));
+        assert_eq!(params.len(), 4);
+        assert_eq!(params[3], Value::Real(0.95));
     }
 }
 

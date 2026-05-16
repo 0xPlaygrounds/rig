@@ -290,6 +290,17 @@ mod tests {
     }
 
     #[test]
+    fn test_streaming_delta_with_null_tool_calls() {
+        let json = r#"{
+            "content": "Hello",
+            "tool_calls": null
+        }"#;
+        let delta: StreamingDelta = serde_json::from_str(json).unwrap();
+        assert_eq!(delta.content, Some("Hello".to_string()));
+        assert!(delta.tool_calls.is_empty());
+    }
+
+    #[test]
     fn test_streaming_chunk_deserialization() {
         let json = r#"{
             "choices": [{
