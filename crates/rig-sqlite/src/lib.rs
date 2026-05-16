@@ -557,29 +557,36 @@ fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
     query_vec: Vec<f32>,
 ) -> Result<(String, Vec<Value>), FilterError> {
-    let thresh = req.threshold().unwrap_or(0.);
-    let thresh =
-        SqliteSearchFilter::gt("(1 - vec_distance_cosine(?1, e.embedding))", thresh.into());
+    let threshold_filter = req.threshold().map(|threshold| {
+        SqliteSearchFilter::gt(
+            "(1 - vec_distance_cosine(?1, e.embedding))",
+            threshold.into(),
+        )
+    });
 
-    let filter = req
-        .filter()
-        .as_ref()
-        .cloned()
-        .map(|filter| thresh.clone().and(filter))
-        .unwrap_or(thresh);
+    let filter = match (threshold_filter, req.filter()) {
+        (Some(threshold_filter), Some(filter)) => Some(threshold_filter.and(filter.clone())),
+        (Some(threshold_filter), None) => Some(threshold_filter),
+        (None, Some(filter)) => Some(filter.clone()),
+        (None, None) => None,
+    };
 
-    let where_clause = format!(
-        "WHERE e.embedding MATCH ? AND k = ? AND {}",
-        filter.condition
-    );
+    let where_clause = match &filter {
+        Some(filter) => format!(
+            "WHERE e.embedding MATCH ? AND k = ? AND {}",
+            filter.condition
+        ),
+        None => "WHERE e.embedding MATCH ? AND k = ?".to_string(),
+    };
 
     let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
     let samples = req.samples() as u32;
 
     let mut params = vec![query_vec.clone(), query_vec, samples.into()];
-    let filter_params = filter.clone().compile_params()?;
-    params.extend(filter_params);
+    if let Some(filter) = filter {
+        params.extend(filter.compile_params()?);
+    }
 
     Ok((where_clause, params))
 }
@@ -719,6 +726,19 @@ mod tests {
         assert!(where_clause.contains("(1 - vec_distance_cosine(?1, e.embedding)) > ?"));
         assert_eq!(params.len(), 4);
         assert_eq!(params[3], Value::Real(0.95));
+    }
+
+    #[test]
+    fn no_threshold_does_not_add_similarity_predicate() {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .build();
+
+        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0]).unwrap();
+
+        assert_eq!(where_clause, "WHERE e.embedding MATCH ? AND k = ?");
+        assert_eq!(params.len(), 3);
     }
 }
 
