@@ -643,7 +643,10 @@ mod tests {
 
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
-        assert!(matches!(deserialized.finish_reason, Some(FinishReason::Stop)));
+        assert!(matches!(
+            deserialized.finish_reason,
+            Some(FinishReason::Stop)
+        ));
         assert_eq!(
             deserialized.model_version.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
