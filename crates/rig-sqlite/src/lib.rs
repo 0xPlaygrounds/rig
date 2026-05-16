@@ -15,6 +15,7 @@ use rig_core::{Embed, OneOrMany};
 use rusqlite::OptionalExtension;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
@@ -34,6 +35,7 @@ pub trait ColumnValue: Send + Sync {
     fn column_type(&self) -> &'static str;
 }
 
+#[derive(Clone, Debug)]
 pub struct Column {
     name: &'static str,
     col_type: &'static str,
@@ -49,6 +51,12 @@ impl Column {
         }
     }
 
+    /// Marks this column as filterable.
+    ///
+    /// Filterable columns are indexed on the document table and stored as
+    /// sqlite-vec metadata columns so supported filters can be applied during
+    /// KNN candidate search. Simple comparison filters are pushed to sqlite-vec;
+    /// more complex filters are applied on the joined document table.
     pub fn indexed(mut self) -> Self {
         self.indexed = true;
         self
@@ -174,6 +182,171 @@ impl Display for SqliteVectorTableMissingSchema {
 
 impl std::error::Error for SqliteVectorTableMissingSchema {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SqliteMetadataType {
+    Text,
+    Integer,
+    Float,
+    Boolean,
+}
+
+impl SqliteMetadataType {
+    fn from_column_type(column_type: &str) -> Option<Self> {
+        let column_type = column_type
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+
+        match column_type.as_str() {
+            "TEXT" => Some(Self::Text),
+            "INTEGER" | "INT" | "INT64" | "INTEGER64" => Some(Self::Integer),
+            "FLOAT" | "REAL" | "DOUBLE" | "FLOAT64" | "F64" => Some(Self::Float),
+            "BOOLEAN" | "BOOL" => Some(Self::Boolean),
+            _ => None,
+        }
+    }
+
+    fn vec0_name(self) -> &'static str {
+        match self {
+            Self::Text => "TEXT",
+            Self::Integer => "INTEGER",
+            Self::Float => "FLOAT",
+            Self::Boolean => "BOOLEAN",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SqliteMetadataColumn {
+    name: &'static str,
+    metadata_type: SqliteMetadataType,
+}
+
+#[derive(Debug)]
+struct SqliteUnsupportedMetadataColumn {
+    column_name: &'static str,
+    column_type: &'static str,
+}
+
+impl Display for SqliteUnsupportedMetadataColumn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SQLite metadata column `{}` has unsupported type `{}`",
+            self.column_name, self.column_type
+        )
+    }
+}
+
+impl std::error::Error for SqliteUnsupportedMetadataColumn {}
+
+#[derive(Debug)]
+struct SqliteMetadataSchemaMismatch {
+    table_name: String,
+    column_name: &'static str,
+    column_type: SqliteMetadataType,
+}
+
+impl Display for SqliteMetadataSchemaMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SQLite vector table `{}` is missing metadata column `{} {}`",
+            self.table_name,
+            self.column_name,
+            self.column_type.vec0_name()
+        )
+    }
+}
+
+impl std::error::Error for SqliteMetadataSchemaMismatch {}
+
+#[derive(Debug)]
+struct SqliteMetadataValueError {
+    column_name: &'static str,
+    column_type: SqliteMetadataType,
+    value: String,
+}
+
+impl Display for SqliteMetadataValueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "could not convert value `{}` for SQLite metadata column `{} {}`",
+            self.value,
+            self.column_name,
+            self.column_type.vec0_name()
+        )
+    }
+}
+
+impl std::error::Error for SqliteMetadataValueError {}
+
+fn sqlite_metadata_columns(
+    schema: &[Column],
+) -> Result<Vec<SqliteMetadataColumn>, VectorStoreError> {
+    schema
+        .iter()
+        .filter(|column| column.indexed)
+        .map(|column| {
+            let metadata_type =
+                SqliteMetadataType::from_column_type(column.col_type).ok_or_else(|| {
+                    VectorStoreError::DatastoreError(Box::new(SqliteUnsupportedMetadataColumn {
+                        column_name: column.name,
+                        column_type: column.col_type,
+                    }))
+                })?;
+
+            Ok(SqliteMetadataColumn {
+                name: column.name,
+                metadata_type,
+            })
+        })
+        .collect()
+}
+
+fn sqlite_metadata_value(
+    values: &[(&'static str, Box<dyn ColumnValue>)],
+    column: &SqliteMetadataColumn,
+) -> rusqlite::Result<Value> {
+    let value = values
+        .iter()
+        .find(|(name, _)| *name == column.name)
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName(column.name.to_string()))?
+        .1
+        .to_sql_string();
+
+    match column.metadata_type {
+        SqliteMetadataType::Text => Ok(Value::Text(value)),
+        SqliteMetadataType::Integer => value.parse::<i64>().map(Value::Integer).map_err(|_| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteMetadataValueError {
+                column_name: column.name,
+                column_type: column.metadata_type,
+                value,
+            }))
+        }),
+        SqliteMetadataType::Float => value.parse::<f64>().map(Value::Real).map_err(|_| {
+            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteMetadataValueError {
+                column_name: column.name,
+                column_type: column.metadata_type,
+                value,
+            }))
+        }),
+        SqliteMetadataType::Boolean => match value.to_ascii_lowercase().as_str() {
+            "true" | "1" => Ok(Value::Integer(1)),
+            "false" | "0" => Ok(Value::Integer(0)),
+            _ => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+                SqliteMetadataValueError {
+                    column_name: column.name,
+                    column_type: column.metadata_type,
+                    value,
+                },
+            ))),
+        },
+    }
+}
+
 #[derive(Clone)]
 pub struct SqliteVectorStore<E, T>
 where
@@ -182,6 +355,7 @@ where
 {
     conn: Connection,
     distance_metric: SqliteDistanceMetric,
+    metadata_columns: Vec<SqliteMetadataColumn>,
     _phantom: PhantomData<(E, T)>,
 }
 
@@ -210,7 +384,18 @@ where
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
         let schema = T::schema();
+        let metadata_columns = sqlite_metadata_columns(&schema)?;
+        let metadata_columns_for_schema_check = metadata_columns.clone();
         let distance_metric_name = distance_metric.vec0_name();
+        let mut embeddings_columns =
+            format!("embedding float[{dims}] distance_metric={distance_metric_name}");
+        for column in &metadata_columns {
+            embeddings_columns.push_str(&format!(
+                ", {} {}",
+                column.name,
+                column.metadata_type.vec0_name()
+            ));
+        }
 
         // Build the table schema
         let mut create_table = format!("CREATE TABLE IF NOT EXISTS {table_name} (");
@@ -257,7 +442,7 @@ where
 
                 // Create embeddings table
                 conn.execute_batch(&format!(
-                    "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0(embedding float[{dims}] distance_metric={distance_metric_name})"
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0({embeddings_columns})"
                 ))?;
 
                 conn.execute_batch("COMMIT")?;
@@ -291,10 +476,22 @@ where
                 },
             )));
         }
+        for column in metadata_columns_for_schema_check {
+            if !sqlite_schema_contains_metadata_column(&schema_sql, &column) {
+                return Err(VectorStoreError::DatastoreError(Box::new(
+                    SqliteMetadataSchemaMismatch {
+                        table_name: embeddings_table_name.clone(),
+                        column_name: column.name,
+                        column_type: column.metadata_type,
+                    },
+                )));
+            }
+        }
 
         Ok(Self {
             conn,
             distance_metric,
+            metadata_columns,
             _phantom: PhantomData,
         })
     }
@@ -311,6 +508,18 @@ where
         info!("Adding {} documents to store", documents.len());
         let table_name = T::name();
         let mut last_id = 0;
+        let embedding_columns = std::iter::once("rowid")
+            .chain(std::iter::once("embedding"))
+            .chain(self.metadata_columns.iter().map(|column| column.name))
+            .collect::<Vec<_>>();
+        let embedding_placeholders = (1..=embedding_columns.len())
+            .map(|i| format!("?{i}"))
+            .collect::<Vec<_>>();
+        let embeddings_sql = format!(
+            "INSERT INTO {table_name}_embeddings ({}) VALUES ({})",
+            embedding_columns.join(", "),
+            embedding_placeholders.join(", ")
+        );
 
         for (doc, embeddings) in &documents {
             debug!("Storing document with id {}", doc.id());
@@ -335,8 +544,11 @@ where
             )?;
             last_id = txn.last_insert_rowid();
 
-            let embeddings_sql =
-                format!("INSERT INTO {table_name}_embeddings (rowid, embedding) VALUES (?1, ?2)");
+            let metadata_values = self
+                .metadata_columns
+                .iter()
+                .map(|column| sqlite_metadata_value(&values, column))
+                .collect::<rusqlite::Result<Vec<_>>>()?;
 
             let mut stmt = txn.prepare(&embeddings_sql)?;
             for (i, embedding) in embeddings.iter().enumerate() {
@@ -347,8 +559,11 @@ where
                     embeddings.len(),
                     vec.len() * 4
                 );
-                let blob = rusqlite::types::Value::Blob(vec.as_bytes().to_vec());
-                stmt.execute(rusqlite::params![last_id, blob])?;
+                let mut params = Vec::with_capacity(2 + metadata_values.len());
+                params.push(Value::Integer(last_id));
+                params.push(Value::Blob(vec.as_bytes().to_vec()));
+                params.extend(metadata_values.iter().cloned());
+                stmt.execute(rusqlite::params_from_iter(params))?;
             }
         }
 
@@ -411,10 +626,115 @@ where
     }
 }
 
-#[derive(Clone, Default, Deserialize, Serialize, Debug)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct SqliteSearchFilter {
+    expr: SqliteSearchFilterExpr,
+}
+
+impl Default for SqliteSearchFilter {
+    fn default() -> Self {
+        Self {
+            expr: SqliteSearchFilterExpr::Raw {
+                condition: "1 = 1".to_string(),
+                params: Vec::new(),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+enum SqliteSearchFilterExpr {
+    Comparison {
+        key: String,
+        op: SqliteComparisonOp,
+        value: serde_json::Value,
+    },
+    And(Box<SqliteSearchFilterExpr>, Box<SqliteSearchFilterExpr>),
+    Or(Box<SqliteSearchFilterExpr>, Box<SqliteSearchFilterExpr>),
+    Not(Box<SqliteSearchFilterExpr>),
+    Between {
+        key: String,
+        lo: String,
+        hi: String,
+    },
+    NullCheck {
+        key: String,
+        negated: bool,
+    },
+    Pattern {
+        key: String,
+        op: SqlitePatternOp,
+        pattern: String,
+    },
+    Raw {
+        condition: String,
+        params: Vec<serde_json::Value>,
+    },
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, Debug)]
+enum SqliteComparisonOp {
+    Eq,
+    Gt,
+    Lt,
+}
+
+impl SqliteComparisonOp {
+    fn as_sql(self) -> &'static str {
+        match self {
+            Self::Eq => "=",
+            Self::Gt => ">",
+            Self::Lt => "<",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize, Debug)]
+enum SqlitePatternOp {
+    Glob,
+    Like,
+}
+
+impl SqlitePatternOp {
+    fn as_sql(self) -> &'static str {
+        match self {
+            Self::Glob => "glob",
+            Self::Like => "like",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SqliteFilterTarget {
+    VectorMetadata,
+    Document,
+}
+
+impl SqliteFilterTarget {
+    fn alias(self) -> &'static str {
+        match self {
+            Self::VectorMetadata => "e",
+            Self::Document => "d",
+        }
+    }
+}
+
+#[derive(Default)]
+struct SqliteRenderedFilters {
+    native: Vec<SqliteRenderedFilter>,
+    post: Vec<SqliteRenderedFilter>,
+}
+
+impl SqliteRenderedFilters {
+    fn extend(&mut self, rhs: Self) {
+        self.native.extend(rhs.native);
+        self.post.extend(rhs.post);
+    }
+}
+
+struct SqliteRenderedFilter {
     condition: String,
-    params: Vec<serde_json::Value>,
+    params: Vec<Value>,
 }
 
 impl SearchFilter for SqliteSearchFilter {
@@ -422,36 +742,43 @@ impl SearchFilter for SqliteSearchFilter {
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{} = ?", key.as_ref()),
-            params: vec![value],
+            expr: SqliteSearchFilterExpr::Comparison {
+                key: key.as_ref().to_string(),
+                op: SqliteComparisonOp::Eq,
+                value,
+            },
         }
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{} > ?", key.as_ref()),
-            params: vec![value],
+            expr: SqliteSearchFilterExpr::Comparison {
+                key: key.as_ref().to_string(),
+                op: SqliteComparisonOp::Gt,
+                value,
+            },
         }
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         Self {
-            condition: format!("{} < ?", key.as_ref()),
-            params: vec![value],
+            expr: SqliteSearchFilterExpr::Comparison {
+                key: key.as_ref().to_string(),
+                op: SqliteComparisonOp::Lt,
+                value,
+            },
         }
     }
 
     fn and(self, rhs: Self) -> Self {
         Self {
-            condition: format!("({}) AND ({})", self.condition, rhs.condition),
-            params: self.params.into_iter().chain(rhs.params).collect(),
+            expr: SqliteSearchFilterExpr::And(Box::new(self.expr), Box::new(rhs.expr)),
         }
     }
 
     fn or(self, rhs: Self) -> Self {
         Self {
-            condition: format!("({}) OR ({})", self.condition, rhs.condition),
-            params: self.params.into_iter().chain(rhs.params).collect(),
+            expr: SqliteSearchFilterExpr::Or(Box::new(self.expr), Box::new(rhs.expr)),
         }
     }
 }
@@ -460,8 +787,7 @@ impl SqliteSearchFilter {
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self {
-            condition: format!("NOT ({})", self.condition),
-            ..self
+            expr: SqliteSearchFilterExpr::Not(Box::new(self.expr)),
         }
     }
 
@@ -474,23 +800,27 @@ impl SqliteSearchFilter {
         let hi = range.end();
 
         Self {
-            condition: format!("{key} between {lo} and {hi}"),
-            ..Default::default()
+            expr: SqliteSearchFilterExpr::Between {
+                key,
+                lo: lo.to_string(),
+                hi: hi.to_string(),
+            },
         }
     }
 
     // Null checks
     pub fn is_null(key: String) -> Self {
         Self {
-            condition: format!("{key} is null"),
-            ..Default::default()
+            expr: SqliteSearchFilterExpr::NullCheck {
+                key,
+                negated: false,
+            },
         }
     }
 
     pub fn is_not_null(key: String) -> Self {
         Self {
-            condition: format!("{key} is not null"),
-            ..Default::default()
+            expr: SqliteSearchFilterExpr::NullCheck { key, negated: true },
         }
     }
 
@@ -502,8 +832,11 @@ impl SqliteSearchFilter {
         S: AsRef<&'a str>,
     {
         Self {
-            condition: format!("{key} glob {}", pattern.as_ref()),
-            ..Default::default()
+            expr: SqliteSearchFilterExpr::Pattern {
+                key,
+                op: SqlitePatternOp::Glob,
+                pattern: pattern.as_ref().to_string(),
+            },
         }
     }
 
@@ -514,52 +847,170 @@ impl SqliteSearchFilter {
         S: AsRef<&'a str>,
     {
         Self {
-            condition: format!("{key} like {}", pattern.as_ref()),
-            ..Default::default()
+            expr: SqliteSearchFilterExpr::Pattern {
+                key,
+                op: SqlitePatternOp::Like,
+                pattern: pattern.as_ref().to_string(),
+            },
         }
     }
 }
 
 impl SqliteSearchFilter {
-    fn compile_params(self) -> Result<Vec<Value>, FilterError> {
-        let mut params = Vec::with_capacity(self.params.len());
+    fn raw(condition: impl Into<String>, params: Vec<serde_json::Value>) -> Self {
+        Self {
+            expr: SqliteSearchFilterExpr::Raw {
+                condition: condition.into(),
+                params,
+            },
+        }
+    }
 
-        fn convert(value: serde_json::Value) -> Result<Value, FilterError> {
-            use serde_json::Value::*;
+    fn render_split(
+        &self,
+        metadata_columns: &[SqliteMetadataColumn],
+    ) -> Result<SqliteRenderedFilters, FilterError> {
+        let metadata_column_names = metadata_columns
+            .iter()
+            .map(|column| column.name)
+            .collect::<HashSet<_>>();
 
-            match value {
-                Null => Ok(Value::Null),
-                Bool(b) => Ok(Value::Integer(b as i64)),
-                String(s) => Ok(Value::Text(s)),
-                Number(n) => Ok(if let Some(float) = n.as_f64() {
-                    Value::Real(float)
-                } else if let Some(int) = n.as_i64() {
-                    Value::Integer(int)
-                } else if let Some(int) = n.as_u64() {
-                    Value::Integer(int as i64)
-                } else {
-                    Value::Text(n.to_string())
-                }),
-                Array(arr) => {
-                    let blob = serde_json::to_vec(&arr)
-                        .map_err(|e| FilterError::Serialization(e.to_string()))?;
+        self.expr.render_split(&metadata_column_names)
+    }
+}
 
-                    Ok(Value::Blob(blob))
-                }
-                Object(obj) => {
-                    let blob = serde_json::to_vec(&obj)
-                        .map_err(|e| FilterError::Serialization(e.to_string()))?;
-
-                    Ok(Value::Blob(blob))
-                }
+impl SqliteSearchFilterExpr {
+    fn render_split(
+        &self,
+        metadata_column_names: &HashSet<&'static str>,
+    ) -> Result<SqliteRenderedFilters, FilterError> {
+        match self {
+            Self::Comparison { key, .. }
+                if metadata_column_names.contains(key.as_str())
+                    && !sqlite_key_is_qualified(key) =>
+            {
+                Ok(SqliteRenderedFilters {
+                    native: vec![self.render(SqliteFilterTarget::VectorMetadata)?],
+                    post: Vec::new(),
+                })
             }
+            Self::And(lhs, rhs) => {
+                let mut rendered = lhs.render_split(metadata_column_names)?;
+                rendered.extend(rhs.render_split(metadata_column_names)?);
+                Ok(rendered)
+            }
+            Self::Or(_, _) | Self::Not(_) => Ok(SqliteRenderedFilters {
+                native: Vec::new(),
+                post: vec![self.render(SqliteFilterTarget::Document)?],
+            }),
+            _ => Ok(SqliteRenderedFilters {
+                native: Vec::new(),
+                post: vec![self.render(SqliteFilterTarget::Document)?],
+            }),
         }
+    }
 
-        for param in self.params.into_iter() {
-            params.push(convert(param)?)
+    fn render(&self, target: SqliteFilterTarget) -> Result<SqliteRenderedFilter, FilterError> {
+        match self {
+            Self::Comparison { key, op, value } => Ok(SqliteRenderedFilter {
+                condition: format!("{} {} ?", sqlite_qualify_key(key, target), op.as_sql()),
+                params: vec![sqlite_filter_param(value.clone())?],
+            }),
+            Self::And(lhs, rhs) => {
+                let lhs = lhs.render(target)?;
+                let rhs = rhs.render(target)?;
+                Ok(SqliteRenderedFilter {
+                    condition: format!("({}) AND ({})", lhs.condition, rhs.condition),
+                    params: lhs.params.into_iter().chain(rhs.params).collect(),
+                })
+            }
+            Self::Or(lhs, rhs) => {
+                let lhs = lhs.render(target)?;
+                let rhs = rhs.render(target)?;
+                Ok(SqliteRenderedFilter {
+                    condition: format!("({}) OR ({})", lhs.condition, rhs.condition),
+                    params: lhs.params.into_iter().chain(rhs.params).collect(),
+                })
+            }
+            Self::Not(expr) => {
+                let expr = expr.render(target)?;
+                Ok(SqliteRenderedFilter {
+                    condition: format!("NOT ({})", expr.condition),
+                    params: expr.params,
+                })
+            }
+            Self::Between { key, lo, hi } => Ok(SqliteRenderedFilter {
+                condition: format!("{} between {lo} and {hi}", sqlite_qualify_key(key, target)),
+                params: Vec::new(),
+            }),
+            Self::NullCheck { key, negated } => {
+                let operator = if *negated { "is not null" } else { "is null" };
+                Ok(SqliteRenderedFilter {
+                    condition: format!("{} {operator}", sqlite_qualify_key(key, target)),
+                    params: Vec::new(),
+                })
+            }
+            Self::Pattern { key, op, pattern } => Ok(SqliteRenderedFilter {
+                condition: format!(
+                    "{} {} {}",
+                    sqlite_qualify_key(key, target),
+                    op.as_sql(),
+                    pattern
+                ),
+                params: Vec::new(),
+            }),
+            Self::Raw { condition, params } => Ok(SqliteRenderedFilter {
+                condition: condition.clone(),
+                params: params
+                    .iter()
+                    .cloned()
+                    .map(sqlite_filter_param)
+                    .collect::<Result<Vec<_>, _>>()?,
+            }),
         }
+    }
+}
 
-        Ok(params)
+fn sqlite_filter_param(value: serde_json::Value) -> Result<Value, FilterError> {
+    use serde_json::Value::*;
+
+    match value {
+        Null => Ok(Value::Null),
+        Bool(b) => Ok(Value::Integer(b as i64)),
+        String(s) => Ok(Value::Text(s)),
+        Number(n) => Ok(if let Some(float) = n.as_f64() {
+            Value::Real(float)
+        } else if let Some(int) = n.as_i64() {
+            Value::Integer(int)
+        } else if let Some(int) = n.as_u64() {
+            Value::Integer(int as i64)
+        } else {
+            Value::Text(n.to_string())
+        }),
+        Array(arr) => {
+            let blob =
+                serde_json::to_vec(&arr).map_err(|e| FilterError::Serialization(e.to_string()))?;
+
+            Ok(Value::Blob(blob))
+        }
+        Object(obj) => {
+            let blob =
+                serde_json::to_vec(&obj).map_err(|e| FilterError::Serialization(e.to_string()))?;
+
+            Ok(Value::Blob(blob))
+        }
+    }
+}
+
+fn sqlite_key_is_qualified(key: &str) -> bool {
+    key.contains('.') || key.contains('(') || key.contains(' ') || key.contains('?')
+}
+
+fn sqlite_qualify_key(key: &str, target: SqliteFilterTarget) -> String {
+    if sqlite_key_is_qualified(key) {
+        key.to_string()
+    } else {
+        format!("{}.{}", target.alias(), key)
     }
 }
 
@@ -684,11 +1135,7 @@ where
 }
 
 fn sqlite_distance_metric_from_schema(schema_sql: &str) -> SqliteDistanceMetric {
-    let normalized = schema_sql
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .collect::<String>();
+    let normalized = sqlite_normalized_schema(schema_sql);
 
     if normalized.contains("distance_metric=cosine") {
         SqliteDistanceMetric::Cosine
@@ -699,39 +1146,66 @@ fn sqlite_distance_metric_from_schema(schema_sql: &str) -> SqliteDistanceMetric 
     }
 }
 
+fn sqlite_normalized_schema(schema_sql: &str) -> String {
+    schema_sql
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn sqlite_schema_contains_metadata_column(schema_sql: &str, column: &SqliteMetadataColumn) -> bool {
+    let normalized = sqlite_normalized_schema(schema_sql);
+    let column_sql = format!(
+        ",{}{}",
+        column.name.to_ascii_lowercase(),
+        column.metadata_type.vec0_name().to_ascii_lowercase()
+    );
+
+    normalized.contains(&column_sql)
+}
+
 fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
     query_vec: Vec<f32>,
     distance_metric: SqliteDistanceMetric,
+    metadata_columns: &[SqliteMetadataColumn],
 ) -> Result<(String, Vec<Value>), FilterError> {
     let score_expression = distance_metric.score_expression("?1", "e.embedding");
-    let threshold_filter = req
-        .threshold()
-        .map(|threshold| SqliteSearchFilter::gt(score_expression.as_str(), threshold.into()));
+    let threshold_filter = req.threshold().map(|threshold| {
+        SqliteSearchFilter::raw(format!("{score_expression} > ?"), vec![threshold.into()])
+    });
 
-    let filter = match (threshold_filter, req.filter()) {
-        (Some(threshold_filter), Some(filter)) => Some(threshold_filter.and(filter.clone())),
-        (Some(threshold_filter), None) => Some(threshold_filter),
-        (None, Some(filter)) => Some(filter.clone()),
-        (None, None) => None,
-    };
+    let mut filters = SqliteRenderedFilters::default();
+    if let Some(threshold_filter) = threshold_filter {
+        filters.native.push(
+            threshold_filter
+                .expr
+                .render(SqliteFilterTarget::VectorMetadata)?,
+        );
+    }
+    if let Some(filter) = req.filter() {
+        filters.extend(filter.render_split(metadata_columns)?);
+    }
 
-    let where_clause = match &filter {
-        Some(filter) => format!(
-            "WHERE e.embedding MATCH ? AND k = ? AND ({})",
-            filter.condition
-        ),
-        None => "WHERE e.embedding MATCH ? AND k = ?".to_string(),
-    };
+    let mut conditions = vec!["e.embedding MATCH ?".to_string(), "k = ?".to_string()];
+    conditions.extend(
+        filters
+            .native
+            .iter()
+            .chain(filters.post.iter())
+            .map(|filter| format!("({})", filter.condition)),
+    );
+
+    let where_clause = format!("WHERE {}", conditions.join(" AND "));
 
     let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
     let samples = req.samples() as u32;
 
     let mut params = vec![query_vec.clone(), query_vec, samples.into()];
-    if let Some(filter) = filter {
-        params.extend(filter.compile_params()?);
-    }
+    params.extend(filters.native.into_iter().flat_map(|filter| filter.params));
+    params.extend(filters.post.into_iter().flat_map(|filter| filter.params));
 
     Ok((where_clause, params))
 }
@@ -758,18 +1232,27 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         let column_names: Vec<&str> = columns.iter().map(|column| column.name).collect();
 
         // Build SELECT statement with all columns
-        let select_cols = column_names.join(", ");
+        let select_cols = column_names
+            .iter()
+            .map(|column| format!("d.{column}"))
+            .collect::<Vec<_>>()
+            .join(", ");
 
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
-        let (where_clause, params) = build_where_clause(&req, query_vec, distance_metric)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_vec,
+            distance_metric,
+            &self.store.metadata_columns,
+        )?;
 
         let rows = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.{select_cols}, {score_expression} as score
+                    "SELECT {select_cols}, {score_expression} as score
                     FROM {table_name}_embeddings e
                     JOIN {table_name} d ON e.rowid = d.rowid
                     {where_clause}
@@ -827,7 +1310,12 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
 
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
-        let (where_clause, params) = build_where_clause(&req, query_vec, distance_metric)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_vec,
+            distance_metric,
+            &self.store.metadata_columns,
+        )?;
 
         let results = self
             .store
@@ -870,6 +1358,56 @@ impl ColumnValue for String {
     }
 }
 
+impl ColumnValue for i64 {
+    fn to_sql_string(&self) -> String {
+        self.to_string()
+    }
+
+    fn column_type(&self) -> &'static str {
+        "INTEGER"
+    }
+}
+
+impl ColumnValue for i32 {
+    fn to_sql_string(&self) -> String {
+        self.to_string()
+    }
+
+    fn column_type(&self) -> &'static str {
+        "INTEGER"
+    }
+}
+
+impl ColumnValue for f64 {
+    fn to_sql_string(&self) -> String {
+        self.to_string()
+    }
+
+    fn column_type(&self) -> &'static str {
+        "FLOAT"
+    }
+}
+
+impl ColumnValue for f32 {
+    fn to_sql_string(&self) -> String {
+        self.to_string()
+    }
+
+    fn column_type(&self) -> &'static str {
+        "FLOAT"
+    }
+}
+
+impl ColumnValue for bool {
+    fn to_sql_string(&self) -> String {
+        self.to_string()
+    }
+
+    fn column_type(&self) -> &'static str {
+        "BOOLEAN"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -878,6 +1416,13 @@ mod tests {
     use sqlite_vec::sqlite3_vec_init;
     use std::sync::Once;
     use tokio_rusqlite::Connection;
+
+    fn test_metadata_columns() -> Vec<SqliteMetadataColumn> {
+        vec![SqliteMetadataColumn {
+            name: "category",
+            metadata_type: SqliteMetadataType::Text,
+        }]
+    }
 
     #[test]
     fn threshold_filter_uses_computed_similarity_expression() -> anyhow::Result<()> {
@@ -888,7 +1433,7 @@ mod tests {
             .build();
 
         let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine)?;
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[])?;
 
         anyhow::ensure!(
             where_clause.contains("e.embedding MATCH ?"),
@@ -920,7 +1465,7 @@ mod tests {
             .build();
 
         let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2)?;
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2, &[])?;
 
         anyhow::ensure!(
             where_clause.contains("(-vec_distance_l2(?1, e.embedding)) > ?"),
@@ -943,7 +1488,7 @@ mod tests {
             .build();
 
         let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine)?;
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[])?;
 
         anyhow::ensure!(
             where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -966,15 +1511,50 @@ mod tests {
             .filter(filter)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &test_metadata_columns(),
+        )?;
 
         anyhow::ensure!(
             where_clause
-                == "WHERE e.embedding MATCH ? AND k = ? AND ((category = ?) OR (category = ?))",
+                == "WHERE e.embedding MATCH ? AND k = ? AND ((d.category = ?) OR (d.category = ?))",
             "unexpected where clause: {where_clause}"
         );
         anyhow::ensure!(params.len() == 5, "unexpected params: {params:?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn indexed_filter_uses_vec0_metadata_constraint() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::eq(
+                "category",
+                serde_json::json!("docs"),
+            ))
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &test_metadata_columns(),
+        )?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ? AND (e.category = ?)",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Text("docs".to_string())),
+            "unexpected filter param: {params:?}"
+        );
 
         Ok(())
     }
@@ -1100,6 +1680,56 @@ mod tests {
         anyhow::ensure!(
             result_ids.as_slice() == ["exact", "l2-close"],
             "top_n_ids should use the same L2 metric: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_indexed_filter_is_applied_during_candidate_search() -> anyhow::Result<()> {
+        let index = live_test_index(
+            "live_indexed_filter_is_applied_during_candidate_search",
+            vec![
+                row(
+                    "nearest",
+                    "misc",
+                    "nearest excluded category",
+                    vec![1.0, 0.0],
+                ),
+                row("docs", "docs", "docs match", vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq(
+                "category",
+                serde_json::json!("docs"),
+            ))
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            ids.as_slice() == ["docs"],
+            "indexed filters should constrain sqlite-vec candidate search: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            result_ids.as_slice() == ["docs"],
+            "top_n_ids should use indexed filters during candidate search: {id_results:?}"
         );
 
         Ok(())
