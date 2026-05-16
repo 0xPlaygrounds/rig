@@ -23,7 +23,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut response_text = String::new();
     for content in response.choice.iter() {
-        if let rig_core::message::AssistantContent::Text(rig_core::message::Text { text }) = content
+        if let rig_core::message::AssistantContent::Text(rig_core::message::Text { text, .. }) =
+            content
         {
             response_text.push_str(text);
         }

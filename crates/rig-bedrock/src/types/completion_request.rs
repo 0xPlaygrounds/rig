@@ -243,9 +243,7 @@ mod tests {
             model: None,
             preamble: None,
             chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "test".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -508,9 +506,7 @@ mod tests {
             chat_history: OneOrMany::many(vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text {
-                        text: "test".to_string(),
-                    })),
+                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
                 },
             ])
             .expect("history should be non-empty"),
@@ -566,9 +562,7 @@ mod tests {
             chat_history: OneOrMany::many(vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text {
-                        text: "test".to_string(),
-                    })),
+                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
                 },
             ])
             .expect("history should be non-empty"),
@@ -607,9 +601,9 @@ mod tests {
         let request = CompletionRequest {
             chat_history: OneOrMany::many(vec![
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text {
-                        text: "user prompt".to_string(),
-                    })),
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "user prompt".to_string(),
+                    ))),
                 },
                 Message::Assistant {
                     id: None,
@@ -618,9 +612,7 @@ mod tests {
                     )),
                 },
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text {
-                        text: "follow up".to_string(),
-                    })),
+                    content: OneOrMany::one(UserContent::Text(Text::new("follow up".to_string()))),
                 },
             ])
             .expect("history should be non-empty"),

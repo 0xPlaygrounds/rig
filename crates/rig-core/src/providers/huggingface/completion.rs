@@ -181,7 +181,7 @@ impl FromStr for SystemContent {
 impl From<UserContent> for message::UserContent {
     fn from(value: UserContent) -> Self {
         match value {
-            UserContent::Text { text } => message::UserContent::text(text),
+            UserContent::Text { text, .. } => message::UserContent::text(text),
             UserContent::ImageUrl { image_url } => {
                 message::UserContent::image_url(image_url.url, None, None)
             }
@@ -299,9 +299,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 name: id,
                                 arguments: None,
                                 content: content.try_map(|content| match content {
-                                    message::ToolResultContent::Text(message::Text { text }) => {
-                                        Ok(text)
-                                    }
+                                    message::ToolResultContent::Text(message::Text {
+                                        text,
+                                        ..
+                                    }) => Ok(text),
                                     _ => Err(message::MessageError::ConversionError(
                                         "Tool result content does not support non-text".into(),
                                     )),
@@ -408,7 +409,9 @@ impl TryFrom<Message> for message::Message {
                 let mut content = content
                     .into_iter()
                     .map(|content| match content {
-                        AssistantContent::Text { text } => message::AssistantContent::text(text),
+                        AssistantContent::Text { text, .. } => {
+                            message::AssistantContent::text(text)
+                        }
                     })
                     .collect::<Vec<_>>();
 
@@ -441,7 +444,7 @@ impl TryFrom<Message> for message::Message {
             // stop gap to avoid obnoxious error handling or panic occurring.
             Message::System { content, .. } => message::Message::User {
                 content: content.map(|c| match c {
-                    SystemContent::Text { text } => message::UserContent::text(text),
+                    SystemContent::Text { text, .. } => message::UserContent::text(text),
                 }),
             },
         })
@@ -514,7 +517,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
                 let text = content
                     .iter()
                     .filter_map(|x| {
-                        if let UserContent::Text { text } = x {
+                        if let UserContent::Text { text, .. } = x {
                             Some(text.clone())
                         } else {
                             None
@@ -570,7 +573,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let mut content = content
                     .iter()
                     .map(|c| match c {
-                        AssistantContent::Text { text } => message::AssistantContent::text(text),
+                        AssistantContent::Text { text, .. } => {
+                            message::AssistantContent::text(text)
+                        }
                     })
                     .collect::<Vec<_>>();
 

@@ -229,7 +229,7 @@ fn rig_user_content_to_grpc_part(
     content: message::UserContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::UserContent::Text(message::Text { text }) => Ok(proto::Part {
+        message::UserContent::Text(message::Text { text, .. }) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(text)),
             thought: false,
             thought_signature: Vec::new(),
@@ -334,7 +334,7 @@ fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::AssistantContent::Text(message::Text { text }) => Ok(proto::Part {
+        message::AssistantContent::Text(message::Text { text, .. }) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(text)),
             thought: false,
             thought_signature: Vec::new(),

@@ -289,7 +289,7 @@ impl TryFrom<message::Message> for Message {
                 let collapsed_content = content
                     .into_iter()
                     .map(|content| match content {
-                        message::UserContent::Text(message::Text { text }) => Ok(text),
+                        message::UserContent::Text(message::Text { text, .. }) => Ok(text),
                         _ => Err(MessageError::ConversionError(
                             "Only text content is supported by Perplexity".to_owned(),
                         )),
@@ -308,7 +308,7 @@ impl TryFrom<message::Message> for Message {
                     .into_iter()
                     .map(|content| {
                         Ok(match content {
-                            message::AssistantContent::Text(message::Text { text }) => text,
+                            message::AssistantContent::Text(message::Text { text, .. }) => text,
                             _ => return Err(MessageError::ConversionError(
                                 "Only text assistant message content is supported by Perplexity"
                                     .to_owned(),

@@ -113,13 +113,11 @@ impl TryFrom<RawMessage> for message::Message {
                 content: raw.content,
             }),
             "user" => Ok(message::Message::User {
-                content: OneOrMany::one(UserContent::Text(message::Text { text: raw.content })),
+                content: OneOrMany::one(UserContent::Text(message::Text::new(raw.content))),
             }),
             "assistant" => Ok(message::Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::Text(message::Text {
-                    text: raw.content,
-                })),
+                content: OneOrMany::one(AssistantContent::Text(message::Text::new(raw.content))),
             }),
             _ => Err(CompletionError::ResponseError(format!(
                 "Unsupported message role: {}",
@@ -689,11 +687,11 @@ impl TryFrom<serde_json::Value> for Message {
         match role {
             "system" => Ok(Message::System { content }),
             "user" => Ok(Message::User {
-                content: OneOrMany::one(UserContent::Text(message::Text { text: content })),
+                content: OneOrMany::one(UserContent::Text(message::Text::new(content))),
             }),
             "assistant" => Ok(Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::Text(message::Text { text: content })),
+                content: OneOrMany::one(AssistantContent::Text(message::Text::new(content))),
             }),
             _ => Err(CompletionError::ResponseError(format!(
                 "Unsupported message role: {role}"
@@ -739,9 +737,9 @@ mod tests {
             Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
-                    AssistantContent::Text(message::Text {
-                        text: "Hello there, how may I assist you today?".to_string()
-                    })
+                    AssistantContent::Text(message::Text::new(
+                        "Hello there, how may I assist you today?".to_string()
+                    ))
                 );
             }
             _ => panic!("Expected assistant message"),
@@ -751,9 +749,7 @@ mod tests {
             Message::User { content } => {
                 assert_eq!(
                     content.first(),
-                    UserContent::Text(message::Text {
-                        text: "What can you help me with?".to_string()
-                    })
+                    UserContent::Text(message::Text::new("What can you help me with?".to_string()))
                 );
             }
             _ => panic!("Expected user message"),
@@ -764,9 +760,9 @@ mod tests {
             Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
-                    AssistantContent::Text(message::Text {
-                        text: "Hello there, how may I assist you today?".to_string()
-                    })
+                    AssistantContent::Text(message::Text::new(
+                        "Hello there, how may I assist you today?".to_string()
+                    ))
                 );
             }
             _ => panic!("Expected assistant message"),

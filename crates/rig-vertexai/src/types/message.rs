@@ -16,7 +16,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                 let parts: Result<Vec<vertexai::model::Part>, _> = content
                     .into_iter()
                     .map(|user_content| match user_content {
-                        UserContent::Text(Text { text }) => {
+                        UserContent::Text(Text { text, .. }) => {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
                         UserContent::ToolResult(tool_result) => {
@@ -26,7 +26,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                                 .content
                                 .iter()
                                 .map(|content| match content {
-                                    ToolResultContent::Text(Text { text }) => {
+                                    ToolResultContent::Text(Text { text, .. }) => {
                                         serde_json::Value::String(text.clone())
                                     }
                                     ToolResultContent::Image(_) => {
@@ -69,7 +69,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                 let parts: Result<Vec<vertexai::model::Part>, _> = content
                     .into_iter()
                     .map(|assistant_content| match assistant_content {
-                        AssistantContent::Text(Text { text }) => {
+                        AssistantContent::Text(Text { text, .. }) => {
                             Ok(vertexai::model::Part::new().set_text(text))
                         }
                         AssistantContent::ToolCall(tool_call) => {
@@ -114,9 +114,9 @@ mod tests {
     #[test]
     fn test_user_text_message_conversion() {
         let message = Message::User {
-            content: OneOrMany::one(rig_core::message::UserContent::Text(Text {
-                text: "Hello".to_string(),
-            })),
+            content: OneOrMany::one(rig_core::message::UserContent::Text(Text::new(
+                "Hello".to_string(),
+            ))),
         };
 
         let rig_message = RigMessage(message);
@@ -133,9 +133,7 @@ mod tests {
     fn test_assistant_text_message_conversion() {
         let message = Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::Text(Text {
-                text: "Hi there".to_string(),
-            })),
+            content: OneOrMany::one(AssistantContent::Text(Text::new("Hi there".to_string()))),
         };
 
         let rig_message = RigMessage(message);
@@ -186,9 +184,7 @@ mod tests {
         let tool_result = ToolResult {
             id: "add".to_string(),
             call_id: None,
-            content: OneOrMany::one(ToolResultContent::Text(Text {
-                text: "8".to_string(),
-            })),
+            content: OneOrMany::one(ToolResultContent::Text(Text::new("8".to_string()))),
         };
 
         let message = Message::User {

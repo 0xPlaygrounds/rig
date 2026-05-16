@@ -229,7 +229,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
 
                 for c in content {
                     match c {
-                        UserContent::Text(Text { text }) => text_parts.push(text),
+                        UserContent::Text(Text { text, .. }) => text_parts.push(text),
                         UserContent::Image(img) => {
                             has_images = true;
                             content_items.push(image_item(img)?);

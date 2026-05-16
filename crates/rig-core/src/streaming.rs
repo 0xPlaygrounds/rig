@@ -869,7 +869,7 @@ mod tests {
         ));
         assert!(matches!(
             choice_items.get(1),
-            Some(AssistantContent::Text(Text { text })) if text == "final-text"
+            Some(AssistantContent::Text(Text { text, .. })) if text == "final-text"
         ));
         assert!(matches!(
             choice_items.get(2),
@@ -886,7 +886,7 @@ mod tests {
         assert_eq!(choice_items.len(), 3);
         assert!(matches!(
             choice_items.first(),
-            Some(AssistantContent::Text(Text { text })) if text == "first"
+            Some(AssistantContent::Text(Text { text, .. })) if text == "first"
         ));
         assert!(matches!(
             choice_items.get(1),
@@ -894,7 +894,7 @@ mod tests {
         ));
         assert!(matches!(
             choice_items.get(2),
-            Some(AssistantContent::Text(Text { text })) if text == "second"
+            Some(AssistantContent::Text(Text { text, .. })) if text == "second"
         ));
     }
 }
@@ -939,9 +939,7 @@ where
 {
     /// Create a text stream item.
     pub fn text(text: &str) -> Self {
-        Self::Text(Text {
-            text: text.to_string(),
-        })
+        Self::Text(Text::new(text.to_string()))
     }
 
     /// Create a final response stream item.
