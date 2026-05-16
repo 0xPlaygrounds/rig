@@ -573,7 +573,7 @@ fn build_where_clause(
 
     let where_clause = match &filter {
         Some(filter) => format!(
-            "WHERE e.embedding MATCH ? AND k = ? AND {}",
+            "WHERE e.embedding MATCH ? AND k = ? AND ({})",
             filter.condition
         ),
         None => "WHERE e.embedding MATCH ? AND k = ?".to_string(),
@@ -707,41 +707,6 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn threshold_filter_uses_computed_similarity_expression() {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query("needle")
-            .samples(5)
-            .threshold(0.95)
-            .build();
-
-        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0]).unwrap();
-
-        assert!(where_clause.contains("e.embedding MATCH ?"));
-        assert!(where_clause.contains("k = ?"));
-        assert!(where_clause.contains("(1 - vec_distance_cosine(?1, e.embedding)) > ?"));
-        assert_eq!(params.len(), 4);
-        assert_eq!(params[3], Value::Real(0.95));
-    }
-
-    #[test]
-    fn no_threshold_does_not_add_similarity_predicate() {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query("needle")
-            .samples(5)
-            .build();
-
-        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0]).unwrap();
-
-        assert_eq!(where_clause, "WHERE e.embedding MATCH ? AND k = ?");
-        assert_eq!(params.len(), 3);
-    }
-}
-
 fn serialize_embedding(embedding: &Embedding) -> Vec<f32> {
     embedding.vec.iter().map(|x| *x as f32).collect()
 }
@@ -753,5 +718,297 @@ impl ColumnValue for String {
 
     fn column_type(&self) -> &'static str {
         "TEXT"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rig_core::embeddings::EmbeddingError;
+    use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
+    use sqlite_vec::sqlite3_vec_init;
+    use std::sync::Once;
+    use tokio_rusqlite::Connection;
+
+    #[test]
+    fn threshold_filter_uses_computed_similarity_expression() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .threshold(0.95)
+            .build();
+
+        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0])?;
+
+        anyhow::ensure!(
+            where_clause.contains("e.embedding MATCH ?"),
+            "missing vector match constraint: {where_clause}"
+        );
+        anyhow::ensure!(
+            where_clause.contains("k = ?"),
+            "missing vector k constraint: {where_clause}"
+        );
+        anyhow::ensure!(
+            where_clause.contains("(1 - vec_distance_cosine(?1, e.embedding)) > ?"),
+            "threshold should use computed similarity expression: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Real(0.95)),
+            "unexpected threshold param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn no_threshold_does_not_add_similarity_predicate() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .build();
+
+        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0])?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ?",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 3, "unexpected params: {params:?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn no_threshold_or_filter_keeps_vector_constraints_grouped() -> anyhow::Result<()> {
+        let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs")).or(
+            SqliteSearchFilter::eq("category", serde_json::json!("archive")),
+        );
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(filter)
+            .build();
+
+        let (where_clause, params) = build_where_clause(&req, vec![1.0, 0.0])?;
+
+        anyhow::ensure!(
+            where_clause
+                == "WHERE e.embedding MATCH ? AND k = ? AND ((category = ?) OR (category = ?))",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 5, "unexpected params: {params:?}");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Result<()> {
+        let index = live_test_index(
+            "live_search_orders_by_similarity_and_applies_threshold",
+            vec![
+                row("exact", "docs", "exact match", vec![1.0, 0.0]),
+                row("close", "docs", "close match", vec![0.8, 0.6]),
+                row("opposite", "docs", "opposite match", vec![-1.0, 0.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(3)
+            .threshold(0.75)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        let exact_score = results.first().map(|(score, _, _)| *score);
+        let close_score = results.get(1).map(|(score, _, _)| *score);
+
+        anyhow::ensure!(
+            ids.as_slice() == ["exact", "close"],
+            "unexpected ids: {ids:?}"
+        );
+        anyhow::ensure!(
+            exact_score
+                .zip(close_score)
+                .is_some_and(|(exact, close)| exact > close),
+            "expected exact score to be greater than close score: {results:?}"
+        );
+        anyhow::ensure!(
+            results.iter().all(|(score, _, _)| *score > 0.75),
+            "threshold should remove low-scoring rows: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            result_ids.as_slice() == ["exact", "close"],
+            "unexpected top_n_ids ids: {id_results:?}"
+        );
+        anyhow::ensure!(
+            id_results.iter().all(|(score, _)| *score > 0.75),
+            "top_n_ids threshold should remove low-scoring rows: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_or_filter_without_threshold_does_not_bypass_vector_constraints()
+    -> anyhow::Result<()> {
+        let index = live_test_index(
+            "live_or_filter_without_threshold_does_not_bypass_vector_constraints",
+            vec![
+                row(
+                    "nearest",
+                    "misc",
+                    "nearest excluded category",
+                    vec![1.0, 0.0],
+                ),
+                row("archived", "archive", "far archive match", vec![-1.0, 0.0]),
+                row("docs", "docs", "far docs match", vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs")).or(
+            SqliteSearchFilter::eq("category", serde_json::json!("archive")),
+        );
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(filter)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req).await?;
+
+        anyhow::ensure!(
+            results.is_empty(),
+            "OR filter should not return rows outside the top-k vector match set: {results:?}"
+        );
+
+        Ok(())
+    }
+
+    type SqliteExtensionFn =
+        unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+
+    fn register_sqlite_vec_extension() {
+        static REGISTER_SQLITE_VEC: Once = Once::new();
+
+        REGISTER_SQLITE_VEC.call_once(|| unsafe {
+            sqlite3_auto_extension(Some(std::mem::transmute::<*const (), SqliteExtensionFn>(
+                sqlite3_vec_init as *const (),
+            )));
+        });
+    }
+
+    async fn live_test_index(
+        name: &str,
+        rows: Vec<(TestDocument, OneOrMany<Embedding>)>,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
+        let model = TestEmbeddingModel;
+        let vector_store = SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store.add_rows(rows).await?;
+
+        Ok(vector_store.index(model))
+    }
+
+    fn row(
+        id: impl Into<String>,
+        category: impl Into<String>,
+        title: impl Into<String>,
+        vec: Vec<f64>,
+    ) -> (TestDocument, OneOrMany<Embedding>) {
+        let document = TestDocument {
+            id: id.into(),
+            category: category.into(),
+            title: title.into(),
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.title,
+                vec,
+            }),
+        )
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct TestDocument {
+        id: String,
+        category: String,
+        title: String,
+    }
+
+    impl SqliteVectorStoreTable for TestDocument {
+        fn name() -> &'static str {
+            "live_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("category", "TEXT").indexed(),
+                Column::new("title", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                ("category", Box::new(self.category.clone())),
+                ("title", Box::new(self.title.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone)]
+    struct TestEmbeddingModel;
+
+    impl EmbeddingModel for TestEmbeddingModel {
+        const MAX_DOCUMENTS: usize = 16;
+
+        type Client = ();
+
+        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+            Self
+        }
+
+        fn ndims(&self) -> usize {
+            2
+        }
+
+        async fn embed_texts(
+            &self,
+            texts: impl IntoIterator<Item = String> + WasmCompatSend,
+        ) -> Result<Vec<Embedding>, EmbeddingError> {
+            Ok(texts
+                .into_iter()
+                .map(|text| Embedding {
+                    document: text,
+                    vec: vec![1.0, 0.0],
+                })
+                .collect())
+        }
     }
 }
