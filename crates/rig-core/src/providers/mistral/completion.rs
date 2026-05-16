@@ -140,7 +140,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 tool_call_id: call_id_key,
                             });
                         }
-                        message::UserContent::Text(message::Text { text }) => {
+                        message::UserContent::Text(message::Text { text, .. }) => {
                             other_messages.push(Message::User { content: text });
                         }
                         _ => {}

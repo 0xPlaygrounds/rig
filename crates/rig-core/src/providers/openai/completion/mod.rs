@@ -34,7 +34,7 @@ where
     S: Serializer,
 {
     if content.len() == 1
-        && let UserContent::Text { text } = content.first_ref()
+        && let UserContent::Text { text, .. } = content.first_ref()
     {
         return serializer.serialize_str(text);
     }
@@ -227,7 +227,7 @@ pub enum AssistantContent {
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
         match value {
-            AssistantContent::Text { text } => completion::AssistantContent::text(text),
+            AssistantContent::Text { text, .. } => completion::AssistantContent::text(text),
             AssistantContent::Refusal { refusal } => completion::AssistantContent::text(refusal),
         }
     }
@@ -457,7 +457,7 @@ impl TryFrom<message::ToolResult> for Message {
             .into_iter()
             .map(|content| {
                 match content {
-                message::ToolResultContent::Text(message::Text { text }) => Ok(text),
+                message::ToolResultContent::Text(message::Text { text, .. }) => Ok(text),
                 message::ToolResultContent::Image(_) => Err(message::MessageError::ConversionError(
                     "OpenAI does not support images in tool results. Tool results must be text."
                         .into(),
@@ -479,7 +479,7 @@ impl TryFrom<message::UserContent> for UserContent {
 
     fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
         match value {
-            message::UserContent::Text(message::Text { text }) => Ok(UserContent::Text { text }),
+            message::UserContent::Text(message::Text { text, .. }) => Ok(UserContent::Text { text }),
             message::UserContent::Image(message::Image {
                 data,
                 detail,
@@ -761,7 +761,7 @@ impl TryFrom<Message> for message::Message {
                 }
 
                 assistant_content.extend(content.into_iter().map(|content| match content {
-                    AssistantContent::Text { text } => message::AssistantContent::text(text),
+                    AssistantContent::Text { text, .. } => message::AssistantContent::text(text),
                     AssistantContent::Refusal { refusal } => {
                         message::AssistantContent::text(refusal)
                     }
@@ -807,7 +807,7 @@ impl TryFrom<Message> for message::Message {
 impl From<UserContent> for message::UserContent {
     fn from(content: UserContent) -> Self {
         match content {
-            UserContent::Text { text } => message::UserContent::text(text),
+            UserContent::Text { text, .. } => message::UserContent::text(text),
             UserContent::Image { image_url } => {
                 message::UserContent::image_url(image_url.url, None, Some(image_url.detail))
             }
@@ -924,7 +924,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     .iter()
                     .filter_map(|c| {
                         let s = match c {
-                            AssistantContent::Text { text } => text,
+                            AssistantContent::Text { text, .. } => text,
                             AssistantContent::Refusal { refusal } => refusal,
                         };
                         if s.is_empty() {
@@ -1040,7 +1040,7 @@ fn assistant_message_text_response(message: &Message) -> Option<String> {
     let mut segments = content
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Text { text } => (!text.is_empty()).then(|| text.clone()),
+            AssistantContent::Text { text, .. } => (!text.is_empty()).then(|| text.clone()),
             AssistantContent::Refusal { refusal } => (!refusal.is_empty()).then(|| refusal.clone()),
         })
         .collect::<Vec<_>>();
@@ -1368,7 +1368,7 @@ impl crate::telemetry::ProviderRequestExt for CompletionRequest {
             return None;
         };
 
-        let UserContent::Text { text } = content.first() else {
+        let UserContent::Text { text, .. } = content.first() else {
             return None;
         };
 

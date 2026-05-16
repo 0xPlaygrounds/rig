@@ -128,9 +128,7 @@ mod tests {
             model: None,
             preamble: None,
             chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "test".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -303,9 +301,7 @@ mod tests {
             chat_history: OneOrMany::many(vec![
                 Message::system("System from history"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text {
-                        text: "hello".to_string(),
-                    })),
+                    content: OneOrMany::one(UserContent::Text(Text::new("hello".to_string()))),
                 },
             ])
             .expect("history should be non-empty"),

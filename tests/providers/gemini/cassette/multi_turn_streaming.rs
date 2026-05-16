@@ -116,7 +116,7 @@ where
             while let Some(content) = stream.next().await {
                 match content {
                     Ok(StreamedAssistantContent::Text(text)) => {
-                        yield Ok(Text { text: text.text });
+                        yield Ok(Text::new(text.text));
                         did_call_tool = false;
                     }
                     Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
@@ -140,7 +140,7 @@ where
                     Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                         let rendered = reasoning.display_text();
                         if !rendered.is_empty() {
-                            yield Ok(Text { text: rendered });
+                            yield Ok(Text::new(rendered));
                         }
                         did_call_tool = false;
                     }

@@ -62,10 +62,26 @@ pub struct MessageStart {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentDelta {
-    TextDelta { text: String },
-    InputJsonDelta { partial_json: String },
-    ThinkingDelta { thinking: String },
-    SignatureDelta { signature: String },
+    TextDelta {
+        text: String,
+    },
+    InputJsonDelta {
+        partial_json: String,
+    },
+    ThinkingDelta {
+        thinking: String,
+    },
+    SignatureDelta {
+        signature: String,
+    },
+    CitationsDelta {
+        citation: super::completion::Citation,
+    },
+    /// Forward-compatibility fallback. Any delta type Anthropic adds in the
+    /// future that this crate does not yet model deserializes here so the
+    /// surrounding [`StreamingEvent`] still parses.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -434,6 +450,13 @@ fn handle_event(
                 // Don't yield signature chunks, they will be included in the final Reasoning
                 None
             }
+            // Citations are emitted by Anthropic when the request enabled them
+            // on a document block. They are not exposed as a streaming event in
+            // this consumer because the surrounding `RawStreamingChoice` API has
+            // no citation channel; the final, non-streaming response carries
+            // them on the assembled text block instead.
+            ContentDelta::CitationsDelta { .. } => None,
+            ContentDelta::Unknown => None,
         },
         StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
             Content::ToolUse { id, name, .. } => {
@@ -841,5 +864,50 @@ mod tests {
 
         // Tool call state should be taken
         assert!(tool_call_state.is_none());
+    }
+
+    #[test]
+    fn test_citations_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "citations_delta",
+                "citation": {
+                    "type": "char_location",
+                    "cited_text": "The grass is green.",
+                    "document_index": 0,
+                    "document_title": "Example",
+                    "start_char_index": 0,
+                    "end_char_index": 20
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+        let StreamingEvent::ContentBlockDelta { index, delta } = event else {
+            panic!("expected ContentBlockDelta");
+        };
+        assert_eq!(index, 0);
+        let ContentDelta::CitationsDelta { citation } = delta else {
+            panic!("expected CitationsDelta");
+        };
+        let crate::providers::anthropic::completion::Citation::CharLocation {
+            start_char_index,
+            end_char_index,
+            ..
+        } = citation
+        else {
+            panic!("expected CharLocation");
+        };
+        assert_eq!(start_char_index, 0);
+        assert_eq!(end_char_index, 20);
+    }
+
+    #[test]
+    fn test_unknown_content_delta_falls_back() {
+        let json = r#"{"type": "something_new_from_anthropic", "field": "x"}"#;
+        let delta: ContentDelta = serde_json::from_str(json).unwrap();
+        matches!(delta, ContentDelta::Unknown);
     }
 }

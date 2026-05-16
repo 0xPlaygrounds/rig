@@ -308,13 +308,29 @@ impl ToolFunction {
 // ================================================================
 
 /// Basic text content.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+///
+/// `additional_params` carries provider-specific fields that arrive on text
+/// content blocks (e.g. Anthropic returns citation metadata on assistant text
+/// blocks). It is flattened during serialization so the inner JSON keys appear
+/// at the same level as `text`, matching the wire format of provider APIs.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Text {
     /// Text content.
     pub text: String,
+    /// Provider-specific text fields.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub additional_params: Option<serde_json::Value>,
 }
 
 impl Text {
+    /// Construct a new text block with no provider-specific fields.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            additional_params: None,
+        }
+    }
+
     /// Returns the inner text string.
     pub fn text(&self) -> &str {
         &self.text
@@ -323,7 +339,7 @@ impl Text {
 
 impl std::fmt::Display for Text {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Self { text } = self;
+        let Self { text, .. } = self;
         write!(f, "{text}")
     }
 }
@@ -586,7 +602,7 @@ impl Message {
         match self {
             Message::User { content } => {
                 for item in content.iter() {
-                    if let UserContent::Text(Text { text }) = item {
+                    if let UserContent::Text(Text { text, .. }) = item {
                         return Some(text.clone());
                     }
                 }
@@ -902,9 +918,7 @@ impl ToolResultContent {
                 let mut results: Vec<ToolResultContent> = Vec::new();
 
                 if let Some(response) = json.get("response") {
-                    results.push(ToolResultContent::Text(Text {
-                        text: response.to_string(),
-                    }));
+                    results.push(ToolResultContent::Text(Text::new(response.to_string())));
                 }
 
                 if let Some(parts) = json.get("parts").and_then(|p| p.as_array()) {
@@ -1147,7 +1161,10 @@ impl std::str::FromStr for ImageDetail {
 
 impl From<String> for Text {
     fn from(text: String) -> Self {
-        Text { text }
+        Text {
+            text,
+            additional_params: None,
+        }
     }
 }
 

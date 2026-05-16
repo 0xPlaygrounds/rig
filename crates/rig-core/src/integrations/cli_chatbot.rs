@@ -88,7 +88,7 @@ where
 
             match chunk {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                    Text { text },
+                    Text { text, .. },
                 ))) => {
                     print!("{}", text);
                     acc.push_str(&text);
