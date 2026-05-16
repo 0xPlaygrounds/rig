@@ -13,7 +13,7 @@ use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use rig_core::{Embed, OneOrMany};
 use rusqlite::OptionalExtension;
-use rusqlite::types::Value;
+use rusqlite::types::{Type, Value, ValueRef};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::{self, Display};
@@ -30,8 +30,12 @@ pub enum SqliteError {
     InvalidColumnType(String),
 }
 
+/// Value that can be stored in a SQLite vector store document column.
 pub trait ColumnValue: Send + Sync {
-    fn to_sql_string(&self) -> String;
+    /// Converts this value to a typed SQLite value.
+    fn to_sql_value(&self) -> Value;
+
+    /// Returns the SQLite type name for this value.
     fn column_type(&self) -> &'static str;
 }
 
@@ -266,15 +270,15 @@ impl std::error::Error for SqliteMetadataSchemaMismatch {}
 struct SqliteMetadataValueError {
     column_name: &'static str,
     column_type: SqliteMetadataType,
-    value: String,
+    value_type: Type,
 }
 
 impl Display for SqliteMetadataValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "could not convert value `{}` for SQLite metadata column `{} {}`",
-            self.value,
+            "could not convert SQLite value type `{:?}` for metadata column `{} {}`",
+            self.value_type,
             self.column_name,
             self.column_type.vec0_name()
         )
@@ -315,35 +319,21 @@ fn sqlite_metadata_value(
         .find(|(name, _)| *name == column.name)
         .ok_or_else(|| rusqlite::Error::InvalidParameterName(column.name.to_string()))?
         .1
-        .to_sql_string();
+        .to_sql_value();
 
-    match column.metadata_type {
-        SqliteMetadataType::Text => Ok(Value::Text(value)),
-        SqliteMetadataType::Integer => value.parse::<i64>().map(Value::Integer).map_err(|_| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteMetadataValueError {
+    match (column.metadata_type, value) {
+        (SqliteMetadataType::Text, Value::Text(value)) => Ok(Value::Text(value)),
+        (SqliteMetadataType::Integer, Value::Integer(value)) => Ok(Value::Integer(value)),
+        (SqliteMetadataType::Float, Value::Real(value)) => Ok(Value::Real(value)),
+        (SqliteMetadataType::Float, Value::Integer(value)) => Ok(Value::Real(value as f64)),
+        (SqliteMetadataType::Boolean, Value::Integer(value @ (0 | 1))) => Ok(Value::Integer(value)),
+        (_, value) => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+            SqliteMetadataValueError {
                 column_name: column.name,
                 column_type: column.metadata_type,
-                value,
-            }))
-        }),
-        SqliteMetadataType::Float => value.parse::<f64>().map(Value::Real).map_err(|_| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteMetadataValueError {
-                column_name: column.name,
-                column_type: column.metadata_type,
-                value,
-            }))
-        }),
-        SqliteMetadataType::Boolean => match value.to_ascii_lowercase().as_str() {
-            "true" | "1" => Ok(Value::Integer(1)),
-            "false" | "0" => Ok(Value::Integer(0)),
-            _ => Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
-                SqliteMetadataValueError {
-                    column_name: column.name,
-                    column_type: column.metadata_type,
-                    value,
-                },
-            ))),
-        },
+                value_type: value.data_type(),
+            },
+        ))),
     }
 }
 
@@ -540,7 +530,7 @@ where
 
             txn.execute(
                 &insert_sql,
-                rusqlite::params_from_iter(values.iter().map(|(_, val)| val.to_sql_string())),
+                rusqlite::params_from_iter(values.iter().map(|(_, val)| val.to_sql_value())),
             )?;
             last_id = txn.last_insert_rowid();
 
@@ -978,12 +968,17 @@ fn sqlite_filter_param(value: serde_json::Value) -> Result<Value, FilterError> {
         Null => Ok(Value::Null),
         Bool(b) => Ok(Value::Integer(b as i64)),
         String(s) => Ok(Value::Text(s)),
-        Number(n) => Ok(if let Some(float) = n.as_f64() {
+        Number(n) => Ok(if let Some(value) = n.as_i64() {
+            Value::Integer(value)
+        } else if let Some(value) = n.as_u64() {
+            let value = i64::try_from(value).map_err(|_| {
+                FilterError::TypeError(format!(
+                    "SQLite integer filter value `{n}` exceeds i64::MAX"
+                ))
+            })?;
+            Value::Integer(value)
+        } else if let Some(float) = n.as_f64() {
             Value::Real(float)
-        } else if let Some(int) = n.as_i64() {
-            Value::Integer(int)
-        } else if let Some(int) = n.as_u64() {
-            Value::Integer(int as i64)
         } else {
             Value::Text(n.to_string())
         }),
@@ -1210,6 +1205,144 @@ fn build_where_clause(
     Ok((where_clause, params))
 }
 
+#[derive(Debug)]
+struct SqliteColumnValueError {
+    column_name: &'static str,
+    column_type: &'static str,
+    message: String,
+}
+
+impl Display for SqliteColumnValueError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "could not convert SQLite column `{}` with declared type `{}`: {}",
+            self.column_name, self.column_type, self.message
+        )
+    }
+}
+
+impl std::error::Error for SqliteColumnValueError {}
+
+fn sqlite_column_value_error(
+    index: usize,
+    value_type: Type,
+    column: &Column,
+    message: impl Into<String>,
+) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        value_type,
+        Box::new(SqliteColumnValueError {
+            column_name: column.name,
+            column_type: column.col_type,
+            message: message.into(),
+        }),
+    )
+}
+
+fn sqlite_number_value(
+    index: usize,
+    value_type: Type,
+    column: &Column,
+    value: f64,
+) -> rusqlite::Result<serde_json::Value> {
+    let number = serde_json::Number::from_f64(value).ok_or_else(|| {
+        sqlite_column_value_error(index, value_type, column, "non-finite float value")
+    })?;
+
+    Ok(serde_json::Value::Number(number))
+}
+
+fn sqlite_text_value(
+    index: usize,
+    value_type: Type,
+    column: &Column,
+    value: &[u8],
+) -> rusqlite::Result<serde_json::Value> {
+    let value = std::str::from_utf8(value).map_err(|e| {
+        sqlite_column_value_error(
+            index,
+            value_type,
+            column,
+            format!("invalid UTF-8 text: {e}"),
+        )
+    })?;
+
+    Ok(serde_json::Value::String(value.to_string()))
+}
+
+fn sqlite_column_value_to_json(
+    index: usize,
+    column: &Column,
+    value: ValueRef<'_>,
+) -> rusqlite::Result<serde_json::Value> {
+    let value_type = value.data_type();
+    let Some(column_type) = SqliteMetadataType::from_column_type(column.col_type) else {
+        return Err(sqlite_column_value_error(
+            index,
+            value_type,
+            column,
+            "unsupported declared column type",
+        ));
+    };
+
+    match (column_type, value) {
+        (_, ValueRef::Null) => Ok(serde_json::Value::Null),
+        (SqliteMetadataType::Text, ValueRef::Text(value)) => {
+            sqlite_text_value(index, value_type, column, value)
+        }
+        (SqliteMetadataType::Integer, ValueRef::Integer(value)) => {
+            Ok(serde_json::Value::Number(value.into()))
+        }
+        (SqliteMetadataType::Float, ValueRef::Real(value)) => {
+            sqlite_number_value(index, value_type, column, value)
+        }
+        // SQLite can physically store small REAL values as integers while
+        // preserving REAL affinity, so accept integers for FLOAT columns.
+        (SqliteMetadataType::Float, ValueRef::Integer(value)) => {
+            sqlite_number_value(index, value_type, column, value as f64)
+        }
+        (SqliteMetadataType::Boolean, ValueRef::Integer(0)) => Ok(serde_json::Value::Bool(false)),
+        (SqliteMetadataType::Boolean, ValueRef::Integer(1)) => Ok(serde_json::Value::Bool(true)),
+        _ => Err(sqlite_column_value_error(
+            index,
+            value_type,
+            column,
+            "stored SQLite value type does not match declared column type",
+        )),
+    }
+}
+
+fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Result<String> {
+    match value {
+        ValueRef::Integer(value) => Ok(value.to_string()),
+        ValueRef::Real(value) => Ok(value.to_string()),
+        ValueRef::Text(value) => std::str::from_utf8(value)
+            .map(ToString::to_string)
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    index,
+                    Type::Text,
+                    Box::new(SqliteColumnValueError {
+                        column_name: "id",
+                        column_type: "TEXT",
+                        message: format!("invalid UTF-8 text: {e}"),
+                    }),
+                )
+            }),
+        value => Err(rusqlite::Error::FromSqlConversionFailure(
+            index,
+            value.data_type(),
+            Box::new(SqliteColumnValueError {
+                column_name: "id",
+                column_type: "TEXT or INTEGER",
+                message: "id cannot be NULL or BLOB".to_string(),
+            }),
+        )),
+    }
+}
+
 impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorStoreIndex
     for SqliteVectorIndex<E, T>
 {
@@ -1227,14 +1360,12 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         let query_vec: Vec<f32> = serialize_embedding(&embedding);
         let table_name = T::name();
 
-        // Get all column names from SqliteVectorStoreTable
         let columns = T::schema();
-        let column_names: Vec<&str> = columns.iter().map(|column| column.name).collect();
 
         // Build SELECT statement with all columns
-        let select_cols = column_names
+        let select_cols = columns
             .iter()
-            .map(|column| format!("d.{column}"))
+            .map(|column| format!("d.{}", column.name))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -1263,12 +1394,12 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     .query_map(rusqlite::params_from_iter(params), |row| {
                         // Create a map of column names to values
                         let mut map = serde_json::Map::new();
-                        for (i, col_name) in column_names.iter().enumerate() {
-                            let value: String = row.get(i)?;
-                            map.insert(col_name.to_string(), serde_json::Value::String(value));
+                        for (i, column) in columns.iter().enumerate() {
+                            let value = sqlite_column_value_to_json(i, column, row.get_ref(i)?)?;
+                            map.insert(column.name.to_string(), value);
                         }
-                        let score: f64 = row.get(column_names.len())?;
-                        let id: String = row.get(0)?; // Assuming id is always first column
+                        let score: f64 = row.get(columns.len())?;
+                        let id = sqlite_id_value_to_string(0, row.get_ref(0)?)?;
 
                         Ok((id, serde_json::Value::Object(map), score))
                     })?
@@ -1331,7 +1462,10 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
 
                 let results = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| {
-                        Ok((row.get::<_, f64>(1)?, row.get::<_, String>(0)?))
+                        Ok((
+                            row.get::<_, f64>(1)?,
+                            sqlite_id_value_to_string(0, row.get_ref(0)?)?,
+                        ))
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(results)
@@ -1349,8 +1483,8 @@ fn serialize_embedding(embedding: &Embedding) -> Vec<f32> {
 }
 
 impl ColumnValue for String {
-    fn to_sql_string(&self) -> String {
-        self.clone()
+    fn to_sql_value(&self) -> Value {
+        Value::Text(self.clone())
     }
 
     fn column_type(&self) -> &'static str {
@@ -1359,8 +1493,8 @@ impl ColumnValue for String {
 }
 
 impl ColumnValue for i64 {
-    fn to_sql_string(&self) -> String {
-        self.to_string()
+    fn to_sql_value(&self) -> Value {
+        Value::Integer(*self)
     }
 
     fn column_type(&self) -> &'static str {
@@ -1369,8 +1503,8 @@ impl ColumnValue for i64 {
 }
 
 impl ColumnValue for i32 {
-    fn to_sql_string(&self) -> String {
-        self.to_string()
+    fn to_sql_value(&self) -> Value {
+        Value::Integer(i64::from(*self))
     }
 
     fn column_type(&self) -> &'static str {
@@ -1379,8 +1513,8 @@ impl ColumnValue for i32 {
 }
 
 impl ColumnValue for f64 {
-    fn to_sql_string(&self) -> String {
-        self.to_string()
+    fn to_sql_value(&self) -> Value {
+        Value::Real(*self)
     }
 
     fn column_type(&self) -> &'static str {
@@ -1389,8 +1523,8 @@ impl ColumnValue for f64 {
 }
 
 impl ColumnValue for f32 {
-    fn to_sql_string(&self) -> String {
-        self.to_string()
+    fn to_sql_value(&self) -> Value {
+        Value::Real(f64::from(*self))
     }
 
     fn column_type(&self) -> &'static str {
@@ -1399,8 +1533,8 @@ impl ColumnValue for f32 {
 }
 
 impl ColumnValue for bool {
-    fn to_sql_string(&self) -> String {
-        self.to_string()
+    fn to_sql_value(&self) -> Value {
+        Value::Integer(if *self { 1 } else { 0 })
     }
 
     fn column_type(&self) -> &'static str {
@@ -1736,6 +1870,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> anyhow::Result<()>
+    {
+        let index = live_typed_test_index(
+            "live_typed_columns_round_trip_and_filter_during_candidate_search",
+            vec![
+                typed_row(
+                    1,
+                    "misc",
+                    100,
+                    0.99,
+                    true,
+                    "nearest excluded by typed metadata",
+                    vec![1.0, 0.0],
+                ),
+                typed_row(2, "docs", 5, 0.95, true, "typed docs match", vec![0.0, 1.0]),
+                typed_row(
+                    3,
+                    "docs",
+                    5,
+                    0.97,
+                    false,
+                    "unpublished docs match",
+                    vec![0.0, 0.9],
+                ),
+            ],
+        )
+        .await?;
+
+        let filter = SqliteSearchFilter::lt("priority", serde_json::json!(10))
+            .and(SqliteSearchFilter::gt("rating", serde_json::json!(0.9)))
+            .and(SqliteSearchFilter::eq("published", serde_json::json!(true)));
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(filter)
+            .build();
+
+        let results = index.top_n::<TypedTestDocument>(req.clone()).await?;
+        anyhow::ensure!(
+            results.len() == 1,
+            "expected one typed document result: {results:?}"
+        );
+
+        let Some((_, id, doc)) = results.first() else {
+            anyhow::bail!("expected one typed document result");
+        };
+        anyhow::ensure!(id == "2", "expected integer id to be returned as string");
+        anyhow::ensure!(doc.id == 2, "typed integer id should round-trip: {doc:?}");
+        anyhow::ensure!(
+            doc.priority == 5,
+            "typed integer field should round-trip: {doc:?}"
+        );
+        anyhow::ensure!(
+            (doc.rating - 0.95).abs() < f64::EPSILON,
+            "typed float field should round-trip: {doc:?}"
+        );
+        anyhow::ensure!(
+            doc.published,
+            "typed boolean field should round-trip: {doc:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["2"],
+            "top_n_ids should use the same typed metadata filters: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_or_filter_without_threshold_does_not_bypass_vector_constraints()
     -> anyhow::Result<()> {
         let index = live_test_index(
@@ -1810,6 +2019,22 @@ mod tests {
         Ok(vector_store.index(model))
     }
 
+    async fn live_typed_test_index(
+        name: &str,
+        rows: Vec<(TypedTestDocument, OneOrMany<Embedding>)>,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, TypedTestDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store.add_rows(rows).await?;
+
+        Ok(vector_store.index(model))
+    }
+
     fn row(
         id: impl Into<String>,
         category: impl Into<String>,
@@ -1819,6 +2044,33 @@ mod tests {
         let document = TestDocument {
             id: id.into(),
             category: category.into(),
+            title: title.into(),
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.title,
+                vec,
+            }),
+        )
+    }
+
+    fn typed_row(
+        id: i64,
+        category: impl Into<String>,
+        priority: i64,
+        rating: f64,
+        published: bool,
+        title: impl Into<String>,
+        vec: Vec<f64>,
+    ) -> (TypedTestDocument, OneOrMany<Embedding>) {
+        let document = TypedTestDocument {
+            id,
+            category: category.into(),
+            priority,
+            rating,
+            published,
             title: title.into(),
         };
 
@@ -1859,6 +2111,48 @@ mod tests {
             vec![
                 ("id", Box::new(self.id.clone())),
                 ("category", Box::new(self.category.clone())),
+                ("title", Box::new(self.title.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct TypedTestDocument {
+        id: i64,
+        category: String,
+        priority: i64,
+        rating: f64,
+        published: bool,
+        title: String,
+    }
+
+    impl SqliteVectorStoreTable for TypedTestDocument {
+        fn name() -> &'static str {
+            "live_typed_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "INTEGER PRIMARY KEY"),
+                Column::new("category", "TEXT").indexed(),
+                Column::new("priority", "INTEGER").indexed(),
+                Column::new("rating", "FLOAT").indexed(),
+                Column::new("published", "BOOLEAN").indexed(),
+                Column::new("title", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.to_string()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id)),
+                ("category", Box::new(self.category.clone())),
+                ("priority", Box::new(self.priority)),
+                ("rating", Box::new(self.rating)),
+                ("published", Box::new(self.published)),
                 ("title", Box::new(self.title.clone())),
             ]
         }
