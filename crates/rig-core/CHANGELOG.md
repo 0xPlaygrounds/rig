@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.37.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.37.0...rig-core-v0.37.1) - 2026-05-16
+
+### Added
+
+- *(gemini)* expose finish_reason and model_version on StreamingCompletionResponse ([#1776](https://github.com/0xPlaygrounds/rig/pull/1776)) (by @mateobelanger)
+
+### Fixed
+
+- *(anthropic)* serialize ToolResultContent::Image with source wrapper ([#1772](https://github.com/0xPlaygrounds/rig/pull/1772)) (by @Cyanistic)
+
+### Other
+
+- Add replayable provider cassette tests ([#1769](https://github.com/0xPlaygrounds/rig/pull/1769)) (by @gold-silver-copper) - #1769
+
+### Contributors
+
+* @mateobelanger
+* @Cyanistic
+* @gold-silver-copper
 ## [0.37.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.36.0...rig-core-v0.37.0) - 2026-05-13
 
 ### Added

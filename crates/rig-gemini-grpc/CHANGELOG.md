@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * @mateobelanger
 * @gold-silver-copper
+## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.2.6...rig-gemini-grpc-v0.2.7) - 2026-05-16
+
+### Other
+
+- updated the following local packages: rig-core
 
 ## [0.2.5](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.2.4...rig-gemini-grpc-v0.2.5) - 2026-04-28
 
