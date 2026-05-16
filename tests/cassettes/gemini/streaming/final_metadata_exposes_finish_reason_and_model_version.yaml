@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Reply with exactly: final metadata ok","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"final metadata ok\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":8,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":8}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":32,\"totalTokenCount\":43}}\r\n\r\n"
