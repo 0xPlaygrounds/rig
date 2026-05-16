@@ -553,34 +553,58 @@ where
     }
 }
 
+/// Output of [`build_where_clause`]: the `WHERE` clause applied at the
+/// embeddings table (sqlite-vec needs `MATCH ? AND k = ?` there) and a
+/// separate `HAVING`-style distance filter that has to be applied
+/// **after** the per-row `distance` alias is computed in the SELECT
+/// projection. SQLite does not let `WHERE` reference SELECT aliases or
+/// derived expressions, so threshold filtering was silently dropped
+/// when emitted into `WHERE`.
+struct WhereClause {
+    where_sql: String,
+    /// Suffix appended after `ORDER BY` is removed from the query
+    /// builder; the caller wraps the base select in a subquery and uses
+    /// this to filter the computed distance column.
+    distance_filter_sql: String,
+    where_params: Vec<Value>,
+    distance_filter_params: Vec<Value>,
+}
+
 fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
     query_vec: Vec<f32>,
-) -> Result<(String, Vec<Value>), FilterError> {
+) -> Result<WhereClause, FilterError> {
     let thresh = req.threshold().unwrap_or(0.);
-    let thresh = SqliteSearchFilter::gt("distance", thresh.into());
 
-    let filter = req
-        .filter()
-        .as_ref()
-        .cloned()
-        .map(|filter| thresh.clone().and(filter))
-        .unwrap_or(thresh);
-
-    let where_clause = format!(
-        "WHERE e.embedding MATCH ? AND k = ? AND {}",
-        filter.condition
-    );
-
-    let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
-    let query_vec = Value::Blob(query_vec);
+    let query_vec_bytes: Vec<u8> = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
+    let query_vec = Value::Blob(query_vec_bytes);
     let samples = req.samples() as u32;
 
-    let mut params = vec![query_vec.clone(), query_vec, samples.into()];
-    let filter_params = filter.clone().compile_params()?;
-    params.extend(filter_params);
+    let mut where_params = vec![query_vec.clone(), query_vec, samples.into()];
+    let where_sql = match req.filter().as_ref().cloned() {
+        Some(filter) => {
+            let sql = format!(
+                "WHERE e.embedding MATCH ? AND k = ? AND {}",
+                filter.condition
+            );
+            where_params.extend(filter.compile_params()?);
+            sql
+        }
+        None => "WHERE e.embedding MATCH ? AND k = ?".to_string(),
+    };
 
-    Ok((where_clause, params))
+    // Apply the threshold against the computed distance column outside
+    // the embeddings-table WHERE, since `distance` is a SELECT alias and
+    // SQLite cannot reference it from the inner WHERE clause.
+    let distance_filter_sql = "WHERE distance > ?".to_string();
+    let distance_filter_params = vec![thresh.into()];
+
+    Ok(WhereClause {
+        where_sql,
+        distance_filter_sql,
+        where_params,
+        distance_filter_params,
+    })
 }
 
 impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorStoreIndex
@@ -607,17 +631,27 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         // Build SELECT statement with all columns
         let select_cols = column_names.join(", ");
 
-        let (where_clause, params) = build_where_clause(&req, query_vec)?;
+        let WhereClause {
+            where_sql,
+            distance_filter_sql,
+            where_params,
+            distance_filter_params,
+        } = build_where_clause(&req, query_vec)?;
+        let mut params = where_params;
+        params.extend(distance_filter_params);
 
         let rows = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.{select_cols}, (1 - vec_distance_cosine(?, e.embedding)) as distance
-                    FROM {table_name}_embeddings e
-                    JOIN {table_name} d ON e.rowid = d.rowid
-                    {where_clause}
+                    "SELECT * FROM (
+                        SELECT d.{select_cols}, (1 - vec_distance_cosine(?, e.embedding)) as distance
+                        FROM {table_name}_embeddings e
+                        JOIN {table_name} d ON e.rowid = d.rowid
+                        {where_sql}
+                    )
+                    {distance_filter_sql}
                     ORDER BY distance"
                 ))?;
 
@@ -670,18 +704,28 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         let query_vec = serialize_embedding(&embedding);
         let table_name = T::name();
 
-        let (where_clause, params) = build_where_clause(&req, query_vec)?;
+        let WhereClause {
+            where_sql,
+            distance_filter_sql,
+            where_params,
+            distance_filter_params,
+        } = build_where_clause(&req, query_vec)?;
+        let mut params = where_params;
+        params.extend(distance_filter_params);
 
         let results = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.id, (1 - vec_distance_cosine(?1, e.embedding)) as distance
-                     FROM {table_name}_embeddings e
-                     JOIN {table_name} d ON e.rowid = d.rowid
-                     {where_clause}
-                     ORDER BY distance"
+                    "SELECT * FROM (
+                        SELECT d.id, (1 - vec_distance_cosine(?, e.embedding)) as distance
+                        FROM {table_name}_embeddings e
+                        JOIN {table_name} d ON e.rowid = d.rowid
+                        {where_sql}
+                    )
+                    {distance_filter_sql}
+                    ORDER BY distance"
                 ))?;
 
                 let results = stmt
