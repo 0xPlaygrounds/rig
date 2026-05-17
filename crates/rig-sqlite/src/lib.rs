@@ -230,7 +230,10 @@ impl SqliteMetadataType {
             (self, op),
             (
                 Self::Boolean,
-                SqliteComparisonOp::Gt | SqliteComparisonOp::Lt
+                SqliteComparisonOp::Gt
+                    | SqliteComparisonOp::Lt
+                    | SqliteComparisonOp::Gte
+                    | SqliteComparisonOp::Lte
             )
         )
     }
@@ -338,6 +341,23 @@ impl Display for SqliteMetadataValueError {
 
 impl std::error::Error for SqliteMetadataValueError {}
 
+#[derive(Debug)]
+struct SqliteMissingIdColumn {
+    table_name: String,
+}
+
+impl Display for SqliteMissingIdColumn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SQLite vector store table `{}` is missing an `id` column",
+            self.table_name
+        )
+    }
+}
+
+impl std::error::Error for SqliteMissingIdColumn {}
+
 fn sqlite_metadata_columns(
     schema: &[Column],
 ) -> Result<Vec<SqliteMetadataColumn>, VectorStoreError> {
@@ -402,6 +422,45 @@ where
 
 impl<E, T> SqliteVectorStore<E, T>
 where
+    E: EmbeddingModel + 'static,
+    T: SqliteVectorStoreTable + 'static,
+{
+    async fn candidate_limit(&self, samples: u64) -> Result<u64, VectorStoreError>
+    where
+        Self: 'static,
+    {
+        if samples == 0 {
+            return Ok(0);
+        }
+
+        let embedding_map_table_name = format!("{}_embedding_map", T::name());
+        let (embedding_count, document_count) = self
+            .conn
+            .call(move |conn| {
+                Ok(conn.query_row(
+                    &format!(
+                        "SELECT COUNT(*), COUNT(DISTINCT document_rowid) FROM {embedding_map_table_name}"
+                    ),
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )?)
+            })
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        let embedding_count = u64::try_from(embedding_count).unwrap_or(0);
+        let document_count = u64::try_from(document_count).unwrap_or(0);
+
+        if embedding_count > document_count {
+            Ok(embedding_count)
+        } else {
+            Ok(samples)
+        }
+    }
+}
+
+impl<E, T> SqliteVectorStore<E, T>
+where
     E: EmbeddingModel + Clone + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
@@ -424,6 +483,7 @@ where
         let table_name = T::name();
         let embeddings_table_name = format!("{table_name}_embeddings");
         let embeddings_table_name_for_sql = embeddings_table_name.clone();
+        let embedding_map_table_name_for_sql = format!("{table_name}_embedding_map");
         let schema = T::schema();
         let metadata_columns = sqlite_metadata_columns(&schema)?;
         let metadata_columns_for_schema_check = metadata_columns.clone();
@@ -484,6 +544,15 @@ where
                 // Create embeddings table
                 conn.execute_batch(&format!(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0({embeddings_columns})"
+                ))?;
+                conn.execute_batch(&format!(
+                    "CREATE TABLE IF NOT EXISTS {embedding_map_table_name_for_sql} (
+                        embedding_rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        document_rowid INTEGER NOT NULL
+                    )"
+                ))?;
+                conn.execute_batch(&format!(
+                    "CREATE INDEX IF NOT EXISTS idx_{table_name}_embedding_map_document_rowid ON {embedding_map_table_name_for_sql}(document_rowid)"
                 ))?;
 
                 conn.execute_batch("COMMIT")?;
@@ -548,6 +617,8 @@ where
     ) -> Result<i64, tokio_rusqlite::Error> {
         info!("Adding {} documents to store", documents.len());
         let table_name = T::name();
+        let embeddings_table_name = format!("{table_name}_embeddings");
+        let embedding_map_table_name = format!("{table_name}_embedding_map");
         let mut last_id = 0;
         let embedding_columns = std::iter::once("rowid")
             .chain(std::iter::once("embedding"))
@@ -557,12 +628,19 @@ where
             .map(|i| format!("?{i}"))
             .collect::<Vec<_>>();
         let embeddings_sql = format!(
-            "INSERT INTO {table_name}_embeddings ({}) VALUES ({})",
+            "INSERT INTO {embeddings_table_name} ({}) VALUES ({})",
             embedding_columns.join(", "),
             embedding_placeholders.join(", ")
         );
         let existing_rowid_sql = format!("SELECT rowid FROM {table_name} WHERE id = ?1");
-        let delete_embeddings_sql = format!("DELETE FROM {table_name}_embeddings WHERE rowid = ?1");
+        let existing_embedding_rowids_sql = format!(
+            "SELECT embedding_rowid FROM {embedding_map_table_name} WHERE document_rowid = ?1"
+        );
+        let insert_embedding_map_sql =
+            format!("INSERT INTO {embedding_map_table_name}(document_rowid) VALUES (?1)");
+        let delete_embedding_map_sql =
+            format!("DELETE FROM {embedding_map_table_name} WHERE document_rowid = ?1");
+        let delete_embeddings_sql = format!("DELETE FROM {embeddings_table_name} WHERE rowid = ?1");
 
         for (doc, embeddings) in &documents {
             debug!("Storing document with id {}", doc.id());
@@ -579,6 +657,14 @@ where
                 })
                 .optional()?
             {
+                let existing_embedding_rowids = txn
+                    .prepare(&existing_embedding_rowids_sql)?
+                    .query_map([existing_rowid], |row| row.get::<_, i64>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                for embedding_rowid in existing_embedding_rowids {
+                    txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
+                }
+                txn.execute(&delete_embedding_map_sql, [existing_rowid])?;
                 txn.execute(&delete_embeddings_sql, [existing_rowid])?;
             }
 
@@ -616,8 +702,10 @@ where
                     embeddings.len(),
                     vec.len() * 4
                 );
+                txn.execute(&insert_embedding_map_sql, [last_id])?;
+                let embedding_rowid = txn.last_insert_rowid();
                 let mut params = Vec::with_capacity(2 + metadata_values.len());
-                params.push(Value::Integer(last_id));
+                params.push(Value::Integer(embedding_rowid));
                 params.push(Value::Blob(vec.as_bytes().to_vec()));
                 params.extend(metadata_values.iter().cloned());
                 stmt.execute(rusqlite::params_from_iter(params))?;
@@ -732,16 +820,33 @@ enum SqliteSearchFilterExpr {
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize, Debug)]
 enum SqliteComparisonOp {
     Eq,
+    Ne,
     Gt,
+    Gte,
     Lt,
+    Lte,
 }
 
 impl SqliteComparisonOp {
     fn as_sql(self) -> &'static str {
         match self {
             Self::Eq => "=",
+            Self::Ne => "!=",
             Self::Gt => ">",
+            Self::Gte => ">=",
             Self::Lt => "<",
+            Self::Lte => "<=",
+        }
+    }
+
+    fn negate(self) -> Self {
+        match self {
+            Self::Eq => Self::Ne,
+            Self::Ne => Self::Eq,
+            Self::Gt => Self::Lte,
+            Self::Gte => Self::Lt,
+            Self::Lt => Self::Gte,
+            Self::Lte => Self::Gt,
         }
     }
 }
@@ -840,6 +945,11 @@ impl SearchFilter for SqliteSearchFilter {
 
 impl SqliteSearchFilter {
     #[allow(clippy::should_implement_trait)]
+    /// Negates a simple indexed metadata comparison.
+    ///
+    /// SQLite vector search lowers `NOT` over comparisons to sqlite-vec-native
+    /// operators such as `!=`, `<=`, and `>=`. Broader negations that require
+    /// `OR` or post-filtering are rejected during search.
     pub fn not(self) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Not(Box::new(self.expr)),
@@ -926,27 +1036,38 @@ impl SqliteSearchFilter {
 }
 
 impl SqliteSearchFilterExpr {
+    fn render_native_comparison(
+        key: &str,
+        op: SqliteComparisonOp,
+        value: serde_json::Value,
+        metadata_columns: &[SqliteMetadataColumn],
+    ) -> Result<SqliteRenderedFilters, FilterError> {
+        let metadata_column = sqlite_native_metadata_column(key, metadata_columns)?;
+
+        if !metadata_column.metadata_type.supports_native_comparison(op) {
+            return Err(sqlite_unsupported_filter(format!(
+                "`{key}` is a BOOLEAN metadata column, and sqlite-vec only supports `=` and `!=` filters for booleans"
+            )));
+        }
+
+        let expr = Self::Comparison {
+            key: key.to_string(),
+            op,
+            value,
+        };
+        Ok(SqliteRenderedFilters {
+            native: vec![expr.render(SqliteFilterTarget::VectorMetadata)?],
+            post: Vec::new(),
+        })
+    }
+
     fn render_split(
         &self,
         metadata_columns: &[SqliteMetadataColumn],
     ) -> Result<SqliteRenderedFilters, FilterError> {
         match self {
-            Self::Comparison { key, op, .. } => {
-                let metadata_column = sqlite_native_metadata_column(key, metadata_columns)?;
-
-                if !metadata_column
-                    .metadata_type
-                    .supports_native_comparison(*op)
-                {
-                    return Err(sqlite_unsupported_filter(format!(
-                        "`{key}` is a BOOLEAN metadata column, and sqlite-vec only supports `=` filters for booleans"
-                    )));
-                }
-
-                Ok(SqliteRenderedFilters {
-                    native: vec![self.render(SqliteFilterTarget::VectorMetadata)?],
-                    post: Vec::new(),
-                })
+            Self::Comparison { key, op, value } => {
+                Self::render_native_comparison(key, *op, value.clone(), metadata_columns)
             }
             Self::And(lhs, rhs) => {
                 let mut rendered = lhs.render_split(metadata_columns)?;
@@ -981,9 +1102,7 @@ impl SqliteSearchFilterExpr {
             Self::Or(_, _) => Err(sqlite_unsupported_filter(
                 "`OR` filters cannot be applied during sqlite-vec candidate search",
             )),
-            Self::Not(_) => Err(sqlite_unsupported_filter(
-                "`NOT` filters cannot be applied during sqlite-vec candidate search",
-            )),
+            Self::Not(expr) => expr.render_negated_split(metadata_columns),
             Self::NullCheck { .. } => Err(sqlite_unsupported_filter(
                 "`IS NULL` filters are not supported by sqlite-vec metadata constraints",
             )),
@@ -993,6 +1112,21 @@ impl SqliteSearchFilterExpr {
             ))),
             Self::Raw { .. } => Err(sqlite_unsupported_filter(
                 "raw filters cannot be validated as sqlite-vec metadata constraints",
+            )),
+        }
+    }
+
+    fn render_negated_split(
+        &self,
+        metadata_columns: &[SqliteMetadataColumn],
+    ) -> Result<SqliteRenderedFilters, FilterError> {
+        match self {
+            Self::Comparison { key, op, value } => {
+                Self::render_native_comparison(key, op.negate(), value.clone(), metadata_columns)
+            }
+            Self::Not(expr) => expr.render_split(metadata_columns),
+            _ => Err(sqlite_unsupported_filter(
+                "`NOT` filters are only supported for simple indexed metadata comparisons",
             )),
         }
     }
@@ -1287,10 +1421,11 @@ fn build_where_clause(
     query_vec: Vec<f32>,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: &[SqliteMetadataColumn],
+    candidate_limit: u64,
 ) -> Result<(String, Vec<Value>), FilterError> {
     let score_expression = distance_metric.score_expression("?1", "e.embedding");
     let threshold_filter = req.threshold().map(|threshold| {
-        SqliteSearchFilter::raw(format!("{score_expression} > ?"), vec![threshold.into()])
+        SqliteSearchFilter::raw(format!("{score_expression} >= ?"), vec![threshold.into()])
     });
 
     let mut filters = SqliteRenderedFilters::default();
@@ -1318,13 +1453,19 @@ fn build_where_clause(
 
     let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
-    let samples = req.samples() as u32;
+    let candidate_limit = sqlite_limit_param(candidate_limit, "candidate limit")?;
 
-    let mut params = vec![query_vec.clone(), query_vec, samples.into()];
+    let mut params = vec![query_vec.clone(), query_vec, candidate_limit];
     params.extend(filters.native.into_iter().flat_map(|filter| filter.params));
     params.extend(filters.post.into_iter().flat_map(|filter| filter.params));
 
     Ok((where_clause, params))
+}
+
+fn sqlite_limit_param(value: u64, name: &str) -> Result<Value, FilterError> {
+    i64::try_from(value)
+        .map(Value::Integer)
+        .map_err(|_| FilterError::TypeError(format!("SQLite {name} `{value}` exceeds i64::MAX")))
 }
 
 #[derive(Debug)]
@@ -1462,38 +1603,72 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         D: for<'de> Deserialize<'de>,
     {
         tracing::debug!("Finding top {} matches for query", req.samples() as usize);
+        if req.samples() == 0 {
+            return Ok(Vec::new());
+        }
+
         let embedding = self.embedding_model.embed_text(req.query()).await?;
         let query_vec: Vec<f32> = serialize_embedding(&embedding);
         let table_name = T::name();
+        let embedding_map_table_name = format!("{table_name}_embedding_map");
 
         let columns = T::schema();
+        let id_column_index = columns
+            .iter()
+            .position(|column| column.name == "id")
+            .ok_or_else(|| {
+                VectorStoreError::DatastoreError(Box::new(SqliteMissingIdColumn {
+                    table_name: table_name.to_string(),
+                }))
+            })?;
 
         // Build SELECT statement with all columns
         let select_cols = columns
             .iter()
-            .map(|column| format!("d.{}", column.name))
+            .map(|column| format!("d.{} AS {}", column.name, column.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let outer_select_cols = columns
+            .iter()
+            .map(|column| column.name)
             .collect::<Vec<_>>()
             .join(", ");
 
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
+        let candidate_limit = self.store.candidate_limit(req.samples()).await?;
         let (where_clause, params) = build_where_clause(
             &req,
             query_vec,
             distance_metric,
             &self.store.metadata_columns,
+            candidate_limit,
         )?;
+        let mut params = params;
+        params.push(sqlite_limit_param(req.samples(), "result limit")?);
 
         let rows = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT {select_cols}, {score_expression} as score
-                    FROM {table_name}_embeddings e
-                    JOIN {table_name} d ON e.rowid = d.rowid
-                    {where_clause}
-                    ORDER BY score DESC"
+                    "WITH scored AS (
+                        SELECT {select_cols},
+                            {score_expression} as __rig_score,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY d.rowid
+                                ORDER BY {score_expression} DESC, e.rowid ASC
+                            ) AS __rig_rank
+                        FROM {table_name}_embeddings e
+                        JOIN {embedding_map_table_name} m ON e.rowid = m.embedding_rowid
+                        JOIN {table_name} d ON m.document_rowid = d.rowid
+                        {where_clause}
+                    )
+                    SELECT {outer_select_cols}, __rig_score
+                    FROM scored
+                    WHERE __rig_rank = 1
+                    ORDER BY __rig_score DESC
+                    LIMIT ?"
                 ))?;
 
                 let rows = stmt
@@ -1505,7 +1680,10 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                             map.insert(column.name.to_string(), value);
                         }
                         let score: f64 = row.get(columns.len())?;
-                        let id = sqlite_id_value_to_string(0, row.get_ref(0)?)?;
+                        let id = sqlite_id_value_to_string(
+                            id_column_index,
+                            row.get_ref(id_column_index)?,
+                        )?;
 
                         Ok((id, serde_json::Value::Object(map), score))
                     })?
@@ -1541,29 +1719,50 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             "Finding top {} document IDs for query",
             req.samples() as usize
         );
+        if req.samples() == 0 {
+            return Ok(Vec::new());
+        }
+
         let embedding = self.embedding_model.embed_text(req.query()).await?;
         let query_vec = serialize_embedding(&embedding);
         let table_name = T::name();
+        let embedding_map_table_name = format!("{table_name}_embedding_map");
 
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
+        let candidate_limit = self.store.candidate_limit(req.samples()).await?;
         let (where_clause, params) = build_where_clause(
             &req,
             query_vec,
             distance_metric,
             &self.store.metadata_columns,
+            candidate_limit,
         )?;
+        let mut params = params;
+        params.push(sqlite_limit_param(req.samples(), "result limit")?);
 
         let results = self
             .store
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
-                    "SELECT d.id, {score_expression} as score
-                     FROM {table_name}_embeddings e
-                     JOIN {table_name} d ON e.rowid = d.rowid
-                     {where_clause}
-                     ORDER BY score DESC"
+                    "WITH scored AS (
+                        SELECT d.id AS id,
+                            {score_expression} as __rig_score,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY d.rowid
+                                ORDER BY {score_expression} DESC, e.rowid ASC
+                            ) AS __rig_rank
+                        FROM {table_name}_embeddings e
+                        JOIN {embedding_map_table_name} m ON e.rowid = m.embedding_rowid
+                        JOIN {table_name} d ON m.document_rowid = d.rowid
+                        {where_clause}
+                     )
+                     SELECT id, __rig_score
+                     FROM scored
+                     WHERE __rig_rank = 1
+                     ORDER BY __rig_score DESC
+                     LIMIT ?"
                 ))?;
 
                 let results = stmt
@@ -1713,7 +1912,7 @@ mod tests {
             .build();
 
         let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[])?;
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
 
         anyhow::ensure!(
             where_clause.contains("e.embedding MATCH ?"),
@@ -1724,7 +1923,7 @@ mod tests {
             "missing vector k constraint: {where_clause}"
         );
         anyhow::ensure!(
-            where_clause.contains("(1 - vec_distance_cosine(?1, e.embedding)) > ?"),
+            where_clause.contains("(1 - vec_distance_cosine(?1, e.embedding)) >= ?"),
             "threshold should use computed similarity expression: {where_clause}"
         );
         anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
@@ -1745,10 +1944,10 @@ mod tests {
             .build();
 
         let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2, &[])?;
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2, &[], 5)?;
 
         anyhow::ensure!(
-            where_clause.contains("(-vec_distance_l2(?1, e.embedding)) > ?"),
+            where_clause.contains("(-vec_distance_l2(?1, e.embedding)) >= ?"),
             "threshold should use L2 score expression: {where_clause}"
         );
         anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
@@ -1768,7 +1967,7 @@ mod tests {
             .build();
 
         let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[])?;
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
 
         anyhow::ensure!(
             where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -1797,6 +1996,7 @@ mod tests {
                 vec![1.0, 0.0],
                 SqliteDistanceMetric::Cosine,
                 &test_metadata_columns(),
+                5,
             ),
             "OR filters",
         )?;
@@ -1825,6 +2025,7 @@ mod tests {
             vec![1.0, 0.0],
             SqliteDistanceMetric::Cosine,
             &test_metadata_columns(),
+            5,
         )?;
 
         anyhow::ensure!(
@@ -1835,6 +2036,121 @@ mod tests {
         anyhow::ensure!(
             params.get(3) == Some(&Value::Text("docs".to_string())),
             "unexpected filter param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn negated_eq_filter_uses_vec0_metadata_inequality() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::eq("category", serde_json::json!("docs")).not())
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &test_metadata_columns(),
+            5,
+        )?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ? AND (e.category != ?)",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Text("docs".to_string())),
+            "unexpected filter param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn negated_range_comparison_uses_vec0_metadata_boundary() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::gt("priority", serde_json::json!(10)).not())
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &typed_metadata_columns(),
+            5,
+        )?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ? AND (e.priority <= ?)",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Integer(10)),
+            "unexpected filter param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn negated_boolean_eq_filter_uses_vec0_metadata_inequality() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::eq("published", serde_json::json!(true)).not())
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &typed_metadata_columns(),
+            5,
+        )?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ? AND (e.published != ?)",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Integer(1)),
+            "unexpected boolean filter param: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn unsupported_negated_filter_shapes_are_rejected() -> anyhow::Result<()> {
+        let filter = SqliteSearchFilter::between("priority".to_string(), 1_i64..=10_i64).not();
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(filter)
+            .build();
+
+        let err = filter_error(
+            build_where_clause(
+                &req,
+                vec![1.0, 0.0],
+                SqliteDistanceMetric::Cosine,
+                &typed_metadata_columns(),
+                5,
+            ),
+            "negated between filters",
+        )?;
+
+        anyhow::ensure!(
+            err.to_string()
+                .contains("simple indexed metadata comparisons"),
+            "unexpected error for negated between filter: {err}"
         );
 
         Ok(())
@@ -1857,6 +2173,7 @@ mod tests {
                 vec![1.0, 0.0],
                 SqliteDistanceMetric::Cosine,
                 &typed_metadata_columns(),
+                5,
             ),
             "boolean range filters",
         )?;
@@ -1883,6 +2200,7 @@ mod tests {
             vec![1.0, 0.0],
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
+            5,
         )?;
 
         anyhow::ensure!(
@@ -1916,6 +2234,7 @@ mod tests {
                 vec![1.0, 0.0],
                 SqliteDistanceMetric::Cosine,
                 &test_metadata_columns(),
+                5,
             ),
             "LIKE filters",
         )?;
@@ -1942,6 +2261,7 @@ mod tests {
                 vec![1.0, 0.0],
                 SqliteDistanceMetric::Cosine,
                 &test_metadata_columns(),
+                5,
             ),
             "filters on non-indexed columns",
         )?;
@@ -2064,6 +2384,86 @@ mod tests {
         anyhow::ensure!(
             result_ids.as_slice() == ["fresh"],
             "top_n_ids should not return or be starved by stale replaced vectors: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::Result<()> {
+        let multi_document = TestDocument {
+            id: "multi".to_string(),
+            category: "docs".to_string(),
+            title: "multi-vector document".to_string(),
+        };
+        let index = live_test_index(
+            "live_multiple_embeddings_per_document_use_best_embedding",
+            vec![
+                (
+                    multi_document.clone(),
+                    OneOrMany::many(vec![
+                        Embedding {
+                            document: "far chunk".to_string(),
+                            vec: vec![-1.0, 0.0],
+                        },
+                        Embedding {
+                            document: "exact chunk".to_string(),
+                            vec: vec![1.0, 0.0],
+                        },
+                    ])?,
+                ),
+                row("single", "docs", "single close chunk", vec![0.8, 0.6]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(2)
+            .build();
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["multi", "single"],
+            "top_n should return each document once using its best embedding: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["multi", "single"],
+            "top_n_ids should return each document once using its best embedding: {id_results:?}"
+        );
+
+        let threshold_req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(2)
+            .threshold(1.0)
+            .build();
+        let threshold_results = index.top_n::<TestDocument>(threshold_req.clone()).await?;
+        let threshold_ids = threshold_results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            threshold_ids.as_slice() == ["multi"],
+            "threshold should include scores equal to the minimum and filter lower scores: {threshold_results:?}"
+        );
+
+        let threshold_id_results = index.top_n_ids(threshold_req).await?;
+        let threshold_result_ids = threshold_id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            threshold_result_ids.as_slice() == ["multi"],
+            "top_n_ids threshold should include scores equal to the minimum: {threshold_id_results:?}"
         );
 
         Ok(())
@@ -2260,6 +2660,100 @@ mod tests {
         anyhow::ensure!(
             result_ids.as_slice() == ["docs"],
             "top_n_ids should use indexed filters during candidate search: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_negated_eq_filter_is_applied_during_candidate_search() -> anyhow::Result<()> {
+        let index = live_test_index(
+            "live_negated_eq_filter_is_applied_during_candidate_search",
+            vec![
+                row(
+                    "nearest",
+                    "misc",
+                    "nearest excluded category",
+                    vec![1.0, 0.0],
+                ),
+                row("docs", "docs", "docs match", vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq("category", serde_json::json!("misc")).not())
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            ids.as_slice() == ["docs"],
+            "negated filters should constrain sqlite-vec candidate search: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            result_ids.as_slice() == ["docs"],
+            "top_n_ids should use negated filters during candidate search: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_top_n_reads_id_by_column_name_not_schema_position() -> anyhow::Result<()> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(
+            "file:live_top_n_reads_id_by_column_name_not_schema_position?mode=memory",
+        )
+        .await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, ReorderedIdDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store
+            .add_rows(vec![
+                reordered_id_row("winner", "winner title", "docs", vec![1.0, 0.0]),
+                reordered_id_row("other", "other title", "docs", vec![0.0, 1.0]),
+            ])
+            .await?;
+
+        let index = vector_store.index(model);
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .build();
+
+        let results = index.top_n::<ReorderedIdDocument>(req.clone()).await?;
+        let Some((_, id, doc)) = results.first() else {
+            anyhow::bail!("expected reordered-id result");
+        };
+        anyhow::ensure!(
+            id == "winner",
+            "top_n should return the id column, not the first schema column: {results:?}"
+        );
+        anyhow::ensure!(
+            doc.id == "winner" && doc.title == "winner title",
+            "document columns should still deserialize in schema order: {doc:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        anyhow::ensure!(
+            id_results.first().map(|(_, id)| id.as_str()) == Some("winner"),
+            "top_n_ids should agree with top_n id handling: {id_results:?}"
         );
 
         Ok(())
@@ -2597,6 +3091,27 @@ mod tests {
         )
     }
 
+    fn reordered_id_row(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        category: impl Into<String>,
+        vec: Vec<f64>,
+    ) -> (ReorderedIdDocument, OneOrMany<Embedding>) {
+        let document = ReorderedIdDocument {
+            title: title.into(),
+            id: id.into(),
+            category: category.into(),
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.title.clone(),
+                vec,
+            }),
+        )
+    }
+
     fn typed_row(
         id: i64,
         category: impl Into<String>,
@@ -2876,6 +3391,39 @@ mod tests {
                 ("id", Box::new(self.id.clone())),
                 ("category", Box::new(self.category.clone())),
                 ("title", Box::new(self.title.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct ReorderedIdDocument {
+        title: String,
+        id: String,
+        category: String,
+    }
+
+    impl SqliteVectorStoreTable for ReorderedIdDocument {
+        fn name() -> &'static str {
+            "live_reordered_id_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("title", "TEXT"),
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("category", "TEXT").indexed(),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("title", Box::new(self.title.clone())),
+                ("id", Box::new(self.id.clone())),
+                ("category", Box::new(self.category.clone())),
             ]
         }
     }
