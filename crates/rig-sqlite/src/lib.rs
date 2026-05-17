@@ -194,18 +194,24 @@ enum SqliteMetadataType {
 
 impl SqliteMetadataType {
     fn from_column_type(column_type: &str) -> Option<Self> {
-        let column_type = column_type
+        let first_type_token = column_type
             .split_whitespace()
             .next()
             .unwrap_or_default()
             .to_ascii_uppercase();
 
-        match column_type.as_str() {
+        match first_type_token.as_str() {
             "TEXT" => Some(Self::Text),
             "INTEGER" | "INT" | "INT64" | "INTEGER64" => Some(Self::Integer),
             "FLOAT" | "REAL" | "DOUBLE" | "FLOAT64" | "F64" => Some(Self::Float),
             "BOOLEAN" | "BOOL" => Some(Self::Boolean),
-            _ => None,
+            _ => match SqliteColumnAffinity::from_column_type(column_type) {
+                SqliteColumnAffinity::Text => Some(Self::Text),
+                SqliteColumnAffinity::Integer => Some(Self::Integer),
+                SqliteColumnAffinity::Float => Some(Self::Float),
+                SqliteColumnAffinity::Boolean => Some(Self::Boolean),
+                SqliteColumnAffinity::Numeric | SqliteColumnAffinity::Blob => None,
+            },
         }
     }
 
@@ -1903,6 +1909,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_text_affinity_metadata_filters_during_candidate_search() -> anyhow::Result<()> {
+        let index = live_common_type_test_index(
+            "live_text_affinity_metadata_filters_during_candidate_search",
+            vec![
+                common_type_row("nearest", "misc", "nearest excluded", 1, vec![1.0, 0.0]),
+                common_type_row("docs", "docs", "docs match", 2, vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq("name", serde_json::json!("docs")))
+            .build();
+
+        let results = index.top_n::<CommonTypeDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            ids.as_slice() == ["docs"],
+            "VARCHAR metadata filters should constrain sqlite-vec candidate search: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+
+        anyhow::ensure!(
+            result_ids.as_slice() == ["docs"],
+            "top_n_ids should use VARCHAR metadata filters during candidate search: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_l2_metric_is_consistent() -> anyhow::Result<()> {
         let index = live_test_index_with_metric(
             "live_l2_metric_is_consistent",
@@ -2666,7 +2714,7 @@ mod tests {
         fn schema() -> Vec<Column> {
             vec![
                 Column::new("id", "TEXT PRIMARY KEY"),
-                Column::new("name", "VARCHAR(255)"),
+                Column::new("name", "VARCHAR(255)").indexed(),
                 Column::new("notes", "CLOB"),
                 Column::new("rank", "NUMERIC"),
             ]
