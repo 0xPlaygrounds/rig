@@ -1562,6 +1562,7 @@ mod tests {
     use sqlite_vec::sqlite3_vec_init;
     use std::cmp::Ordering;
     use std::collections::HashMap;
+    use std::os::raw::c_char;
     use std::sync::Once;
     use tokio_rusqlite::Connection;
 
@@ -2121,7 +2122,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "set RIG_SQLITE_VECTOR_FIXTURE to a JSON vector fixture generated from a benchmark dataset"]
+    #[ignore = "set RIG_SQLITE_VECTOR_FIXTURE to a JSON vector fixture"]
     async fn external_vector_fixture_matches_ground_truth() -> anyhow::Result<()> {
         let fixture_path = std::env::var("RIG_SQLITE_VECTOR_FIXTURE").map_err(|_| {
             anyhow::anyhow!(
@@ -2261,7 +2262,7 @@ mod tests {
     }
 
     type SqliteExtensionFn =
-        unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+        unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
     fn register_sqlite_vec_extension() {
         static REGISTER_SQLITE_VEC: Once = Once::new();

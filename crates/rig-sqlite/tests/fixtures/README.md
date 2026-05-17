@@ -19,14 +19,6 @@ RIG_SQLITE_VECTOR_FIXTURE=crates/rig-sqlite/tests/fixtures/retrieval_fixture.jso
   cargo test -p rig-sqlite external_vector_fixture_matches_ground_truth -- --ignored
 ```
 
-Convert an ANN-Benchmarks HDF5 dataset:
-
-```bash
-python3 crates/rig-sqlite/tests/fixtures/ann_benchmarks_to_fixture.py \
-  /path/to/sift-128-euclidean.hdf5 /tmp/sift_fixture.json \
-  --metric l2 --k 10 --max-queries 100
-```
-
 Convert a BEIR or MTEB retrieval export with precomputed embeddings:
 
 ```bash
@@ -41,3 +33,16 @@ python3 crates/rig-sqlite/tests/fixtures/retrieval_to_fixture.py \
 ```
 
 Embedding JSONL records must contain `id` or `_id` plus `embedding` or `vector`.
+
+Run the local validation suite:
+
+```bash
+bash crates/rig-sqlite/tests/fixtures/run_vector_validation.sh --skip-clippy --skip-integration
+```
+
+Run the Docker validation suite. This builds a Rust/Python image and runs the
+SQLite vector fixture, integration, and clippy checks in a Linux environment:
+
+```bash
+bash crates/rig-sqlite/tests/fixtures/run_vector_validation_docker.sh
+```

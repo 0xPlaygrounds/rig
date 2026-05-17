@@ -21,6 +21,7 @@ use rig::{
 };
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
+use std::os::raw::c_char;
 use tokio_rusqlite::Connection;
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
@@ -55,7 +56,7 @@ impl SqliteVectorStoreTable for Word {
 }
 
 type SqliteExtensionFn =
-    unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+    unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
 fn register_sqlite_vec_extension() {
     // Initialize the `sqlite-vec`extension

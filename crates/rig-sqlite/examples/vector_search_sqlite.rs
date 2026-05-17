@@ -13,6 +13,7 @@ use rig_sqlite::{
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use serde::{Deserialize, Serialize};
 use sqlite_vec::sqlite3_vec_init;
+use std::os::raw::c_char;
 use tokio_rusqlite::Connection;
 
 #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
@@ -47,7 +48,7 @@ impl SqliteVectorStoreTable for Document {
 }
 
 type SqliteExtensionFn =
-    unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+    unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
