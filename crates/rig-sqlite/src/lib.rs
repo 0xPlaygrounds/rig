@@ -770,6 +770,16 @@ where
     }
 }
 
+/// Search filter for SQLite vector searches.
+///
+/// SQLite vector search only accepts filters that sqlite-vec can enforce during
+/// KNN candidate search. Supported filter shapes are `AND` combinations of
+/// indexed metadata comparisons (`=`, `!=`, `>`, `>=`, `<`, `<=`), inclusive
+/// `between` ranges on non-boolean indexed metadata, and `not()` around a
+/// simple indexed metadata comparison. Other shapes are retained so callers can
+/// build filters through the generic [`SearchFilter`] trait, but vector searches
+/// reject them with [`FilterError`] instead of applying them after candidate
+/// selection.
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct SqliteSearchFilter {
     expr: SqliteSearchFilterExpr,
@@ -1709,15 +1719,9 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                 }))
             })?;
 
-        // Build SELECT statement with all columns
-        let select_cols = columns
-            .iter()
-            .map(|column| format!("d.{} AS {}", column.name, column.name))
-            .collect::<Vec<_>>()
-            .join(", ");
         let outer_select_cols = columns
             .iter()
-            .map(|column| column.name)
+            .map(|column| format!("d.{} AS {}", column.name, column.name))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -1740,21 +1744,21 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
                     "WITH scored AS (
-                        SELECT {select_cols},
-                            {score_expression} as __rig_score,
+                        SELECT m.document_rowid AS __rig_document_rowid,
+                            {score_expression} AS __rig_score,
                             ROW_NUMBER() OVER (
-                                PARTITION BY d.rowid
+                                PARTITION BY m.document_rowid
                                 ORDER BY {score_expression} DESC, e.rowid ASC
                             ) AS __rig_rank
                         FROM {table_name}_embeddings e
                         JOIN {embedding_map_table_name} m ON e.rowid = m.embedding_rowid
-                        JOIN {table_name} d ON m.document_rowid = d.rowid
                         {where_clause}
                     )
-                    SELECT {outer_select_cols}, __rig_score
+                    SELECT {outer_select_cols}, scored.__rig_score
                     FROM scored
-                    WHERE __rig_rank = 1
-                    ORDER BY __rig_score DESC, id ASC
+                    JOIN {table_name} d ON scored.__rig_document_rowid = d.rowid
+                    WHERE scored.__rig_rank = 1
+                    ORDER BY scored.__rig_score DESC, d.id ASC
                     LIMIT ?"
                 ))?;
 
@@ -1834,21 +1838,21 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
             .call(move |conn| {
                 let mut stmt = conn.prepare(&format!(
                     "WITH scored AS (
-                        SELECT d.id AS id,
-                            {score_expression} as __rig_score,
+                        SELECT m.document_rowid AS __rig_document_rowid,
+                            {score_expression} AS __rig_score,
                             ROW_NUMBER() OVER (
-                                PARTITION BY d.rowid
+                                PARTITION BY m.document_rowid
                                 ORDER BY {score_expression} DESC, e.rowid ASC
                             ) AS __rig_rank
                         FROM {table_name}_embeddings e
                         JOIN {embedding_map_table_name} m ON e.rowid = m.embedding_rowid
-                        JOIN {table_name} d ON m.document_rowid = d.rowid
                         {where_clause}
                      )
-                     SELECT id, __rig_score
+                     SELECT d.id, scored.__rig_score
                      FROM scored
-                     WHERE __rig_rank = 1
-                     ORDER BY __rig_score DESC, id ASC
+                     JOIN {table_name} d ON scored.__rig_document_rowid = d.rowid
+                     WHERE scored.__rig_rank = 1
+                     ORDER BY scored.__rig_score DESC, d.id ASC
                      LIMIT ?"
                 ))?;
 
@@ -1944,6 +1948,8 @@ mod tests {
     use std::os::raw::c_char;
     use std::sync::Once;
     use tokio_rusqlite::Connection;
+
+    const SCORE_EPSILON: f64 = 1e-5;
 
     fn test_metadata_columns() -> Vec<SqliteMetadataColumn> {
         vec![SqliteMetadataColumn {
@@ -3019,6 +3025,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_internal_score_and_rank_column_names_do_not_shadow_search_columns()
+    -> anyhow::Result<()> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(
+            "file:live_internal_score_and_rank_column_names_do_not_shadow_search_columns?mode=memory",
+        )
+        .await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, InternalAliasDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store
+            .add_rows(vec![
+                internal_alias_row(
+                    "winner",
+                    "payload score",
+                    "payload rank",
+                    "winner title",
+                    vec![1.0, 0.0],
+                ),
+                internal_alias_row(
+                    "other",
+                    "other score",
+                    "other rank",
+                    "other title",
+                    vec![0.0, 1.0],
+                ),
+            ])
+            .await?;
+
+        let index = vector_store.index(model);
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .threshold(0.9)
+            .build();
+
+        let results = index.top_n::<InternalAliasDocument>(req.clone()).await?;
+        let Some((score, id, doc)) = results.first() else {
+            anyhow::bail!("expected internal-alias document result");
+        };
+
+        anyhow::ensure!(id == "winner", "unexpected id: {results:?}");
+        anyhow::ensure!(
+            (*score - 1.0).abs() <= SCORE_EPSILON,
+            "top_n should return computed score, not the document __rig_score column: {results:?}"
+        );
+        anyhow::ensure!(
+            doc.rig_score == "payload score" && doc.rig_rank == "payload rank",
+            "document columns with internal-looking names should still deserialize: {doc:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        anyhow::ensure!(
+            id_results
+                .first()
+                .map(|(score, id)| ((*score - 1.0).abs() <= SCORE_EPSILON, id.as_str()))
+                == Some((true, "winner")),
+            "top_n_ids should agree with top_n despite internal-looking document columns: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_typed_columns_round_trip_and_filter_during_candidate_search() -> anyhow::Result<()>
     {
         let index = live_typed_test_index(
@@ -3408,6 +3480,29 @@ mod tests {
         )
     }
 
+    fn internal_alias_row(
+        id: impl Into<String>,
+        rig_score: impl Into<String>,
+        rig_rank: impl Into<String>,
+        title: impl Into<String>,
+        vec: Vec<f64>,
+    ) -> (InternalAliasDocument, OneOrMany<Embedding>) {
+        let document = InternalAliasDocument {
+            id: id.into(),
+            rig_score: rig_score.into(),
+            rig_rank: rig_rank.into(),
+            title: title.into(),
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.title.clone(),
+                vec,
+            }),
+        )
+    }
+
     fn typed_row(
         id: i64,
         category: impl Into<String>,
@@ -3551,7 +3646,7 @@ mod tests {
             }
 
             let score = oracle_score(distance_metric, query, &row.embedding)?;
-            if score > threshold {
+            if score >= threshold {
                 expected.push(ExpectedScoredId {
                     id: row.document.id.to_string(),
                     score,
@@ -3635,8 +3730,6 @@ mod tests {
         distance_metric: SqliteDistanceMetric,
         context: &str,
     ) -> anyhow::Result<()> {
-        const SCORE_EPSILON: f64 = 1e-5;
-
         let actual_ids = actual.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>();
         let expected_ids = expected
             .iter()
@@ -3720,6 +3813,44 @@ mod tests {
                 ("title", Box::new(self.title.clone())),
                 ("id", Box::new(self.id.clone())),
                 ("category", Box::new(self.category.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct InternalAliasDocument {
+        id: String,
+        #[serde(rename = "__rig_score")]
+        rig_score: String,
+        #[serde(rename = "__rig_rank")]
+        rig_rank: String,
+        title: String,
+    }
+
+    impl SqliteVectorStoreTable for InternalAliasDocument {
+        fn name() -> &'static str {
+            "live_internal_alias_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("__rig_score", "TEXT"),
+                Column::new("__rig_rank", "TEXT"),
+                Column::new("title", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                ("__rig_score", Box::new(self.rig_score.clone())),
+                ("__rig_rank", Box::new(self.rig_rank.clone())),
+                ("title", Box::new(self.title.clone())),
             ]
         }
     }
