@@ -503,9 +503,7 @@ impl TryFrom<message::UserContent> for UserContent {
                         data
                     );
 
-                    let detail = detail.ok_or(message::MessageError::ConversionError(
-                        "OpenAI image URI must have image detail".into(),
-                    ))?;
+                    let detail = detail.unwrap_or_default();
 
                     Ok(UserContent::Image {
                         image_url: ImageUrl { url, detail },
@@ -2101,6 +2099,23 @@ mod tests {
         assert_eq!(json["type"], "file");
         assert_eq!(json["file"]["file_id"], "file_abc");
         assert!(json["file"].get("file_data").is_none());
+    }
+
+    #[test]
+    fn base64_image_without_detail_defaults_to_auto() {
+        let image = message::UserContent::Image(message::Image {
+            data: DocumentSourceKind::Base64("iVBORw0KGgo=".into()),
+            media_type: Some(message::ImageMediaType::PNG),
+            detail: None,
+            additional_params: None,
+        });
+        let converted: UserContent = image.try_into().expect("conversion should succeed");
+        let UserContent::Image { image_url } = converted else {
+            panic!("expected image content");
+        };
+
+        assert_eq!(image_url.url, "data:image/png;base64,iVBORw0KGgo=");
+        assert_eq!(image_url.detail, ImageDetail::Auto);
     }
 
     // Regression guard: callers passing markdown/plain text wrapped in
