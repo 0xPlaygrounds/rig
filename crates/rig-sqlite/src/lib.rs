@@ -665,7 +665,6 @@ where
                     txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
                 }
                 txn.execute(&delete_embedding_map_sql, [existing_rowid])?;
-                txn.execute(&delete_embeddings_sql, [existing_rowid])?;
             }
 
             let columns = values.iter().map(|(col, _)| *col).collect::<Vec<_>>();
@@ -1050,13 +1049,11 @@ impl SqliteSearchFilterExpr {
             )));
         }
 
-        let expr = Self::Comparison {
-            key: key.to_string(),
-            op,
-            value,
-        };
         Ok(SqliteRenderedFilters {
-            native: vec![expr.render(SqliteFilterTarget::VectorMetadata)?],
+            native: vec![SqliteRenderedFilter {
+                condition: format!("e.{key} {} ?", op.as_sql()),
+                params: vec![sqlite_metadata_filter_param(metadata_column, value)?],
+            }],
             post: Vec::new(),
         })
     }
@@ -1086,8 +1083,8 @@ impl SqliteSearchFilterExpr {
                     native: vec![SqliteRenderedFilter {
                         condition: format!("e.{key} >= ? AND e.{key} <= ?"),
                         params: vec![
-                            sqlite_filter_param(lo.clone())?,
-                            sqlite_filter_param(hi.clone())?,
+                            sqlite_metadata_filter_param(metadata_column, lo.clone())?,
+                            sqlite_metadata_filter_param(metadata_column, hi.clone())?,
                         ],
                     }],
                     post: Vec::new(),
@@ -1215,6 +1212,96 @@ fn sqlite_unsupported_filter(reason: impl Into<String>) -> FilterError {
         "SQLite filters must be enforceable during sqlite-vec candidate search; {}",
         reason.into()
     ))
+}
+
+fn sqlite_json_type_name(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+fn sqlite_metadata_filter_type_error(
+    column: &SqliteMetadataColumn,
+    value: &serde_json::Value,
+    expected: &str,
+) -> FilterError {
+    sqlite_unsupported_filter(format!(
+        "`{}` is a {} metadata column and requires {expected}; got {}",
+        column.name,
+        column.metadata_type.vec0_name(),
+        sqlite_json_type_name(value)
+    ))
+}
+
+fn sqlite_metadata_filter_param(
+    column: &SqliteMetadataColumn,
+    value: serde_json::Value,
+) -> Result<Value, FilterError> {
+    match column.metadata_type {
+        SqliteMetadataType::Text => match value {
+            serde_json::Value::String(value) => Ok(Value::Text(value)),
+            value => Err(sqlite_metadata_filter_type_error(
+                column,
+                &value,
+                "a string filter value",
+            )),
+        },
+        SqliteMetadataType::Integer => match value {
+            serde_json::Value::Number(number) => {
+                if let Some(value) = number.as_i64() {
+                    Ok(Value::Integer(value))
+                } else if let Some(value) = number.as_u64() {
+                    i64::try_from(value).map(Value::Integer).map_err(|_| {
+                        FilterError::TypeError(format!(
+                            "SQLite integer filter value `{number}` exceeds i64::MAX"
+                        ))
+                    })
+                } else {
+                    let value = serde_json::Value::Number(number);
+                    Err(sqlite_metadata_filter_type_error(
+                        column,
+                        &value,
+                        "an integer filter value",
+                    ))
+                }
+            }
+            value => Err(sqlite_metadata_filter_type_error(
+                column,
+                &value,
+                "an integer filter value",
+            )),
+        },
+        SqliteMetadataType::Float => match value {
+            serde_json::Value::Number(number) => {
+                number.as_f64().map(Value::Real).ok_or_else(|| {
+                    let value = serde_json::Value::Number(number);
+                    sqlite_metadata_filter_type_error(
+                        column,
+                        &value,
+                        "a finite number filter value",
+                    )
+                })
+            }
+            value => Err(sqlite_metadata_filter_type_error(
+                column,
+                &value,
+                "a finite number filter value",
+            )),
+        },
+        SqliteMetadataType::Boolean => match value {
+            serde_json::Value::Bool(value) => Ok(Value::Integer(value as i64)),
+            value => Err(sqlite_metadata_filter_type_error(
+                column,
+                &value,
+                "a boolean filter value",
+            )),
+        },
+    }
 }
 
 fn sqlite_filter_param(value: serde_json::Value) -> Result<Value, FilterError> {
@@ -1667,7 +1754,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     SELECT {outer_select_cols}, __rig_score
                     FROM scored
                     WHERE __rig_rank = 1
-                    ORDER BY __rig_score DESC
+                    ORDER BY __rig_score DESC, id ASC
                     LIMIT ?"
                 ))?;
 
@@ -1761,7 +1848,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                      SELECT id, __rig_score
                      FROM scored
                      WHERE __rig_rank = 1
-                     ORDER BY __rig_score DESC
+                     ORDER BY __rig_score DESC, id ASC
                      LIMIT ?"
                 ))?;
 
@@ -2218,6 +2305,60 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_metadata_filter_value_types_are_rejected() -> anyhow::Result<()> {
+        let cases = [
+            (
+                SqliteSearchFilter::eq("published", serde_json::json!("true")),
+                "boolean filter value",
+            ),
+            (
+                SqliteSearchFilter::gt("priority", serde_json::json!(1.5)),
+                "integer filter value",
+            ),
+            (
+                SqliteSearchFilter::eq("category", serde_json::json!({ "name": "docs" })),
+                "string filter value",
+            ),
+            (
+                SqliteSearchFilter::between(
+                    "priority".to_string(),
+                    "1".to_string()..="10".to_string(),
+                ),
+                "integer filter value",
+            ),
+        ];
+
+        for (filter, expected) in cases {
+            let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+                .query("needle")
+                .samples(5)
+                .filter(filter)
+                .build();
+
+            let err = filter_error(
+                build_where_clause(
+                    &req,
+                    vec![1.0, 0.0],
+                    SqliteDistanceMetric::Cosine,
+                    &typed_metadata_columns()
+                        .into_iter()
+                        .chain(test_metadata_columns())
+                        .collect::<Vec<_>>(),
+                    5,
+                ),
+                "mismatched metadata filter value",
+            )?;
+
+            anyhow::ensure!(
+                err.to_string().contains(expected),
+                "unexpected error for mismatched metadata filter value: {err}"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn pattern_filters_are_rejected() -> anyhow::Result<()> {
         let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
             .query("needle")
@@ -2390,6 +2531,85 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_reinsert_preserves_unrelated_multivector_embeddings() -> anyhow::Result<()> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(
+            "file:live_reinsert_preserves_unrelated_multivector_embeddings?mode=memory",
+        )
+        .await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, TestDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        let multi_document = TestDocument {
+            id: "multi".to_string(),
+            category: "docs".to_string(),
+            title: "multi-vector document".to_string(),
+        };
+        vector_store
+            .add_rows(vec![
+                (
+                    multi_document.clone(),
+                    OneOrMany::many(vec![
+                        Embedding {
+                            document: "far chunk".to_string(),
+                            vec: vec![-1.0, 0.0],
+                        },
+                        Embedding {
+                            document: "exact chunk".to_string(),
+                            vec: vec![1.0, 0.0],
+                        },
+                    ])?,
+                ),
+                row(
+                    "replace",
+                    "docs",
+                    "initial replacement vector",
+                    vec![0.8, 0.2],
+                ),
+            ])
+            .await?;
+        vector_store
+            .add_rows(vec![row(
+                "replace",
+                "docs",
+                "replacement far vector",
+                vec![-1.0, 0.0],
+            )])
+            .await?;
+
+        let index = vector_store.index(model);
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .threshold(0.9)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["multi"],
+            "reinsert should not delete another document's best embedding: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["multi"],
+            "top_n_ids should preserve unrelated multivector embeddings after reinsert: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_multiple_embeddings_per_document_use_best_embedding() -> anyhow::Result<()> {
         let multi_document = TestDocument {
             id: "multi".to_string(),
@@ -2464,6 +2684,45 @@ mod tests {
         anyhow::ensure!(
             threshold_result_ids.as_slice() == ["multi"],
             "top_n_ids threshold should include scores equal to the minimum: {threshold_id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_equal_score_results_are_ordered_by_document_id() -> anyhow::Result<()> {
+        let index = live_test_index(
+            "live_equal_score_results_are_ordered_by_document_id",
+            vec![
+                row("b", "docs", "second id exact match", vec![1.0, 0.0]),
+                row("a", "docs", "first id exact match", vec![1.0, 0.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(2)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["a", "b"],
+            "equal-score top_n results should use document id as a stable tie-breaker: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["a", "b"],
+            "equal-score top_n_ids results should use document id as a stable tie-breaker: {id_results:?}"
         );
 
         Ok(())
@@ -2869,6 +3128,43 @@ mod tests {
         ensure_vector_store_filter_error(
             index.top_n_ids(req).await,
             "top_n_ids boolean range filter",
+        )?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_mismatched_metadata_filter_value_type_is_rejected() -> anyhow::Result<()> {
+        let index = live_typed_test_index(
+            "live_mismatched_metadata_filter_value_type_is_rejected",
+            vec![typed_row(
+                1,
+                "docs",
+                1,
+                0.95,
+                true,
+                "published doc",
+                vec![1.0, 0.0],
+            )],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq(
+                "published",
+                serde_json::json!("true"),
+            ))
+            .build();
+
+        ensure_vector_store_filter_error(
+            index.top_n::<TypedTestDocument>(req.clone()).await,
+            "top_n mismatched metadata filter value type",
+        )?;
+        ensure_vector_store_filter_error(
+            index.top_n_ids(req).await,
+            "top_n_ids mismatched metadata filter value type",
         )?;
 
         Ok(())
