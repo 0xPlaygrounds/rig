@@ -39,10 +39,3 @@ Run the local validation suite:
 ```bash
 bash crates/rig-sqlite/tests/fixtures/run_vector_validation.sh --skip-clippy --skip-integration
 ```
-
-Run the Docker validation suite. This builds a Rust/Python image and runs the
-SQLite vector fixture, integration, and clippy checks in a Linux environment:
-
-```bash
-bash crates/rig-sqlite/tests/fixtures/run_vector_validation_docker.sh
-```
