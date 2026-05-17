@@ -58,8 +58,9 @@ impl Column {
     ///
     /// Filterable columns are indexed on the document table and stored as
     /// sqlite-vec metadata columns so supported filters can be applied during
-    /// KNN candidate search. Simple comparison filters are pushed to sqlite-vec;
-    /// more complex filters are applied on the joined document table.
+    /// KNN candidate search. Filters that cannot be applied by sqlite-vec
+    /// metadata constraints are rejected instead of being applied after the
+    /// candidate limit.
     pub fn indexed(mut self) -> Self {
         self.indexed = true;
         self
@@ -560,11 +561,27 @@ where
             embedding_columns.join(", "),
             embedding_placeholders.join(", ")
         );
+        let existing_rowid_sql = format!("SELECT rowid FROM {table_name} WHERE id = ?1");
+        let delete_embeddings_sql = format!("DELETE FROM {table_name}_embeddings WHERE rowid = ?1");
 
         for (doc, embeddings) in &documents {
             debug!("Storing document with id {}", doc.id());
 
             let values = doc.column_values();
+            let id_value = values
+                .iter()
+                .find(|(name, _)| *name == "id")
+                .map(|(_, value)| value.to_sql_value())
+                .unwrap_or_else(|| Value::Text(doc.id()));
+            if let Some(existing_rowid) = txn
+                .query_row(&existing_rowid_sql, rusqlite::params![id_value], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .optional()?
+            {
+                txn.execute(&delete_embeddings_sql, [existing_rowid])?;
+            }
+
             let columns = values.iter().map(|(col, _)| *col).collect::<Vec<_>>();
 
             let placeholders = (1..=values.len())
@@ -747,14 +764,12 @@ impl SqlitePatternOp {
 #[derive(Clone, Copy)]
 enum SqliteFilterTarget {
     VectorMetadata,
-    Document,
 }
 
 impl SqliteFilterTarget {
     fn alias(self) -> &'static str {
         match self {
             Self::VectorMetadata => "e",
-            Self::Document => "d",
         }
     }
 }
@@ -831,7 +846,7 @@ impl SqliteSearchFilter {
         }
     }
 
-    /// Tests whether the value at `key` is contained in the range
+    /// Tests whether an indexed non-boolean metadata value is contained in the range.
     pub fn between<N>(key: String, range: RangeInclusive<N>) -> Self
     where
         N: Into<serde_json::Value>,
@@ -863,9 +878,10 @@ impl SqliteSearchFilter {
         }
     }
 
-    // String ops
-    /// Tests whether the value at `key` satisfies the glob pattern
-    /// `pattern` should be a valid SQLite glob pattern
+    /// Tests whether the value at `key` satisfies the glob pattern.
+    ///
+    /// sqlite-vec cannot enforce `GLOB` during candidate search, so SQLite
+    /// vector searches currently reject this filter.
     pub fn glob(key: String, pattern: impl Into<String>) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Pattern {
@@ -876,8 +892,10 @@ impl SqliteSearchFilter {
         }
     }
 
-    /// Tests whether the value at `key` satisfies the "like" pattern
-    /// `pattern` should be a valid SQLite like pattern
+    /// Tests whether the value at `key` satisfies the `LIKE` pattern.
+    ///
+    /// sqlite-vec cannot enforce `LIKE` during candidate search, so SQLite
+    /// vector searches currently reject this filter.
     pub fn like(key: String, pattern: impl Into<String>) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Pattern {
@@ -913,37 +931,69 @@ impl SqliteSearchFilterExpr {
         metadata_columns: &[SqliteMetadataColumn],
     ) -> Result<SqliteRenderedFilters, FilterError> {
         match self {
-            Self::Comparison { key, op, .. } if !sqlite_key_is_qualified(key) => {
-                let metadata_column = metadata_columns
-                    .iter()
-                    .find(|column| column.name == key.as_str());
+            Self::Comparison { key, op, .. } => {
+                let metadata_column = sqlite_native_metadata_column(key, metadata_columns)?;
 
-                match metadata_column {
-                    Some(column) if column.metadata_type.supports_native_comparison(*op) => {
-                        Ok(SqliteRenderedFilters {
-                            native: vec![self.render(SqliteFilterTarget::VectorMetadata)?],
-                            post: Vec::new(),
-                        })
-                    }
-                    _ => Ok(SqliteRenderedFilters {
-                        native: Vec::new(),
-                        post: vec![self.render(SqliteFilterTarget::Document)?],
-                    }),
+                if !metadata_column
+                    .metadata_type
+                    .supports_native_comparison(*op)
+                {
+                    return Err(sqlite_unsupported_filter(format!(
+                        "`{key}` is a BOOLEAN metadata column, and sqlite-vec only supports `=` filters for booleans"
+                    )));
                 }
+
+                Ok(SqliteRenderedFilters {
+                    native: vec![self.render(SqliteFilterTarget::VectorMetadata)?],
+                    post: Vec::new(),
+                })
             }
             Self::And(lhs, rhs) => {
                 let mut rendered = lhs.render_split(metadata_columns)?;
                 rendered.extend(rhs.render_split(metadata_columns)?);
                 Ok(rendered)
             }
-            Self::Or(_, _) | Self::Not(_) => Ok(SqliteRenderedFilters {
-                native: Vec::new(),
-                post: vec![self.render(SqliteFilterTarget::Document)?],
-            }),
-            _ => Ok(SqliteRenderedFilters {
-                native: Vec::new(),
-                post: vec![self.render(SqliteFilterTarget::Document)?],
-            }),
+            Self::Between { key, lo, hi } => {
+                let metadata_column = sqlite_native_metadata_column(key, metadata_columns)?;
+                if metadata_column.metadata_type == SqliteMetadataType::Boolean {
+                    return Err(sqlite_unsupported_filter(format!(
+                        "`{key}` is a BOOLEAN metadata column, and sqlite-vec does not support range filters for booleans"
+                    )));
+                }
+
+                Ok(SqliteRenderedFilters {
+                    native: vec![SqliteRenderedFilter {
+                        condition: format!("e.{key} >= ? AND e.{key} <= ?"),
+                        params: vec![
+                            sqlite_filter_param(lo.clone())?,
+                            sqlite_filter_param(hi.clone())?,
+                        ],
+                    }],
+                    post: Vec::new(),
+                })
+            }
+            Self::Raw { condition, params } if condition == "1 = 1" && params.is_empty() => {
+                Ok(SqliteRenderedFilters {
+                    native: Vec::new(),
+                    post: Vec::new(),
+                })
+            }
+            Self::Or(_, _) => Err(sqlite_unsupported_filter(
+                "`OR` filters cannot be applied during sqlite-vec candidate search",
+            )),
+            Self::Not(_) => Err(sqlite_unsupported_filter(
+                "`NOT` filters cannot be applied during sqlite-vec candidate search",
+            )),
+            Self::NullCheck { .. } => Err(sqlite_unsupported_filter(
+                "`IS NULL` filters are not supported by sqlite-vec metadata constraints",
+            )),
+            Self::Pattern { op, .. } => Err(sqlite_unsupported_filter(format!(
+                "`{}` filters are not supported by sqlite-vec metadata constraints",
+                op.as_sql().to_ascii_uppercase()
+            ))),
+            Self::Raw { .. } => Err(sqlite_unsupported_filter(
+                "raw filters cannot be validated as sqlite-vec metadata constraints",
+            )),
         }
     }
 
@@ -1004,6 +1054,33 @@ impl SqliteSearchFilterExpr {
             }),
         }
     }
+}
+
+fn sqlite_native_metadata_column<'a>(
+    key: &str,
+    metadata_columns: &'a [SqliteMetadataColumn],
+) -> Result<&'a SqliteMetadataColumn, FilterError> {
+    if sqlite_key_is_qualified(key) {
+        return Err(sqlite_unsupported_filter(format!(
+            "`{key}` is not a plain sqlite-vec metadata column name"
+        )));
+    }
+
+    metadata_columns
+        .iter()
+        .find(|column| column.name == key)
+        .ok_or_else(|| {
+            sqlite_unsupported_filter(format!(
+                "`{key}` is not an indexed sqlite-vec metadata column"
+            ))
+        })
+}
+
+fn sqlite_unsupported_filter(reason: impl Into<String>) -> FilterError {
+    FilterError::TypeError(format!(
+        "SQLite filters must be enforceable during sqlite-vec candidate search; {}",
+        reason.into()
+    ))
 }
 
 fn sqlite_filter_param(value: serde_json::Value) -> Result<Value, FilterError> {
@@ -1606,6 +1683,27 @@ mod tests {
         ]
     }
 
+    fn filter_error<T: std::fmt::Debug>(
+        result: Result<T, FilterError>,
+        context: &str,
+    ) -> anyhow::Result<FilterError> {
+        match result {
+            Ok(value) => anyhow::bail!("{context} should have failed, got {value:?}"),
+            Err(err) => Ok(err),
+        }
+    }
+
+    fn ensure_vector_store_filter_error<T: std::fmt::Debug>(
+        result: Result<T, VectorStoreError>,
+        context: &str,
+    ) -> anyhow::Result<()> {
+        match result {
+            Err(VectorStoreError::FilterError(_)) => Ok(()),
+            Err(err) => anyhow::bail!("{context} returned unexpected error: {err}"),
+            Ok(value) => anyhow::bail!("{context} should have failed, got {value:?}"),
+        }
+    }
+
     #[test]
     fn threshold_filter_uses_computed_similarity_expression() -> anyhow::Result<()> {
         let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
@@ -1682,7 +1780,7 @@ mod tests {
     }
 
     #[test]
-    fn no_threshold_or_filter_keeps_vector_constraints_grouped() -> anyhow::Result<()> {
+    fn or_filter_is_rejected_because_it_cannot_constrain_vec0_candidates() -> anyhow::Result<()> {
         let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs")).or(
             SqliteSearchFilter::eq("category", serde_json::json!("archive")),
         );
@@ -1693,19 +1791,20 @@ mod tests {
             .filter(filter)
             .build();
 
-        let (where_clause, params) = build_where_clause(
-            &req,
-            vec![1.0, 0.0],
-            SqliteDistanceMetric::Cosine,
-            &test_metadata_columns(),
+        let err = filter_error(
+            build_where_clause(
+                &req,
+                vec![1.0, 0.0],
+                SqliteDistanceMetric::Cosine,
+                &test_metadata_columns(),
+            ),
+            "OR filters",
         )?;
 
         anyhow::ensure!(
-            where_clause
-                == "WHERE e.embedding MATCH ? AND k = ? AND ((d.category = ?) OR (d.category = ?))",
-            "unexpected where clause: {where_clause}"
+            err.to_string().contains("OR"),
+            "unexpected error for OR filter: {err}"
         );
-        anyhow::ensure!(params.len() == 5, "unexpected params: {params:?}");
 
         Ok(())
     }
@@ -1742,7 +1841,7 @@ mod tests {
     }
 
     #[test]
-    fn boolean_range_filter_uses_document_constraint() -> anyhow::Result<()> {
+    fn boolean_range_filter_is_rejected() -> anyhow::Result<()> {
         let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
             .query("needle")
             .samples(5)
@@ -1750,6 +1849,33 @@ mod tests {
                 "published",
                 serde_json::json!(false),
             ))
+            .build();
+
+        let err = filter_error(
+            build_where_clause(
+                &req,
+                vec![1.0, 0.0],
+                SqliteDistanceMetric::Cosine,
+                &typed_metadata_columns(),
+            ),
+            "boolean range filters",
+        )?;
+
+        anyhow::ensure!(
+            err.to_string().contains("BOOLEAN"),
+            "unexpected error for boolean range filter: {err}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn indexed_between_filter_uses_vec0_metadata_constraints() -> anyhow::Result<()> {
+        let filter = SqliteSearchFilter::between("priority".to_string(), 1_i64..=10_i64);
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(filter)
             .build();
 
         let (where_clause, params) = build_where_clause(
@@ -1760,53 +1886,69 @@ mod tests {
         )?;
 
         anyhow::ensure!(
-            where_clause == "WHERE e.embedding MATCH ? AND k = ? AND (d.published > ?)",
-            "boolean range filters are not legal sqlite-vec metadata constraints: {where_clause}"
+            where_clause
+                == "WHERE e.embedding MATCH ? AND k = ? AND (e.priority >= ? AND e.priority <= ?)",
+            "unexpected where clause: {where_clause}"
         );
-        anyhow::ensure!(params.len() == 4, "unexpected params: {params:?}");
+        anyhow::ensure!(params.len() == 5, "unexpected params: {params:?}");
         anyhow::ensure!(
-            params.get(3) == Some(&Value::Integer(0)),
-            "unexpected filter param: {params:?}"
+            params.get(3) == Some(&Value::Integer(1)) && params.get(4) == Some(&Value::Integer(10)),
+            "between bounds should be bound as parameters: {params:?}"
         );
 
         Ok(())
     }
 
     #[test]
-    fn pattern_and_between_filters_use_bound_params() -> anyhow::Result<()> {
-        let filter = SqliteSearchFilter::like("title".to_string(), "%O'Reilly%")
-            .and(SqliteSearchFilter::glob("category".to_string(), "docs*"))
-            .and(SqliteSearchFilter::between(
-                "title".to_string(),
-                "a".to_string()..="z".to_string(),
-            ));
+    fn pattern_filters_are_rejected() -> anyhow::Result<()> {
         let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
             .query("needle")
             .samples(5)
-            .filter(filter)
+            .filter(SqliteSearchFilter::like(
+                "category".to_string(),
+                "%O'Reilly%",
+            ))
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[])?;
+        let err = filter_error(
+            build_where_clause(
+                &req,
+                vec![1.0, 0.0],
+                SqliteDistanceMetric::Cosine,
+                &test_metadata_columns(),
+            ),
+            "LIKE filters",
+        )?;
 
         anyhow::ensure!(
-            where_clause
-                == "WHERE e.embedding MATCH ? AND k = ? AND (d.title like ?) AND (d.category glob ?) AND (d.title between ? and ?)",
-            "unexpected where clause: {where_clause}"
+            err.to_string().contains("LIKE"),
+            "unexpected error for LIKE filter: {err}"
         );
-        anyhow::ensure!(params.len() == 7, "unexpected params: {params:?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn nonindexed_filters_are_rejected() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::eq("title", serde_json::json!("docs")))
+            .build();
+
+        let err = filter_error(
+            build_where_clause(
+                &req,
+                vec![1.0, 0.0],
+                SqliteDistanceMetric::Cosine,
+                &test_metadata_columns(),
+            ),
+            "filters on non-indexed columns",
+        )?;
+
         anyhow::ensure!(
-            params.get(3) == Some(&Value::Text("%O'Reilly%".to_string())),
-            "like pattern should be bound as a parameter: {params:?}"
-        );
-        anyhow::ensure!(
-            params.get(4) == Some(&Value::Text("docs*".to_string())),
-            "glob pattern should be bound as a parameter: {params:?}"
-        );
-        anyhow::ensure!(
-            params.get(5) == Some(&Value::Text("a".to_string()))
-                && params.get(6) == Some(&Value::Text("z".to_string())),
-            "between bounds should be bound as parameters: {params:?}"
+            err.to_string().contains("not an indexed"),
+            "unexpected error for non-indexed filter: {err}"
         );
 
         Ok(())
@@ -1866,6 +2008,62 @@ mod tests {
         anyhow::ensure!(
             id_results.iter().all(|(score, _)| *score > 0.75),
             "top_n_ids threshold should remove low-scoring rows: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_reinsert_same_document_id_removes_stale_vec0_candidates() -> anyhow::Result<()> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(
+            "file:live_reinsert_same_document_id_removes_stale_vec0_candidates?mode=memory",
+        )
+        .await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, TestDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store
+            .add_rows(vec![row(
+                "replace",
+                "docs",
+                "original near vector",
+                vec![1.0, 0.0],
+            )])
+            .await?;
+        vector_store
+            .add_rows(vec![
+                row("replace", "docs", "replacement far vector", vec![-1.0, 0.0]),
+                row("fresh", "docs", "fresh near vector", vec![0.9, 0.1]),
+            ])
+            .await?;
+
+        let index = vector_store.index(model);
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["fresh"],
+            "stale replaced vectors should not consume sqlite-vec candidates: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["fresh"],
+            "top_n_ids should not return or be starved by stale replaced vectors: {id_results:?}"
         );
 
         Ok(())
@@ -2143,9 +2341,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_boolean_range_filter_stays_on_document_table() -> anyhow::Result<()> {
+    async fn live_boolean_range_filter_is_rejected() -> anyhow::Result<()> {
         let index = live_typed_test_index(
-            "live_boolean_range_filter_stays_on_document_table",
+            "live_boolean_range_filter_is_rejected",
             vec![
                 typed_row(
                     1,
@@ -2170,25 +2368,14 @@ mod tests {
             ))
             .build();
 
-        let results = index.top_n::<TypedTestDocument>(req.clone()).await?;
-        let ids = results
-            .iter()
-            .map(|(_, id, _)| id.as_str())
-            .collect::<Vec<_>>();
-        anyhow::ensure!(
-            ids.as_slice() == ["2"],
-            "boolean range filters should not be pushed to sqlite-vec: {results:?}"
-        );
-
-        let id_results = index.top_n_ids(req).await?;
-        let result_ids = id_results
-            .iter()
-            .map(|(_, id)| id.as_str())
-            .collect::<Vec<_>>();
-        anyhow::ensure!(
-            result_ids.as_slice() == ["2"],
-            "top_n_ids should keep boolean range filters off sqlite-vec: {id_results:?}"
-        );
+        ensure_vector_store_filter_error(
+            index.top_n::<TypedTestDocument>(req.clone()).await,
+            "top_n boolean range filter",
+        )?;
+        ensure_vector_store_filter_error(
+            index.top_n_ids(req).await,
+            "top_n_ids boolean range filter",
+        )?;
 
         Ok(())
     }
@@ -2200,10 +2387,7 @@ mod tests {
         let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs"))
             .and(SqliteSearchFilter::lt("priority", serde_json::json!(10)))
             .and(SqliteSearchFilter::gt("rating", serde_json::json!(0.8)))
-            .and(SqliteSearchFilter::gt(
-                "published",
-                serde_json::json!(false),
-            ));
+            .and(SqliteSearchFilter::eq("published", serde_json::json!(true)));
 
         for distance_metric in [
             SqliteDistanceMetric::Cosine,
@@ -2257,10 +2441,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_or_filter_without_threshold_does_not_bypass_vector_constraints()
-    -> anyhow::Result<()> {
+    async fn live_or_filter_is_rejected() -> anyhow::Result<()> {
         let index = live_test_index(
-            "live_or_filter_without_threshold_does_not_bypass_vector_constraints",
+            "live_or_filter_is_rejected",
             vec![
                 row(
                     "nearest",
@@ -2284,12 +2467,11 @@ mod tests {
             .filter(filter)
             .build();
 
-        let results = index.top_n::<TestDocument>(req).await?;
-
-        anyhow::ensure!(
-            results.is_empty(),
-            "OR filter should not return rows outside the top-k vector match set: {results:?}"
-        );
+        ensure_vector_store_filter_error(
+            index.top_n::<TestDocument>(req.clone()).await,
+            "top_n OR filter",
+        )?;
+        ensure_vector_store_filter_error(index.top_n_ids(req).await, "top_n_ids OR filter")?;
 
         Ok(())
     }
