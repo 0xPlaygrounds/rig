@@ -229,6 +229,42 @@ impl SqliteMetadataType {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SqliteColumnAffinity {
+    Text,
+    Integer,
+    Float,
+    Boolean,
+    Numeric,
+    Blob,
+}
+
+impl SqliteColumnAffinity {
+    fn from_column_type(column_type: &str) -> Self {
+        let column_type = column_type.to_ascii_uppercase();
+
+        if column_type.contains("INT") {
+            Self::Integer
+        } else if column_type.contains("CHAR")
+            || column_type.contains("CLOB")
+            || column_type.contains("TEXT")
+        {
+            Self::Text
+        } else if column_type.contains("BLOB") || column_type.trim().is_empty() {
+            Self::Blob
+        } else if column_type.contains("REAL")
+            || column_type.contains("FLOA")
+            || column_type.contains("DOUB")
+        {
+            Self::Float
+        } else if column_type.contains("BOOL") {
+            Self::Boolean
+        } else {
+            Self::Numeric
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SqliteMetadataColumn {
     name: &'static str,
@@ -652,8 +688,8 @@ enum SqliteSearchFilterExpr {
     Not(Box<SqliteSearchFilterExpr>),
     Between {
         key: String,
-        lo: String,
-        hi: String,
+        lo: serde_json::Value,
+        hi: serde_json::Value,
     },
     NullCheck {
         key: String,
@@ -792,16 +828,15 @@ impl SqliteSearchFilter {
     /// Tests whether the value at `key` is contained in the range
     pub fn between<N>(key: String, range: RangeInclusive<N>) -> Self
     where
-        N: Ord + rusqlite::ToSql + std::fmt::Display,
+        N: Into<serde_json::Value>,
     {
-        let lo = range.start();
-        let hi = range.end();
+        let (lo, hi) = range.into_inner();
 
         Self {
             expr: SqliteSearchFilterExpr::Between {
                 key,
-                lo: lo.to_string(),
-                hi: hi.to_string(),
+                lo: lo.into(),
+                hi: hi.into(),
             },
         }
     }
@@ -825,30 +860,24 @@ impl SqliteSearchFilter {
     // String ops
     /// Tests whether the value at `key` satisfies the glob pattern
     /// `pattern` should be a valid SQLite glob pattern
-    pub fn glob<'a, S>(key: String, pattern: S) -> Self
-    where
-        S: AsRef<&'a str>,
-    {
+    pub fn glob(key: String, pattern: impl Into<String>) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Pattern {
                 key,
                 op: SqlitePatternOp::Glob,
-                pattern: pattern.as_ref().to_string(),
+                pattern: pattern.into(),
             },
         }
     }
 
     /// Tests whether the value at `key` satisfies the "like" pattern
     /// `pattern` should be a valid SQLite like pattern
-    pub fn like<'a, S>(key: String, pattern: S) -> Self
-    where
-        S: AsRef<&'a str>,
-    {
+    pub fn like(key: String, pattern: impl Into<String>) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Pattern {
                 key,
                 op: SqlitePatternOp::Like,
-                pattern: pattern.as_ref().to_string(),
+                pattern: pattern.into(),
             },
         }
     }
@@ -942,8 +971,11 @@ impl SqliteSearchFilterExpr {
                 })
             }
             Self::Between { key, lo, hi } => Ok(SqliteRenderedFilter {
-                condition: format!("{} between {lo} and {hi}", sqlite_qualify_key(key, target)),
-                params: Vec::new(),
+                condition: format!("{} between ? and ?", sqlite_qualify_key(key, target)),
+                params: vec![
+                    sqlite_filter_param(lo.clone())?,
+                    sqlite_filter_param(hi.clone())?,
+                ],
             }),
             Self::NullCheck { key, negated } => {
                 let operator = if *negated { "is not null" } else { "is null" };
@@ -953,13 +985,8 @@ impl SqliteSearchFilterExpr {
                 })
             }
             Self::Pattern { key, op, pattern } => Ok(SqliteRenderedFilter {
-                condition: format!(
-                    "{} {} {}",
-                    sqlite_qualify_key(key, target),
-                    op.as_sql(),
-                    pattern
-                ),
-                params: Vec::new(),
+                condition: format!("{} {} ?", sqlite_qualify_key(key, target), op.as_sql()),
+                params: vec![Value::Text(pattern.clone())],
             }),
             Self::Raw { condition, params } => Ok(SqliteRenderedFilter {
                 condition: condition.clone(),
@@ -1290,39 +1317,23 @@ fn sqlite_column_value_to_json(
     value: ValueRef<'_>,
 ) -> rusqlite::Result<serde_json::Value> {
     let value_type = value.data_type();
-    let Some(column_type) = SqliteMetadataType::from_column_type(column.col_type) else {
-        return Err(sqlite_column_value_error(
-            index,
-            value_type,
-            column,
-            "unsupported declared column type",
-        ));
-    };
+    let column_affinity = SqliteColumnAffinity::from_column_type(column.col_type);
 
-    match (column_type, value) {
+    match (column_affinity, value) {
         (_, ValueRef::Null) => Ok(serde_json::Value::Null),
-        (SqliteMetadataType::Text, ValueRef::Text(value)) => {
-            sqlite_text_value(index, value_type, column, value)
-        }
-        (SqliteMetadataType::Integer, ValueRef::Integer(value)) => {
-            Ok(serde_json::Value::Number(value.into()))
-        }
-        (SqliteMetadataType::Float, ValueRef::Real(value)) => {
-            sqlite_number_value(index, value_type, column, value)
-        }
-        // SQLite can physically store small REAL values as integers while
-        // preserving REAL affinity, so accept integers for FLOAT columns.
-        (SqliteMetadataType::Float, ValueRef::Integer(value)) => {
-            sqlite_number_value(index, value_type, column, value as f64)
-        }
-        (SqliteMetadataType::Boolean, ValueRef::Integer(0)) => Ok(serde_json::Value::Bool(false)),
-        (SqliteMetadataType::Boolean, ValueRef::Integer(1)) => Ok(serde_json::Value::Bool(true)),
-        _ => Err(sqlite_column_value_error(
+        (SqliteColumnAffinity::Boolean, ValueRef::Integer(0)) => Ok(serde_json::Value::Bool(false)),
+        (SqliteColumnAffinity::Boolean, ValueRef::Integer(1)) => Ok(serde_json::Value::Bool(true)),
+        (SqliteColumnAffinity::Boolean, _) => Err(sqlite_column_value_error(
             index,
             value_type,
             column,
-            "stored SQLite value type does not match declared column type",
+            "stored SQLite boolean value must be 0 or 1",
         )),
+        (_, ValueRef::Text(value)) => sqlite_text_value(index, value_type, column, value),
+        (_, ValueRef::Integer(value)) => Ok(serde_json::Value::Number(value.into())),
+        (_, ValueRef::Real(value)) => sqlite_number_value(index, value_type, column, value),
+        (_, ValueRef::Blob(value)) => Ok(serde_json::to_value(value)
+            .map_err(|e| sqlite_column_value_error(index, value_type, column, e.to_string()))?),
     }
 }
 
@@ -1755,6 +1766,46 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn pattern_and_between_filters_use_bound_params() -> anyhow::Result<()> {
+        let filter = SqliteSearchFilter::like("title".to_string(), "%O'Reilly%")
+            .and(SqliteSearchFilter::glob("category".to_string(), "docs*"))
+            .and(SqliteSearchFilter::between(
+                "title".to_string(),
+                "a".to_string()..="z".to_string(),
+            ));
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(filter)
+            .build();
+
+        let (where_clause, params) =
+            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[])?;
+
+        anyhow::ensure!(
+            where_clause
+                == "WHERE e.embedding MATCH ? AND k = ? AND (d.title like ?) AND (d.category glob ?) AND (d.title between ? and ?)",
+            "unexpected where clause: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 7, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(3) == Some(&Value::Text("%O'Reilly%".to_string())),
+            "like pattern should be bound as a parameter: {params:?}"
+        );
+        anyhow::ensure!(
+            params.get(4) == Some(&Value::Text("docs*".to_string())),
+            "glob pattern should be bound as a parameter: {params:?}"
+        );
+        anyhow::ensure!(
+            params.get(5) == Some(&Value::Text("a".to_string()))
+                && params.get(6) == Some(&Value::Text("z".to_string())),
+            "between bounds should be bound as parameters: {params:?}"
+        );
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Result<()> {
         let index = live_test_index(
@@ -1810,6 +1861,43 @@ mod tests {
             id_results.iter().all(|(score, _)| *score > 0.75),
             "top_n_ids threshold should remove low-scoring rows: {id_results:?}"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_common_sqlite_text_types_round_trip_in_top_n() -> anyhow::Result<()> {
+        let index = live_common_type_test_index(
+            "live_common_sqlite_text_types_round_trip_in_top_n",
+            vec![common_type_row(
+                "common",
+                "varchar name",
+                "clob notes",
+                7,
+                vec![1.0, 0.0],
+            )],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .build();
+        let results = index.top_n::<CommonTypeDocument>(req).await?;
+
+        let Some((_, id, doc)) = results.first() else {
+            anyhow::bail!("expected common type document result");
+        };
+        anyhow::ensure!(id == "common", "unexpected id: {id}");
+        anyhow::ensure!(
+            doc.name == "varchar name",
+            "VARCHAR value should round-trip: {doc:?}"
+        );
+        anyhow::ensure!(
+            doc.notes == "clob notes",
+            "CLOB value should round-trip: {doc:?}"
+        );
+        anyhow::ensure!(doc.rank == 7, "NUMERIC value should round-trip: {doc:?}");
 
         Ok(())
     }
@@ -2219,6 +2307,22 @@ mod tests {
         Ok(vector_store.index(model))
     }
 
+    async fn live_common_type_test_index(
+        name: &str,
+        rows: Vec<(CommonTypeDocument, OneOrMany<Embedding>)>,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, CommonTypeDocument>> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, CommonTypeDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store.add_rows(rows).await?;
+
+        Ok(vector_store.index(model))
+    }
+
     fn row(
         id: impl Into<String>,
         category: impl Into<String>,
@@ -2235,6 +2339,29 @@ mod tests {
             document.clone(),
             OneOrMany::one(Embedding {
                 document: document.title,
+                vec,
+            }),
+        )
+    }
+
+    fn common_type_row(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        notes: impl Into<String>,
+        rank: i64,
+        vec: Vec<f64>,
+    ) -> (CommonTypeDocument, OneOrMany<Embedding>) {
+        let document = CommonTypeDocument {
+            id: id.into(),
+            name: name.into(),
+            notes: notes.into(),
+            rank,
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.name.clone(),
                 vec,
             }),
         )
@@ -2519,6 +2646,42 @@ mod tests {
                 ("id", Box::new(self.id.clone())),
                 ("category", Box::new(self.category.clone())),
                 ("title", Box::new(self.title.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct CommonTypeDocument {
+        id: String,
+        name: String,
+        notes: String,
+        rank: i64,
+    }
+
+    impl SqliteVectorStoreTable for CommonTypeDocument {
+        fn name() -> &'static str {
+            "live_common_type_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("name", "VARCHAR(255)"),
+                Column::new("notes", "CLOB"),
+                Column::new("rank", "NUMERIC"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                ("name", Box::new(self.name.clone())),
+                ("notes", Box::new(self.notes.clone())),
+                ("rank", Box::new(self.rank)),
             ]
         }
     }
