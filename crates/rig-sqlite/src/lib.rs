@@ -2122,6 +2122,16 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn checked_in_vector_fixture_matches_ground_truth() -> anyhow::Result<()> {
+        vector_fixture_matches_ground_truth("tests/fixtures/vector_fixture.json").await
+    }
+
+    #[tokio::test]
+    async fn checked_in_retrieval_fixture_matches_ground_truth() -> anyhow::Result<()> {
+        vector_fixture_matches_ground_truth("tests/fixtures/retrieval_fixture.json").await
+    }
+
+    #[tokio::test]
     #[ignore = "set RIG_SQLITE_VECTOR_FIXTURE to a JSON vector fixture"]
     async fn external_vector_fixture_matches_ground_truth() -> anyhow::Result<()> {
         let fixture_path = std::env::var("RIG_SQLITE_VECTOR_FIXTURE").map_err(|_| {
@@ -2129,6 +2139,10 @@ mod tests {
                 "set RIG_SQLITE_VECTOR_FIXTURE to a JSON fixture with documents, queries, and optional expected_ids"
             )
         })?;
+        vector_fixture_matches_ground_truth(&fixture_path).await
+    }
+
+    async fn vector_fixture_matches_ground_truth(fixture_path: &str) -> anyhow::Result<()> {
         let fixture_contents = read_vector_fixture(&fixture_path)?;
         let fixture: VectorFixture = serde_json::from_str(&fixture_contents)?;
         fixture.validate()?;
@@ -2137,9 +2151,14 @@ mod tests {
 
         let distance_metric = fixture.metric.into();
         let model = FixtureEmbeddingModel::from_fixture(&fixture)?;
-        let conn =
-            Connection::open("file:external_vector_fixture_matches_ground_truth?mode=memory")
-                .await?;
+        let connection_name = fixture_path
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+            .collect::<String>();
+        let conn = Connection::open(format!(
+            "file:vector_fixture_matches_ground_truth_{connection_name}?mode=memory"
+        ))
+        .await?;
         let vector_store: SqliteVectorStore<_, FixtureDocument> =
             SqliteVectorStore::with_distance_metric(conn, &model, distance_metric).await?;
         vector_store.add_rows(fixture_sqlite_rows(&fixture)).await?;
