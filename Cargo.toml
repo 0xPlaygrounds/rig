@@ -101,7 +101,7 @@ redis = "1.2.1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5.1", default-features = false }
 reqwest-retry = "0.9"
-rmcp = "1.6.0"
+rmcp = "1.7.0"
 url = "2.5"
 rusqlite = "0.32"
 scylla = "1.2.0"
