@@ -16,7 +16,7 @@ use crate::streaming;
 // ================================================================
 // OpenAI Completion Streaming API
 // ================================================================
-#[derive(Deserialize, Debug)]
+#[derive(Default, Deserialize, Debug)]
 pub(crate) struct StreamingFunction {
     pub(crate) name: Option<String>,
     pub(crate) arguments: Option<String>,
@@ -26,6 +26,7 @@ pub(crate) struct StreamingFunction {
 pub(crate) struct StreamingToolCall {
     pub(crate) index: usize,
     pub(crate) id: Option<String>,
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub(crate) function: StreamingFunction,
 }
 
@@ -271,6 +272,33 @@ mod tests {
     }
 
     #[test]
+    fn test_streaming_tool_call_missing_function_deserialization() {
+        let json = r#"{
+            "index": 0,
+            "id": "call_abc123"
+        }"#;
+        let tool_call: StreamingToolCall = serde_json::from_str(json).unwrap();
+        assert_eq!(tool_call.index, 0);
+        assert_eq!(tool_call.id, Some("call_abc123".to_string()));
+        assert!(tool_call.function.name.is_none());
+        assert!(tool_call.function.arguments.is_none());
+    }
+
+    #[test]
+    fn test_streaming_tool_call_null_function_deserialization() {
+        let json = r#"{
+            "index": 0,
+            "id": "call_abc123",
+            "function": null
+        }"#;
+        let tool_call: StreamingToolCall = serde_json::from_str(json).unwrap();
+        assert_eq!(tool_call.index, 0);
+        assert_eq!(tool_call.id, Some("call_abc123".to_string()));
+        assert!(tool_call.function.name.is_none());
+        assert!(tool_call.function.arguments.is_none());
+    }
+
+    #[test]
     fn test_streaming_delta_with_tool_calls() {
         let json = r#"{
             "content": null,
@@ -287,6 +315,17 @@ mod tests {
         assert!(delta.content.is_none());
         assert_eq!(delta.tool_calls.len(), 1);
         assert_eq!(delta.tool_calls[0].id, Some("call_xyz".to_string()));
+    }
+
+    #[test]
+    fn test_streaming_delta_with_null_tool_calls() {
+        let json = r#"{
+            "content": "Hello",
+            "tool_calls": null
+        }"#;
+        let delta: StreamingDelta = serde_json::from_str(json).unwrap();
+        assert_eq!(delta.content, Some("Hello".to_string()));
+        assert!(delta.tool_calls.is_empty());
     }
 
     #[test]
@@ -551,6 +590,55 @@ mod tests {
         assert_eq!(
             collected_tool_calls[1].function.arguments,
             serde_json::json!({"action": "log"})
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tool_call_id_chunk_without_function_is_preserved() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_abc123\"}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":\"lookup\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"id\\\":1}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+                "[DONE]",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut collected_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id: _,
+            } = chunk.unwrap()
+            {
+                collected_tool_calls.push(tool_call);
+            }
+        }
+
+        assert_eq!(
+            collected_tool_calls.len(),
+            1,
+            "expected id-only chunk to be retained for later tool-call deltas"
+        );
+        assert_eq!(collected_tool_calls[0].id, "call_abc123");
+        assert_eq!(collected_tool_calls[0].function.name, "lookup");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({"id": 1})
         );
     }
 

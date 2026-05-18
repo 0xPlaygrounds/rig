@@ -182,6 +182,14 @@ where
     deserializer.deserialize_any(NullOrVec(PhantomData))
 }
 
+pub fn null_or_default<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Deserialize<'de> + Default,
+    D: Deserializer<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
