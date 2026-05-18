@@ -40,6 +40,17 @@ pub enum MultiTurnStreamItem<R> {
     StreamAssistantItem(StreamedAssistantContent<R>),
     /// A streamed user content item (mostly for tool results).
     StreamUserItem(StreamedUserContent),
+    /// Token usage for one model request made by this agent stream.
+    ///
+    /// This is emitted when a provider call finishes and reports usage. It is
+    /// not incremental per streamed token; it is the provider's final usage for
+    /// that model call.
+    ModelCallUsage {
+        /// Zero-based index of the model request within this agent stream.
+        call_index: usize,
+        /// Token usage reported for this model request.
+        usage: crate::completion::Usage,
+    },
     /// The final result from the stream.
     FinalResponse(FinalResponse),
 }
@@ -51,6 +62,9 @@ pub struct FinalResponse {
     /// This is empty only when the turn completed without emitting any text.
     response: String,
     aggregated_usage: crate::completion::Usage,
+    /// Usage values reported by each model request made by this agent stream.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    per_call_usage: Vec<crate::completion::Usage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<Vec<Message>>,
 }
@@ -60,6 +74,7 @@ impl FinalResponse {
         Self {
             response: String::new(),
             aggregated_usage: crate::completion::Usage::new(),
+            per_call_usage: Vec::new(),
             history: None,
         }
     }
@@ -71,6 +86,14 @@ impl FinalResponse {
 
     pub fn usage(&self) -> crate::completion::Usage {
         self.aggregated_usage
+    }
+
+    /// Returns final usage reported for each model request in this agent stream.
+    ///
+    /// Each entry is a whole-request provider usage snapshot, not incremental
+    /// usage per streamed token.
+    pub fn per_call_usage(&self) -> &[crate::completion::Usage] {
+        &self.per_call_usage
     }
 
     pub fn history(&self) -> Option<&[Message]> {
@@ -87,6 +110,7 @@ impl<R> MultiTurnStreamItem<R> {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
+            per_call_usage: Vec::new(),
             history: None,
         })
     }
@@ -99,6 +123,21 @@ impl<R> MultiTurnStreamItem<R> {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
+            per_call_usage: Vec::new(),
+            history,
+        })
+    }
+
+    pub(crate) fn final_response_with_usage_details(
+        response: &str,
+        aggregated_usage: crate::completion::Usage,
+        per_call_usage: Vec<crate::completion::Usage>,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        Self::FinalResponse(FinalResponse {
+            response: response.to_string(),
+            aggregated_usage,
+            per_call_usage,
             history,
         })
     }
@@ -455,6 +494,7 @@ where
         let output_schema = self.output_schema;
 
         let mut aggregated_usage = crate::completion::Usage::new();
+        let mut per_call_usage = Vec::new();
 
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
         // span context leaking to other concurrent tasks. Using span.enter() inside
@@ -696,7 +736,15 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
-                            if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
+                            if let Some(usage) = final_resp.token_usage() {
+                                let call_index = per_call_usage.len();
+                                aggregated_usage += usage;
+                                per_call_usage.push(usage);
+                                yield Ok(MultiTurnStreamItem::ModelCallUsage {
+                                    call_index,
+                                    usage,
+                                });
+                            }
                             if saw_text_this_turn {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&current_prompt, &final_resp).await {
@@ -791,9 +839,10 @@ where
                     } else {
                         None
                     };
-                    yield Ok(MultiTurnStreamItem::final_response_with_history(
+                    yield Ok(MultiTurnStreamItem::final_response_with_usage_details(
                         &turn_text_response,
                         aggregated_usage,
+                        per_call_usage,
                         final_messages,
                     ));
                     break;
@@ -868,7 +917,7 @@ mod tests {
     use crate::agent::AgentBuilder;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::CompletionRequest;
+    use crate::completion::{CompletionRequest, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolResultContent, UserContent,
@@ -1117,6 +1166,17 @@ mod tests {
         ])
     }
 
+    fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+        Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: input_tokens + output_tokens,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            reasoning_tokens: 0,
+        }
+    }
+
     fn streaming_text_then_final_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("hello"),
@@ -1195,6 +1255,73 @@ mod tests {
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
         assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_exposes_per_model_call_usage() {
+        let first_call_usage = usage(10, 2);
+        let second_call_usage = usage(25, 5);
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response(first_call_usage),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response(second_call_usage),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
+        let mut model_call_usage_events = Vec::new();
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::ModelCallUsage { call_index, usage }) => {
+                    model_call_usage_events.push((call_index, usage));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response = Some(response);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            model_call_usage_events,
+            vec![(0, first_call_usage), (1, second_call_usage)]
+        );
+
+        let final_response = final_response.expect("expected final response");
+        assert_eq!(
+            final_response.usage(),
+            Usage {
+                input_tokens: 35,
+                output_tokens: 7,
+                total_tokens: 42,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                reasoning_tokens: 0,
+            }
+        );
+        assert_eq!(
+            final_response.per_call_usage(),
+            &[first_call_usage, second_call_usage]
+        );
     }
 
     #[tokio::test]
