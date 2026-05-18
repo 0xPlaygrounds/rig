@@ -270,11 +270,37 @@ where
     }
 }
 
+/// Token usage reported for one completion request made by an agent run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompletionCallUsage {
+    /// Zero-based index of the completion request within this agent run.
+    ///
+    /// This counts every completion request, including requests that do not
+    /// report token usage.
+    pub call_index: usize,
+    /// Token usage reported for this completion request.
+    pub usage: Usage,
+}
+
+impl CompletionCallUsage {
+    /// Create usage details for one completion request in an agent run.
+    pub fn new(call_index: usize, usage: Usage) -> Self {
+        Self { call_index, usage }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
+    /// Token usage values for each completion request made by this agent run.
+    ///
+    /// `usage` remains the aggregate across the whole run. Use the last entry
+    /// here to inspect the final completion request's prompt/context length.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completion_call_usage: Vec<CompletionCallUsage>,
     pub messages: Option<Vec<Message>>,
 }
 
@@ -289,6 +315,7 @@ impl PromptResponse {
         Self {
             output: output.into(),
             usage,
+            completion_call_usage: Vec::new(),
             messages: None,
         }
     }
@@ -297,17 +324,55 @@ impl PromptResponse {
         self.messages = Some(messages);
         self
     }
+
+    /// Attach per-completion-call usage details to this response.
+    pub fn with_completion_call_usage(
+        mut self,
+        completion_call_usage: Vec<CompletionCallUsage>,
+    ) -> Self {
+        self.completion_call_usage = completion_call_usage;
+        self
+    }
+
+    /// Returns usage reported for each completion request made by this agent run.
+    pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
+        &self.completion_call_usage
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
+    /// Token usage values for each completion request made by this agent run.
+    ///
+    /// `usage` remains the aggregate across the whole run. Use the last entry
+    /// here to inspect the final completion request's prompt/context length.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completion_call_usage: Vec<CompletionCallUsage>,
 }
 
 impl<T> TypedPromptResponse<T> {
     pub fn new(output: T, usage: Usage) -> Self {
-        Self { output, usage }
+        Self {
+            output,
+            usage,
+            completion_call_usage: Vec::new(),
+        }
+    }
+
+    /// Attach per-completion-call usage details to this response.
+    pub fn with_completion_call_usage(
+        mut self,
+        completion_call_usage: Vec<CompletionCallUsage>,
+    ) -> Self {
+        self.completion_call_usage = completion_call_usage;
+        self
+    }
+
+    /// Returns usage reported for each completion request made by this agent run.
+    pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
+        &self.completion_call_usage
     }
 }
 
@@ -390,6 +455,8 @@ where
 
         let mut current_max_turns = 0;
         let mut usage = Usage::new();
+        let mut completion_call_usage = Vec::new();
+        let mut completion_call_index = 0;
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
@@ -486,6 +553,8 @@ where
             .instrument(chat_span.clone())
             .await?;
 
+            completion_call_usage.push(CompletionCallUsage::new(completion_call_index, resp.usage));
+            completion_call_index += 1;
             usage += resp.usage;
 
             if let Some(ref hook) = self.hook
@@ -553,7 +622,9 @@ where
                     );
                 }
 
-                return Ok(PromptResponse::new(merged_texts, usage).with_messages(new_messages));
+                return Ok(PromptResponse::new(merged_texts, usage)
+                    .with_messages(new_messages)
+                    .with_completion_call_usage(completion_call_usage));
             }
 
             let hook = self.hook.clone();
@@ -884,7 +955,8 @@ where
         }
 
         let parsed: T = serde_json::from_str(&response.output)?;
-        Ok(TypedPromptResponse::new(parsed, response.usage))
+        Ok(TypedPromptResponse::new(parsed, response.usage)
+            .with_completion_call_usage(response.completion_call_usage))
     }
 }
 
@@ -918,7 +990,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::TypedPromptResponse;
+    use super::{CompletionCallUsage, TypedPromptResponse};
     use crate::{
         agent::AgentBuilder,
         completion::{
@@ -1016,25 +1088,27 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
+        let first_call_usage = Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            reasoning_tokens: 0,
+        };
+        let second_call_usage = Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            reasoning_tokens: 0,
+        };
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "missing_tool", json!({"input": "value"}))
                 .with_call_id("call_1")
-                .with_usage(Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    total_tokens: 2,
-                    cached_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                    reasoning_tokens: 0,
-                }),
-            MockTurn::text("").with_usage(Usage {
-                input_tokens: 1,
-                output_tokens: 1,
-                total_tokens: 2,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                reasoning_tokens: 0,
-            }),
+                .with_usage(first_call_usage),
+            MockTurn::text("").with_usage(second_call_usage),
         ]);
         let agent = AgentBuilder::new(model).build();
 
@@ -1056,6 +1130,13 @@ mod tests {
                 cache_creation_input_tokens: 0,
                 reasoning_tokens: 0,
             }
+        );
+        assert_eq!(
+            response.completion_call_usage(),
+            &[
+                CompletionCallUsage::new(0, first_call_usage),
+                CompletionCallUsage::new(1, second_call_usage)
+            ]
         );
 
         let history = response

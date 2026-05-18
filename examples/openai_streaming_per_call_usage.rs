@@ -1,14 +1,14 @@
-//! Shows how to inspect per-model-call usage in an agent stream.
+//! Shows how to inspect per-completion-call usage in an agent stream.
 //!
 //! This is useful when an agent uses tools. The final `response.usage()` is
-//! intentionally aggregated across all model calls in the agent run:
+//! intentionally aggregated across all completion calls in the agent run:
 //!
 //! - call 0: prompt + tool request
 //! - call 1: prompt + prior tool call + tool result + final answer
 //!
 //! That aggregate is useful for total cost, but it does not tell you the final
 //! prompt/context size. For that, inspect the last entry from
-//! `response.per_call_usage()` and use `input_tokens`.
+//! `response.completion_call_usage()` and use `input_tokens`.
 //!
 //! Requires `OPENAI_API_KEY`.
 //!
@@ -103,12 +103,14 @@ async fn main() -> Result<()> {
         .await;
 
     let mut final_response = None;
+    let mut printed_streamed_text = false;
 
     while let Some(item) = stream.next().await {
         match item? {
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
                 print!("{}", text.text);
                 io::stdout().flush()?;
+                printed_streamed_text = true;
             }
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
                 tool_call,
@@ -119,8 +121,12 @@ async fn main() -> Result<()> {
             MultiTurnStreamItem::StreamUserItem(_) => {
                 println!("tool result sent back to model");
             }
-            MultiTurnStreamItem::ModelCallUsage { call_index, usage } => {
-                print_usage(&format!("model call {call_index} usage"), usage);
+            MultiTurnStreamItem::CompletionCallUsage { call_index, usage } => {
+                if printed_streamed_text {
+                    println!();
+                    printed_streamed_text = false;
+                }
+                print_usage(&format!("completion call {call_index} usage"), usage);
             }
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response);
@@ -134,11 +140,11 @@ async fn main() -> Result<()> {
     println!("\n\nfinal response: {}", response.response());
     print_usage("aggregate agent usage", response.usage());
 
-    if let Some(final_call_usage) = response.per_call_usage().last().copied() {
-        print_usage("final model call usage", final_call_usage);
+    if let Some(final_call_usage) = response.completion_call_usage().last().copied() {
+        print_usage("final completion call usage", final_call_usage.usage);
         println!(
             "final prompt/context token length: {}",
-            final_call_usage.input_tokens
+            final_call_usage.usage.input_tokens
         );
     }
 
