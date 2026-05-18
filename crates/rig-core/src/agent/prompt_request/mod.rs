@@ -341,6 +341,7 @@ impl PromptResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,

@@ -585,6 +585,8 @@ where
 
                 .await?;
 
+                let call_index = completion_call_index;
+                completion_call_index += 1;
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
                 let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
@@ -734,8 +736,6 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
-                            let call_index = completion_call_index;
-                            completion_call_index += 1;
                             if let Some(usage) = final_resp.token_usage() {
                                 let call_usage = CompletionCallUsage::new(call_index, usage);
                                 aggregated_usage += usage;
@@ -1174,6 +1174,30 @@ mod tests {
         }
     }
 
+    #[test]
+    fn completion_call_usage_stream_item_serializes_expected_shape() {
+        let item: MultiTurnStreamItem<MockResponse> =
+            MultiTurnStreamItem::CompletionCallUsage(CompletionCallUsage::new(2, usage(3, 4)));
+
+        let value = serde_json::to_value(&item).expect("serialize completion call usage event");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "completionCallUsage",
+                "call_index": 2,
+                "usage": {
+                    "input_tokens": 3,
+                    "output_tokens": 4,
+                    "total_tokens": 7,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "reasoning_tokens": 0,
+                }
+            })
+        );
+    }
+
     fn streaming_text_then_final_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("hello"),
@@ -1338,7 +1362,6 @@ mod tests {
                     serde_json::json!({"input": "value"}),
                 )
                 .with_call_id("call_1"),
-                MockStreamEvent::FinalResponse(MockResponse::new()),
             ],
             vec![
                 MockStreamEvent::text("done"),
