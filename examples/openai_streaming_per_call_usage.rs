@@ -121,12 +121,15 @@ async fn main() -> Result<()> {
             MultiTurnStreamItem::StreamUserItem(_) => {
                 println!("tool result sent back to model");
             }
-            MultiTurnStreamItem::CompletionCallUsage { call_index, usage } => {
+            MultiTurnStreamItem::CompletionCallUsage(call_usage) => {
                 if printed_streamed_text {
                     println!();
                     printed_streamed_text = false;
                 }
-                print_usage(&format!("completion call {call_index} usage"), usage);
+                print_usage(
+                    &format!("completion call {} usage", call_usage.call_index),
+                    call_usage.usage,
+                );
             }
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response);

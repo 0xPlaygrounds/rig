@@ -45,15 +45,7 @@ pub enum MultiTurnStreamItem<R> {
     /// This is emitted when a provider call finishes and reports usage. It is
     /// not incremental per streamed token; it is the provider's final usage for
     /// that completion request.
-    CompletionCallUsage {
-        /// Zero-based index of the completion request within this agent stream.
-        ///
-        /// This counts every completion request, including requests that do not
-        /// report token usage.
-        call_index: usize,
-        /// Token usage reported for this completion request.
-        usage: crate::completion::Usage,
-    },
+    CompletionCallUsage(CompletionCallUsage),
     /// The final result from the stream.
     FinalResponse(FinalResponse),
 }
@@ -94,7 +86,9 @@ impl FinalResponse {
     /// Returns final usage reported for each completion request in this agent stream.
     ///
     /// Each entry is a whole-request provider usage snapshot, not incremental
-    /// usage per streamed token.
+    /// usage per streamed token. Streaming providers may omit usage for some
+    /// calls; omitted calls have no entry here, and later entries keep their
+    /// original `call_index`.
     pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
         &self.completion_call_usage
     }
@@ -746,10 +740,7 @@ where
                                 let call_usage = CompletionCallUsage::new(call_index, usage);
                                 aggregated_usage += usage;
                                 completion_call_usage.push(call_usage);
-                                yield Ok(MultiTurnStreamItem::CompletionCallUsage {
-                                    call_index: call_usage.call_index,
-                                    usage: call_usage.usage,
-                                });
+                                yield Ok(MultiTurnStreamItem::CompletionCallUsage(call_usage));
                             }
                             if saw_text_this_turn {
                                 if let Some(ref hook) = self.hook &&
@@ -1295,8 +1286,8 @@ mod tests {
 
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::CompletionCallUsage { call_index, usage }) => {
-                    completion_call_usage_events.push(CompletionCallUsage::new(call_index, usage));
+                Ok(MultiTurnStreamItem::CompletionCallUsage(call_usage)) => {
+                    completion_call_usage_events.push(call_usage);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response = Some(response);
@@ -1367,8 +1358,8 @@ mod tests {
 
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::CompletionCallUsage { call_index, usage }) => {
-                    completion_call_usage_events.push(CompletionCallUsage::new(call_index, usage));
+                Ok(MultiTurnStreamItem::CompletionCallUsage(call_usage)) => {
+                    completion_call_usage_events.push(call_usage);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response = Some(response);

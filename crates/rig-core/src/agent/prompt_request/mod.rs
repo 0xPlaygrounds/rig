@@ -995,13 +995,14 @@ mod tests {
         agent::AgentBuilder,
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            Usage,
+            TypedPrompt, Usage,
         },
         message::UserContent,
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockCompletionModel, MockTurn,
         },
     };
+    use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
 
@@ -1012,6 +1013,11 @@ mod tests {
 
     #[derive(Deserialize)]
     struct DeserializeOnly {
+        value: String,
+    }
+
+    #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
+    struct TypedAnswer {
         value: String,
     }
 
@@ -1044,6 +1050,39 @@ mod tests {
         assert_eq!(response.usage.input_tokens, 1);
         assert_eq!(response.usage.output_tokens, 2);
         assert_eq!(response.usage.total_tokens, 3);
+    }
+
+    #[tokio::test]
+    async fn typed_prompt_response_preserves_completion_call_usage() {
+        let call_usage = Usage {
+            input_tokens: 4,
+            output_tokens: 6,
+            total_tokens: 10,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            reasoning_tokens: 0,
+        };
+        let model =
+            MockCompletionModel::new([MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage)]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt_typed::<TypedAnswer>("return typed json")
+            .extended_details()
+            .await
+            .expect("typed prompt should succeed");
+
+        assert_eq!(
+            response.output,
+            TypedAnswer {
+                value: "ok".to_string()
+            }
+        );
+        assert_eq!(response.usage, call_usage);
+        assert_eq!(
+            response.completion_call_usage(),
+            &[CompletionCallUsage::new(0, call_usage)]
+        );
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) {
