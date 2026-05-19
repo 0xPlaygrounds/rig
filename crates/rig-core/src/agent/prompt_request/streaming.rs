@@ -727,6 +727,7 @@ where
                                     yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                                 }
+                                yield Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }));
                             }
                         }
                         Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
