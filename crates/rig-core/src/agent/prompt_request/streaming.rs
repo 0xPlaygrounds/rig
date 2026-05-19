@@ -1355,6 +1355,46 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct TerminatingToolCallDeltaHook {
+        deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
+    }
+
+    impl TerminatingToolCallDeltaHook {
+        fn observed(&self) -> Vec<RecordedToolCallDelta> {
+            self.deltas
+                .lock()
+                .expect("tool call delta hook records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl PromptHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
+        fn on_tool_call_delta(
+            &self,
+            tool_call_id: &str,
+            internal_call_id: &str,
+            tool_name: Option<&str>,
+            tool_call_delta: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            let deltas = self.deltas.clone();
+            let event = (
+                tool_call_id.to_string(),
+                internal_call_id.to_string(),
+                tool_name.map(str::to_string),
+                tool_call_delta.to_string(),
+            );
+
+            async move {
+                deltas
+                    .lock()
+                    .expect("tool call delta hook records mutex was poisoned")
+                    .push(event);
+                HookAction::terminate("stop on tool call delta")
+            }
+        }
+    }
+
     #[tokio::test]
     async fn stream_prompt_continues_after_tool_call_turn() {
         let model = streaming_tool_then_text_model();
@@ -1549,6 +1589,61 @@ mod tests {
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let hook = TerminatingToolCallDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("stream a tool call")
+            .with_hook(hook.clone())
+            .await;
+        let mut saw_delta = false;
+        let mut saw_final_response = false;
+        let mut error_message = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => {
+                    saw_delta = true;
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    saw_final_response = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error_message = Some(err.to_string());
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            hook.observed(),
+            vec![(
+                "tool_1".to_string(),
+                "internal_1".to_string(),
+                Some("calculator".to_string()),
+                String::new()
+            )]
+        );
+        assert!(!saw_delta);
+        assert!(!saw_final_response);
+        assert!(
+            error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("PromptCancelled: stop on tool call delta")),
+            "expected hook termination error, got {error_message:?}"
         );
     }
 
