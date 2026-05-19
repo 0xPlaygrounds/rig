@@ -270,7 +270,7 @@ where
     }
 }
 
-/// Details for one completion request made by an agent run.
+/// Details for one successfully completed completion request made by an agent run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCall {
@@ -304,14 +304,12 @@ pub(crate) fn reported_usage(usage: Usage) -> Option<Usage> {
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
-    /// Completion requests made by this agent run, with token usage when available.
+    /// Successfully completed completion requests made by this agent run, with token usage when available.
     ///
     /// `usage` remains the aggregate across the whole run. Use the last entry's
     /// usage, when present, to inspect the final completion request's
     /// prompt/context length.
-    /// Non-streaming responses include every successfully completed completion
-    /// request. If a provider does not report token usage, its entry contains
-    /// `None`.
+    /// If a provider does not report token usage, its entry contains `None`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
     pub messages: Option<Vec<Message>>,
@@ -344,11 +342,9 @@ impl PromptResponse {
         self
     }
 
-    /// Returns completion requests made by this agent run, with token usage when available.
+    /// Returns successfully completed completion requests made by this agent run, with token usage when available.
     ///
-    /// Non-streaming responses include every successfully completed completion
-    /// request. If a provider does not report token usage, its entry contains
-    /// `None`.
+    /// If a provider does not report token usage, its entry contains `None`.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -359,14 +355,12 @@ impl PromptResponse {
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
-    /// Completion requests made by this agent run, with token usage when available.
+    /// Successfully completed completion requests made by this agent run, with token usage when available.
     ///
     /// `usage` remains the aggregate across the whole run. Use the last entry's
     /// usage, when present, to inspect the final completion request's
     /// prompt/context length.
-    /// Non-streaming responses include every successfully completed completion
-    /// request. If a provider does not report token usage, its entry contains
-    /// `None`.
+    /// If a provider does not report token usage, its entry contains `None`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
 }
@@ -386,11 +380,9 @@ impl<T> TypedPromptResponse<T> {
         self
     }
 
-    /// Returns completion requests made by this agent run, with token usage when available.
+    /// Returns successfully completed completion requests made by this agent run, with token usage when available.
     ///
-    /// Non-streaming responses include every successfully completed completion
-    /// request. If a provider does not report token usage, its entry contains
-    /// `None`.
+    /// If a provider does not report token usage, its entry contains `None`.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -1126,6 +1118,22 @@ mod tests {
                 CompletionCall::new(1, Some(reported_usage))
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn prompt_response_records_completion_call_without_reported_usage() {
+        let model = MockCompletionModel::new([MockTurn::text("ok")]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("say ok")
+            .extended_details()
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(response.output, "ok");
+        assert_eq!(response.usage, Usage::new());
+        assert_eq!(response.completion_calls(), &[CompletionCall::new(0, None)]);
     }
 
     #[tokio::test]

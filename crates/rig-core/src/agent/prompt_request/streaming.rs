@@ -40,7 +40,7 @@ pub enum MultiTurnStreamItem<R> {
     StreamAssistantItem(StreamedAssistantContent<R>),
     /// A streamed user content item (mostly for tool results).
     StreamUserItem(StreamedUserContent),
-    /// Details for one completion request made by this agent stream.
+    /// Details for one successfully completed completion request made by this agent stream.
     ///
     /// This is emitted when a provider call finishes. Usage is the provider's
     /// final usage for that completion request when available; it is not
@@ -66,7 +66,7 @@ pub struct FinalResponse {
     /// This is empty only when the turn completed without emitting any text.
     response: String,
     aggregated_usage: crate::completion::Usage,
-    /// Completion requests made by this agent stream.
+    /// Successfully completed completion requests made by this agent stream.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     completion_calls: Vec<CompletionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,7 +92,7 @@ impl FinalResponse {
         self.aggregated_usage
     }
 
-    /// Returns completion requests made by this agent stream, with usage when available.
+    /// Returns successfully completed completion requests made by this agent stream, with usage when available.
     ///
     /// Each entry represents one provider completion request. When present,
     /// usage is a whole-request provider snapshot, not incremental usage per
