@@ -727,8 +727,9 @@ where
                                     yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
                                     break 'outer;
                                 }
-                                yield Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }));
                             }
+
+                            yield Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }));
                         }
                         Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                             // Accumulate reasoning for inclusion in chat history with tool calls.
@@ -948,7 +949,7 @@ mod tests {
         ToolResultContent, UserContent,
     };
     use crate::providers::anthropic;
-    use crate::streaming::StreamingPrompt;
+    use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockCompletionModel, MockResponse, MockStreamEvent,
     };
@@ -1376,6 +1377,58 @@ mod tests {
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
         assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_emits_tool_call_deltas_without_hook() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("stream a tool call").await;
+        let mut deltas = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    },
+                )) => {
+                    deltas.push((id, internal_call_id, content));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            deltas,
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("calculator".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
     }
 
     #[tokio::test]
