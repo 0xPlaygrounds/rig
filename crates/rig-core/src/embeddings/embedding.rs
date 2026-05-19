@@ -7,6 +7,7 @@
 //! can occur during embedding generation or processing.
 
 use crate::{
+    completion::Usage,
     http_client,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -79,6 +80,55 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
             })
         }
     }
+
+    /// Embed multiple text documents in a single request and return token usage.
+    ///
+    /// The default implementation delegates to [`EmbeddingModel::embed_texts`] and returns
+    /// zero-valued usage. Providers that expose usage information from their embedding API
+    /// should override this method.
+    fn embed_texts_with_usage(
+        &self,
+        texts: impl IntoIterator<Item = String> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, EmbeddingError>> + WasmCompatSend
+    {
+        async {
+            let embeddings = self.embed_texts(texts).await?;
+            Ok(EmbeddingResponse {
+                embeddings,
+                usage: Usage::default(),
+            })
+        }
+    }
+
+    /// Embed a single text document and return token usage.
+    ///
+    /// The default implementation delegates to
+    /// [`EmbeddingModel::embed_texts_with_usage`].
+    fn embed_text_with_usage(
+        &self,
+        text: &str,
+    ) -> impl std::future::Future<Output = Result<EmbeddingResponse, EmbeddingError>> + WasmCompatSend
+    {
+        async {
+            let response = self.embed_texts_with_usage(vec![text.to_string()]).await?;
+            if response.embeddings.is_empty() {
+                return Err(EmbeddingError::ResponseError(
+                    "embedding provider returned an empty response for embed_text_with_usage"
+                        .to_string(),
+                ));
+            }
+            Ok(response)
+        }
+    }
+}
+
+/// Response from an embedding request containing the embeddings and token usage.
+#[derive(Debug, Clone)]
+pub struct EmbeddingResponse {
+    /// The embeddings returned by the provider, one per input text.
+    pub embeddings: Vec<Embedding>,
+    /// Token usage for this embedding request.
+    pub usage: Usage,
 }
 
 /// Trait for embedding models that can generate embeddings for images.

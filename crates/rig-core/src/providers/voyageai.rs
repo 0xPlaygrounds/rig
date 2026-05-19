@@ -206,7 +206,16 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
+        let documents: Vec<String> = documents.into_iter().collect();
+        let response = self.embed_texts_with_usage(documents).await?;
+        Ok(response.embeddings)
+    }
+
+    async fn embed_texts_with_usage(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        let documents: Vec<String> = documents.into_iter().collect();
         let request = json!({
             "model": self.model,
             "input": documents,
@@ -238,7 +247,16 @@ where
                         ));
                     }
 
-                    Ok(response
+                    let usage = crate::completion::Usage {
+                        input_tokens: response.usage.total_tokens as u64,
+                        output_tokens: 0,
+                        total_tokens: response.usage.total_tokens as u64,
+                        cached_input_tokens: 0,
+                        cache_creation_input_tokens: 0,
+                        reasoning_tokens: 0,
+                    };
+
+                    let embeddings = response
                         .data
                         .into_iter()
                         .zip(documents.into_iter())
@@ -246,7 +264,9 @@ where
                             document,
                             vec: embedding.embedding,
                         })
-                        .collect())
+                        .collect();
+
+                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
                 ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
             }
