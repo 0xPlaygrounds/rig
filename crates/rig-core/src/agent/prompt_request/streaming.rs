@@ -954,8 +954,8 @@ mod tests {
         AppendFailingMemory, FailingMemory, MockCompletionModel, MockResponse, MockStreamEvent,
     };
     use futures::StreamExt;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
@@ -1313,6 +1313,48 @@ mod tests {
         }
     }
 
+    type RecordedToolCallDelta = (String, String, Option<String>, String);
+
+    #[derive(Clone, Default)]
+    struct RecordingToolCallDeltaHook {
+        deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
+    }
+
+    impl RecordingToolCallDeltaHook {
+        fn observed(&self) -> Vec<RecordedToolCallDelta> {
+            self.deltas
+                .lock()
+                .expect("tool call delta hook records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingToolCallDeltaHook {
+        fn on_tool_call_delta(
+            &self,
+            tool_call_id: &str,
+            internal_call_id: &str,
+            tool_name: Option<&str>,
+            tool_call_delta: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            let deltas = self.deltas.clone();
+            let event = (
+                tool_call_id.to_string(),
+                internal_call_id.to_string(),
+                tool_name.map(str::to_string),
+                tool_call_delta.to_string(),
+            );
+
+            async move {
+                deltas
+                    .lock()
+                    .expect("tool call delta hook records mutex was poisoned")
+                    .push(event);
+                HookAction::cont()
+            }
+        }
+    }
+
     #[tokio::test]
     async fn stream_prompt_continues_after_tool_call_turn() {
         let model = streaming_tool_then_text_model();
@@ -1411,6 +1453,85 @@ mod tests {
 
         assert_eq!(
             deltas,
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("calculator".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let hook = RecordingToolCallDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("stream a tool call")
+            .with_hook(hook.clone())
+            .await;
+        let mut stream_deltas = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    },
+                )) => {
+                    stream_deltas.push((id, internal_call_id, content));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            hook.observed(),
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    Some("calculator".to_string()),
+                    String::new()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "{\"x\":".to_string()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "1}".to_string()
+                ),
+            ]
+        );
+        assert_eq!(
+            stream_deltas,
             vec![
                 (
                     "tool_1".to_string(),
