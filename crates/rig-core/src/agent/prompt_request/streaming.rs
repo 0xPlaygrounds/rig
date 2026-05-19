@@ -896,7 +896,12 @@ where
     }
 }
 
-/// Helper function to stream a completion request to stdout.
+/// Helper function to stream assistant-visible completion output to stdout.
+///
+/// This helper prints streamed assistant text and reasoning only. Streaming
+/// metadata events, such as `MultiTurnStreamItem::CompletionCall`, are not
+/// printed; metadata is returned on the `FinalResponse` via accessors such as
+/// `FinalResponse::completion_calls`.
 pub async fn stream_to_stdout<R>(
     stream: &mut StreamingResult<R>,
 ) -> Result<FinalResponse, std::io::Error> {
