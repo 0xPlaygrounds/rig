@@ -270,24 +270,30 @@ where
     }
 }
 
-/// Token usage reported for one completion request made by an agent run.
+/// Details for one completion request made by an agent run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCallUsage {
     /// Zero-based index of the completion request within this agent run.
-    ///
-    /// This counts every completion request, including requests that do not
-    /// report token usage.
     pub call_index: usize,
-    /// Token usage reported for this completion request.
-    pub usage: Usage,
+    /// Token usage reported for this completion request, when the provider supplied it.
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
 
 impl CompletionCallUsage {
-    /// Create usage details for one completion request in an agent run.
-    pub fn new(call_index: usize, usage: Usage) -> Self {
+    /// Create details for one completion request in an agent run.
+    pub fn new(call_index: usize, usage: Option<Usage>) -> Self {
         Self { call_index, usage }
     }
+
+    pub(crate) fn from_reported_usage(call_index: usize, usage: Usage) -> Self {
+        Self::new(call_index, reported_usage(usage))
+    }
+}
+
+pub(crate) fn reported_usage(usage: Usage) -> Option<Usage> {
+    (usage != Usage::new()).then_some(usage)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,13 +301,14 @@ impl CompletionCallUsage {
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
-    /// Token usage values for each completion request made by this agent run.
+    /// Completion requests made by this agent run, with token usage when available.
     ///
-    /// `usage` remains the aggregate across the whole run. Use the last entry
-    /// here to inspect the final completion request's prompt/context length.
+    /// `usage` remains the aggregate across the whole run. Use the last entry's
+    /// usage, when present, to inspect the final completion request's
+    /// prompt/context length.
     /// Non-streaming responses include every successfully completed completion
-    /// request; if a provider does not report token usage, its entry contains a
-    /// zero-valued [`Usage`].
+    /// request. If a provider does not report token usage, its entry contains
+    /// `None`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_call_usage: Vec<CompletionCallUsage>,
     pub messages: Option<Vec<Message>>,
@@ -337,11 +344,11 @@ impl PromptResponse {
         self
     }
 
-    /// Returns usage reported for each completion request made by this agent run.
+    /// Returns completion requests made by this agent run, with token usage when available.
     ///
     /// Non-streaming responses include every successfully completed completion
-    /// request. A zero-valued [`Usage`] means the provider did not supply token
-    /// usage for that request.
+    /// request. If a provider does not report token usage, its entry contains
+    /// `None`.
     pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
         &self.completion_call_usage
     }
@@ -352,13 +359,14 @@ impl PromptResponse {
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
-    /// Token usage values for each completion request made by this agent run.
+    /// Completion requests made by this agent run, with token usage when available.
     ///
-    /// `usage` remains the aggregate across the whole run. Use the last entry
-    /// here to inspect the final completion request's prompt/context length.
+    /// `usage` remains the aggregate across the whole run. Use the last entry's
+    /// usage, when present, to inspect the final completion request's
+    /// prompt/context length.
     /// Non-streaming responses include every successfully completed completion
-    /// request; if a provider does not report token usage, its entry contains a
-    /// zero-valued [`Usage`].
+    /// request. If a provider does not report token usage, its entry contains
+    /// `None`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_call_usage: Vec<CompletionCallUsage>,
 }
@@ -381,11 +389,11 @@ impl<T> TypedPromptResponse<T> {
         self
     }
 
-    /// Returns usage reported for each completion request made by this agent run.
+    /// Returns completion requests made by this agent run, with token usage when available.
     ///
     /// Non-streaming responses include every successfully completed completion
-    /// request. A zero-valued [`Usage`] means the provider did not supply token
-    /// usage for that request.
+    /// request. If a provider does not report token usage, its entry contains
+    /// `None`.
     pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
         &self.completion_call_usage
     }
@@ -568,7 +576,10 @@ where
             .instrument(chat_span.clone())
             .await?;
 
-            completion_call_usage.push(CompletionCallUsage::new(completion_call_index, resp.usage));
+            completion_call_usage.push(CompletionCallUsage::from_reported_usage(
+                completion_call_index,
+                resp.usage,
+            ));
             completion_call_index += 1;
             usage += resp.usage;
 
@@ -1096,7 +1107,7 @@ mod tests {
         assert_eq!(response.usage, call_usage);
         assert_eq!(
             response.completion_call_usage(),
-            &[CompletionCallUsage::new(0, call_usage)]
+            &[CompletionCallUsage::new(0, Some(call_usage))]
         );
     }
 
@@ -1188,8 +1199,8 @@ mod tests {
         assert_eq!(
             response.completion_call_usage(),
             &[
-                CompletionCallUsage::new(0, first_call_usage),
-                CompletionCallUsage::new(1, second_call_usage)
+                CompletionCallUsage::new(0, Some(first_call_usage)),
+                CompletionCallUsage::new(1, Some(second_call_usage))
             ]
         );
 

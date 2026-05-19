@@ -8,7 +8,8 @@
 //!
 //! That aggregate is useful for total cost, but it does not tell you the final
 //! prompt/context size. For that, inspect the last entry from
-//! `response.completion_call_usage()` and use `input_tokens`.
+//! `response.completion_call_usage()` and use `input_tokens` when usage is
+//! reported.
 //!
 //! Requires `OPENAI_API_KEY`.
 //!
@@ -126,10 +127,16 @@ async fn main() -> Result<()> {
                     println!();
                     printed_streamed_text = false;
                 }
-                print_usage(
-                    &format!("completion call {} usage", call_usage.call_index),
-                    call_usage.usage,
-                );
+                match call_usage.usage {
+                    Some(usage) => print_usage(
+                        &format!("completion call {} usage", call_usage.call_index),
+                        usage,
+                    ),
+                    None => println!(
+                        "completion call {} usage: not reported",
+                        call_usage.call_index
+                    ),
+                }
             }
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response);
@@ -144,11 +151,12 @@ async fn main() -> Result<()> {
     print_usage("aggregate agent usage", response.usage());
 
     if let Some(final_call_usage) = response.completion_call_usage().last().copied() {
-        print_usage("final completion call usage", final_call_usage.usage);
-        println!(
-            "final prompt/context token length: {}",
-            final_call_usage.usage.input_tokens
-        );
+        if let Some(usage) = final_call_usage.usage {
+            print_usage("final completion call usage", usage);
+            println!("final prompt/context token length: {}", usage.input_tokens);
+        } else {
+            println!("final completion call usage: not reported");
+        }
     }
 
     Ok(())
