@@ -45,6 +45,15 @@ pub enum MultiTurnStreamItem<R> {
     /// This is emitted when a provider call finishes and reports usage. It is
     /// not incremental per streamed token; it is the provider's final usage for
     /// that completion request.
+    ///
+    /// ```rust,ignore
+    /// match item {
+    ///     MultiTurnStreamItem::CompletionCallUsage(call_usage) => {
+    ///         let context_tokens = call_usage.usage.input_tokens;
+    ///     }
+    ///     _ => {}
+    /// }
+    /// ```
     CompletionCallUsage(CompletionCallUsage),
     /// The final result from the stream.
     FinalResponse(FinalResponse),
@@ -1175,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_call_usage_stream_item_serializes_expected_shape() {
+    fn completion_call_usage_stream_item_serializes_and_deserializes_expected_shape() {
         let item: MultiTurnStreamItem<MockResponse> =
             MultiTurnStreamItem::CompletionCallUsage(CompletionCallUsage::new(2, usage(3, 4)));
 
@@ -1196,6 +1205,15 @@ mod tests {
                 }
             })
         );
+
+        let item: MultiTurnStreamItem<MockResponse> =
+            serde_json::from_value(value).expect("deserialize completion call usage event");
+        match item {
+            MultiTurnStreamItem::CompletionCallUsage(call_usage) => {
+                assert_eq!(call_usage, CompletionCallUsage::new(2, usage(3, 4)));
+            }
+            other => panic!("expected completion call usage event, got {other:?}"),
+        }
     }
 
     fn streaming_text_then_final_model() -> MockCompletionModel {

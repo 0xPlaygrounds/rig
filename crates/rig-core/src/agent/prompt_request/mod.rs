@@ -299,6 +299,9 @@ pub struct PromptResponse {
     ///
     /// `usage` remains the aggregate across the whole run. Use the last entry
     /// here to inspect the final completion request's prompt/context length.
+    /// Non-streaming responses include every successfully completed completion
+    /// request; if a provider does not report token usage, its entry contains a
+    /// zero-valued [`Usage`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_call_usage: Vec<CompletionCallUsage>,
     pub messages: Option<Vec<Message>>,
@@ -335,6 +338,10 @@ impl PromptResponse {
     }
 
     /// Returns usage reported for each completion request made by this agent run.
+    ///
+    /// Non-streaming responses include every successfully completed completion
+    /// request. A zero-valued [`Usage`] means the provider did not supply token
+    /// usage for that request.
     pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
         &self.completion_call_usage
     }
@@ -349,6 +356,9 @@ pub struct TypedPromptResponse<T> {
     ///
     /// `usage` remains the aggregate across the whole run. Use the last entry
     /// here to inspect the final completion request's prompt/context length.
+    /// Non-streaming responses include every successfully completed completion
+    /// request; if a provider does not report token usage, its entry contains a
+    /// zero-valued [`Usage`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_call_usage: Vec<CompletionCallUsage>,
 }
@@ -372,6 +382,10 @@ impl<T> TypedPromptResponse<T> {
     }
 
     /// Returns usage reported for each completion request made by this agent run.
+    ///
+    /// Non-streaming responses include every successfully completed completion
+    /// request. A zero-valued [`Usage`] means the provider did not supply token
+    /// usage for that request.
     pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
         &self.completion_call_usage
     }
