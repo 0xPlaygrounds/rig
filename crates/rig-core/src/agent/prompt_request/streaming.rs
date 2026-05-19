@@ -16,7 +16,7 @@ use std::{pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::{CompletionCallUsage, ToolCallHookAction, reported_usage};
+use super::{CompletionCall, ToolCallHookAction, reported_usage};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -48,13 +48,13 @@ pub enum MultiTurnStreamItem<R> {
     ///
     /// ```rust,ignore
     /// match item {
-    ///     MultiTurnStreamItem::CompletionCallUsage(call_usage) => {
-    ///         let context_tokens = call_usage.usage.map(|usage| usage.input_tokens);
+    ///     MultiTurnStreamItem::CompletionCall(completion_call) => {
+    ///         let context_tokens = completion_call.usage.map(|usage| usage.input_tokens);
     ///     }
     ///     _ => {}
     /// }
     /// ```
-    CompletionCallUsage(CompletionCallUsage),
+    CompletionCall(CompletionCall),
     /// The final result from the stream.
     FinalResponse(FinalResponse),
 }
@@ -68,7 +68,7 @@ pub struct FinalResponse {
     aggregated_usage: crate::completion::Usage,
     /// Completion requests made by this agent stream.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    completion_call_usage: Vec<CompletionCallUsage>,
+    completion_calls: Vec<CompletionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<Vec<Message>>,
 }
@@ -78,7 +78,7 @@ impl FinalResponse {
         Self {
             response: String::new(),
             aggregated_usage: crate::completion::Usage::new(),
-            completion_call_usage: Vec::new(),
+            completion_calls: Vec::new(),
             history: None,
         }
     }
@@ -94,11 +94,12 @@ impl FinalResponse {
 
     /// Returns completion requests made by this agent stream, with usage when available.
     ///
-    /// Each entry is a whole-request provider usage snapshot, not incremental
-    /// usage per streamed token. Streaming providers may omit usage for some
-    /// calls; those calls have an entry with `None` usage.
-    pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
-        &self.completion_call_usage
+    /// Each entry represents one provider completion request. When present,
+    /// usage is a whole-request provider snapshot, not incremental usage per
+    /// streamed token. Streaming providers may omit usage for some calls; those
+    /// calls have an entry with `None` usage.
+    pub fn completion_calls(&self) -> &[CompletionCall] {
+        &self.completion_calls
     }
 
     pub fn history(&self) -> Option<&[Message]> {
@@ -115,7 +116,7 @@ impl<R> MultiTurnStreamItem<R> {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
-            completion_call_usage: Vec::new(),
+            completion_calls: Vec::new(),
             history: None,
         })
     }
@@ -128,21 +129,21 @@ impl<R> MultiTurnStreamItem<R> {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
-            completion_call_usage: Vec::new(),
+            completion_calls: Vec::new(),
             history,
         })
     }
 
-    pub(crate) fn final_response_with_completion_call_usage(
+    pub(crate) fn final_response_with_completion_calls(
         response: &str,
         aggregated_usage: crate::completion::Usage,
-        completion_call_usage: Vec<CompletionCallUsage>,
+        completion_calls: Vec<CompletionCall>,
         history: Option<Vec<Message>>,
     ) -> Self {
         Self::FinalResponse(FinalResponse {
             response: response.to_string(),
             aggregated_usage,
-            completion_call_usage,
+            completion_calls,
             history,
         })
     }
@@ -499,7 +500,7 @@ where
         let output_schema = self.output_schema;
 
         let mut aggregated_usage = crate::completion::Usage::new();
-        let mut completion_call_usage = Vec::new();
+        let mut completion_calls = Vec::new();
         let mut completion_call_index = 0;
 
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
@@ -596,6 +597,7 @@ where
                 let call_index = completion_call_index;
                 completion_call_index += 1;
                 let mut current_call_usage = None;
+                let mut completion_call_emitted = false;
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
                 let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
@@ -748,6 +750,14 @@ where
                             if let Some(usage) = final_resp.token_usage() {
                                 current_call_usage = reported_usage(usage);
                             }
+                            if let Some(usage) = current_call_usage {
+                                aggregated_usage += usage;
+                            }
+                            let completion_call = CompletionCall::new(call_index, current_call_usage);
+                            completion_calls.push(completion_call);
+                            completion_call_emitted = true;
+                            yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
+
                             if saw_text_this_turn {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&current_prompt, &final_resp).await {
@@ -766,12 +776,11 @@ where
                     }
                 }
 
-                if let Some(usage) = current_call_usage {
-                    aggregated_usage += usage;
+                if !completion_call_emitted {
+                    let completion_call = CompletionCall::new(call_index, current_call_usage);
+                    completion_calls.push(completion_call);
+                    yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
                 }
-                let call_usage = CompletionCallUsage::new(call_index, current_call_usage);
-                completion_call_usage.push(call_usage);
-                yield Ok(MultiTurnStreamItem::CompletionCallUsage(call_usage));
 
                 // Providers like Gemini emit thinking as incremental deltas
                 // without signatures; assemble into a single block so
@@ -849,10 +858,10 @@ where
                     } else {
                         None
                     };
-                    yield Ok(MultiTurnStreamItem::final_response_with_completion_call_usage(
+                    yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
                         &turn_text_response,
                         aggregated_usage,
-                        completion_call_usage,
+                        completion_calls,
                         final_messages,
                     ));
                     break;
@@ -1188,17 +1197,16 @@ mod tests {
     }
 
     #[test]
-    fn completion_call_usage_stream_item_serializes_and_deserializes_expected_shape() {
-        let item: MultiTurnStreamItem<MockResponse> = MultiTurnStreamItem::CompletionCallUsage(
-            CompletionCallUsage::new(2, Some(usage(3, 4))),
-        );
+    fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
+        let item: MultiTurnStreamItem<MockResponse> =
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, Some(usage(3, 4))));
 
-        let value = serde_json::to_value(&item).expect("serialize completion call usage event");
+        let value = serde_json::to_value(&item).expect("serialize completion call event");
 
         assert_eq!(
             value,
             serde_json::json!({
-                "type": "completionCallUsage",
+                "type": "completionCall",
                 "call_index": 2,
                 "usage": {
                     "input_tokens": 3,
@@ -1212,25 +1220,62 @@ mod tests {
         );
 
         let item: MultiTurnStreamItem<MockResponse> =
-            serde_json::from_value(value).expect("deserialize completion call usage event");
+            serde_json::from_value(value).expect("deserialize completion call event");
         match item {
-            MultiTurnStreamItem::CompletionCallUsage(call_usage) => {
-                assert_eq!(call_usage, CompletionCallUsage::new(2, Some(usage(3, 4))));
+            MultiTurnStreamItem::CompletionCall(call_usage) => {
+                assert_eq!(call_usage, CompletionCall::new(2, Some(usage(3, 4))));
             }
-            other => panic!("expected completion call usage event, got {other:?}"),
+            other => panic!("expected completion call event, got {other:?}"),
         }
 
         let item: MultiTurnStreamItem<MockResponse> =
-            MultiTurnStreamItem::CompletionCallUsage(CompletionCallUsage::new(3, None));
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, None));
         let value = serde_json::to_value(&item).expect("serialize missing usage event");
 
         assert_eq!(
             value,
             serde_json::json!({
-                "type": "completionCallUsage",
+                "type": "completionCall",
                 "call_index": 3,
                 "usage": null
             })
+        );
+    }
+
+    #[test]
+    fn final_response_serializes_completion_calls_with_missing_usage() {
+        let item: MultiTurnStreamItem<MockResponse> =
+            MultiTurnStreamItem::final_response_with_completion_calls(
+                "done",
+                usage(3, 4),
+                vec![
+                    CompletionCall::new(0, None),
+                    CompletionCall::new(1, Some(usage(3, 4))),
+                ],
+                None,
+            );
+
+        let value = serde_json::to_value(&item).expect("serialize final response");
+
+        assert_eq!(
+            value.get("completionCalls"),
+            Some(&serde_json::json!([
+                {
+                    "call_index": 0,
+                    "usage": null,
+                },
+                {
+                    "call_index": 1,
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "total_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
+                }
+            ]))
         );
     }
 
@@ -1246,6 +1291,19 @@ mod tests {
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::final_response_with_total_tokens(1),
         ]])
+    }
+
+    #[derive(Clone)]
+    struct TerminateOnStreamFinish;
+
+    impl PromptHook<MockCompletionModel> for TerminateOnStreamFinish {
+        async fn on_stream_completion_response_finish(
+            &self,
+            _prompt: &Message,
+            _response: &<MockCompletionModel as CompletionModel>::StreamingResponse,
+        ) -> HookAction {
+            HookAction::terminate("stop after completion call")
+        }
     }
 
     #[tokio::test]
@@ -1315,7 +1373,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stream_prompt_exposes_completion_call_usage() {
+    async fn stream_prompt_exposes_completion_calls() {
         let first_call_usage = usage(10, 2);
         let second_call_usage = usage(25, 5);
         let model = MockCompletionModel::from_stream_turns([
@@ -1341,13 +1399,13 @@ mod tests {
             .with_history(empty_history)
             .multi_turn(3)
             .await;
-        let mut completion_call_usage_events = Vec::new();
+        let mut completion_calls_events = Vec::new();
         let mut final_response = None;
 
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::CompletionCallUsage(call_usage)) => {
-                    completion_call_usage_events.push(call_usage);
+                Ok(MultiTurnStreamItem::CompletionCall(call_usage)) => {
+                    completion_calls_events.push(call_usage);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response = Some(response);
@@ -1359,10 +1417,10 @@ mod tests {
         }
 
         assert_eq!(
-            completion_call_usage_events,
+            completion_calls_events,
             vec![
-                CompletionCallUsage::new(0, Some(first_call_usage)),
-                CompletionCallUsage::new(1, Some(second_call_usage))
+                CompletionCall::new(0, Some(first_call_usage)),
+                CompletionCall::new(1, Some(second_call_usage))
             ]
         );
 
@@ -1379,16 +1437,55 @@ mod tests {
             }
         );
         assert_eq!(
-            final_response.completion_call_usage(),
+            final_response.completion_calls(),
             &[
-                CompletionCallUsage::new(0, Some(first_call_usage)),
-                CompletionCallUsage::new(1, Some(second_call_usage))
+                CompletionCall::new(0, Some(first_call_usage)),
+                CompletionCall::new(1, Some(second_call_usage))
             ]
         );
     }
 
     #[tokio::test]
-    async fn stream_prompt_completion_call_usage_records_unreported_usage() {
+    async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
+        let call_usage = usage(10, 2);
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(call_usage),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("say done")
+            .with_hook(TerminateOnStreamFinish)
+            .await;
+        let mut completion_calls = Vec::new();
+        let mut saw_error = false;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::CompletionCall(completion_call)) => {
+                    completion_calls.push(completion_call);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    panic!("unexpected final response after hook termination: {response:?}");
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    saw_error = true;
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            completion_calls,
+            vec![CompletionCall::new(0, Some(call_usage))]
+        );
+        assert!(saw_error);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_completion_calls_records_unreported_usage() {
         let second_call_usage = usage(25, 5);
         let model = MockCompletionModel::from_stream_turns([
             vec![
@@ -1412,13 +1509,13 @@ mod tests {
             .with_history(empty_history)
             .multi_turn(3)
             .await;
-        let mut completion_call_usage_events = Vec::new();
+        let mut completion_calls_events = Vec::new();
         let mut final_response = None;
 
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::CompletionCallUsage(call_usage)) => {
-                    completion_call_usage_events.push(call_usage);
+                Ok(MultiTurnStreamItem::CompletionCall(call_usage)) => {
+                    completion_calls_events.push(call_usage);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response = Some(response);
@@ -1430,16 +1527,13 @@ mod tests {
         }
 
         let expected_usage = vec![
-            CompletionCallUsage::new(0, None),
-            CompletionCallUsage::new(1, Some(second_call_usage)),
+            CompletionCall::new(0, None),
+            CompletionCall::new(1, Some(second_call_usage)),
         ];
-        assert_eq!(completion_call_usage_events, expected_usage);
+        assert_eq!(completion_calls_events, expected_usage);
 
         let final_response = final_response.expect("expected final response");
-        assert_eq!(
-            final_response.completion_call_usage(),
-            expected_usage.as_slice()
-        );
+        assert_eq!(final_response.completion_calls(), expected_usage.as_slice());
     }
 
     #[tokio::test]

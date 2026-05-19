@@ -8,7 +8,7 @@
 //!
 //! That aggregate is useful for total cost, but it does not tell you the final
 //! prompt/context size. For that, inspect the last entry from
-//! `response.completion_call_usage()` and use `input_tokens` when usage is
+//! `response.completion_calls()` and use `input_tokens` when usage is
 //! reported.
 //!
 //! Requires `OPENAI_API_KEY`.
@@ -122,19 +122,19 @@ async fn main() -> Result<()> {
             MultiTurnStreamItem::StreamUserItem(_) => {
                 println!("tool result sent back to model");
             }
-            MultiTurnStreamItem::CompletionCallUsage(call_usage) => {
+            MultiTurnStreamItem::CompletionCall(completion_call) => {
                 if printed_streamed_text {
                     println!();
                     printed_streamed_text = false;
                 }
-                match call_usage.usage {
+                match completion_call.usage {
                     Some(usage) => print_usage(
-                        &format!("completion call {} usage", call_usage.call_index),
+                        &format!("completion call {} usage", completion_call.call_index),
                         usage,
                     ),
                     None => println!(
                         "completion call {} usage: not reported",
-                        call_usage.call_index
+                        completion_call.call_index
                     ),
                 }
             }
@@ -150,8 +150,8 @@ async fn main() -> Result<()> {
     println!("\n\nfinal response: {}", response.response());
     print_usage("aggregate agent usage", response.usage());
 
-    if let Some(final_call_usage) = response.completion_call_usage().last().copied() {
-        if let Some(usage) = final_call_usage.usage {
+    if let Some(final_completion_call) = response.completion_calls().last().copied() {
+        if let Some(usage) = final_completion_call.usage {
             print_usage("final completion call usage", usage);
             println!("final prompt/context token length: {}", usage.input_tokens);
         } else {

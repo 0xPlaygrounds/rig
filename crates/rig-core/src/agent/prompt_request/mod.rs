@@ -273,15 +273,18 @@ where
 /// Details for one completion request made by an agent run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct CompletionCallUsage {
+pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
     pub call_index: usize,
     /// Token usage reported for this completion request, when the provider supplied it.
+    ///
+    /// Rig normalizes zero-valued [`Usage`] to `None` because zero-valued usage
+    /// is the existing sentinel for missing provider usage metrics.
     #[serde(default)]
     pub usage: Option<Usage>,
 }
 
-impl CompletionCallUsage {
+impl CompletionCall {
     /// Create details for one completion request in an agent run.
     pub fn new(call_index: usize, usage: Option<Usage>) -> Self {
         Self { call_index, usage }
@@ -310,7 +313,7 @@ pub struct PromptResponse {
     /// request. If a provider does not report token usage, its entry contains
     /// `None`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub completion_call_usage: Vec<CompletionCallUsage>,
+    pub completion_calls: Vec<CompletionCall>,
     pub messages: Option<Vec<Message>>,
 }
 
@@ -325,7 +328,7 @@ impl PromptResponse {
         Self {
             output: output.into(),
             usage,
-            completion_call_usage: Vec::new(),
+            completion_calls: Vec::new(),
             messages: None,
         }
     }
@@ -335,12 +338,9 @@ impl PromptResponse {
         self
     }
 
-    /// Attach per-completion-call usage details to this response.
-    pub fn with_completion_call_usage(
-        mut self,
-        completion_call_usage: Vec<CompletionCallUsage>,
-    ) -> Self {
-        self.completion_call_usage = completion_call_usage;
+    /// Attach completion call details to this response.
+    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
+        self.completion_calls = completion_calls;
         self
     }
 
@@ -349,8 +349,8 @@ impl PromptResponse {
     /// Non-streaming responses include every successfully completed completion
     /// request. If a provider does not report token usage, its entry contains
     /// `None`.
-    pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
-        &self.completion_call_usage
+    pub fn completion_calls(&self) -> &[CompletionCall] {
+        &self.completion_calls
     }
 }
 
@@ -368,7 +368,7 @@ pub struct TypedPromptResponse<T> {
     /// request. If a provider does not report token usage, its entry contains
     /// `None`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub completion_call_usage: Vec<CompletionCallUsage>,
+    pub completion_calls: Vec<CompletionCall>,
 }
 
 impl<T> TypedPromptResponse<T> {
@@ -376,16 +376,13 @@ impl<T> TypedPromptResponse<T> {
         Self {
             output,
             usage,
-            completion_call_usage: Vec::new(),
+            completion_calls: Vec::new(),
         }
     }
 
-    /// Attach per-completion-call usage details to this response.
-    pub fn with_completion_call_usage(
-        mut self,
-        completion_call_usage: Vec<CompletionCallUsage>,
-    ) -> Self {
-        self.completion_call_usage = completion_call_usage;
+    /// Attach completion call details to this response.
+    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
+        self.completion_calls = completion_calls;
         self
     }
 
@@ -394,8 +391,8 @@ impl<T> TypedPromptResponse<T> {
     /// Non-streaming responses include every successfully completed completion
     /// request. If a provider does not report token usage, its entry contains
     /// `None`.
-    pub fn completion_call_usage(&self) -> &[CompletionCallUsage] {
-        &self.completion_call_usage
+    pub fn completion_calls(&self) -> &[CompletionCall] {
+        &self.completion_calls
     }
 }
 
@@ -478,7 +475,7 @@ where
 
         let mut current_max_turns = 0;
         let mut usage = Usage::new();
-        let mut completion_call_usage = Vec::new();
+        let mut completion_calls = Vec::new();
         let mut completion_call_index = 0;
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
@@ -576,7 +573,7 @@ where
             .instrument(chat_span.clone())
             .await?;
 
-            completion_call_usage.push(CompletionCallUsage::from_reported_usage(
+            completion_calls.push(CompletionCall::from_reported_usage(
                 completion_call_index,
                 resp.usage,
             ));
@@ -650,7 +647,7 @@ where
 
                 return Ok(PromptResponse::new(merged_texts, usage)
                     .with_messages(new_messages)
-                    .with_completion_call_usage(completion_call_usage));
+                    .with_completion_calls(completion_calls));
             }
 
             let hook = self.hook.clone();
@@ -982,7 +979,7 @@ where
 
         let parsed: T = serde_json::from_str(&response.output)?;
         Ok(TypedPromptResponse::new(parsed, response.usage)
-            .with_completion_call_usage(response.completion_call_usage))
+            .with_completion_calls(response.completion_calls))
     }
 }
 
@@ -1016,7 +1013,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{CompletionCallUsage, TypedPromptResponse};
+    use super::{CompletionCall, PromptResponse, TypedPromptResponse};
     use crate::{
         agent::AgentBuilder,
         completion::{
@@ -1045,6 +1042,17 @@ mod tests {
     #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
     struct TypedAnswer {
         value: String,
+    }
+
+    fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+        Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: input_tokens + output_tokens,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            reasoning_tokens: 0,
+        }
     }
 
     #[test]
@@ -1078,8 +1086,50 @@ mod tests {
         assert_eq!(response.usage.total_tokens, 3);
     }
 
+    #[test]
+    fn prompt_response_serializes_completion_calls_with_missing_usage() {
+        let reported_usage = usage(3, 4);
+        let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
+            CompletionCall::new(0, None),
+            CompletionCall::new(1, Some(reported_usage)),
+        ]);
+
+        let value = serde_json::to_value(&response).expect("serialize prompt response");
+
+        assert_eq!(
+            value.get("completion_calls"),
+            Some(&json!([
+                {
+                    "call_index": 0,
+                    "usage": null,
+                },
+                {
+                    "call_index": 1,
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "total_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
+                }
+            ]))
+        );
+
+        let response: PromptResponse =
+            serde_json::from_value(value).expect("deserialize prompt response");
+        assert_eq!(
+            response.completion_calls(),
+            &[
+                CompletionCall::new(0, None),
+                CompletionCall::new(1, Some(reported_usage))
+            ]
+        );
+    }
+
     #[tokio::test]
-    async fn typed_prompt_response_preserves_completion_call_usage() {
+    async fn typed_prompt_response_preserves_completion_calls() {
         let call_usage = Usage {
             input_tokens: 4,
             output_tokens: 6,
@@ -1106,8 +1156,8 @@ mod tests {
         );
         assert_eq!(response.usage, call_usage);
         assert_eq!(
-            response.completion_call_usage(),
-            &[CompletionCallUsage::new(0, Some(call_usage))]
+            response.completion_calls(),
+            &[CompletionCall::new(0, Some(call_usage))]
         );
     }
 
@@ -1197,10 +1247,10 @@ mod tests {
             }
         );
         assert_eq!(
-            response.completion_call_usage(),
+            response.completion_calls(),
             &[
-                CompletionCallUsage::new(0, Some(first_call_usage)),
-                CompletionCallUsage::new(1, Some(second_call_usage))
+                CompletionCall::new(0, Some(first_call_usage)),
+                CompletionCall::new(1, Some(second_call_usage))
             ]
         );
 

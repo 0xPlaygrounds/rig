@@ -118,5 +118,5 @@ pub use prompt_request::streaming::{
     stream_to_stdout,
 };
 pub use prompt_request::{
-    CompletionCallUsage, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
+    CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
