@@ -182,7 +182,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                             .iter()
                             .any(|needle| cited_text.to_lowercase().contains(needle))
                 }
-                Citation::PageLocation { .. } | Citation::ContentBlockLocation { .. } => false,
+                _ => false,
             }));
 
             let followup = model

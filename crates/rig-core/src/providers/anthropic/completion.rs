@@ -355,11 +355,9 @@ pub struct CitationsConfig {
     pub enabled: bool,
 }
 
-/// A citation returned by Claude pointing back to a span of source text in one
-/// of the user-supplied documents.
+/// A citation returned by Claude pointing back to source text.
 ///
-/// The variant determines the locator shape, which depends on the source
-/// document type:
+/// The variant determines the locator shape, which depends on the source type:
 ///
 /// - [`Citation::CharLocation`] — for plain text documents; character indices
 ///   are 0-indexed with an exclusive end.
@@ -367,12 +365,17 @@ pub struct CitationsConfig {
 ///   with an exclusive end.
 /// - [`Citation::ContentBlockLocation`] — for custom-content documents; block
 ///   indices are 0-indexed with an exclusive end.
+/// - [`Citation::SearchResultLocation`] — for user-provided search-result
+///   content blocks.
+/// - [`Citation::WebSearchResultLocation`] — for Anthropic's server-side web
+///   search tool results.
+/// - [`Citation::Unknown`] — a forward-compatible fallback preserving raw
+///   citation JSON for citation types this crate does not yet model.
 ///
 /// See the [Anthropic citations documentation][docs] for the exact wire format.
 ///
 /// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Citation {
     /// A citation locating a character span in a plain text document.
     CharLocation {
@@ -381,7 +384,6 @@ pub enum Citation {
         /// 0-indexed position of the source document in the request's document list.
         document_index: usize,
         /// Optional title of the source document, echoed back from the request.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         document_title: Option<String>,
         /// 0-indexed character offset where the cited span begins.
         start_char_index: usize,
@@ -395,7 +397,6 @@ pub enum Citation {
         /// 0-indexed position of the source document in the request's document list.
         document_index: usize,
         /// Optional title of the source document, echoed back from the request.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         document_title: Option<String>,
         /// 1-indexed page number where the cited span begins.
         start_page_number: u32,
@@ -409,13 +410,273 @@ pub enum Citation {
         /// 0-indexed position of the source document in the request's document list.
         document_index: usize,
         /// Optional title of the source document, echoed back from the request.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         document_title: Option<String>,
         /// 0-indexed content block index where the cited span begins.
         start_block_index: usize,
         /// Content block index where the cited span ends (exclusive).
         end_block_index: usize,
     },
+    /// A citation locating a block range in a user-provided search result.
+    SearchResultLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// Source URL or identifier from the original search result.
+        source: String,
+        /// Title from the original search result.
+        title: Option<String>,
+        /// 0-indexed position of the cited search result across all search
+        /// result blocks in the request.
+        search_result_index: usize,
+        /// 0-indexed content block index where the cited span begins.
+        start_block_index: usize,
+        /// Content block index where the cited span ends (exclusive).
+        end_block_index: usize,
+    },
+    /// A citation emitted by Anthropic's server-side web search tool.
+    WebSearchResultLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// URL of the cited source.
+        url: String,
+        /// Title of the cited source.
+        title: String,
+        /// Encrypted reference that must be preserved for multi-turn
+        /// conversations.
+        encrypted_index: String,
+    },
+    /// A forward-compatible raw citation payload for citation types this crate
+    /// does not yet model.
+    Unknown(serde_json::Value),
+}
+
+#[derive(Deserialize)]
+struct CharLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_char_index: usize,
+    end_char_index: usize,
+}
+
+#[derive(Deserialize)]
+struct PageLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_page_number: u32,
+    end_page_number: u32,
+}
+
+#[derive(Deserialize)]
+struct ContentBlockLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_block_index: usize,
+    end_block_index: usize,
+}
+
+#[derive(Deserialize)]
+struct SearchResultLocationCitationFields {
+    cited_text: String,
+    source: String,
+    #[serde(default)]
+    title: Option<String>,
+    search_result_index: usize,
+    start_block_index: usize,
+    end_block_index: usize,
+}
+
+#[derive(Deserialize)]
+struct WebSearchResultLocationCitationFields {
+    cited_text: String,
+    url: String,
+    title: String,
+    encrypted_index: String,
+}
+
+impl Serialize for Citation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut value = serde_json::Map::new();
+        match self {
+            Citation::CharLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_char_index,
+                end_char_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("char_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_char_index".into(),
+                    serde_json::json!(start_char_index),
+                );
+                value.insert("end_char_index".into(), serde_json::json!(end_char_index));
+            }
+            Citation::PageLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_page_number,
+                end_page_number,
+            } => {
+                value.insert("type".into(), serde_json::json!("page_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_page_number".into(),
+                    serde_json::json!(start_page_number),
+                );
+                value.insert("end_page_number".into(), serde_json::json!(end_page_number));
+            }
+            Citation::ContentBlockLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_block_index,
+                end_block_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("content_block_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_block_index".into(),
+                    serde_json::json!(start_block_index),
+                );
+                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
+            }
+            Citation::SearchResultLocation {
+                cited_text,
+                source,
+                title,
+                search_result_index,
+                start_block_index,
+                end_block_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("search_result_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("source".into(), serde_json::json!(source));
+                if let Some(title) = title {
+                    value.insert("title".into(), serde_json::json!(title));
+                }
+                value.insert(
+                    "search_result_index".into(),
+                    serde_json::json!(search_result_index),
+                );
+                value.insert(
+                    "start_block_index".into(),
+                    serde_json::json!(start_block_index),
+                );
+                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
+            }
+            Citation::WebSearchResultLocation {
+                cited_text,
+                url,
+                title,
+                encrypted_index,
+            } => {
+                value.insert(
+                    "type".into(),
+                    serde_json::json!("web_search_result_location"),
+                );
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("url".into(), serde_json::json!(url));
+                value.insert("title".into(), serde_json::json!(title));
+                value.insert("encrypted_index".into(), serde_json::json!(encrypted_index));
+            }
+            Citation::Unknown(raw) => return raw.serialize(serializer),
+        }
+
+        serde_json::Value::Object(value).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Citation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let Some(citation_type) = value.get("type").and_then(serde_json::Value::as_str) else {
+            return Ok(Citation::Unknown(value));
+        };
+
+        match citation_type {
+            "char_location" => {
+                let fields: CharLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::CharLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_char_index: fields.start_char_index,
+                    end_char_index: fields.end_char_index,
+                })
+            }
+            "page_location" => {
+                let fields: PageLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::PageLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_page_number: fields.start_page_number,
+                    end_page_number: fields.end_page_number,
+                })
+            }
+            "content_block_location" => {
+                let fields: ContentBlockLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::ContentBlockLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_block_index: fields.start_block_index,
+                    end_block_index: fields.end_block_index,
+                })
+            }
+            "search_result_location" => {
+                let fields: SearchResultLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::SearchResultLocation {
+                    cited_text: fields.cited_text,
+                    source: fields.source,
+                    title: fields.title,
+                    search_result_index: fields.search_result_index,
+                    start_block_index: fields.start_block_index,
+                    end_block_index: fields.end_block_index,
+                })
+            }
+            "web_search_result_location" => {
+                let fields: WebSearchResultLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::WebSearchResultLocation {
+                    cited_text: fields.cited_text,
+                    url: fields.url,
+                    title: fields.title,
+                    encrypted_index: fields.encrypted_index,
+                })
+            }
+            _ => Ok(Citation::Unknown(value)),
+        }
+    }
 }
 
 /// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:
@@ -2846,6 +3107,96 @@ mod tests {
     }
 
     #[test]
+    fn text_deserializes_search_result_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "API keys are required.",
+            "citations": [{
+                "type": "search_result_location",
+                "cited_text": "All API requests must include an API key.",
+                "source": "https://docs.example.com/api-reference",
+                "title": "API Reference",
+                "search_result_index": 0,
+                "start_block_index": 0,
+                "end_block_index": 1
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::SearchResultLocation {
+                source,
+                title: Some(title),
+                search_result_index: 0,
+                start_block_index: 0,
+                end_block_index: 1,
+                ..
+            } if source == "https://docs.example.com/api-reference" && title == "API Reference"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_web_search_result_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "Claude Shannon worked at Bell Labs.",
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was a mathematician.",
+                "url": "https://example.com/shannon",
+                "title": "Claude Shannon",
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::WebSearchResultLocation {
+                url,
+                title,
+                encrypted_index,
+                ..
+            } if url == "https://example.com/shannon"
+                && title == "Claude Shannon"
+                && encrypted_index == "encrypted-reference"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_unknown_citation_without_failing() {
+        let value = json!({
+            "type": "text",
+            "text": "future citation",
+            "citations": [{
+                "type": "future_location",
+                "cited_text": "future text",
+                "new_field": "kept"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::Unknown(raw)
+                if raw["type"] == "future_location" && raw["new_field"] == "kept"
+        ));
+    }
+
+    #[test]
     fn page_location_citation_roundtrips() {
         let citation = Citation::PageLocation {
             cited_text: "Water is essential for life.".into(),
@@ -3001,12 +3352,12 @@ mod tests {
     }
 
     #[test]
-    fn assistant_text_invalid_citations_are_rejected_for_anthropic_request_conversion() {
+    fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
         let text = message::AssistantContent::Text(message::Text {
             text: "bad citation".into(),
             additional_params: Some(json!({
                 "citations": [{
-                    "type": "unknown_location",
+                    "type": "char_location",
                     "cited_text": "bad"
                 }]
             })),

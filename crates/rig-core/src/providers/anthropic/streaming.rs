@@ -450,15 +450,22 @@ fn handle_event(
                 // Don't yield signature chunks, they will be included in the final Reasoning
                 None
             }
-            // Citations are emitted by Anthropic when the request enabled them
-            // on a document block. They are not exposed as a streaming event in
-            // this consumer because the surrounding `RawStreamingChoice` API has
-            // no citation channel; the final, non-streaming response carries
-            // them on the assembled text block instead.
-            ContentDelta::CitationsDelta { .. } => None,
+            ContentDelta::CitationsDelta { citation } => {
+                Some(Ok(RawStreamingChoice::TextAdditionalParams(json!({
+                    "citations": [citation]
+                }))))
+            }
             ContentDelta::Unknown => None,
         },
         StreamingEvent::ContentBlockStart { content_block, .. } => match content_block {
+            Content::Text { citations, .. } => {
+                let additional_params = (!citations.is_empty()).then(|| {
+                    json!({
+                        "citations": citations
+                    })
+                });
+                Some(Ok(RawStreamingChoice::TextStart { additional_params }))
+            }
             Content::ToolUse { id, name, .. } => {
                 let internal_call_id = nanoid::nanoid!();
                 *current_tool_call = Some(ToolCallState {
@@ -534,6 +541,27 @@ fn handle_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_stream::stream;
+    use futures::StreamExt;
+
+    #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+    fn to_stream_result(
+        stream: impl futures::Stream<
+            Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
+        > + Send
+        + 'static,
+    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
+        Box::pin(stream)
+    }
+
+    #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+    fn to_stream_result(
+        stream: impl futures::Stream<
+            Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
+        > + 'static,
+    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
+        Box::pin(stream)
+    }
 
     #[test]
     fn test_thinking_delta_deserialization() {
@@ -711,6 +739,31 @@ mod tests {
             }
             _ => panic!("Expected Message choice"),
         }
+    }
+
+    #[test]
+    fn test_handle_text_block_start_event() {
+        let event = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Text {
+                text: String::new(),
+                citations: Vec::new(),
+                cache_control: None,
+            },
+        };
+
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+        assert!(matches!(
+            choice,
+            RawStreamingChoice::TextStart {
+                additional_params: None
+            }
+        ));
     }
 
     #[test]
@@ -905,9 +958,186 @@ mod tests {
     }
 
     #[test]
+    fn test_search_result_citations_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "citations_delta",
+                "citation": {
+                    "type": "search_result_location",
+                    "cited_text": "API requests require a key.",
+                    "source": "https://docs.example.com/api-reference",
+                    "title": "API Reference",
+                    "search_result_index": 0,
+                    "start_block_index": 0,
+                    "end_block_index": 1
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+        let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
+            panic!("expected ContentBlockDelta");
+        };
+        let ContentDelta::CitationsDelta { citation } = delta else {
+            panic!("expected CitationsDelta");
+        };
+        assert!(matches!(
+            citation,
+            crate::providers::anthropic::completion::Citation::SearchResultLocation {
+                search_result_index: 0,
+                start_block_index: 0,
+                end_block_index: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_web_search_result_citations_delta_streaming_event_deserialization() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "citations_delta",
+                "citation": {
+                    "type": "web_search_result_location",
+                    "cited_text": "Claude Shannon was a mathematician.",
+                    "url": "https://example.com/shannon",
+                    "title": "Claude Shannon",
+                    "encrypted_index": "encrypted-reference"
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+        let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
+            panic!("expected ContentBlockDelta");
+        };
+        let ContentDelta::CitationsDelta { citation } = delta else {
+            panic!("expected CitationsDelta");
+        };
+        assert!(matches!(
+            citation,
+            crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
+                ref url,
+                ref encrypted_index,
+                ..
+            } if url == "https://example.com/shannon"
+                && encrypted_index == "encrypted-reference"
+        ));
+    }
+
+    #[test]
+    fn test_handle_citations_delta_event_preserves_metadata() {
+        let event = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::CitationsDelta {
+                citation: crate::providers::anthropic::completion::Citation::CharLocation {
+                    cited_text: "The grass is green.".to_string(),
+                    document_index: 0,
+                    document_title: Some("Example".to_string()),
+                    start_char_index: 0,
+                    end_char_index: 20,
+                },
+            },
+        };
+
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+        let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+
+        assert!(result.is_some());
+        let choice = result.unwrap().unwrap();
+        let RawStreamingChoice::TextAdditionalParams(additional_params) = choice else {
+            panic!("expected TextAdditionalParams choice");
+        };
+        assert_eq!(additional_params["citations"][0]["type"], "char_location");
+    }
+
+    #[tokio::test]
+    async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
+        let citation = crate::providers::anthropic::completion::Citation::CharLocation {
+            cited_text: "The grass is green.".to_string(),
+            document_index: 0,
+            document_title: Some("Example".to_string()),
+            start_char_index: 0,
+            end_char_index: 20,
+        };
+
+        let raw_stream = stream! {
+            let mut tool_call_state = None;
+            let mut thinking_state = None;
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: Content::Text {
+                        text: String::new(),
+                        citations: Vec::new(),
+                        cache_control: None,
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("text block start should produce a raw choice");
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta {
+                        text: "the grass is green".to_string(),
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("text delta should produce a raw choice");
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::CitationsDelta {
+                        citation: crate::providers::anthropic::completion::Citation::CharLocation {
+                            cited_text: "The grass is green.".to_string(),
+                            document_index: 0,
+                            document_title: Some("Example".to_string()),
+                            start_char_index: 0,
+                            end_char_index: 20,
+                        },
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("citation delta should produce a raw choice");
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: PartialUsage::default(),
+            }));
+        };
+
+        let mut stream =
+            crate::streaming::StreamingCompletionResponse::stream(to_stream_result(raw_stream));
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<crate::message::AssistantContent> =
+            stream.choice.clone().into_iter().collect();
+        let Some(crate::message::AssistantContent::Text(text)) = choice_items.first() else {
+            panic!("expected accumulated text item");
+        };
+
+        assert_eq!(text.text, "the grass is green");
+        let citations = crate::providers::anthropic::completion::anthropic_citations(text).unwrap();
+        assert_eq!(citations, vec![citation]);
+    }
+
+    #[test]
     fn test_unknown_content_delta_falls_back() {
         let json = r#"{"type": "something_new_from_anthropic", "field": "x"}"#;
         let delta: ContentDelta = serde_json::from_str(json).unwrap();
-        matches!(delta, ContentDelta::Unknown);
+        assert!(matches!(delta, ContentDelta::Unknown));
     }
 }
