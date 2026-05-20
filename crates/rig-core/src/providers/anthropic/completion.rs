@@ -34,6 +34,7 @@ pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
+pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
 pub trait AnthropicCompatibleProvider: Provider {
     const PROVIDER_NAME: &'static str;
@@ -288,6 +289,16 @@ pub enum Content {
         id: String,
         name: String,
         input: serde_json::Value,
+    },
+    ServerToolUse {
+        id: String,
+        name: String,
+        #[serde(default)]
+        input: serde_json::Value,
+    },
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
     },
     ToolResult {
         tool_use_id: String,
@@ -764,12 +775,85 @@ fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation
 }
 
 fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
+    if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
+        if !text.text.is_empty() {
+            return Err(MessageError::ConversionError(format!(
+                "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata cannot be combined with non-empty text"
+            )));
+        }
+
+        return Ok(raw_content);
+    }
+
     let citations = extract_anthropic_text_citations(&text)?;
     Ok(Content::Text {
         text: text.text,
         citations,
         cache_control: None,
     })
+}
+
+fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
+    let Some(raw_content) = text
+        .additional_params
+        .as_ref()
+        .and_then(|value| value.get(ANTHROPIC_RAW_CONTENT_KEY))
+    else {
+        return Ok(None);
+    };
+
+    let content = serde_json::from_value::<Content>(raw_content.clone()).map_err(|err| {
+        MessageError::ConversionError(format!(
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
+        ))
+    })?;
+
+    match content {
+        Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. } => Ok(Some(content)),
+        _ => Err(MessageError::ConversionError(format!(
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use and web_search_tool_result blocks"
+        ))),
+    }
+}
+
+fn anthropic_raw_content_to_message_text(content: Content) -> Result<message::Text, MessageError> {
+    let raw_content = serde_json::to_value(content).map_err(|err| {
+        MessageError::ConversionError(format!("Failed to preserve Anthropic content block: {err}"))
+    })?;
+
+    Ok(message::Text {
+        text: String::new(),
+        additional_params: Some(serde_json::json!({
+            ANTHROPIC_RAW_CONTENT_KEY: raw_content
+        })),
+    })
+}
+
+fn anthropic_document_additional_params(
+    title: Option<String>,
+    context: Option<String>,
+    citations: Option<CitationsConfig>,
+) -> Result<Option<serde_json::Value>, MessageError> {
+    let mut params = serde_json::Map::new();
+
+    if let Some(title) = title {
+        params.insert("title".to_string(), serde_json::Value::String(title));
+    }
+    if let Some(context) = context {
+        params.insert("context".to_string(), serde_json::Value::String(context));
+    }
+    if let Some(citations) = citations {
+        params.insert(
+            "citations".to_string(),
+            serde_json::to_value(citations).map_err(|err| {
+                MessageError::ConversionError(format!(
+                    "Failed to preserve Anthropic document citations metadata: {err}"
+                ))
+            })?,
+        );
+    }
+
+    Ok((!params.is_empty()).then_some(serde_json::Value::Object(params)))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1239,6 +1323,9 @@ impl TryFrom<Content> for message::AssistantContent {
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
             }
+            raw @ (Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. }) => {
+                message::AssistantContent::Text(anthropic_raw_content_to_message_text(raw)?)
+            }
             Content::Thinking {
                 thinking,
                 signature,
@@ -1306,28 +1393,50 @@ impl TryFrom<Message> for message::Message {
                                 })
                             }
                         },
-                        Content::Document { source, .. } => match source {
-                            DocumentSource::Base64 { data, media_type } => {
-                                let rig_media_type = match media_type {
-                                    DocumentFormat::PDF => message::DocumentMediaType::PDF,
-                                };
-                                message::UserContent::document(data, Some(rig_media_type))
+                        Content::Document {
+                            source,
+                            title,
+                            context,
+                            citations,
+                            ..
+                        } => {
+                            let additional_params =
+                                anthropic_document_additional_params(title, context, citations)?;
+
+                            match source {
+                                DocumentSource::Base64 { data, media_type } => {
+                                    let rig_media_type = match media_type {
+                                        DocumentFormat::PDF => message::DocumentMediaType::PDF,
+                                    };
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::String(data),
+                                        media_type: Some(rig_media_type),
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::Text { data, .. } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::String(data),
+                                        media_type: Some(message::DocumentMediaType::TXT),
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::Url { url } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::Url(url),
+                                        media_type: None,
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::File { file_id } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::FileId(file_id),
+                                        media_type: None,
+                                        additional_params,
+                                    })
+                                }
                             }
-                            DocumentSource::Text { data, .. } => message::UserContent::document(
-                                data,
-                                Some(message::DocumentMediaType::TXT),
-                            ),
-                            DocumentSource::Url { url } => {
-                                message::UserContent::document_url(url, None)
-                            }
-                            DocumentSource::File { file_id } => {
-                                message::UserContent::Document(message::Document {
-                                    data: DocumentSourceKind::FileId(file_id),
-                                    media_type: None,
-                                    additional_params: None,
-                                })
-                            }
-                        },
+                        }
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
@@ -3202,6 +3311,174 @@ mod tests {
     }
 
     #[test]
+    fn web_search_response_preserves_raw_blocks_and_citations() {
+        let value = json!({
+            "id": "msg_web_search",
+            "model": CLAUDE_SONNET_4_6,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20
+            },
+            "content": [
+                {
+                    "type": "server_tool_use",
+                    "id": "srvtoolu_01",
+                    "name": "web_search",
+                    "input": {
+                        "query": "claude shannon birth date"
+                    }
+                },
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": "srvtoolu_01",
+                    "content": [
+                        {
+                            "type": "web_search_result",
+                            "url": "https://example.com/shannon",
+                            "title": "Claude Shannon",
+                            "encrypted_content": "encrypted-content",
+                            "page_age": "April 30, 2025"
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": "Claude Shannon was born on April 30, 1916.",
+                    "citations": [{
+                        "type": "web_search_result_location",
+                        "cited_text": "Claude Shannon was born on April 30, 1916.",
+                        "url": "https://example.com/shannon",
+                        "title": "Claude Shannon",
+                        "encrypted_index": "encrypted-index"
+                    }]
+                }
+            ]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        assert_eq!(converted.choice.len(), 3);
+        assert_eq!(
+            converted.raw_response.get_text_response().as_deref(),
+            Some("Claude Shannon was born on April 30, 1916.")
+        );
+
+        let items = converted.choice.iter().collect::<Vec<_>>();
+        let message::AssistantContent::Text(server_tool_use) = items[0] else {
+            panic!("expected raw server_tool_use metadata");
+        };
+        assert_eq!(server_tool_use.text, "");
+        assert_eq!(
+            server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
+            "server_tool_use"
+        );
+
+        let message::AssistantContent::Text(web_search_result) = items[1] else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+        assert_eq!(
+            web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
+                [0]["encrypted_content"],
+            "encrypted-content"
+        );
+
+        let message::AssistantContent::Text(answer) = items[2] else {
+            panic!("expected text answer");
+        };
+        let citations = anthropic_citations(answer).unwrap();
+        assert!(matches!(
+            citations.first(),
+            Some(Citation::WebSearchResultLocation {
+                encrypted_index,
+                ..
+            }) if encrypted_index == "encrypted-index"
+        ));
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id.clone(),
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+
+        let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
+        assert!(matches!(
+            round_trip_items.first(),
+            Some(Content::ServerToolUse { id, name, input })
+                if id == "srvtoolu_01"
+                    && name == "web_search"
+                    && input["query"] == "claude shannon birth date"
+        ));
+        assert!(matches!(
+            round_trip_items.get(1),
+            Some(Content::WebSearchToolResult {
+                tool_use_id,
+                content
+            }) if tool_use_id == "srvtoolu_01"
+                && content[0]["encrypted_content"] == "encrypted-content"
+        ));
+    }
+
+    #[test]
+    fn web_search_tool_result_error_object_is_preserved_raw() {
+        let value = json!({
+            "id": "msg_web_search_error",
+            "model": CLAUDE_SONNET_4_6,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 2
+            },
+            "content": [{
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": {
+                    "type": "web_search_tool_result_error",
+                    "error_code": "max_uses_exceeded"
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+
+        let raw_content =
+            &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
+        assert_eq!(raw_content["type"], "web_search_tool_result");
+        assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
+        assert_eq!(
+            raw_content["content"]["type"],
+            "web_search_tool_result_error"
+        );
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id,
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+
+        assert!(matches!(
+            round_trip.content.first(),
+            Content::WebSearchToolResult {
+                tool_use_id,
+                content
+            } if tool_use_id == "srvtoolu_01"
+                && content["error_code"] == "max_uses_exceeded"
+        ));
+    }
+
+    #[test]
     fn text_deserializes_unknown_citation_without_failing() {
         let value = json!({
             "type": "text",
@@ -3428,5 +3705,149 @@ mod tests {
         assert_eq!(title.as_deref(), Some("Doc1"));
         assert_eq!(context.as_deref(), Some("ctx"));
         assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    fn assert_reverse_document_metadata(
+        source: DocumentSource,
+        expected_data: DocumentSourceKind,
+        expected_media_type: Option<message::DocumentMediaType>,
+    ) -> message::Message {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source,
+                title: Some("Doc1".into()),
+                context: Some("ctx".into()),
+                citations: Some(CitationsConfig { enabled: true }),
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+
+        assert_eq!(document.data, expected_data);
+        assert_eq!(document.media_type, expected_media_type);
+        let additional_params = document
+            .additional_params
+            .as_ref()
+            .expect("expected Anthropic document metadata");
+        assert_eq!(additional_params["title"], "Doc1");
+        assert_eq!(additional_params["context"], "ctx");
+        assert_eq!(additional_params["citations"]["enabled"], true);
+
+        generic
+    }
+
+    #[test]
+    fn anthropic_document_metadata_survives_reverse_conversion_for_all_sources() {
+        assert_reverse_document_metadata(
+            DocumentSource::Text {
+                data: "Hello world.".into(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            DocumentSourceKind::String("Hello world.".into()),
+            Some(message::DocumentMediaType::TXT),
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::Base64 {
+                data: "base64-pdf".into(),
+                media_type: DocumentFormat::PDF,
+            },
+            DocumentSourceKind::String("base64-pdf".into()),
+            Some(message::DocumentMediaType::PDF),
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::Url {
+                url: "https://example.com/doc.pdf".into(),
+            },
+            DocumentSourceKind::Url("https://example.com/doc.pdf".into()),
+            None,
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::File {
+                file_id: "file_abc".into(),
+            },
+            DocumentSourceKind::FileId("file_abc".into()),
+            None,
+        );
+    }
+
+    #[test]
+    fn anthropic_document_metadata_survives_reverse_round_trip() {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Hello world.".into(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                title: Some("Doc1".into()),
+                context: Some("ctx".into()),
+                citations: Some(CitationsConfig { enabled: true }),
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+        let additional_params = document
+            .additional_params
+            .as_ref()
+            .expect("expected Anthropic document metadata");
+        assert_eq!(additional_params["title"], "Doc1");
+        assert_eq!(additional_params["context"], "ctx");
+        assert_eq!(additional_params["citations"]["enabled"], true);
+
+        let round_trip: Message = generic.try_into().unwrap();
+        let Content::Document {
+            title,
+            context,
+            citations,
+            ..
+        } = round_trip.content.first()
+        else {
+            panic!("expected Anthropic document");
+        };
+        assert_eq!(title.as_deref(), Some("Doc1"));
+        assert_eq!(context.as_deref(), Some("ctx"));
+        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    #[test]
+    fn anthropic_document_empty_metadata_stays_none_on_reverse_conversion() {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Hello world.".into(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                title: None,
+                context: None,
+                citations: None,
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+
+        assert_eq!(document.additional_params, None);
     }
 }

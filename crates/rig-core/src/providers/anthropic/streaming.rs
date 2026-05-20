@@ -466,6 +466,13 @@ fn handle_event(
                 });
                 Some(Ok(RawStreamingChoice::TextStart { additional_params }))
             }
+            raw @ (Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. }) => {
+                Some(Ok(RawStreamingChoice::TextStart {
+                    additional_params: Some(json!({
+                        super::completion::ANTHROPIC_RAW_CONTENT_KEY: raw
+                    })),
+                }))
+            }
             Content::ToolUse { id, name, .. } => {
                 let internal_call_id = nanoid::nanoid!();
                 *current_tool_call = Some(ToolCallState {
@@ -1059,6 +1066,201 @@ mod tests {
                 title: None,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn test_web_search_content_block_start_events_deserialize() {
+        let server_tool_use = r#"{
+            "type": "content_block_start",
+            "index": 1,
+            "content_block": {
+                "type": "server_tool_use",
+                "id": "srvtoolu_01",
+                "name": "web_search",
+                "input": {
+                    "query": "claude shannon birth date"
+                }
+            }
+        }"#;
+        let event: StreamingEvent = serde_json::from_str(server_tool_use).unwrap();
+        assert!(matches!(
+            event,
+            StreamingEvent::ContentBlockStart {
+                content_block: Content::ServerToolUse {
+                    ref id,
+                    ref name,
+                    ref input
+                },
+                ..
+            } if id == "srvtoolu_01"
+                && name == "web_search"
+                && input["query"] == "claude shannon birth date"
+        ));
+
+        let web_search_tool_result = r#"{
+            "type": "content_block_start",
+            "index": 2,
+            "content_block": {
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": [{
+                    "type": "web_search_result",
+                    "url": "https://example.com/shannon",
+                    "title": "Claude Shannon",
+                    "encrypted_content": "encrypted-content"
+                }]
+            }
+        }"#;
+        let event: StreamingEvent = serde_json::from_str(web_search_tool_result).unwrap();
+        assert!(matches!(
+            event,
+            StreamingEvent::ContentBlockStart {
+                content_block: Content::WebSearchToolResult {
+                    ref tool_use_id,
+                    ref content
+                },
+                ..
+            } if tool_use_id == "srvtoolu_01"
+                && content[0]["encrypted_content"] == "encrypted-content"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
+        let raw_stream = stream! {
+            let mut tool_call_state = None;
+            let mut thinking_state = None;
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: Content::ServerToolUse {
+                        id: "srvtoolu_01".to_string(),
+                        name: "web_search".to_string(),
+                        input: serde_json::json!({
+                            "query": "claude shannon birth date"
+                        }),
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("server_tool_use block should produce raw metadata");
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockStart {
+                    index: 1,
+                    content_block: Content::WebSearchToolResult {
+                        tool_use_id: "srvtoolu_01".to_string(),
+                        content: serde_json::json!([{
+                            "type": "web_search_result",
+                            "url": "https://example.com/shannon",
+                            "title": "Claude Shannon",
+                            "encrypted_content": "encrypted-content"
+                        }]),
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("web_search_tool_result block should produce raw metadata");
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockStart {
+                    index: 2,
+                    content_block: Content::Text {
+                        text: String::new(),
+                        citations: Vec::new(),
+                        cache_control: None,
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("text block start should produce a raw choice");
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockDelta {
+                    index: 2,
+                    delta: ContentDelta::TextDelta {
+                        text: "Claude Shannon was born on April 30, 1916.".to_string(),
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("text delta should produce a raw choice");
+
+            yield handle_event(
+                &StreamingEvent::ContentBlockDelta {
+                    index: 2,
+                    delta: ContentDelta::CitationsDelta {
+                        citation: crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
+                            cited_text: "Claude Shannon was born on April 30, 1916.".to_string(),
+                            url: "https://example.com/shannon".to_string(),
+                            title: Some("Claude Shannon".to_string()),
+                            encrypted_index: "encrypted-index".to_string(),
+                        },
+                    },
+                },
+                &mut tool_call_state,
+                &mut thinking_state,
+            )
+            .expect("citation delta should produce a raw choice");
+
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: PartialUsage::default(),
+            }));
+        };
+
+        let mut stream =
+            crate::streaming::StreamingCompletionResponse::stream(to_stream_result(raw_stream));
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<crate::message::AssistantContent> =
+            stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 3);
+        assert!(
+            choice_items
+                .iter()
+                .all(|item| !matches!(item, crate::message::AssistantContent::ToolCall(_))),
+            "provider-owned web-search blocks must not become Rig client tool calls"
+        );
+
+        let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first()
+        else {
+            panic!("expected raw server_tool_use metadata");
+        };
+        assert_eq!(
+            server_tool_use.additional_params.as_ref().unwrap()
+                [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
+            "server_tool_use"
+        );
+
+        let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
+        else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+        assert_eq!(
+            web_search_result.additional_params.as_ref().unwrap()
+                [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]
+                ["encrypted_content"],
+            "encrypted-content"
+        );
+
+        let Some(crate::message::AssistantContent::Text(answer)) = choice_items.get(2) else {
+            panic!("expected answer text");
+        };
+        assert_eq!(answer.text, "Claude Shannon was born on April 30, 1916.");
+        let citations = crate::providers::anthropic::completion::anthropic_citations(answer)
+            .expect("expected preserved citations");
+        assert!(matches!(
+            citations.first(),
+            Some(crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
+                encrypted_index,
+                ..
+            }) if encrypted_index == "encrypted-index"
         ));
     }
 
