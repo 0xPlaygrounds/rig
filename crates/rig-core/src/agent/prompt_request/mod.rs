@@ -412,7 +412,7 @@ fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
     choice.len() == 1
         && matches!(
             choice.first(),
-            AssistantContent::Text(text) if text.text.is_empty()
+            AssistantContent::Text(text) if text.text.is_empty() && text.additional_params.is_none()
         )
 }
 
@@ -1327,6 +1327,46 @@ mod tests {
             response,
             "According to the document, the grass is green and the sky is blue."
         );
+    }
+
+    #[tokio::test]
+    async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
+        let metadata = json!({
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was born in 1916.",
+                "url": "https://example.com/shannon",
+                "title": null,
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+        let model =
+            MockCompletionModel::new([MockTurn::from_content(AssistantContent::Text(Text {
+                text: String::new(),
+                additional_params: Some(metadata.clone()),
+            }))]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("answer with cited metadata")
+            .extended_details()
+            .await
+            .expect("metadata-only text turn should succeed");
+
+        assert!(response.output.is_empty());
+        let history = response
+            .messages
+            .expect("extended response should include history");
+        assert!(history.iter().any(|message| matches!(
+            message,
+            Message::Assistant { content, .. }
+                if matches!(
+                    content.first(),
+                    AssistantContent::Text(text)
+                        if text.text.is_empty()
+                            && text.additional_params.as_ref() == Some(&metadata)
+                )
+        )));
     }
 
     // ----- Conversation memory integration tests -----

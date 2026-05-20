@@ -439,7 +439,7 @@ pub enum Citation {
         /// URL of the cited source.
         url: String,
         /// Title of the cited source.
-        title: String,
+        title: Option<String>,
         /// Encrypted reference that must be preserved for multi-turn
         /// conversations.
         encrypted_index: String,
@@ -494,7 +494,7 @@ struct SearchResultLocationCitationFields {
 struct WebSearchResultLocationCitationFields {
     cited_text: String,
     url: String,
-    title: String,
+    title: Option<String>,
     encrypted_index: String,
 }
 
@@ -3167,9 +3167,38 @@ mod tests {
                 encrypted_index,
                 ..
             } if url == "https://example.com/shannon"
-                && title == "Claude Shannon"
+                && title.as_deref() == Some("Claude Shannon")
                 && encrypted_index == "encrypted-reference"
         ));
+    }
+
+    #[test]
+    fn text_deserializes_web_search_result_location_citation_with_null_title() {
+        let value = json!({
+            "type": "text",
+            "text": "Claude Shannon worked at Bell Labs.",
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was a mathematician.",
+                "url": "https://example.com/shannon",
+                "title": null,
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        let Citation::WebSearchResultLocation { title, .. } = &citations[0] else {
+            panic!("expected WebSearchResultLocation");
+        };
+        assert_eq!(title, &None);
+
+        let serialized = serde_json::to_value(&citations[0]).unwrap();
+        assert!(serialized.get("title").is_some());
+        assert!(serialized["title"].is_null());
     }
 
     #[test]

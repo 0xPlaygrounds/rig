@@ -1030,6 +1030,39 @@ mod tests {
     }
 
     #[test]
+    fn test_web_search_result_citations_delta_allows_null_title() {
+        let json = r#"{
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {
+                "type": "citations_delta",
+                "citation": {
+                    "type": "web_search_result_location",
+                    "cited_text": "Claude Shannon was a mathematician.",
+                    "url": "https://example.com/shannon",
+                    "title": null,
+                    "encrypted_index": "encrypted-reference"
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+        let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
+            panic!("expected ContentBlockDelta");
+        };
+        let ContentDelta::CitationsDelta { citation } = delta else {
+            panic!("expected CitationsDelta");
+        };
+        assert!(matches!(
+            citation,
+            crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
+                title: None,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn test_handle_citations_delta_event_preserves_metadata() {
         let event = StreamingEvent::ContentBlockDelta {
             index: 0,
