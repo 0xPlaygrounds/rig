@@ -58,9 +58,8 @@ impl Column {
     ///
     /// Filterable columns are indexed on the document table and stored as
     /// sqlite-vec metadata columns so supported filters can be applied during
-    /// KNN candidate search. Filters that cannot be applied by sqlite-vec
-    /// metadata constraints are rejected instead of being applied after the
-    /// candidate limit.
+    /// KNN candidate search. Filters on other document-table fields are applied
+    /// after candidate search with an expanded candidate limit.
     pub fn indexed(mut self) -> Self {
         self.indexed = true;
         self
@@ -425,7 +424,7 @@ where
     E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
-    async fn candidate_limit(&self, samples: u64) -> Result<u64, VectorStoreError>
+    async fn candidate_limit(&self, samples: u64, exhaustive: bool) -> Result<u64, VectorStoreError>
     where
         Self: 'static,
     {
@@ -451,7 +450,9 @@ where
         let embedding_count = u64::try_from(embedding_count).unwrap_or(0);
         let document_count = u64::try_from(document_count).unwrap_or(0);
 
-        if embedding_count > document_count {
+        if exhaustive {
+            Ok(embedding_count.max(samples))
+        } else if embedding_count > document_count {
             Ok(embedding_count)
         } else {
             Ok(samples)
@@ -772,14 +773,11 @@ where
 
 /// Search filter for SQLite vector searches.
 ///
-/// SQLite vector search only accepts filters that sqlite-vec can enforce during
-/// KNN candidate search. Supported filter shapes are `AND` combinations of
-/// indexed metadata comparisons (`=`, `!=`, `>`, `>=`, `<`, `<=`), inclusive
-/// `between` ranges on non-boolean indexed metadata, and `not()` around a
-/// simple indexed metadata comparison. Other shapes are retained so callers can
-/// build filters through the generic [`SearchFilter`] trait, but vector searches
-/// reject them with [`FilterError`] instead of applying them after candidate
-/// selection.
+/// SQLite vector search applies indexed metadata filters during sqlite-vec KNN
+/// candidate search when possible. Comparisons and ranges on other document
+/// table expressions are applied after candidate search with an expanded
+/// candidate limit so custom document columns and JSON metadata expressions can
+/// still be filtered correctly.
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct SqliteSearchFilter {
     expr: SqliteSearchFilterExpr,
@@ -878,17 +876,19 @@ impl SqlitePatternOp {
 #[derive(Clone, Copy)]
 enum SqliteFilterTarget {
     VectorMetadata,
+    Document,
 }
 
 impl SqliteFilterTarget {
     fn alias(self) -> &'static str {
         match self {
             Self::VectorMetadata => "e",
+            Self::Document => "d",
         }
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct SqliteRenderedFilters {
     native: Vec<SqliteRenderedFilter>,
     post: Vec<SqliteRenderedFilter>,
@@ -899,8 +899,13 @@ impl SqliteRenderedFilters {
         self.native.extend(rhs.native);
         self.post.extend(rhs.post);
     }
+
+    fn has_post_filters(&self) -> bool {
+        !self.post.is_empty()
+    }
 }
 
+#[derive(Debug)]
 struct SqliteRenderedFilter {
     condition: String,
     params: Vec<Value>,
@@ -954,11 +959,11 @@ impl SearchFilter for SqliteSearchFilter {
 
 impl SqliteSearchFilter {
     #[allow(clippy::should_implement_trait)]
-    /// Negates a simple indexed metadata comparison.
+    /// Negates a simple comparison.
     ///
-    /// SQLite vector search lowers `NOT` over comparisons to sqlite-vec-native
-    /// operators such as `!=`, `<=`, and `>=`. Broader negations that require
-    /// `OR` or post-filtering are rejected during search.
+    /// SQLite vector search lowers `NOT` over comparisons to simple operators
+    /// such as `!=`, `<=`, and `>=`. Broader negations are rejected during
+    /// search.
     pub fn not(self) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Not(Box::new(self.expr)),
@@ -1051,7 +1056,12 @@ impl SqliteSearchFilterExpr {
         value: serde_json::Value,
         metadata_columns: &[SqliteMetadataColumn],
     ) -> Result<SqliteRenderedFilters, FilterError> {
-        let metadata_column = sqlite_native_metadata_column(key, metadata_columns)?;
+        let Some(metadata_column) = sqlite_native_metadata_column(key, metadata_columns) else {
+            return Ok(SqliteRenderedFilters {
+                native: Vec::new(),
+                post: vec![Self::render_document_comparison(key, op, value)?],
+            });
+        };
 
         if !metadata_column.metadata_type.supports_native_comparison(op) {
             return Err(sqlite_unsupported_filter(format!(
@@ -1065,6 +1075,21 @@ impl SqliteSearchFilterExpr {
                 params: vec![sqlite_metadata_filter_param(metadata_column, value)?],
             }],
             post: Vec::new(),
+        })
+    }
+
+    fn render_document_comparison(
+        key: &str,
+        op: SqliteComparisonOp,
+        value: serde_json::Value,
+    ) -> Result<SqliteRenderedFilter, FilterError> {
+        Ok(SqliteRenderedFilter {
+            condition: format!(
+                "{} {} ?",
+                sqlite_qualify_key(key, SqliteFilterTarget::Document)?,
+                op.as_sql()
+            ),
+            params: vec![sqlite_filter_param(value)?],
         })
     }
 
@@ -1082,7 +1107,14 @@ impl SqliteSearchFilterExpr {
                 Ok(rendered)
             }
             Self::Between { key, lo, hi } => {
-                let metadata_column = sqlite_native_metadata_column(key, metadata_columns)?;
+                let Some(metadata_column) = sqlite_native_metadata_column(key, metadata_columns)
+                else {
+                    return Ok(SqliteRenderedFilters {
+                        native: Vec::new(),
+                        post: vec![self.render(SqliteFilterTarget::Document)?],
+                    });
+                };
+
                 if metadata_column.metadata_type == SqliteMetadataType::Boolean {
                     return Err(sqlite_unsupported_filter(format!(
                         "`{key}` is a BOOLEAN metadata column, and sqlite-vec does not support range filters for booleans"
@@ -1141,7 +1173,7 @@ impl SqliteSearchFilterExpr {
     fn render(&self, target: SqliteFilterTarget) -> Result<SqliteRenderedFilter, FilterError> {
         match self {
             Self::Comparison { key, op, value } => Ok(SqliteRenderedFilter {
-                condition: format!("{} {} ?", sqlite_qualify_key(key, target), op.as_sql()),
+                condition: format!("{} {} ?", sqlite_qualify_key(key, target)?, op.as_sql()),
                 params: vec![sqlite_filter_param(value.clone())?],
             }),
             Self::And(lhs, rhs) => {
@@ -1168,7 +1200,7 @@ impl SqliteSearchFilterExpr {
                 })
             }
             Self::Between { key, lo, hi } => Ok(SqliteRenderedFilter {
-                condition: format!("{} between ? and ?", sqlite_qualify_key(key, target)),
+                condition: format!("{} between ? and ?", sqlite_qualify_key(key, target)?),
                 params: vec![
                     sqlite_filter_param(lo.clone())?,
                     sqlite_filter_param(hi.clone())?,
@@ -1177,12 +1209,12 @@ impl SqliteSearchFilterExpr {
             Self::NullCheck { key, negated } => {
                 let operator = if *negated { "is not null" } else { "is null" };
                 Ok(SqliteRenderedFilter {
-                    condition: format!("{} {operator}", sqlite_qualify_key(key, target)),
+                    condition: format!("{} {operator}", sqlite_qualify_key(key, target)?),
                     params: Vec::new(),
                 })
             }
             Self::Pattern { key, op, pattern } => Ok(SqliteRenderedFilter {
-                condition: format!("{} {} ?", sqlite_qualify_key(key, target), op.as_sql()),
+                condition: format!("{} {} ?", sqlite_qualify_key(key, target)?, op.as_sql()),
                 params: vec![Value::Text(pattern.clone())],
             }),
             Self::Raw { condition, params } => Ok(SqliteRenderedFilter {
@@ -1200,26 +1232,46 @@ impl SqliteSearchFilterExpr {
 fn sqlite_native_metadata_column<'a>(
     key: &str,
     metadata_columns: &'a [SqliteMetadataColumn],
-) -> Result<&'a SqliteMetadataColumn, FilterError> {
-    if sqlite_key_is_qualified(key) {
-        return Err(sqlite_unsupported_filter(format!(
-            "`{key}` is not a plain sqlite-vec metadata column name"
-        )));
+) -> Option<&'a SqliteMetadataColumn> {
+    if !sqlite_is_plain_identifier(key) {
+        return None;
     }
 
-    metadata_columns
-        .iter()
-        .find(|column| column.name == key)
-        .ok_or_else(|| {
-            sqlite_unsupported_filter(format!(
-                "`{key}` is not an indexed sqlite-vec metadata column"
-            ))
-        })
+    metadata_columns.iter().find(|column| column.name == key)
+}
+
+fn sqlite_is_plain_identifier(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    (first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
+fn sqlite_leading_identifier_len(key: &str) -> Option<usize> {
+    let mut chars = key.char_indices();
+    let (_, first) = chars.next()?;
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return None;
+    }
+
+    let mut end = first.len_utf8();
+    for (index, c) in chars {
+        if c == '_' || c.is_ascii_alphanumeric() {
+            end = index + c.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    Some(end)
 }
 
 fn sqlite_unsupported_filter(reason: impl Into<String>) -> FilterError {
     FilterError::TypeError(format!(
-        "SQLite filters must be enforceable during sqlite-vec candidate search; {}",
+        "SQLite filter cannot be safely lowered; {}",
         reason.into()
     ))
 }
@@ -1354,12 +1406,107 @@ fn sqlite_key_is_qualified(key: &str) -> bool {
     key.contains('.') || key.contains('(') || key.contains(' ') || key.contains('?')
 }
 
-fn sqlite_qualify_key(key: &str, target: SqliteFilterTarget) -> String {
-    if sqlite_key_is_qualified(key) {
-        key.to_string()
-    } else {
-        format!("{}.{}", target.alias(), key)
+fn sqlite_qualify_key(key: &str, target: SqliteFilterTarget) -> Result<String, FilterError> {
+    match target {
+        SqliteFilterTarget::VectorMetadata => {
+            if sqlite_key_is_qualified(key) {
+                Ok(key.to_string())
+            } else {
+                Ok(format!("{}.{}", target.alias(), key))
+            }
+        }
+        SqliteFilterTarget::Document => sqlite_qualify_document_key(key),
     }
+}
+
+fn sqlite_qualify_document_key(key: &str) -> Result<String, FilterError> {
+    if let Some(key_without_alias) = key.strip_prefix("d.") {
+        if sqlite_is_plain_identifier(key_without_alias)
+            || sqlite_is_json_operator_expression(key_without_alias)
+        {
+            return Ok(key.to_string());
+        }
+
+        return Err(sqlite_unsupported_filter(format!(
+            "`{key}` is not a supported SQLite document filter expression"
+        )));
+    }
+
+    if sqlite_is_plain_identifier(key) {
+        return Ok(format!("d.{key}"));
+    }
+
+    if sqlite_is_json_operator_expression(key) {
+        return Ok(format!("d.{key}"));
+    }
+
+    Err(sqlite_unsupported_filter(format!(
+        "`{key}` is not a supported SQLite document filter expression"
+    )))
+}
+
+fn sqlite_is_json_operator_expression(expr: &str) -> bool {
+    let Some(mut index) = sqlite_leading_identifier_len(expr) else {
+        return false;
+    };
+
+    if index == expr.len() {
+        return false;
+    }
+
+    while index < expr.len() {
+        let remaining = &expr[index..];
+        let operator_len = if remaining.starts_with("->>") {
+            3
+        } else if remaining.starts_with("->") {
+            2
+        } else {
+            return false;
+        };
+        index += operator_len;
+
+        let Some(operand_len) = sqlite_json_operator_operand_len(&expr[index..]) else {
+            return false;
+        };
+        index += operand_len;
+    }
+
+    true
+}
+
+fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
+    if operand.is_empty() {
+        return None;
+    }
+
+    if let Some(operand) = operand.strip_prefix('\'') {
+        let closing_quote = operand.find('\'')?;
+        let literal = &operand[..closing_quote];
+        if literal.chars().any(char::is_control) {
+            return None;
+        }
+
+        return Some(closing_quote + 2);
+    }
+
+    let mut chars = operand.char_indices();
+    let mut end = 0;
+    if let Some((_, '-')) = chars.clone().next() {
+        end = 1;
+        chars.next();
+    }
+
+    let mut has_digit = false;
+    for (index, c) in chars {
+        if c.is_ascii_digit() {
+            has_digit = true;
+            end = index + c.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    has_digit.then_some(end)
 }
 
 /// SQLite vector store implementation for Rig.
@@ -1513,13 +1660,17 @@ fn sqlite_schema_contains_metadata_column(schema_sql: &str, column: &SqliteMetad
     normalized.contains(&column_sql)
 }
 
-fn build_where_clause(
+struct SqliteSearchQuery {
+    vector_where_clause: String,
+    document_filter_clause: String,
+    params: Vec<Value>,
+}
+
+fn render_search_filters(
     req: &VectorSearchRequest<SqliteSearchFilter>,
-    query_vec: Vec<f32>,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: &[SqliteMetadataColumn],
-    candidate_limit: u64,
-) -> Result<(String, Vec<Value>), FilterError> {
+) -> Result<SqliteRenderedFilters, FilterError> {
     let score_expression = distance_metric.score_expression("?1", "e.embedding");
     let threshold_filter = req.threshold().map(|threshold| {
         SqliteSearchFilter::raw(format!("{score_expression} >= ?"), vec![threshold.into()])
@@ -1537,16 +1688,36 @@ fn build_where_clause(
         filters.extend(filter.render_split(metadata_columns)?);
     }
 
+    Ok(filters)
+}
+
+fn build_search_query(
+    query_vec: Vec<f32>,
+    filters: SqliteRenderedFilters,
+    candidate_limit: u64,
+) -> Result<SqliteSearchQuery, FilterError> {
     let mut conditions = vec!["e.embedding MATCH ?".to_string(), "k = ?".to_string()];
     conditions.extend(
         filters
             .native
             .iter()
-            .chain(filters.post.iter())
             .map(|filter| format!("({})", filter.condition)),
     );
 
-    let where_clause = format!("WHERE {}", conditions.join(" AND "));
+    let vector_where_clause = format!("WHERE {}", conditions.join(" AND "));
+    let document_filter_clause = if filters.post.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "AND {}",
+            filters
+                .post
+                .iter()
+                .map(|filter| format!("({})", filter.condition))
+                .collect::<Vec<_>>()
+                .join(" AND ")
+        )
+    };
 
     let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
@@ -1556,7 +1727,24 @@ fn build_where_clause(
     params.extend(filters.native.into_iter().flat_map(|filter| filter.params));
     params.extend(filters.post.into_iter().flat_map(|filter| filter.params));
 
-    Ok((where_clause, params))
+    Ok(SqliteSearchQuery {
+        vector_where_clause,
+        document_filter_clause,
+        params,
+    })
+}
+
+#[cfg(test)]
+fn build_where_clause(
+    req: &VectorSearchRequest<SqliteSearchFilter>,
+    query_vec: Vec<f32>,
+    distance_metric: SqliteDistanceMetric,
+    metadata_columns: &[SqliteMetadataColumn],
+    candidate_limit: u64,
+) -> Result<(String, Vec<Value>), FilterError> {
+    let filters = render_search_filters(req, distance_metric, metadata_columns)?;
+    let query = build_search_query(query_vec, filters, candidate_limit)?;
+    Ok((query.vector_where_clause, query.params))
 }
 
 fn sqlite_limit_param(value: u64, name: &str) -> Result<Value, FilterError> {
@@ -1727,15 +1915,15 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
 
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
-        let candidate_limit = self.store.candidate_limit(req.samples()).await?;
-        let (where_clause, params) = build_where_clause(
-            &req,
-            query_vec,
-            distance_metric,
-            &self.store.metadata_columns,
-            candidate_limit,
-        )?;
-        let mut params = params;
+        let filters = render_search_filters(&req, distance_metric, &self.store.metadata_columns)?;
+        let candidate_limit = self
+            .store
+            .candidate_limit(req.samples(), filters.has_post_filters())
+            .await?;
+        let search_query = build_search_query(query_vec, filters, candidate_limit)?;
+        let where_clause = search_query.vector_where_clause;
+        let document_filter_clause = search_query.document_filter_clause;
+        let mut params = search_query.params;
         params.push(sqlite_limit_param(req.samples(), "result limit")?);
 
         let rows = self
@@ -1758,6 +1946,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                     FROM scored
                     JOIN {table_name} d ON scored.__rig_document_rowid = d.rowid
                     WHERE scored.__rig_rank = 1
+                        {document_filter_clause}
                     ORDER BY scored.__rig_score DESC, d.id ASC
                     LIMIT ?"
                 ))?;
@@ -1821,15 +2010,15 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
 
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
-        let candidate_limit = self.store.candidate_limit(req.samples()).await?;
-        let (where_clause, params) = build_where_clause(
-            &req,
-            query_vec,
-            distance_metric,
-            &self.store.metadata_columns,
-            candidate_limit,
-        )?;
-        let mut params = params;
+        let filters = render_search_filters(&req, distance_metric, &self.store.metadata_columns)?;
+        let candidate_limit = self
+            .store
+            .candidate_limit(req.samples(), filters.has_post_filters())
+            .await?;
+        let search_query = build_search_query(query_vec, filters, candidate_limit)?;
+        let where_clause = search_query.vector_where_clause;
+        let document_filter_clause = search_query.document_filter_clause;
+        let mut params = search_query.params;
         params.push(sqlite_limit_param(req.samples(), "result limit")?);
 
         let results = self
@@ -1852,6 +2041,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
                      FROM scored
                      JOIN {table_name} d ON scored.__rig_document_rowid = d.rowid
                      WHERE scored.__rig_rank = 1
+                        {document_filter_clause}
                      ORDER BY scored.__rig_score DESC, d.id ASC
                      LIMIT ?"
                 ))?;
@@ -2395,27 +2585,98 @@ mod tests {
     }
 
     #[test]
-    fn nonindexed_filters_are_rejected() -> anyhow::Result<()> {
+    fn nonindexed_filters_use_document_filter() -> anyhow::Result<()> {
         let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
             .query("needle")
             .samples(5)
             .filter(SqliteSearchFilter::eq("title", serde_json::json!("docs")))
             .build();
 
+        let filters =
+            render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
+        anyhow::ensure!(
+            filters.has_post_filters(),
+            "non-indexed filters should be applied after vector candidate search"
+        );
+        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+
+        anyhow::ensure!(
+            query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
+            "unexpected vector where clause: {}",
+            query.vector_where_clause
+        );
+        anyhow::ensure!(
+            query.document_filter_clause == "AND (d.title = ?)",
+            "unexpected document filter clause: {}",
+            query.document_filter_clause
+        );
+        anyhow::ensure!(
+            query.params.get(3) == Some(&Value::Text("docs".to_string())),
+            "unexpected document filter param: {:?}",
+            query.params
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn json_metadata_expression_uses_document_filter() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::eq(
+                "metadata->>'$.xxx'",
+                serde_json::json!("vvv"),
+            ))
+            .build();
+
+        let filters =
+            render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
+        anyhow::ensure!(
+            filters.has_post_filters(),
+            "JSON metadata expressions should be applied after vector candidate search"
+        );
+        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+
+        anyhow::ensure!(
+            query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
+            "unexpected vector where clause: {}",
+            query.vector_where_clause
+        );
+        anyhow::ensure!(
+            query.document_filter_clause == "AND (d.metadata->>'$.xxx' = ?)",
+            "unexpected document filter clause: {}",
+            query.document_filter_clause
+        );
+        anyhow::ensure!(
+            query.params.get(3) == Some(&Value::Text("vvv".to_string())),
+            "unexpected JSON metadata filter param: {:?}",
+            query.params
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn unsupported_document_filter_expressions_are_rejected() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .filter(SqliteSearchFilter::eq(
+                "metadata) OR 1 = 1 --",
+                serde_json::json!("vvv"),
+            ))
+            .build();
+
         let err = filter_error(
-            build_where_clause(
-                &req,
-                vec![1.0, 0.0],
-                SqliteDistanceMetric::Cosine,
-                &test_metadata_columns(),
-                5,
-            ),
-            "filters on non-indexed columns",
+            render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns()),
+            "unsupported document filter expressions",
         )?;
 
         anyhow::ensure!(
-            err.to_string().contains("not an indexed"),
-            "unexpected error for non-indexed filter: {err}"
+            err.to_string()
+                .contains("supported SQLite document filter expression"),
+            "unexpected error for unsupported document filter expression: {err}"
         );
 
         Ok(())
@@ -2931,6 +3192,154 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_nonindexed_filter_is_applied_after_candidate_search() -> anyhow::Result<()> {
+        let index = live_test_index(
+            "live_nonindexed_filter_is_applied_after_candidate_search",
+            vec![
+                row("nearest", "docs", "nearest excluded title", vec![1.0, 0.0]),
+                row("wanted", "docs", "wanted title", vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq(
+                "title",
+                serde_json::json!("wanted title"),
+            ))
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["wanted"],
+            "non-indexed filters should not be starved by the initial candidate limit: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["wanted"],
+            "top_n_ids should apply non-indexed filters after candidate search: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_json_metadata_filter_is_applied_after_candidate_search() -> anyhow::Result<()> {
+        let index = live_json_metadata_test_index(
+            "live_json_metadata_filter_is_applied_after_candidate_search",
+            vec![
+                json_metadata_row("nearest", "docs", "skip", "nearest skipped", vec![1.0, 0.0]),
+                json_metadata_row("matched", "docs", "vvv", "metadata match", vec![0.0, 1.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq(
+                "metadata->>'$.xxx'",
+                serde_json::json!("vvv"),
+            ))
+            .build();
+
+        let results = index.top_n::<JsonMetadataDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["matched"],
+            "JSON metadata filters should not be starved by the initial candidate limit: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["matched"],
+            "top_n_ids should apply JSON metadata filters after candidate search: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_mixed_indexed_and_json_metadata_filters_are_applied() -> anyhow::Result<()> {
+        let index = live_json_metadata_test_index(
+            "live_mixed_indexed_and_json_metadata_filters_are_applied",
+            vec![
+                json_metadata_row(
+                    "nearest-docs",
+                    "docs",
+                    "skip",
+                    "nearest docs skipped by JSON metadata",
+                    vec![1.0, 0.0],
+                ),
+                json_metadata_row(
+                    "nearest-json",
+                    "misc",
+                    "vvv",
+                    "nearest JSON match skipped by category",
+                    vec![0.9, 0.1],
+                ),
+                json_metadata_row(
+                    "matched",
+                    "docs",
+                    "vvv",
+                    "matching category and JSON metadata",
+                    vec![0.0, 1.0],
+                ),
+            ],
+        )
+        .await?;
+
+        let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs")).and(
+            SqliteSearchFilter::eq("metadata->>'$.xxx'", serde_json::json!("vvv")),
+        );
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(filter)
+            .build();
+
+        let results = index.top_n::<JsonMetadataDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["matched"],
+            "indexed and JSON metadata filters should both be applied: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["matched"],
+            "top_n_ids should apply both indexed and JSON metadata filters: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_negated_eq_filter_is_applied_during_candidate_search() -> anyhow::Result<()> {
         let index = live_test_index(
             "live_negated_eq_filter_is_applied_during_candidate_search",
@@ -3415,6 +3824,22 @@ mod tests {
         Ok(vector_store.index(model))
     }
 
+    async fn live_json_metadata_test_index(
+        name: &str,
+        rows: Vec<(JsonMetadataDocument, OneOrMany<Embedding>)>,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, JsonMetadataDocument>> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, JsonMetadataDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store.add_rows(rows).await?;
+
+        Ok(vector_store.index(model))
+    }
+
     fn row(
         id: impl Into<String>,
         category: impl Into<String>,
@@ -3454,6 +3879,29 @@ mod tests {
             document.clone(),
             OneOrMany::one(Embedding {
                 document: document.name.clone(),
+                vec,
+            }),
+        )
+    }
+
+    fn json_metadata_row(
+        id: impl Into<String>,
+        category: impl Into<String>,
+        xxx: impl AsRef<str>,
+        title: impl Into<String>,
+        vec: Vec<f64>,
+    ) -> (JsonMetadataDocument, OneOrMany<Embedding>) {
+        let document = JsonMetadataDocument {
+            id: id.into(),
+            category: category.into(),
+            metadata: serde_json::json!({ "xxx": xxx.as_ref() }).to_string(),
+            title: title.into(),
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.title.clone(),
                 vec,
             }),
         )
@@ -3887,6 +4335,42 @@ mod tests {
                 ("name", Box::new(self.name.clone())),
                 ("notes", Box::new(self.notes.clone())),
                 ("rank", Box::new(self.rank)),
+            ]
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct JsonMetadataDocument {
+        id: String,
+        category: String,
+        metadata: String,
+        title: String,
+    }
+
+    impl SqliteVectorStoreTable for JsonMetadataDocument {
+        fn name() -> &'static str {
+            "live_json_metadata_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("category", "TEXT").indexed(),
+                Column::new("metadata", "TEXT"),
+                Column::new("title", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                ("category", Box::new(self.category.clone())),
+                ("metadata", Box::new(self.metadata.clone())),
+                ("title", Box::new(self.title.clone())),
             ]
         }
     }
