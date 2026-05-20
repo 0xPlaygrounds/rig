@@ -724,9 +724,9 @@ fn extract_anthropic_doc_params(
 /// [`message::Text::additional_params`] so they survive conversion through the
 /// generic [`message::AssistantContent`] surface.
 ///
-/// Returns `Ok(vec![])` when no citations are attached. Returns an error if a
-/// `citations` field is present but not a valid `Vec<Citation>` — for example,
-/// when Anthropic adds a new location type this crate does not yet model.
+/// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
+/// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
+/// field is malformed or if a known citation type has an invalid shape.
 ///
 /// # Example
 ///

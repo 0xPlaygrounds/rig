@@ -42,6 +42,12 @@ impl GetTokenUsage for MockResponse {
 pub enum MockStreamEvent {
     /// Text chunk.
     Text(String),
+    /// Start a new text content block with optional provider metadata.
+    TextStart {
+        additional_params: Option<serde_json::Value>,
+    },
+    /// Provider-specific metadata for the current text content block.
+    TextAdditionalParams(serde_json::Value),
     /// Complete tool call event.
     ToolCall {
         id: String,
@@ -69,6 +75,16 @@ impl MockStreamEvent {
     /// Create a text chunk.
     pub fn text(text: impl Into<String>) -> Self {
         Self::Text(text.into())
+    }
+
+    /// Start a new text content block.
+    pub fn text_start(additional_params: Option<serde_json::Value>) -> Self {
+        Self::TextStart { additional_params }
+    }
+
+    /// Add provider-specific metadata to the current text content block.
+    pub fn text_additional_params(additional_params: serde_json::Value) -> Self {
+        Self::TextAdditionalParams(additional_params)
     }
 
     /// Create a complete tool call event.
@@ -149,6 +165,12 @@ impl MockStreamEvent {
     ) -> Result<RawStreamingChoice<MockResponse>, CompletionError> {
         match self {
             Self::Text(text) => Ok(RawStreamingChoice::Message(text)),
+            Self::TextStart { additional_params } => {
+                Ok(RawStreamingChoice::TextStart { additional_params })
+            }
+            Self::TextAdditionalParams(additional_params) => {
+                Ok(RawStreamingChoice::TextAdditionalParams(additional_params))
+            }
             Self::ToolCall {
                 id,
                 name,
