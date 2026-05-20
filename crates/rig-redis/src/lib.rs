@@ -3,6 +3,21 @@
 //! Provides a [`RedisVectorStore`] that implements Rig's [`VectorStoreIndex`] and
 //! [`InsertDocuments`] traits using RediSearch's vector similarity search (`FT.SEARCH`).
 //!
+//! # Prerequisites
+//!
+//! The RediSearch index must be created before using this store. The expected schema is:
+//! - A HASH-based index with the specified prefix
+//! - A `document` field of type TEXT (stores serialized JSON)
+//! - An `embedded_text` field of type TEXT (stores the source text)
+//! - A vector field (configurable name) of type VECTOR with FLOAT32 elements
+//!
+//! # Distance Metric
+//!
+//! This implementation assumes the RediSearch index uses **COSINE** distance.
+//! Redis returns cosine distance (0 = identical, 2 = opposite), which is converted
+//! to cosine similarity (1 = identical, -1 = opposite) via `1.0 - distance`.
+//! Using a different distance metric (L2, IP) will produce incorrect similarity scores.
+//!
 //! # Example
 //! ```ignore
 //! use rig_redis::RedisVectorStore;
@@ -18,7 +33,7 @@
 pub mod filter;
 
 pub use filter::Filter;
-use redis::{AsyncCommands, Client};
+use redis::aio::ConnectionManager;
 use rig_core::{
     Embed, OneOrMany,
     embeddings::embedding::{Embedding, EmbeddingModel},
@@ -32,21 +47,16 @@ use serde::{Deserialize, Serialize};
 
 /// Redis vector store implementation using RediSearch vector similarity search.
 ///
-/// This implementation uses Redis's FT.SEARCH command with KNN vector queries
-/// for similarity search operations.
+/// Uses Redis's `FT.SEARCH` command with KNN vector queries for similarity search.
+/// Internally holds a [`ConnectionManager`] for automatic reconnection on transient failures.
 pub struct RedisVectorStore<M>
 where
     M: EmbeddingModel,
 {
-    /// Model used to generate embeddings for queries
     model: M,
-    /// Redis client
-    client: Client,
-    /// Name of the RediSearch index
+    connection_manager: ConnectionManager,
     index_name: String,
-    /// Name of the vector field in the index
     vector_field: String,
-    /// Optional key prefix for document keys
     key_prefix: Option<String>,
 }
 
@@ -56,28 +66,46 @@ where
 {
     /// Creates a new Redis vector store instance.
     ///
+    /// Establishes a [`ConnectionManager`] from the provided client for automatic
+    /// reconnection on transient network failures.
+    ///
     /// # Arguments
     /// * `model` - Embedding model for query vectorization
     /// * `client` - Redis client instance
     /// * `index_name` - Name of the RediSearch index to query
-    /// * `vector_field` - Name of the vector field in the index (default: "embedding")
-    pub fn new(model: M, client: Client, index_name: String, vector_field: String) -> Self {
-        Self {
+    /// * `vector_field` - Name of the vector field in the index
+    ///
+    /// # Errors
+    /// Returns an error if the initial connection to Redis cannot be established.
+    pub async fn new(
+        model: M,
+        client: redis::Client,
+        index_name: String,
+        vector_field: String,
+    ) -> Result<Self, VectorStoreError> {
+        let connection_manager = ConnectionManager::new(client)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        Ok(Self {
             model,
-            client,
+            connection_manager,
             index_name,
             vector_field,
             key_prefix: None,
-        }
+        })
     }
 
-    /// Sets a key prefix for document keys
+    /// Sets a key prefix for document keys.
+    ///
+    /// Documents stored via [`InsertDocuments`] will be keyed as `{prefix}{uuid}`.
+    /// This prefix should match the index's `PREFIX` configuration.
     pub fn with_key_prefix(mut self, prefix: String) -> Self {
         self.key_prefix = Some(prefix);
         self
     }
 
-    /// Converts embedding vector to bytes for Redis
+    /// Converts f64 embedding vector to f32 little-endian bytes for Redis VECTOR fields.
     fn embedding_to_bytes(embedding: &[f64]) -> Vec<u8> {
         embedding
             .iter()
@@ -85,7 +113,7 @@ where
             .collect()
     }
 
-    /// Extracts string value from Redis value
+    /// Extracts a UTF-8 string from a Redis bulk/simple string value.
     fn extract_string(value: &redis::Value) -> Option<String> {
         match value {
             redis::Value::BulkString(bytes) => Some(String::from_utf8_lossy(bytes).to_string()),
@@ -94,10 +122,10 @@ where
         }
     }
 
-    /// Extracts score from Redis value and converts cosine distance to similarity.
+    /// Extracts a cosine distance score and converts to similarity.
     ///
-    /// Redis returns cosine distance (0 = identical, higher = more different),
-    /// but Rig convention is cosine similarity (higher = more similar).
+    /// RediSearch COSINE metric returns distance in [0, 2] where 0 = identical.
+    /// We convert to similarity = 1.0 - distance so higher = more similar.
     fn extract_score(value: &redis::Value) -> Result<f64, VectorStoreError> {
         let distance = match value {
             redis::Value::BulkString(bytes) => {
@@ -117,7 +145,7 @@ where
         Ok(1.0 - distance)
     }
 
-    /// Parses FT.SEARCH response into results with documents
+    /// Parses FT.SEARCH response into results with deserialized documents.
     fn parse_search_response<T>(
         response: redis::Value,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError>
@@ -135,7 +163,7 @@ where
         })
     }
 
-    /// Parses FT.SEARCH response for IDs only
+    /// Parses FT.SEARCH response for IDs and scores only.
     fn parse_search_response_ids(
         response: redis::Value,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
@@ -147,15 +175,17 @@ where
         })
     }
 
-    /// Generic response parser for both full and ID-only results
+    /// Generic response parser that handles both full-document and ID-only modes.
+    ///
+    /// FT.SEARCH returns: [count, key1, [field1, val1, ...], key2, [field1, val1, ...], ...]
     fn parse_response_generic(
         response: redis::Value,
         include_document: bool,
     ) -> Result<Vec<(f64, String, String)>, VectorStoreError> {
         match response {
             redis::Value::Array(ref items) if !items.is_empty() => {
-                let count = match &items[0] {
-                    redis::Value::Int(n) => *n as usize,
+                let count = match items.first() {
+                    Some(redis::Value::Int(n)) => *n as usize,
                     _ => {
                         return Err(VectorStoreError::DatastoreError(
                             "Invalid response format: expected count as first element".into(),
@@ -167,47 +197,51 @@ where
                     return Ok(Vec::new());
                 }
 
-                let mut results = Vec::new();
+                let mut results = Vec::with_capacity(count);
 
-                for chunk in items[1..].chunks(2) {
-                    if chunk.len() != 2 {
-                        continue;
-                    }
-
-                    let id = match Self::extract_string(&chunk[0]) {
+                let mut iter = items.iter().skip(1);
+                while let Some(key_val) = iter.next() {
+                    let id = match Self::extract_string(key_val) {
                         Some(id) => id,
-                        None => continue,
+                        None => {
+                            // Skip the fields array too
+                            iter.next();
+                            continue;
+                        }
                     };
 
-                    if let redis::Value::Array(fields) = &chunk[1] {
-                        let mut score = 0.0;
-                        let mut document_json = String::new();
+                    let fields_val = match iter.next() {
+                        Some(redis::Value::Array(fields)) => fields,
+                        _ => continue,
+                    };
 
-                        for field_chunk in fields.chunks(2) {
-                            if field_chunk.len() != 2 {
-                                continue;
-                            }
+                    let mut score = 0.0;
+                    let mut document_json = String::new();
 
-                            let field_name = match Self::extract_string(&field_chunk[0]) {
-                                Some(name) => name,
-                                None => continue,
-                            };
+                    let mut field_iter = fields_val.chunks(2);
+                    while let Some([name_val, value_val]) = field_iter.next() {
+                        let field_name = match Self::extract_string(name_val) {
+                            Some(name) => name,
+                            None => continue,
+                        };
 
-                            if field_name == "__vector_score" {
-                                score = Self::extract_score(&field_chunk[1])?;
-                                if !include_document {
-                                    break;
+                        if field_name == "__vector_score" {
+                            score = Self::extract_score(value_val)?;
+                        } else if include_document && field_name == "document" {
+                            match Self::extract_string(value_val) {
+                                Some(json) => document_json = json,
+                                None => {
+                                    tracing::warn!(
+                                        target: "rig",
+                                        id = %id,
+                                        "Document field present but could not be extracted as string"
+                                    );
                                 }
-                            } else if include_document
-                                && field_name == "document"
-                                && let Some(json) = Self::extract_string(&field_chunk[1])
-                            {
-                                document_json = json;
                             }
                         }
-
-                        results.push((score, id, document_json));
                     }
+
+                    results.push((score, id, document_json));
                 }
 
                 Ok(results)
@@ -218,18 +252,14 @@ where
         }
     }
 
-    /// Builds and executes FT.SEARCH command, optionally including document field
+    /// Builds and executes a FT.SEARCH KNN query.
     async fn execute_search(
         &self,
         vector_bytes: Vec<u8>,
         req: &VectorSearchRequest<Filter>,
         include_document: bool,
     ) -> Result<redis::Value, VectorStoreError> {
-        let mut con = self
-            .client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let mut con = self.connection_manager.clone();
 
         let filter_str = req
             .filter()
@@ -281,16 +311,13 @@ where
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        let mut con = self
-            .client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let mut con = self.connection_manager.clone();
+        let mut pipe = redis::pipe();
 
-        for (document, embeddings) in documents {
-            let json_document = serde_json::to_string(&document)?;
+        for (document, embeddings) in &documents {
+            let json_document = serde_json::to_string(document)?;
 
-            for embedding in embeddings.into_iter() {
+            for embedding in embeddings.iter() {
                 let id = if let Some(ref prefix) = self.key_prefix {
                     format!("{}{}", prefix, uuid::Uuid::new_v4())
                 } else {
@@ -298,18 +325,28 @@ where
                 };
                 let embedding_bytes = Self::embedding_to_bytes(&embedding.vec);
 
-                con.hset_multiple::<_, _, _, ()>(
-                    &id,
-                    &[
-                        ("document", json_document.as_bytes()),
-                        ("embedded_text", embedding.document.as_bytes()),
-                        (&self.vector_field, &embedding_bytes),
-                    ],
-                )
-                .await
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                pipe.cmd("HSET")
+                    .arg(&id)
+                    .arg("document")
+                    .arg(json_document.as_bytes())
+                    .arg("embedded_text")
+                    .arg(embedding.document.as_bytes())
+                    .arg(&self.vector_field)
+                    .arg(embedding_bytes)
+                    .ignore();
             }
         }
+
+        pipe.query_async::<()>(&mut con)
+            .await
+            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+        tracing::debug!(
+            target: "rig",
+            index = %self.index_name,
+            count = documents.len(),
+            "Inserted documents into Redis vector store"
+        );
 
         Ok(())
     }
@@ -329,12 +366,19 @@ where
         let vector_bytes = Self::embedding_to_bytes(&embedding.vec);
 
         let response = self.execute_search(vector_bytes, &req, true).await?;
-
         let mut results = Self::parse_search_response(response)?;
 
         if let Some(threshold) = req.threshold() {
             results.retain(|(score, _, _)| *score >= threshold);
         }
+
+        tracing::info!(
+            target: "rig",
+            index = %self.index_name,
+            query = %req.query(),
+            "Selected documents: {}",
+            results.iter().map(|(score, id, _)| format!("{id} ({score:.4})")).collect::<Vec<_>>().join(", ")
+        );
 
         Ok(results)
     }
@@ -347,12 +391,19 @@ where
         let vector_bytes = Self::embedding_to_bytes(&embedding.vec);
 
         let response = self.execute_search(vector_bytes, &req, false).await?;
-
         let mut results = Self::parse_search_response_ids(response)?;
 
         if let Some(threshold) = req.threshold() {
             results.retain(|(score, _)| *score >= threshold);
         }
+
+        tracing::info!(
+            target: "rig",
+            index = %self.index_name,
+            query = %req.query(),
+            "Selected document IDs: {}",
+            results.iter().map(|(score, id)| format!("{id} ({score:.4})")).collect::<Vec<_>>().join(", ")
+        );
 
         Ok(results)
     }
@@ -369,7 +420,6 @@ where
         Box::pin(async move {
             let req = req.try_map_filter(Filter::try_from)?;
             let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-
             Ok(results)
         })
     }
@@ -381,7 +431,6 @@ where
         Box::pin(async move {
             let req = req.try_map_filter(Filter::try_from)?;
             let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-
             Ok(results)
         })
     }

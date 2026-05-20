@@ -1,5 +1,12 @@
-use rig::client::EmbeddingsClient;
-use rig::{
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+
+use rig_core::client::EmbeddingsClient;
+use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
     providers::openai,
@@ -199,6 +206,8 @@ async fn test_vector_search_basic() {
         index_name.to_string(),
         VECTOR_FIELD.to_string(),
     )
+    .await
+    .unwrap()
     .with_key_prefix(format!("{}:", index_name));
 
     let words = vec![
@@ -230,8 +239,7 @@ async fn test_vector_search_basic() {
     let req = VectorSearchRequest::builder()
         .query("What is a linglingdong?")
         .samples(1)
-        .build()
-        .unwrap();
+        .build();
 
     let results = vector_store.top_n::<Word>(req).await.unwrap();
 
@@ -313,6 +321,8 @@ async fn test_top_n_ids() {
         index_name.to_string(),
         VECTOR_FIELD.to_string(),
     )
+    .await
+    .unwrap()
     .with_key_prefix(format!("{}:", index_name));
 
     let words = vec![
@@ -340,8 +350,7 @@ async fn test_top_n_ids() {
     let req = VectorSearchRequest::builder()
         .query("test query")
         .samples(2)
-        .build()
-        .unwrap();
+        .build();
 
     let results = vector_store.top_n_ids(req).await.unwrap();
 
@@ -421,6 +430,8 @@ async fn test_threshold_filtering() {
         index_name.to_string(),
         VECTOR_FIELD.to_string(),
     )
+    .await
+    .unwrap()
     .with_key_prefix(format!("{}:", index_name));
 
     let words = vec![
@@ -449,8 +460,7 @@ async fn test_threshold_filtering() {
         .query("test query")
         .samples(10)
         .threshold(0.5)
-        .build()
-        .unwrap();
+        .build();
 
     let results = vector_store.top_n::<Word>(req).await.unwrap();
 
@@ -514,6 +524,8 @@ async fn test_insert_multiple_embeddings() {
         index_name.to_string(),
         VECTOR_FIELD.to_string(),
     )
+    .await
+    .unwrap()
     .with_key_prefix(format!("{}:", index_name));
 
     let words = vec![
@@ -606,13 +618,14 @@ async fn test_empty_results() {
         index_name.to_string(),
         VECTOR_FIELD.to_string(),
     )
+    .await
+    .unwrap()
     .with_key_prefix(format!("{}:", index_name));
 
     let req = VectorSearchRequest::builder()
         .query("query with no results")
         .samples(5)
-        .build()
-        .unwrap();
+        .build();
 
     let results = vector_store.top_n::<Word>(req).await.unwrap();
 

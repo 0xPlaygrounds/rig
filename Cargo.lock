@@ -9147,6 +9147,7 @@ dependencies = [
  "rig-neo4j",
  "rig-postgres",
  "rig-qdrant",
+ "rig-redis",
  "rig-s3vectors",
  "rig-scylladb",
  "rig-sqlite",
@@ -9446,6 +9447,7 @@ dependencies = [
  "serde_json",
  "testcontainers",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "uuid",
 ]

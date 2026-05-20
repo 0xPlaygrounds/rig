@@ -1,4 +1,6 @@
-use rig::vector_store::request::{Filter as CoreFilter, SearchFilter};
+#![allow(clippy::unwrap_used)]
+
+use rig_core::vector_store::request::{Filter as CoreFilter, SearchFilter};
 use rig_redis::filter::{Filter, RedisValue};
 
 #[test]
@@ -10,7 +12,8 @@ fn test_filter_eq_string() {
 #[test]
 fn test_filter_eq_number() {
     let filter = Filter::eq("price", RedisValue::Number(99.99));
-    assert_eq!(filter.into_inner(), "@price:99.99");
+    // Numeric equality uses range syntax: @field:[val val]
+    assert_eq!(filter.into_inner(), "@price:[99.99 99.99]");
 }
 
 #[test]
@@ -123,6 +126,15 @@ fn test_core_filter_gt_conversion() {
 }
 
 #[test]
+fn test_core_filter_eq_numeric_conversion() {
+    let core_filter: CoreFilter<serde_json::Value> =
+        CoreFilter::eq("price", serde_json::json!(99.99));
+
+    let redis_filter = Filter::try_from(core_filter).unwrap();
+    assert_eq!(redis_filter.into_inner(), "@price:[99.99 99.99]");
+}
+
+#[test]
 fn test_core_filter_and_conversion() {
     let filter1: CoreFilter<serde_json::Value> =
         CoreFilter::eq("category", serde_json::json!("electronics"));
@@ -139,7 +151,7 @@ fn test_core_filter_and_conversion() {
 #[test]
 fn test_redis_value_bool() {
     let filter = Filter::eq("in_stock", RedisValue::Bool(true));
-    assert_eq!(filter.into_inner(), "@in_stock:1");
+    assert_eq!(filter.into_inner(), "@in_stock:{1}");
 }
 
 #[test]
@@ -152,4 +164,16 @@ fn test_redis_value_from_str_ref() {
 fn test_filter_tag_in_single_value() {
     let filter = Filter::tag_in("tags", vec!["only".to_string()]);
     assert_eq!(filter.into_inner(), "@tags:{only}");
+}
+
+#[test]
+fn test_filter_gt_non_numeric_uses_tag_syntax() {
+    let filter = Filter::gt("status", RedisValue::String("active".to_string()));
+    assert_eq!(filter.into_inner(), "@status:{active}");
+}
+
+#[test]
+fn test_filter_lt_non_numeric_uses_tag_syntax() {
+    let filter = Filter::lt("status", RedisValue::String("inactive".to_string()));
+    assert_eq!(filter.into_inner(), "@status:{inactive}");
 }

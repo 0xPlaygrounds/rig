@@ -2,23 +2,37 @@
 //!
 //! Provides [`Filter`] which implements [`SearchFilter`] and translates
 //! Rig's generic filter expressions into RediSearch query syntax.
+//!
+//! # Field Type Expectations
+//!
+//! - **Numeric fields**: `eq`, `gt`, `lt`, `gte`, `lte`, `range` produce range syntax (`@field:[min max]`)
+//! - **Tag fields**: String equality uses tag syntax (`@field:{value}`)
+//! - **Bool fields**: Treated as numeric TAG (1/0) with tag syntax
+//!
+//! Ensure your RediSearch schema matches the filter types you use.
 
 use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
 use serde::{Deserialize, Serialize};
 
-/// Redis filter value type.
+/// Typed value for Redis filter expressions.
+///
+/// Determines how the value is formatted in the RediSearch query syntax.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RedisValue {
+    /// Numeric value — produces range syntax for all comparisons.
     Number(f64),
+    /// String/tag value — produces tag syntax `{value}`.
     String(String),
+    /// Boolean value — treated as numeric TAG (`1` or `0`).
     Bool(bool),
 }
 
 impl RedisValue {
-    fn to_redis_expr(&self) -> String {
+    /// Formats value for tag-style filters (`@field:{value}` or `@field:{1}`).
+    fn to_tag_expr(&self) -> String {
         match self {
             RedisValue::Number(n) => n.to_string(),
-            RedisValue::String(s) => format!("{{{}}}", s),
+            RedisValue::String(s) => s.clone(),
             RedisValue::Bool(b) => {
                 if *b {
                     "1".to_string()
@@ -89,31 +103,50 @@ impl TryFrom<serde_json::Value> for RedisValue {
     }
 }
 
-/// Redis filter for FT.SEARCH queries
+/// Redis filter for FT.SEARCH queries.
 ///
-/// Redis uses a query syntax like: `@field:[min max]` for numeric ranges,
-/// `@field:{value}` for tags, etc.
+/// Wraps a raw RediSearch query string. Combine filters with [`SearchFilter::and`]
+/// and [`SearchFilter::or`], or use the additional helpers like [`Filter::range`]
+/// and [`Filter::tag_in`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filter(String);
 
 impl SearchFilter for Filter {
     type Value = RedisValue;
 
+    /// Equality filter.
+    ///
+    /// - Numeric: `@field:[val val]` (exact range match)
+    /// - String: `@field:{value}` (tag match)
+    /// - Bool: `@field:{1}` or `@field:{0}` (tag match)
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(format!("@{}:{}", key.as_ref(), value.to_redis_expr()))
-    }
-
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
         match value {
-            RedisValue::Number(n) => Self(format!("@{}:[({} +inf]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{}", key.as_ref(), value.to_redis_expr())),
+            RedisValue::Number(n) => Self(format!("@{}:[{} {}]", key.as_ref(), n, n)),
+            RedisValue::String(ref s) => Self(format!("@{}:{{{}}}", key.as_ref(), s)),
+            RedisValue::Bool(b) => {
+                let v = if b { "1" } else { "0" };
+                Self(format!("@{}:{{{}}}", key.as_ref(), v))
+            }
         }
     }
 
+    /// Greater-than filter (exclusive).
+    ///
+    /// Numeric: `@field:[(val +inf]`. Non-numeric falls back to tag syntax.
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        match value {
+            RedisValue::Number(n) => Self(format!("@{}:[({} +inf]", key.as_ref(), n)),
+            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
+        }
+    }
+
+    /// Less-than filter (exclusive).
+    ///
+    /// Numeric: `@field:[-inf (val]`. Non-numeric falls back to tag syntax.
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
         match value {
             RedisValue::Number(n) => Self(format!("@{}:[-inf ({}]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{}", key.as_ref(), value.to_redis_expr())),
+            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
         }
     }
 
@@ -133,39 +166,45 @@ impl Filter {
         Self(format!("-{}", self.0))
     }
 
-    /// Greater than or equal
+    /// Greater than or equal (inclusive).
+    ///
+    /// Numeric: `@field:[val +inf]`.
     pub fn gte(key: impl AsRef<str>, value: <Self as SearchFilter>::Value) -> Self {
         match value {
             RedisValue::Number(n) => Self(format!("@{}:[{} +inf]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{}", key.as_ref(), value.to_redis_expr())),
+            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
         }
     }
 
-    /// Less than or equal
+    /// Less than or equal (inclusive).
+    ///
+    /// Numeric: `@field:[-inf val]`.
     pub fn lte(key: impl AsRef<str>, value: <Self as SearchFilter>::Value) -> Self {
         match value {
             RedisValue::Number(n) => Self(format!("@{}:[-inf {}]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{}", key.as_ref(), value.to_redis_expr())),
+            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
         }
     }
 
-    /// Range filter (inclusive)
+    /// Numeric range filter (inclusive on both ends).
     pub fn range(key: impl AsRef<str>, min: f64, max: f64) -> Self {
         Self(format!("@{}:[{} {}]", key.as_ref(), min, max))
     }
 
-    /// Range filter (exclusive)
+    /// Numeric range filter (exclusive on both ends).
     pub fn range_exclusive(key: impl AsRef<str>, min: f64, max: f64) -> Self {
         Self(format!("@{}:[({} ({}]", key.as_ref(), min, max))
     }
 
-    /// Tag filter for multiple values (OR)
+    /// Tag filter for multiple values (OR).
+    ///
+    /// Produces `@field:{val1 | val2 | val3}`.
     pub fn tag_in(key: impl AsRef<str>, values: Vec<String>) -> Self {
         let tags = values.join(" | ");
         Self(format!("@{}:{{{}}}", key.as_ref(), tags))
     }
 
-    /// Text search in field
+    /// Full-text search within a TEXT field.
     pub fn text_contains(key: impl AsRef<str>, text: impl AsRef<str>) -> Self {
         Self(format!("@{}:{}", key.as_ref(), text.as_ref()))
     }

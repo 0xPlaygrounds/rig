@@ -1,7 +1,7 @@
-use rig::client::ProviderClient;
-use rig::vector_store::InsertDocuments;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::{
+use rig_core::client::ProviderClient;
+use rig_core::vector_store::InsertDocuments;
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_core::{
     Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
 };
 use serde::{Deserialize, Serialize};
@@ -22,9 +22,8 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = rig::providers::openai::Client::from_env();
-    let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    let openai_client = rig_core::providers::openai::Client::from_env()?;
+    let model = openai_client.embedding_model(rig_core::providers::openai::TEXT_EMBEDDING_3_SMALL);
 
     let redis_url =
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
@@ -35,9 +34,9 @@ async fn main() -> Result<(), anyhow::Error> {
         redis_client,
         "word_idx".to_string(),
         "embedding".to_string(),
-    );
+    )
+    .await?;
 
-    // Create test documents with embeddings
     let words = vec![
         WordDefinition {
             word: "flurbo".to_string(),
@@ -54,22 +53,18 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
+        .documents(words)?
         .build()
-        .await
-        .expect("Failed to create embeddings");
+        .await?;
 
     vector_store.insert_documents(documents).await?;
 
-    // Query vector store
     let query = "What does \"glarb-glarb\" mean?";
 
     let req = VectorSearchRequest::builder()
         .query(query)
         .samples(2)
-        .build()
-        .expect("VectorSearchRequest should not fail to build here");
+        .build();
 
     let results = vector_store.top_n::<WordDefinition>(req).await?;
 
