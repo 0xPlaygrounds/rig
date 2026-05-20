@@ -804,7 +804,7 @@ pub mod gemini_api_types {
 
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
-                message::UserContent::Text(message::Text { text }) => Ok(Part {
+                message::UserContent::Text(message::Text { text, .. }) => Ok(Part {
                     thought: Some(false),
                     thought_signature: None,
                     part: PartKind::Text(text),
@@ -1150,7 +1150,7 @@ pub mod gemini_api_types {
 
         fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
             match content {
-                message::AssistantContent::Text(message::Text { text }) => Ok(text.into()),
+                message::AssistantContent::Text(message::Text { text, .. }) => Ok(text.into()),
                 message::AssistantContent::Image(message::Image {
                     data, media_type, ..
                 }) => match media_type {
@@ -2646,9 +2646,7 @@ mod tests {
             id: "test_tool".to_string(),
             call_id: None,
             content: OneOrMany::many(vec![
-                ToolResultContent::Text(message::Text {
-                    text: r#"{"status": "success"}"#.to_string(),
-                }),
+                ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
                 ToolResultContent::Image(Image {
                     data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
                     media_type: Some(ImageMediaType::PNG),

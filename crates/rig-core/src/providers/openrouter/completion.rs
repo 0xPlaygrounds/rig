@@ -610,7 +610,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let mut content = content
                     .iter()
                     .map(|c| match c {
-                        openai::AssistantContent::Text { text } => {
+                        openai::AssistantContent::Text { text, .. } => {
                             completion::AssistantContent::text(text)
                         }
                         openai::AssistantContent::Refusal { refusal } => {
@@ -994,7 +994,7 @@ where
     S: Serializer,
 {
     if content.len() == 1
-        && let UserContent::Text { text } = content.first_ref()
+        && let UserContent::Text { text, .. } = content.first_ref()
     {
         return serializer.serialize_str(text);
     }
@@ -1006,7 +1006,9 @@ impl TryFrom<message::UserContent> for UserContent {
 
     fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
         match value {
-            message::UserContent::Text(message::Text { text }) => Ok(UserContent::Text { text }),
+            message::UserContent::Text(message::Text { text, .. }) => {
+                Ok(UserContent::Text { text })
+            }
 
             message::UserContent::Image(message::Image {
                 data,
@@ -1206,7 +1208,9 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                             .content
                             .into_iter()
                             .map(|c| match c {
-                                message::ToolResultContent::Text(message::Text { text }) => text,
+                                message::ToolResultContent::Text(message::Text {
+                                    text, ..
+                                }) => text,
                                 message::ToolResultContent::Image(_) => {
                                     "[Image content not supported in tool results]".to_string()
                                 }
@@ -1358,7 +1362,7 @@ impl TryFrom<openai::UserContent> for UserContent {
 
     fn try_from(value: openai::UserContent) -> Result<Self, Self::Error> {
         Ok(match value {
-            openai::UserContent::Text { text } => UserContent::Text { text },
+            openai::UserContent::Text { text, .. } => UserContent::Text { text },
             openai::UserContent::Image { image_url } => UserContent::ImageUrl {
                 image_url: ImageUrl {
                     url: image_url.url,
@@ -2722,9 +2726,7 @@ mod tests {
 
     #[test]
     fn test_user_content_from_rig_text() {
-        let rig_content = message::UserContent::Text(message::Text {
-            text: "Hello".to_string(),
-        });
+        let rig_content = message::UserContent::Text(message::Text::new("Hello".to_string()));
         let openrouter_content: UserContent = rig_content.try_into().unwrap();
 
         assert_eq!(
@@ -3178,9 +3180,9 @@ mod tests {
     fn test_message_conversion_with_pdf() {
         let rig_message = message::Message::User {
             content: OneOrMany::many(vec![
-                message::UserContent::Text(message::Text {
-                    text: "Summarize this document".to_string(),
-                }),
+                message::UserContent::Text(message::Text::new(
+                    "Summarize this document".to_string(),
+                )),
                 message::UserContent::Document(message::Document {
                     data: DocumentSourceKind::Url("https://example.com/paper.pdf".to_string()),
                     media_type: Some(DocumentMediaType::PDF),
@@ -3199,7 +3201,7 @@ mod tests {
 
                 // First should be text
                 match content.first_ref() {
-                    UserContent::Text { text } => assert_eq!(text, "Summarize this document"),
+                    UserContent::Text { text, .. } => assert_eq!(text, "Summarize this document"),
                     _ => panic!("Expected Text"),
                 }
             }

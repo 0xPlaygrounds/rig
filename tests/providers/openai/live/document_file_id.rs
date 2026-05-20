@@ -131,11 +131,9 @@ fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
         content: OneOrMany::many(vec![
             content,
-            RigUserContent::Text(Text {
-                text: format!(
-                    "What exact visible text appears on page {page_number}? Reply with only that text."
-                ),
-            }),
+            RigUserContent::Text(Text::new(format!(
+                "What exact visible text appears on page {page_number}? Reply with only that text."
+            ))),
         ])
         .expect("content should be non-empty"),
     }

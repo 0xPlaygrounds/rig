@@ -34,6 +34,7 @@ pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
+pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
 pub trait AnthropicCompatibleProvider: Provider {
     const PROVIDER_NAME: &'static str;
@@ -85,13 +86,12 @@ impl ProviderResponseExt for CompletionResponse {
             .iter()
             .filter_map(|x| {
                 if let Content::Text { text, .. } = x {
-                    Some(text.to_owned())
+                    Some(text.as_str())
                 } else {
                     None
                 }
             })
-            .collect::<Vec<String>>()
-            .join("\n");
+            .collect::<String>();
 
         if res.is_empty() { None } else { Some(res) }
     }
@@ -273,6 +273,10 @@ pub enum Role {
 pub enum Content {
     Text {
         text: String,
+        /// Citations returned by Claude pointing back into the source documents.
+        /// Empty (and skipped during serialization) on request-side blocks.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        citations: Vec<Citation>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -286,6 +290,16 @@ pub enum Content {
         name: String,
         input: serde_json::Value,
     },
+    ServerToolUse {
+        id: String,
+        name: String,
+        #[serde(default)]
+        input: serde_json::Value,
+    },
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
     ToolResult {
         tool_use_id: String,
         #[serde(deserialize_with = "string_or_one_or_many")]
@@ -297,6 +311,19 @@ pub enum Content {
     },
     Document {
         source: DocumentSource,
+        /// Optional document title, passed to the model but not citable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        /// Optional document context (e.g. metadata), passed to the model but
+        /// not citable. Useful for storing additional information about the
+        /// document that should not appear in citation `cited_text`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<String>,
+        /// Configuration for enabling citations on this document. When `enabled`
+        /// is true, Claude returns citation metadata on response text blocks
+        /// pointing back into this document's content.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        citations: Option<CitationsConfig>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -316,9 +343,517 @@ impl FromStr for Content {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Content::Text {
             text: s.to_owned(),
+            citations: Vec::new(),
             cache_control: None,
         })
     }
+}
+
+/// Configuration for enabling citations on a document content block.
+///
+/// When enabled, Claude returns citation metadata on response text blocks,
+/// allowing applications to track where each piece of information in the
+/// response came from. See the [Anthropic citations documentation][docs] for
+/// details on the request/response shapes.
+///
+/// Citations must be enabled on **all or none** of the documents in a request —
+/// the API returns an error if the setting is mixed.
+///
+/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CitationsConfig {
+    /// Whether citation tracking is enabled for this document.
+    pub enabled: bool,
+}
+
+/// A citation returned by Claude pointing back to source text.
+///
+/// The variant determines the locator shape, which depends on the source type:
+///
+/// - [`Citation::CharLocation`] — for plain text documents; character indices
+///   are 0-indexed with an exclusive end.
+/// - [`Citation::PageLocation`] — for PDF documents; page numbers are 1-indexed
+///   with an exclusive end.
+/// - [`Citation::ContentBlockLocation`] — for custom-content documents; block
+///   indices are 0-indexed with an exclusive end.
+/// - [`Citation::SearchResultLocation`] — for user-provided search-result
+///   content blocks.
+/// - [`Citation::WebSearchResultLocation`] — for Anthropic's server-side web
+///   search tool results.
+/// - [`Citation::Unknown`] — a forward-compatible fallback preserving raw
+///   citation JSON for citation types this crate does not yet model.
+///
+/// See the [Anthropic citations documentation][docs] for the exact wire format.
+///
+/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Citation {
+    /// A citation locating a character span in a plain text document.
+    CharLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        document_title: Option<String>,
+        /// 0-indexed character offset where the cited span begins.
+        start_char_index: usize,
+        /// Character offset where the cited span ends (exclusive).
+        end_char_index: usize,
+    },
+    /// A citation locating a page range in a PDF document.
+    PageLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        document_title: Option<String>,
+        /// 1-indexed page number where the cited span begins.
+        start_page_number: u32,
+        /// 1-indexed page number where the cited span ends (exclusive).
+        end_page_number: u32,
+    },
+    /// A citation locating a block range in a custom-content document.
+    ContentBlockLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        document_title: Option<String>,
+        /// 0-indexed content block index where the cited span begins.
+        start_block_index: usize,
+        /// Content block index where the cited span ends (exclusive).
+        end_block_index: usize,
+    },
+    /// A citation locating a block range in a user-provided search result.
+    SearchResultLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// Source URL or identifier from the original search result.
+        source: String,
+        /// Title from the original search result.
+        title: Option<String>,
+        /// 0-indexed position of the cited search result across all search
+        /// result blocks in the request.
+        search_result_index: usize,
+        /// 0-indexed content block index where the cited span begins.
+        start_block_index: usize,
+        /// Content block index where the cited span ends (exclusive).
+        end_block_index: usize,
+    },
+    /// A citation emitted by Anthropic's server-side web search tool.
+    WebSearchResultLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// URL of the cited source.
+        url: String,
+        /// Title of the cited source.
+        title: Option<String>,
+        /// Encrypted reference that must be preserved for multi-turn
+        /// conversations.
+        encrypted_index: String,
+    },
+    /// A forward-compatible raw citation payload for citation types this crate
+    /// does not yet model.
+    Unknown(serde_json::Value),
+}
+
+#[derive(Deserialize)]
+struct CharLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_char_index: usize,
+    end_char_index: usize,
+}
+
+#[derive(Deserialize)]
+struct PageLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_page_number: u32,
+    end_page_number: u32,
+}
+
+#[derive(Deserialize)]
+struct ContentBlockLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_block_index: usize,
+    end_block_index: usize,
+}
+
+#[derive(Deserialize)]
+struct SearchResultLocationCitationFields {
+    cited_text: String,
+    source: String,
+    #[serde(default)]
+    title: Option<String>,
+    search_result_index: usize,
+    start_block_index: usize,
+    end_block_index: usize,
+}
+
+#[derive(Deserialize)]
+struct WebSearchResultLocationCitationFields {
+    cited_text: String,
+    url: String,
+    title: Option<String>,
+    encrypted_index: String,
+}
+
+impl Serialize for Citation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut value = serde_json::Map::new();
+        match self {
+            Citation::CharLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_char_index,
+                end_char_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("char_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_char_index".into(),
+                    serde_json::json!(start_char_index),
+                );
+                value.insert("end_char_index".into(), serde_json::json!(end_char_index));
+            }
+            Citation::PageLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_page_number,
+                end_page_number,
+            } => {
+                value.insert("type".into(), serde_json::json!("page_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_page_number".into(),
+                    serde_json::json!(start_page_number),
+                );
+                value.insert("end_page_number".into(), serde_json::json!(end_page_number));
+            }
+            Citation::ContentBlockLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_block_index,
+                end_block_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("content_block_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_block_index".into(),
+                    serde_json::json!(start_block_index),
+                );
+                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
+            }
+            Citation::SearchResultLocation {
+                cited_text,
+                source,
+                title,
+                search_result_index,
+                start_block_index,
+                end_block_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("search_result_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("source".into(), serde_json::json!(source));
+                if let Some(title) = title {
+                    value.insert("title".into(), serde_json::json!(title));
+                }
+                value.insert(
+                    "search_result_index".into(),
+                    serde_json::json!(search_result_index),
+                );
+                value.insert(
+                    "start_block_index".into(),
+                    serde_json::json!(start_block_index),
+                );
+                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
+            }
+            Citation::WebSearchResultLocation {
+                cited_text,
+                url,
+                title,
+                encrypted_index,
+            } => {
+                value.insert(
+                    "type".into(),
+                    serde_json::json!("web_search_result_location"),
+                );
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("url".into(), serde_json::json!(url));
+                value.insert("title".into(), serde_json::json!(title));
+                value.insert("encrypted_index".into(), serde_json::json!(encrypted_index));
+            }
+            Citation::Unknown(raw) => return raw.serialize(serializer),
+        }
+
+        serde_json::Value::Object(value).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Citation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let Some(citation_type) = value.get("type").and_then(serde_json::Value::as_str) else {
+            return Ok(Citation::Unknown(value));
+        };
+
+        match citation_type {
+            "char_location" => {
+                let fields: CharLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::CharLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_char_index: fields.start_char_index,
+                    end_char_index: fields.end_char_index,
+                })
+            }
+            "page_location" => {
+                let fields: PageLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::PageLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_page_number: fields.start_page_number,
+                    end_page_number: fields.end_page_number,
+                })
+            }
+            "content_block_location" => {
+                let fields: ContentBlockLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::ContentBlockLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_block_index: fields.start_block_index,
+                    end_block_index: fields.end_block_index,
+                })
+            }
+            "search_result_location" => {
+                let fields: SearchResultLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::SearchResultLocation {
+                    cited_text: fields.cited_text,
+                    source: fields.source,
+                    title: fields.title,
+                    search_result_index: fields.search_result_index,
+                    start_block_index: fields.start_block_index,
+                    end_block_index: fields.end_block_index,
+                })
+            }
+            "web_search_result_location" => {
+                let fields: WebSearchResultLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::WebSearchResultLocation {
+                    cited_text: fields.cited_text,
+                    url: fields.url,
+                    title: fields.title,
+                    encrypted_index: fields.encrypted_index,
+                })
+            }
+            _ => Ok(Citation::Unknown(value)),
+        }
+    }
+}
+
+/// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:
+/// optional `title`, optional `context`, and optional [`CitationsConfig`].
+type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfig>);
+
+/// Extract Anthropic-specific document fields (`title`, `context`, `citations`)
+/// from the generic [`message::Document::additional_params`] JSON blob.
+///
+/// Returns `Ok((None, None, None))` if `additional_params` is empty. Returns
+/// an error only if the `citations` field is present but is not a valid
+/// [`CitationsConfig`] — invalid shapes are reported instead of being silently
+/// dropped, so users notice typos.
+fn extract_anthropic_doc_params(
+    additional_params: Option<serde_json::Value>,
+) -> Result<AnthropicDocParams, MessageError> {
+    let Some(value) = additional_params else {
+        return Ok((None, None, None));
+    };
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let context = value
+        .get("context")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let citations = value
+        .get("citations")
+        .cloned()
+        .map(serde_json::from_value::<CitationsConfig>)
+        .transpose()
+        .map_err(|e| {
+            MessageError::ConversionError(format!(
+                "Document `additional_params.citations` is not a valid CitationsConfig: {e}",
+            ))
+        })?;
+    Ok((title, context, citations))
+}
+
+/// Extract Anthropic citations attached to a generic [`message::Text`] block.
+///
+/// Citations are returned by Claude on assistant text blocks when the request
+/// enabled them via [`CitationsConfig`]. Internally they are stored as JSON in
+/// [`message::Text::additional_params`] so they survive conversion through the
+/// generic [`message::AssistantContent`] surface.
+///
+/// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
+/// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
+/// field is malformed or if a known citation type has an invalid shape.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig::completion::message::{self, AssistantContent};
+/// use rig::providers::anthropic::completion::anthropic_citations;
+///
+/// fn print_citations(content: &AssistantContent) {
+///     if let AssistantContent::Text(text) = content
+///         && let Ok(citations) = anthropic_citations(text)
+///         && !citations.is_empty()
+///     {
+///         println!("{citations:?}");
+///     }
+/// }
+/// # let _ = message::Text::new("");
+/// ```
+pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
+    match text
+        .additional_params
+        .as_ref()
+        .and_then(|v| v.get("citations"))
+    {
+        Some(c) => serde_json::from_value::<Vec<Citation>>(c.clone()),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
+    anthropic_citations(text).map_err(|err| {
+        MessageError::ConversionError(format!(
+            "Text `additional_params.citations` is not valid Anthropic citations: {err}"
+        ))
+    })
+}
+
+fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
+    if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
+        if !text.text.is_empty() {
+            return Err(MessageError::ConversionError(format!(
+                "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata cannot be combined with non-empty text"
+            )));
+        }
+
+        return Ok(raw_content);
+    }
+
+    let citations = extract_anthropic_text_citations(&text)?;
+    Ok(Content::Text {
+        text: text.text,
+        citations,
+        cache_control: None,
+    })
+}
+
+fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
+    let Some(raw_content) = text
+        .additional_params
+        .as_ref()
+        .and_then(|value| value.get(ANTHROPIC_RAW_CONTENT_KEY))
+    else {
+        return Ok(None);
+    };
+
+    let content = serde_json::from_value::<Content>(raw_content.clone()).map_err(|err| {
+        MessageError::ConversionError(format!(
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
+        ))
+    })?;
+
+    match content {
+        Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. } => Ok(Some(content)),
+        _ => Err(MessageError::ConversionError(format!(
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use and web_search_tool_result blocks"
+        ))),
+    }
+}
+
+fn anthropic_raw_content_to_message_text(content: Content) -> Result<message::Text, MessageError> {
+    let raw_content = serde_json::to_value(content).map_err(|err| {
+        MessageError::ConversionError(format!("Failed to preserve Anthropic content block: {err}"))
+    })?;
+
+    Ok(message::Text {
+        text: String::new(),
+        additional_params: Some(serde_json::json!({
+            ANTHROPIC_RAW_CONTENT_KEY: raw_content
+        })),
+    })
+}
+
+fn anthropic_document_additional_params(
+    title: Option<String>,
+    context: Option<String>,
+    citations: Option<CitationsConfig>,
+) -> Result<Option<serde_json::Value>, MessageError> {
+    let mut params = serde_json::Map::new();
+
+    if let Some(title) = title {
+        params.insert("title".to_string(), serde_json::Value::String(title));
+    }
+    if let Some(context) = context {
+        params.insert("context".to_string(), serde_json::Value::String(context));
+    }
+    if let Some(citations) = citations {
+        params.insert(
+            "citations".to_string(),
+            serde_json::to_value(citations).map_err(|err| {
+                MessageError::ConversionError(format!(
+                    "Failed to preserve Anthropic document citations metadata: {err}"
+                ))
+            })?,
+        );
+    }
+
+    Ok((!params.is_empty()).then_some(serde_json::Value::Object(params)))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -430,6 +965,7 @@ impl From<String> for Content {
     fn from(text: String) -> Self {
         Content::Text {
             text,
+            citations: Vec::new(),
             cache_control: None,
         }
     }
@@ -509,10 +1045,7 @@ impl TryFrom<message::AssistantContent> for Content {
     type Error = MessageError;
     fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text {
-                text,
-                cache_control: None,
-            }),
+            message::AssistantContent::Text(text) => anthropic_text_content_from_message_text(text),
             message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
                 "Anthropic currently doesn't support images.".to_string(),
             )),
@@ -535,10 +1068,9 @@ fn anthropic_content_from_assistant_content(
     content: message::AssistantContent,
 ) -> Result<Vec<Content>, MessageError> {
     match content {
-        message::AssistantContent::Text(message::Text { text }) => Ok(vec![Content::Text {
-            text,
-            cache_control: None,
-        }]),
+        message::AssistantContent::Text(text) => {
+            Ok(vec![anthropic_text_content_from_message_text(text)?])
+        }
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),
@@ -591,8 +1123,9 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.try_map(|content| match content {
-                    message::UserContent::Text(message::Text { text }) => Ok(Content::Text {
+                    message::UserContent::Text(message::Text { text, .. }) => Ok(Content::Text {
                         text,
+                        citations: Vec::new(),
                         cache_control: None,
                     }),
                     message::UserContent::ToolResult(message::ToolResult {
@@ -600,7 +1133,7 @@ impl TryFrom<message::Message> for Message {
                     }) => Ok(Content::ToolResult {
                         tool_use_id: id,
                         content: content.try_map(|content| match content {
-                            message::ToolResultContent::Text(message::Text { text }) => {
+                            message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
                             message::ToolResultContent::Image(image) => {
@@ -658,11 +1191,19 @@ impl TryFrom<message::Message> for Message {
                         })
                     }
                     message::UserContent::Document(message::Document {
-                        data, media_type, ..
+                        data,
+                        media_type,
+                        additional_params,
                     }) => {
+                        let (title, context, citations) =
+                            extract_anthropic_doc_params(additional_params)?;
+
                         if let DocumentSourceKind::FileId(file_id) = data {
                             return Ok(Content::Document {
                                 source: DocumentSource::File { file_id },
+                                title,
+                                context,
+                                citations,
                                 cache_control: None,
                             });
                         }
@@ -712,6 +1253,9 @@ impl TryFrom<message::Message> for Message {
 
                         Ok(Content::Document {
                             source,
+                            title,
+                            context,
+                            citations,
                             cache_control: None,
                         })
                     }
@@ -728,6 +1272,7 @@ impl TryFrom<message::Message> for Message {
                 role: Role::User,
                 content: OneOrMany::one(Content::Text {
                     text: content,
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -761,9 +1306,25 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
-            Content::Text { text, .. } => message::AssistantContent::text(text),
+            Content::Text {
+                text, citations, ..
+            } => {
+                // Preserve citation metadata on the generic text block via
+                // `additional_params` so callers going through the generic
+                // `AssistantContent` surface can still recover them (see
+                // [`anthropic_citations`]).
+                let additional_params =
+                    (!citations.is_empty()).then(|| serde_json::json!({ "citations": citations }));
+                message::AssistantContent::Text(message::Text {
+                    text,
+                    additional_params,
+                })
+            }
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
+            }
+            raw @ (Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. }) => {
+                message::AssistantContent::Text(anthropic_raw_content_to_message_text(raw)?)
             }
             Content::Thinking {
                 thinking,
@@ -786,7 +1347,7 @@ impl TryFrom<Content> for message::AssistantContent {
 impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
-            ToolResultContent::Text { text } => message::ToolResultContent::text(text),
+            ToolResultContent::Text { text, .. } => message::ToolResultContent::text(text),
             ToolResultContent::Image { source } => match source {
                 ImageSource::Base64 { data, media_type } => {
                     message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
@@ -832,28 +1393,50 @@ impl TryFrom<Message> for message::Message {
                                 })
                             }
                         },
-                        Content::Document { source, .. } => match source {
-                            DocumentSource::Base64 { data, media_type } => {
-                                let rig_media_type = match media_type {
-                                    DocumentFormat::PDF => message::DocumentMediaType::PDF,
-                                };
-                                message::UserContent::document(data, Some(rig_media_type))
+                        Content::Document {
+                            source,
+                            title,
+                            context,
+                            citations,
+                            ..
+                        } => {
+                            let additional_params =
+                                anthropic_document_additional_params(title, context, citations)?;
+
+                            match source {
+                                DocumentSource::Base64 { data, media_type } => {
+                                    let rig_media_type = match media_type {
+                                        DocumentFormat::PDF => message::DocumentMediaType::PDF,
+                                    };
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::String(data),
+                                        media_type: Some(rig_media_type),
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::Text { data, .. } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::String(data),
+                                        media_type: Some(message::DocumentMediaType::TXT),
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::Url { url } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::Url(url),
+                                        media_type: None,
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::File { file_id } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::FileId(file_id),
+                                        media_type: None,
+                                        additional_params,
+                                    })
+                                }
                             }
-                            DocumentSource::Text { data, .. } => message::UserContent::document(
-                                data,
-                                Some(message::DocumentMediaType::TXT),
-                            ),
-                            DocumentSource::Url { url } => {
-                                message::UserContent::document_url(url, None)
-                            }
-                            DocumentSource::File { file_id } => {
-                                message::UserContent::Document(message::Document {
-                                    data: DocumentSourceKind::FileId(file_id),
-                                    media_type: None,
-                                    additional_params: None,
-                                })
-                            }
-                        },
+                        }
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
@@ -1626,6 +2209,7 @@ mod tests {
             content.first(),
             Content::Text {
                 text: "\n\nHello there, how may I assist you today?".to_owned(),
+                citations: Vec::new(),
                 cache_control: None,
             }
         );
@@ -1782,7 +2366,7 @@ mod tests {
                 }
 
                 match iter.next().unwrap() {
-                    message::UserContent::Text(message::Text { text }) => {
+                    message::UserContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "What is in this image?");
                     }
                     _ => panic!("Expected text content"),
@@ -1814,7 +2398,7 @@ mod tests {
                 };
                 assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                 match content.first() {
-                    message::ToolResultContent::Text(message::Text { text }) => {
+                    message::ToolResultContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "15 degrees");
                     }
                     _ => panic!("Expected text content"),
@@ -1895,6 +2479,7 @@ mod tests {
         // Test Content::Text with cache_control
         let content = Content::Text {
             text: "Test message".to_string(),
+            citations: Vec::new(),
             cache_control: Some(CacheControl::ephemeral()),
         };
         let json_content = serde_json::to_string(&content).unwrap();
@@ -1910,6 +2495,7 @@ mod tests {
                 role: Role::User,
                 content: OneOrMany::one(Content::Text {
                     text: "First message".to_string(),
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -1917,6 +2503,7 @@ mod tests {
                 role: Role::Assistant,
                 content: OneOrMany::one(Content::Text {
                     text: "Response".to_string(),
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -1954,6 +2541,9 @@ mod tests {
                 data: "Hello, world!".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -1982,6 +2572,7 @@ mod tests {
             Content::Document {
                 source,
                 cache_control,
+                ..
             } => {
                 assert_eq!(
                     source,
@@ -2003,6 +2594,9 @@ mod tests {
                 data: "base64data".to_string(),
                 media_type: DocumentFormat::PDF,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -2047,6 +2641,9 @@ mod tests {
             source: DocumentSource::File {
                 file_id: "file_abc".to_string(),
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -2121,6 +2718,9 @@ mod tests {
                 source: DocumentSource::File {
                     file_id: "file_abc".to_string(),
                 },
+                title: None,
+                context: None,
+                citations: None,
                 cache_control: None,
             }),
         };
@@ -2183,6 +2783,9 @@ mod tests {
                     data: "Some plain text content".to_string(),
                     media_type: PlainTextMediaType::Plain,
                 },
+                title: None,
+                context: None,
+                citations: None,
                 cache_control: None,
             }),
         };
@@ -2298,6 +2901,9 @@ mod tests {
                 data: "cached text".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: Some(CacheControl::ephemeral()),
         };
 
@@ -2537,5 +3143,711 @@ mod tests {
         assert_eq!(image_content["source"]["type"], "base64");
         assert_eq!(image_content["source"]["media_type"], "image/png");
         assert_eq!(image_content["source"]["data"], "iVBORw0KGgo...");
+    }
+
+    // -------------------------------------------------------------------
+    // Citations (#1767)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn document_serializes_citations_and_metadata() {
+        let doc = Content::Document {
+            source: DocumentSource::Text {
+                data: "hello".into(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            title: Some("My Doc".into()),
+            context: None,
+            citations: Some(CitationsConfig { enabled: true }),
+            cache_control: None,
+        };
+        let value = serde_json::to_value(&doc).unwrap();
+        assert_eq!(value["citations"]["enabled"], true);
+        assert_eq!(value["title"], "My Doc");
+        assert!(
+            value.get("context").is_none(),
+            "context should be skipped when None"
+        );
+    }
+
+    #[test]
+    fn text_serializes_without_citations_when_empty() {
+        let content = Content::Text {
+            text: "hello".into(),
+            citations: Vec::new(),
+            cache_control: None,
+        };
+        let value = serde_json::to_value(&content).unwrap();
+        assert!(
+            value.get("citations").is_none(),
+            "empty citations vec must be skipped"
+        );
+    }
+
+    #[test]
+    fn text_deserializes_char_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "the grass is green",
+            "citations": [{
+                "type": "char_location",
+                "cited_text": "The grass is green.",
+                "document_index": 0,
+                "document_title": "Example",
+                "start_char_index": 0,
+                "end_char_index": 20
+            }]
+        });
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+        assert_eq!(citations.len(), 1);
+        let Citation::CharLocation {
+            start_char_index,
+            end_char_index,
+            ..
+        } = &citations[0]
+        else {
+            panic!("expected CharLocation");
+        };
+        assert_eq!(*start_char_index, 0);
+        assert_eq!(*end_char_index, 20);
+    }
+
+    #[test]
+    fn text_deserializes_search_result_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "API keys are required.",
+            "citations": [{
+                "type": "search_result_location",
+                "cited_text": "All API requests must include an API key.",
+                "source": "https://docs.example.com/api-reference",
+                "title": "API Reference",
+                "search_result_index": 0,
+                "start_block_index": 0,
+                "end_block_index": 1
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::SearchResultLocation {
+                source,
+                title: Some(title),
+                search_result_index: 0,
+                start_block_index: 0,
+                end_block_index: 1,
+                ..
+            } if source == "https://docs.example.com/api-reference" && title == "API Reference"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_web_search_result_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "Claude Shannon worked at Bell Labs.",
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was a mathematician.",
+                "url": "https://example.com/shannon",
+                "title": "Claude Shannon",
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::WebSearchResultLocation {
+                url,
+                title,
+                encrypted_index,
+                ..
+            } if url == "https://example.com/shannon"
+                && title.as_deref() == Some("Claude Shannon")
+                && encrypted_index == "encrypted-reference"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_web_search_result_location_citation_with_null_title() {
+        let value = json!({
+            "type": "text",
+            "text": "Claude Shannon worked at Bell Labs.",
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was a mathematician.",
+                "url": "https://example.com/shannon",
+                "title": null,
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        let Citation::WebSearchResultLocation { title, .. } = &citations[0] else {
+            panic!("expected WebSearchResultLocation");
+        };
+        assert_eq!(title, &None);
+
+        let serialized = serde_json::to_value(&citations[0]).unwrap();
+        assert!(serialized.get("title").is_some());
+        assert!(serialized["title"].is_null());
+    }
+
+    #[test]
+    fn web_search_response_preserves_raw_blocks_and_citations() {
+        let value = json!({
+            "id": "msg_web_search",
+            "model": CLAUDE_SONNET_4_6,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20
+            },
+            "content": [
+                {
+                    "type": "server_tool_use",
+                    "id": "srvtoolu_01",
+                    "name": "web_search",
+                    "input": {
+                        "query": "claude shannon birth date"
+                    }
+                },
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": "srvtoolu_01",
+                    "content": [
+                        {
+                            "type": "web_search_result",
+                            "url": "https://example.com/shannon",
+                            "title": "Claude Shannon",
+                            "encrypted_content": "encrypted-content",
+                            "page_age": "April 30, 2025"
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": "Claude Shannon was born on April 30, 1916.",
+                    "citations": [{
+                        "type": "web_search_result_location",
+                        "cited_text": "Claude Shannon was born on April 30, 1916.",
+                        "url": "https://example.com/shannon",
+                        "title": "Claude Shannon",
+                        "encrypted_index": "encrypted-index"
+                    }]
+                }
+            ]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        assert_eq!(converted.choice.len(), 3);
+        assert_eq!(
+            converted.raw_response.get_text_response().as_deref(),
+            Some("Claude Shannon was born on April 30, 1916.")
+        );
+
+        let items = converted.choice.iter().collect::<Vec<_>>();
+        let message::AssistantContent::Text(server_tool_use) = items[0] else {
+            panic!("expected raw server_tool_use metadata");
+        };
+        assert_eq!(server_tool_use.text, "");
+        assert_eq!(
+            server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
+            "server_tool_use"
+        );
+
+        let message::AssistantContent::Text(web_search_result) = items[1] else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+        assert_eq!(
+            web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
+                [0]["encrypted_content"],
+            "encrypted-content"
+        );
+
+        let message::AssistantContent::Text(answer) = items[2] else {
+            panic!("expected text answer");
+        };
+        let citations = anthropic_citations(answer).unwrap();
+        assert!(matches!(
+            citations.first(),
+            Some(Citation::WebSearchResultLocation {
+                encrypted_index,
+                ..
+            }) if encrypted_index == "encrypted-index"
+        ));
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id.clone(),
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+
+        let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
+        assert!(matches!(
+            round_trip_items.first(),
+            Some(Content::ServerToolUse { id, name, input })
+                if id == "srvtoolu_01"
+                    && name == "web_search"
+                    && input["query"] == "claude shannon birth date"
+        ));
+        assert!(matches!(
+            round_trip_items.get(1),
+            Some(Content::WebSearchToolResult {
+                tool_use_id,
+                content
+            }) if tool_use_id == "srvtoolu_01"
+                && content[0]["encrypted_content"] == "encrypted-content"
+        ));
+    }
+
+    #[test]
+    fn web_search_tool_result_error_object_is_preserved_raw() {
+        let value = json!({
+            "id": "msg_web_search_error",
+            "model": CLAUDE_SONNET_4_6,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 2
+            },
+            "content": [{
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": {
+                    "type": "web_search_tool_result_error",
+                    "error_code": "max_uses_exceeded"
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+
+        let raw_content =
+            &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
+        assert_eq!(raw_content["type"], "web_search_tool_result");
+        assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
+        assert_eq!(
+            raw_content["content"]["type"],
+            "web_search_tool_result_error"
+        );
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id,
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+
+        assert!(matches!(
+            round_trip.content.first(),
+            Content::WebSearchToolResult {
+                tool_use_id,
+                content
+            } if tool_use_id == "srvtoolu_01"
+                && content["error_code"] == "max_uses_exceeded"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_unknown_citation_without_failing() {
+        let value = json!({
+            "type": "text",
+            "text": "future citation",
+            "citations": [{
+                "type": "future_location",
+                "cited_text": "future text",
+                "new_field": "kept"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::Unknown(raw)
+                if raw["type"] == "future_location" && raw["new_field"] == "kept"
+        ));
+    }
+
+    #[test]
+    fn page_location_citation_roundtrips() {
+        let citation = Citation::PageLocation {
+            cited_text: "Water is essential for life.".into(),
+            document_index: 1,
+            document_title: Some("PDF Doc".into()),
+            start_page_number: 5,
+            end_page_number: 6,
+        };
+        let value = serde_json::to_value(&citation).unwrap();
+        assert_eq!(value["type"], "page_location");
+        assert_eq!(value["start_page_number"], 5);
+        let back: Citation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, citation);
+    }
+
+    #[test]
+    fn content_block_location_citation_roundtrips() {
+        let citation = Citation::ContentBlockLocation {
+            cited_text: "These are important findings.".into(),
+            document_index: 2,
+            document_title: None,
+            start_block_index: 0,
+            end_block_index: 1,
+        };
+        let value = serde_json::to_value(&citation).unwrap();
+        assert_eq!(value["type"], "content_block_location");
+        assert!(value.get("document_title").is_none());
+        let back: Citation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, citation);
+    }
+
+    #[test]
+    fn anthropic_citations_extracts_from_additional_params() {
+        let text = message::Text {
+            text: "the grass is green".into(),
+            additional_params: Some(json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "The grass is green.",
+                    "document_index": 0,
+                    "start_char_index": 0,
+                    "end_char_index": 20
+                }]
+            })),
+        };
+        let citations = anthropic_citations(&text).unwrap();
+        assert_eq!(citations.len(), 1);
+    }
+
+    #[test]
+    fn anthropic_citations_returns_empty_when_absent() {
+        let text = message::Text::new("hello".to_string());
+        assert!(anthropic_citations(&text).unwrap().is_empty());
+    }
+
+    #[test]
+    fn content_text_with_citations_survives_assistant_conversion() {
+        let content = Content::Text {
+            text: "the grass is green".into(),
+            citations: vec![Citation::CharLocation {
+                cited_text: "The grass is green.".into(),
+                document_index: 0,
+                document_title: None,
+                start_char_index: 0,
+                end_char_index: 20,
+            }],
+            cache_control: None,
+        };
+        let assistant: message::AssistantContent = content.try_into().unwrap();
+        let message::AssistantContent::Text(text) = assistant else {
+            panic!("expected text variant");
+        };
+        let recovered = anthropic_citations(&text).unwrap();
+        assert_eq!(recovered.len(), 1);
+    }
+
+    #[test]
+    fn provider_text_response_concatenates_text_blocks_without_inserted_newlines() {
+        let response = CompletionResponse {
+            content: vec![
+                Content::Text {
+                    text: "According to the document, ".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+                Content::Text {
+                    text: "the grass is green".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+                Content::Text {
+                    text: " and the sky is blue.".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+            ],
+            id: "msg_1".into(),
+            model: "claude-test".into(),
+            role: "assistant".into(),
+            stop_reason: Some("end_turn".into()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 1,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                output_tokens: 1,
+            },
+        };
+
+        assert_eq!(
+            response.get_text_response().as_deref(),
+            Some("According to the document, the grass is green and the sky is blue.")
+        );
+    }
+
+    #[test]
+    fn assistant_text_citations_survive_anthropic_request_conversion() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+                text: "the grass is green".into(),
+                additional_params: Some(json!({
+                    "citations": [{
+                        "type": "char_location",
+                        "cited_text": "The grass is green.",
+                        "document_index": 0,
+                        "start_char_index": 0,
+                        "end_char_index": 20
+                    }]
+                })),
+            })),
+        };
+
+        let converted: Message = assistant.try_into().unwrap();
+        let Content::Text {
+            citations, text, ..
+        } = converted.content.first()
+        else {
+            panic!("expected assistant text content");
+        };
+
+        assert_eq!(text, "the grass is green");
+        assert_eq!(
+            citations,
+            vec![Citation::CharLocation {
+                cited_text: "The grass is green.".into(),
+                document_index: 0,
+                document_title: None,
+                start_char_index: 0,
+                end_char_index: 20,
+            }]
+        );
+    }
+
+    #[test]
+    fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
+        let text = message::AssistantContent::Text(message::Text {
+            text: "bad citation".into(),
+            additional_params: Some(json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "bad"
+                }]
+            })),
+        });
+
+        let result = Content::try_from(text);
+
+        assert!(
+            result.is_err(),
+            "invalid Anthropic citation metadata should not be silently dropped"
+        );
+    }
+
+    #[test]
+    fn document_additional_params_forward_to_anthropic_document() {
+        let doc = message::UserContent::Document(message::Document {
+            data: message::DocumentSourceKind::String("Hello world.".into()),
+            media_type: Some(message::DocumentMediaType::TXT),
+            additional_params: Some(json!({
+                "title": "Doc1",
+                "context": "ctx",
+                "citations": { "enabled": true }
+            })),
+        });
+        let msg = message::Message::User {
+            content: OneOrMany::one(doc),
+        };
+        let converted: Message = msg.try_into().unwrap();
+        let block = converted.content.first();
+        let Content::Document {
+            title,
+            context,
+            citations,
+            ..
+        } = block
+        else {
+            panic!("expected Content::Document");
+        };
+        assert_eq!(title.as_deref(), Some("Doc1"));
+        assert_eq!(context.as_deref(), Some("ctx"));
+        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    fn assert_reverse_document_metadata(
+        source: DocumentSource,
+        expected_data: DocumentSourceKind,
+        expected_media_type: Option<message::DocumentMediaType>,
+    ) -> message::Message {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source,
+                title: Some("Doc1".into()),
+                context: Some("ctx".into()),
+                citations: Some(CitationsConfig { enabled: true }),
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+
+        assert_eq!(document.data, expected_data);
+        assert_eq!(document.media_type, expected_media_type);
+        let additional_params = document
+            .additional_params
+            .as_ref()
+            .expect("expected Anthropic document metadata");
+        assert_eq!(additional_params["title"], "Doc1");
+        assert_eq!(additional_params["context"], "ctx");
+        assert_eq!(additional_params["citations"]["enabled"], true);
+
+        generic
+    }
+
+    #[test]
+    fn anthropic_document_metadata_survives_reverse_conversion_for_all_sources() {
+        assert_reverse_document_metadata(
+            DocumentSource::Text {
+                data: "Hello world.".into(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            DocumentSourceKind::String("Hello world.".into()),
+            Some(message::DocumentMediaType::TXT),
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::Base64 {
+                data: "base64-pdf".into(),
+                media_type: DocumentFormat::PDF,
+            },
+            DocumentSourceKind::String("base64-pdf".into()),
+            Some(message::DocumentMediaType::PDF),
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::Url {
+                url: "https://example.com/doc.pdf".into(),
+            },
+            DocumentSourceKind::Url("https://example.com/doc.pdf".into()),
+            None,
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::File {
+                file_id: "file_abc".into(),
+            },
+            DocumentSourceKind::FileId("file_abc".into()),
+            None,
+        );
+    }
+
+    #[test]
+    fn anthropic_document_metadata_survives_reverse_round_trip() {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Hello world.".into(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                title: Some("Doc1".into()),
+                context: Some("ctx".into()),
+                citations: Some(CitationsConfig { enabled: true }),
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+        let additional_params = document
+            .additional_params
+            .as_ref()
+            .expect("expected Anthropic document metadata");
+        assert_eq!(additional_params["title"], "Doc1");
+        assert_eq!(additional_params["context"], "ctx");
+        assert_eq!(additional_params["citations"]["enabled"], true);
+
+        let round_trip: Message = generic.try_into().unwrap();
+        let Content::Document {
+            title,
+            context,
+            citations,
+            ..
+        } = round_trip.content.first()
+        else {
+            panic!("expected Anthropic document");
+        };
+        assert_eq!(title.as_deref(), Some("Doc1"));
+        assert_eq!(context.as_deref(), Some("ctx"));
+        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    #[test]
+    fn anthropic_document_empty_metadata_stays_none_on_reverse_conversion() {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Hello world.".into(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                title: None,
+                context: None,
+                citations: None,
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+
+        assert_eq!(document.additional_params, None);
     }
 }

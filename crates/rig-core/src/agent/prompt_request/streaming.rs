@@ -62,6 +62,8 @@ pub enum MultiTurnStreamItem<R> {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalResponse {
+    /// Structured assistant content for the final turn.
+    content: OneOrMany<AssistantContent>,
     /// Concatenated assistant text for the final turn.
     /// This is empty only when the turn completed without emitting any text.
     response: String,
@@ -75,17 +77,41 @@ pub struct FinalResponse {
 
 impl FinalResponse {
     pub fn empty() -> Self {
+        Self::new(
+            OneOrMany::one(AssistantContent::text("")),
+            crate::completion::Usage::new(),
+            None,
+        )
+    }
+
+    pub fn new(
+        content: OneOrMany<AssistantContent>,
+        aggregated_usage: crate::completion::Usage,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        let response = assistant_text_from_choice(&content);
         Self {
-            response: String::new(),
-            aggregated_usage: crate::completion::Usage::new(),
+            content,
+            response,
+            aggregated_usage,
             completion_calls: Vec::new(),
-            history: None,
+            history,
         }
     }
 
     /// Returns the concatenated assistant text for the final turn.
     pub fn response(&self) -> &str {
         &self.response
+    }
+
+    /// Returns the structured assistant content for the final turn.
+    pub fn content(&self) -> &OneOrMany<AssistantContent> {
+        &self.content
+    }
+
+    /// Returns the structured assistant content for the final turn.
+    pub fn assistant_content(&self) -> &OneOrMany<AssistantContent> {
+        &self.content
     }
 
     pub fn usage(&self) -> crate::completion::Usage {
@@ -112,40 +138,30 @@ impl<R> MultiTurnStreamItem<R> {
         Self::StreamAssistantItem(item)
     }
 
-    pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
-        Self::FinalResponse(FinalResponse {
-            response: response.to_string(),
-            aggregated_usage,
-            completion_calls: Vec::new(),
-            history: None,
-        })
+    pub fn final_response(
+        content: OneOrMany<AssistantContent>,
+        aggregated_usage: crate::completion::Usage,
+    ) -> Self {
+        Self::FinalResponse(FinalResponse::new(content, aggregated_usage, None))
     }
 
     pub fn final_response_with_history(
-        response: &str,
+        content: OneOrMany<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
         history: Option<Vec<Message>>,
     ) -> Self {
-        Self::FinalResponse(FinalResponse {
-            response: response.to_string(),
-            aggregated_usage,
-            completion_calls: Vec::new(),
-            history,
-        })
+        Self::FinalResponse(FinalResponse::new(content, aggregated_usage, history))
     }
 
     pub(crate) fn final_response_with_completion_calls(
-        response: &str,
+        content: OneOrMany<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
         completion_calls: Vec<CompletionCall>,
         history: Option<Vec<Message>>,
     ) -> Self {
-        Self::FinalResponse(FinalResponse {
-            response: response.to_string(),
-            aggregated_usage,
-            completion_calls,
-            history,
-        })
+        let mut response = FinalResponse::new(content, aggregated_usage, history);
+        response.completion_calls = completion_calls;
+        Self::FinalResponse(response)
     }
 }
 
@@ -224,6 +240,27 @@ fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
             _ => None,
         })
         .collect()
+}
+
+fn assistant_text_items_from_choice(choice: &OneOrMany<AssistantContent>) -> Vec<AssistantContent> {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => (!text.text.is_empty()
+                || text.additional_params.is_some())
+            .then(|| AssistantContent::Text(text.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn is_empty_assistant_choice(choice: &OneOrMany<AssistantContent>) -> bool {
+    choice.len() == 1
+        && matches!(
+            choice.first(),
+            AssistantContent::Text(text)
+                if text.text.is_empty() && text.additional_params.is_none()
+        )
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -795,18 +832,15 @@ where
                     accumulated_reasoning.push(assembled);
                 }
 
-                let turn_text_response = assistant_text_from_choice(&stream.choice);
+                let final_turn_content = stream.choice.clone();
+                let turn_text_response = assistant_text_from_choice(&final_turn_content);
                 tracing::Span::current().record("gen_ai.completion", &turn_text_response);
 
                 // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
-                    let mut content_items: Vec<rig::message::AssistantContent> = vec![];
-
-                    // Text before tool calls so the model sees its own prior output
-                    if !turn_text_response.is_empty() {
-                        content_items.push(rig::message::AssistantContent::text(&turn_text_response));
-                    }
+                    // Text before tool calls so the model sees its own prior output.
+                    let mut content_items = assistant_text_items_from_choice(&final_turn_content);
 
                     // Reasoning must come before tool calls (OpenAI requirement)
                     for reasoning in accumulated_reasoning.drain(..) {
@@ -829,8 +863,11 @@ where
 
                 if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
-                    if !turn_text_response.is_empty() {
-                        new_messages.push(Message::assistant(&turn_text_response));
+                    if !is_empty_assistant_choice(&final_turn_content) {
+                        new_messages.push(Message::Assistant {
+                            id: stream.message_id.clone(),
+                            content: final_turn_content.clone(),
+                        });
                     } else {
                         tracing::warn!(
                             agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
@@ -861,7 +898,7 @@ where
                         None
                     };
                     yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
-                        &turn_text_response,
+                        final_turn_content,
                         aggregated_usage,
                         completion_calls,
                         final_messages,
@@ -912,7 +949,7 @@ pub async fn stream_to_stdout<R>(
     while let Some(content) = stream.next().await {
         match content {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text },
+                Text { text, .. },
             ))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
@@ -1253,7 +1290,7 @@ mod tests {
     fn final_response_serializes_completion_calls_with_missing_usage() {
         let item: MultiTurnStreamItem<MockResponse> =
             MultiTurnStreamItem::final_response_with_completion_calls(
-                "done",
+                OneOrMany::one(AssistantContent::text("done")),
                 usage(3, 4),
                 vec![
                     CompletionCall::new(0, None),
@@ -1292,6 +1329,48 @@ mod tests {
             MockStreamEvent::text(" world"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]])
+    }
+
+    fn citation_metadata() -> serde_json::Value {
+        serde_json::json!({
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was born in 1916.",
+                "url": "https://example.com/shannon",
+                "title": "Claude Shannon",
+                "encrypted_index": "encrypted-reference"
+            }]
+        })
+    }
+
+    fn streaming_cited_text_then_final_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text_start(Some(citation_metadata())),
+            MockStreamEvent::text("cited "),
+            MockStreamEvent::text_start(None),
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]])
+    }
+
+    fn streaming_cited_text_then_tool_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text_start(Some(citation_metadata())),
+                MockStreamEvent::text("I need a tool. "),
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ])
     }
 
     fn streaming_final_only_model() -> MockCompletionModel {
@@ -1393,6 +1472,13 @@ mod tests {
                 HookAction::terminate("stop on tool call delta")
             }
         }
+    }
+
+    fn text_metadata(content: &OneOrMany<AssistantContent>) -> Option<&serde_json::Value> {
+        content.iter().find_map(|item| match item {
+            AssistantContent::Text(text) => text.additional_params.as_ref(),
+            _ => None,
+        })
     }
 
     #[tokio::test]
@@ -1835,6 +1921,114 @@ mod tests {
 
         assert_eq!(streamed_text, "hello world");
         assert_eq!(final_response_text.as_deref(), Some("hello world"));
+    }
+
+    #[tokio::test]
+    async fn final_response_preserves_structured_text_metadata() {
+        let agent = AgentBuilder::new(streaming_cited_text_then_final_model()).build();
+
+        let mut stream = agent.stream_prompt("answer with citations").await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let final_response = final_response.expect("expected final response");
+        assert_eq!(final_response.response(), "cited answer");
+        let metadata = text_metadata(final_response.content())
+            .expect("expected text metadata in final content");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    #[tokio::test]
+    async fn final_response_history_preserves_structured_text_metadata() {
+        let agent = AgentBuilder::new(streaming_cited_text_then_final_model()).build();
+
+        let empty_history: &[Message] = &[];
+        let mut stream = agent
+            .stream_prompt("answer with citations")
+            .with_history(empty_history)
+            .await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let final_response = final_response.expect("expected final response");
+        let history = final_response
+            .history()
+            .expect("with_history should include final history");
+        let assistant_content = history
+            .iter()
+            .find_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .expect("expected assistant message in history");
+        let metadata =
+            text_metadata(assistant_content).expect("expected text metadata in assistant history");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_follow_up_history_preserves_structured_text_metadata() {
+        let model = streaming_cited_text_then_tool_model();
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("use a tool with citations")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up_history = requests[1].chat_history.iter().collect::<Vec<_>>();
+        let assistant_content = follow_up_history
+            .iter()
+            .find_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .expect("expected assistant message in follow-up history");
+        let metadata = text_metadata(assistant_content)
+            .expect("expected citation metadata in follow-up assistant history");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
     }
 
     #[tokio::test]

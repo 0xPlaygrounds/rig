@@ -16,7 +16,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
     fn try_from(value: aws_bedrock::ContentBlock) -> Result<Self, Self::Error> {
         match value {
             aws_bedrock::ContentBlock::Text(text) => {
-                Ok(RigUserContent(UserContent::Text(Text { text })))
+                Ok(RigUserContent(UserContent::Text(Text::new(text))))
             }
             aws_bedrock::ContentBlock::ToolResult(tool_result) => {
                 let tool_result_contents = tool_result

@@ -126,7 +126,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
     fn try_from(value: aws_bedrock::ContentBlock) -> Result<Self, Self::Error> {
         match value {
             aws_bedrock::ContentBlock::Text(text) => {
-                Ok(RigAssistantContent(AssistantContent::Text(Text { text })))
+                Ok(RigAssistantContent(AssistantContent::Text(Text::new(text))))
             }
             aws_bedrock::ContentBlock::ToolUse(call) => Ok(RigAssistantContent(
                 completion::AssistantContent::tool_call(

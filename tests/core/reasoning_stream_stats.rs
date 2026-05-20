@@ -2,7 +2,7 @@ use futures::stream;
 use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
-use rig::message::{ToolCall, ToolFunction, ToolResult, ToolResultContent};
+use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 
 use crate::reasoning::collect_stream_stats;
@@ -40,7 +40,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
             StreamedAssistantContent::<()>::text("It's 72F and sunny in Tokyo."),
         )),
         Ok(MultiTurnStreamItem::final_response(
-            "It's 72F and sunny in Tokyo.",
+            OneOrMany::one(AssistantContent::text("It's 72F and sunny in Tokyo.")),
             Usage::new(),
         )),
     ];
