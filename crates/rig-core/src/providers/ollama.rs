@@ -1014,6 +1014,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             match content {
                                 crate::message::UserContent::Text(crate::message::Text {
                                     text,
+                                    ..
                                 }) => texts.push(text),
                                 crate::message::UserContent::Image(crate::message::Image {
                                     data: DocumentSourceKind::Base64(data),
@@ -1099,9 +1100,9 @@ impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
             Message::User { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text::new(
+                    content,
+                ))),
             },
             Message::Assistant {
                 content,
@@ -1109,9 +1110,9 @@ impl From<Message> for crate::completion::Message {
                 ..
             } => {
                 let mut assistant_contents =
-                    vec![crate::completion::message::AssistantContent::Text(Text {
-                        text: content,
-                    })];
+                    vec![crate::completion::message::AssistantContent::Text(
+                        Text::new(content),
+                    )];
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
@@ -1123,18 +1124,18 @@ impl From<Message> for crate::completion::Message {
                 }
                 let content =
                     OneOrMany::from_iter_optional(assistant_contents).unwrap_or_else(|| {
-                        OneOrMany::one(crate::completion::message::AssistantContent::Text(Text {
-                            text: String::new(),
-                        }))
+                        OneOrMany::one(crate::completion::message::AssistantContent::Text(
+                            Text::new(String::new()),
+                        ))
                     });
 
                 crate::completion::Message::Assistant { id: None, content }
             }
             // System and ToolResult are converted to User message as needed.
             Message::System { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text::new(
+                    content,
+                ))),
             },
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
@@ -1470,9 +1471,9 @@ mod tests {
             id: None,
             content: crate::OneOrMany::many(vec![
                 crate::message::AssistantContent::Reasoning(reasoning_content),
-                crate::message::AssistantContent::Text(crate::message::Text {
-                    text: "The answer is X".to_string(),
-                }),
+                crate::message::AssistantContent::Text(crate::message::Text::new(
+                    "The answer is X".to_string(),
+                )),
             ])
             .unwrap(),
         };
@@ -1595,9 +1596,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1663,9 +1662,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1731,9 +1728,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1799,9 +1794,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1867,9 +1860,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1902,9 +1893,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "Hello!".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1967,9 +1956,9 @@ mod tests {
             model: Some("llama3.1".to_string()),
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "How old is Ollama?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new(
+                    "How old is Ollama?".to_string(),
+                ))),
             }),
             documents: vec![],
             tools: vec![],
@@ -2012,9 +2001,7 @@ mod tests {
             model: Some("llama3.1".to_string()),
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "Hello!".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
             documents: vec![],
             tools: vec![],

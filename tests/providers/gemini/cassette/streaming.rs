@@ -1,11 +1,13 @@
 //! Gemini streaming coverage, including the migrated example path.
 
+use futures::StreamExt;
 use rig::client::CompletionClient;
+use rig::completion::{CompletionModel, GetTokenUsage};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
+    AdditionalParameters, FinishReason, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::streaming::StreamingPrompt;
+use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -72,6 +74,119 @@ async fn example_streaming_prompt() {
                 .expect("streaming prompt should succeed");
 
             assert_nonempty_response(&response);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn final_metadata_exposes_finish_reason_and_model_version() {
+    super::super::support::with_gemini_cassette(
+        "streaming/final_metadata_exposes_finish_reason_and_model_version",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = model
+                .completion_request("Reply with exactly: final metadata ok")
+                .temperature(0.0)
+                .build();
+            let mut stream = model.stream(request).await.expect("stream should start");
+
+            let mut text = String::new();
+            let mut final_response = None;
+            let mut final_response_count = 0;
+            while let Some(chunk) = stream.next().await {
+                match chunk.expect("stream chunk should succeed") {
+                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
+                    StreamedAssistantContent::Final(response) => {
+                        final_response_count += 1;
+                        final_response = Some(response);
+                    }
+                    _ => {}
+                }
+            }
+
+            assert_nonempty_response(&text);
+            assert_eq!(
+                final_response_count, 1,
+                "stream should yield exactly one final response"
+            );
+            let final_response = final_response.expect("stream should yield final metadata");
+            assert!(
+                matches!(final_response.finish_reason, Some(FinishReason::Stop)),
+                "expected STOP finish reason, got {:?}",
+                final_response.finish_reason
+            );
+            assert_eq!(
+                final_response.model_version.as_deref(),
+                Some(gemini::completion::GEMINI_2_5_FLASH),
+                "expected resolved Gemini model version to be surfaced"
+            );
+            assert!(
+                final_response.token_usage().is_some(),
+                "expected final response to expose token usage"
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn final_metadata_handles_terminal_finish_reason_chunk() {
+    super::super::support::with_gemini_cassette(
+        "streaming/final_metadata_handles_terminal_finish_reason_chunk",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = model
+                .completion_request("Reply with exactly: contentless final metadata ok")
+                .temperature(0.0)
+                .build();
+            let mut stream = model.stream(request).await.expect("stream should start");
+
+            let mut text = String::new();
+            let mut final_response = None;
+            let mut final_response_count = 0;
+            while let Some(chunk) = stream.next().await {
+                match chunk.expect("stream chunk should succeed") {
+                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
+                    StreamedAssistantContent::Final(response) => {
+                        final_response_count += 1;
+                        final_response = Some(response);
+                    }
+                    _ => {}
+                }
+            }
+
+            assert_eq!(text.trim(), "contentless final metadata ok");
+            assert_eq!(
+                final_response_count, 1,
+                "terminal finish chunk should yield exactly one final response"
+            );
+            let final_response = final_response.expect("stream should yield final metadata");
+            assert!(
+                matches!(final_response.finish_reason, Some(FinishReason::Stop)),
+                "expected STOP finish reason from contentless terminal chunk, got {:?}",
+                final_response.finish_reason
+            );
+            assert_eq!(
+                final_response.model_version.as_deref(),
+                Some(gemini::completion::GEMINI_2_5_FLASH),
+                "expected modelVersion from terminal chunks to be retained"
+            );
+            let usage = final_response
+                .token_usage()
+                .expect("expected final response to expose token usage");
+            assert!(
+                usage.input_tokens > 0,
+                "expected positive input token usage, got {usage:?}"
+            );
+            assert!(
+                usage.output_tokens > 0,
+                "expected positive output token usage, got {usage:?}"
+            );
+            assert!(
+                usage.total_tokens >= usage.input_tokens + usage.output_tokens,
+                "expected total token usage to include input and output tokens, got {usage:?}"
+            );
         },
     )
     .await;

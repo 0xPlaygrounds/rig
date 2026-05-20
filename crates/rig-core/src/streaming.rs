@@ -85,6 +85,22 @@ where
     /// A text chunk from a message response
     Message(String),
 
+    /// Start a new text content block in the accumulated final choice.
+    ///
+    /// This is an internal provider-normalization event. It is not yielded to
+    /// public stream consumers, but lets providers preserve metadata boundaries
+    /// for final aggregated assistant text blocks.
+    TextStart {
+        /// Provider-specific metadata attached to this text block.
+        additional_params: Option<serde_json::Value>,
+    },
+
+    /// Provider-specific metadata for the current text content block.
+    ///
+    /// This is not yielded to public stream consumers. The metadata is merged
+    /// into the current aggregated [`Text`] block.
+    TextAdditionalParams(serde_json::Value),
+
     /// A tool call response (in its entirety)
     ToolCall(RawStreamingToolCall),
     /// A tool call partial/delta
@@ -295,6 +311,34 @@ where
         self.text_item_index = Some(self.assistant_items.len() - 1);
     }
 
+    fn append_text_additional_params(&mut self, additional_params: serde_json::Value) {
+        if additional_params.is_null() {
+            return;
+        }
+
+        let index = if let Some(index) = self.text_item_index
+            && matches!(
+                self.assistant_items.get(index),
+                Some(AssistantContent::Text(_))
+            ) {
+            index
+        } else {
+            self.assistant_items.push(AssistantContent::text(""));
+            let index = self.assistant_items.len() - 1;
+            self.text_item_index = Some(index);
+            index
+        };
+
+        let Some(AssistantContent::Text(text)) = self.assistant_items.get_mut(index) else {
+            return;
+        };
+
+        match text.additional_params.as_mut() {
+            Some(existing) => merge_text_additional_params(existing, additional_params),
+            None => text.additional_params = Some(additional_params),
+        }
+    }
+
     /// Accumulate streaming reasoning delta text into assistant_items.
     /// Providers that only emit ReasoningDelta (not full Reasoning blocks)
     /// need this so the aggregated response includes reasoning content.
@@ -319,6 +363,32 @@ where
                 }],
             }));
         self.reasoning_item_index = Some(self.assistant_items.len() - 1);
+    }
+}
+
+fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serde_json::Value) {
+    match (existing, incoming) {
+        (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
+            for (key, incoming_value) in incoming_map {
+                match existing_map.get_mut(&key) {
+                    Some(existing_value) => match (existing_value, incoming_value) {
+                        (
+                            serde_json::Value::Array(existing_array),
+                            serde_json::Value::Array(mut incoming_array),
+                        ) => existing_array.append(&mut incoming_array),
+                        (existing_value, incoming_value) => {
+                            merge_text_additional_params(existing_value, incoming_value);
+                        }
+                    },
+                    None => {
+                        existing_map.insert(key, incoming_value);
+                    }
+                }
+            }
+        }
+        (existing, incoming) => {
+            *existing = incoming;
+        }
     }
 }
 
@@ -379,6 +449,18 @@ where
                     stream.reasoning_item_index = None;
                     stream.append_text_chunk(&text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
+                }
+                RawStreamingChoice::TextStart { additional_params } => {
+                    stream.reasoning_item_index = None;
+                    stream.text_item_index = None;
+                    if let Some(additional_params) = additional_params {
+                        stream.append_text_additional_params(additional_params);
+                    }
+                    stream.poll_next_unpin(cx)
+                }
+                RawStreamingChoice::TextAdditionalParams(additional_params) => {
+                    stream.append_text_additional_params(additional_params);
+                    stream.poll_next_unpin(cx)
                 }
                 RawStreamingChoice::ToolCallDelta {
                     id,
@@ -744,6 +826,42 @@ mod tests {
         StreamingCompletionResponse::stream(to_stream_result(stream))
     }
 
+    fn create_text_metadata_stream() -> StreamingCompletionResponse<MockResponse> {
+        let stream = stream! {
+            yield Ok(RawStreamingChoice::TextStart {
+                additional_params: None,
+            });
+            yield Ok(RawStreamingChoice::Message("first".to_string()));
+            yield Ok(RawStreamingChoice::TextAdditionalParams(serde_json::json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "First citation.",
+                    "document_index": 0,
+                    "start_char_index": 0,
+                    "end_char_index": 15
+                }]
+            })));
+            yield Ok(RawStreamingChoice::TextAdditionalParams(serde_json::json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "Second citation.",
+                    "document_index": 0,
+                    "start_char_index": 16,
+                    "end_char_index": 32
+                }]
+            })));
+            yield Ok(RawStreamingChoice::TextStart {
+                additional_params: Some(serde_json::json!({
+                    "block": 2
+                })),
+            });
+            yield Ok(RawStreamingChoice::Message("second".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(3)));
+        };
+
+        StreamingCompletionResponse::stream(to_stream_result(stream))
+    }
+
     #[tokio::test]
     async fn test_stream_cancellation() {
         let mut stream = create_mock_stream();
@@ -869,7 +987,7 @@ mod tests {
         ));
         assert!(matches!(
             choice_items.get(1),
-            Some(AssistantContent::Text(Text { text })) if text == "final-text"
+            Some(AssistantContent::Text(Text { text, .. })) if text == "final-text"
         ));
         assert!(matches!(
             choice_items.get(2),
@@ -886,7 +1004,7 @@ mod tests {
         assert_eq!(choice_items.len(), 3);
         assert!(matches!(
             choice_items.first(),
-            Some(AssistantContent::Text(Text { text })) if text == "first"
+            Some(AssistantContent::Text(Text { text, .. })) if text == "first"
         ));
         assert!(matches!(
             choice_items.get(1),
@@ -894,8 +1012,43 @@ mod tests {
         ));
         assert!(matches!(
             choice_items.get(2),
-            Some(AssistantContent::Text(Text { text })) if text == "second"
+            Some(AssistantContent::Text(Text { text, .. })) if text == "second"
         ));
+    }
+
+    #[tokio::test]
+    async fn test_stream_preserves_text_additional_params() {
+        let mut stream = create_text_metadata_stream();
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(choice_items.len(), 2);
+
+        let Some(AssistantContent::Text(Text {
+            text,
+            additional_params: Some(additional_params),
+        })) = choice_items.first()
+        else {
+            panic!("expected first text item with metadata");
+        };
+        assert_eq!(text, "first");
+        assert_eq!(
+            additional_params["citations"]
+                .as_array()
+                .expect("citations should be an array")
+                .len(),
+            2
+        );
+
+        let Some(AssistantContent::Text(Text {
+            text,
+            additional_params: Some(additional_params),
+        })) = choice_items.get(1)
+        else {
+            panic!("expected second text item with metadata");
+        };
+        assert_eq!(text, "second");
+        assert_eq!(additional_params["block"], 2);
     }
 }
 
@@ -939,9 +1092,7 @@ where
 {
     /// Create a text stream item.
     pub fn text(text: &str) -> Self {
-        Self::Text(Text {
-            text: text.to_string(),
-        })
+        Self::Text(Text::new(text.to_string()))
     }
 
     /// Create a final response stream item.

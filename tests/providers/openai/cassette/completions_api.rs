@@ -122,6 +122,35 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
 }
 
 #[tokio::test]
+async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
+    with_openai_completions_cassette(
+        "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_4O);
+            let request = model
+                .completion_request("Reply with exactly: cassette null tool calls ok")
+                .build();
+
+            let observation = collect_raw_stream_observation(
+                model
+                    .stream(request)
+                    .await
+                    .expect("raw completions api stream should start"),
+            )
+            .await;
+
+            assert!(
+                observation.tool_calls.is_empty(),
+                "null tool_calls deltas should not emit tool calls: {:?}",
+                observation.tool_calls
+            );
+            assert_raw_stream_text_contains(&observation, &["cassette null tool calls ok"]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",

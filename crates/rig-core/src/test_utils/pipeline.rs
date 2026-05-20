@@ -16,7 +16,7 @@ impl Prompt for MockPromptModel {
         let msg = prompt.into();
         let prompt = match msg {
             Message::User { content } => match content.first() {
-                message::UserContent::Text(message::Text { text }) => text,
+                message::UserContent::Text(message::Text { text, .. }) => text,
                 _ => {
                     return Err(PromptError::CompletionError(CompletionError::RequestError(
                         "mock prompt model only accepts text user messages".into(),

@@ -378,7 +378,7 @@ impl TryFrom<message::Message> for Vec<Message> {
             message::Message::User { content } => content
                 .into_iter()
                 .map(|content| match content {
-                    message::UserContent::Text(message::Text { text }) => Ok(Message::User {
+                    message::UserContent::Text(message::Text { text, .. }) => Ok(Message::User {
                         content: OneOrMany::one(UserContent::Text { text }),
                     }),
                     message::UserContent::ToolResult(message::ToolResult {
@@ -408,7 +408,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 for content in content.into_iter() {
                     match content {
-                        message::AssistantContent::Text(message::Text { text }) => {
+                        message::AssistantContent::Text(message::Text { text, .. }) => {
                             text_content.push(AssistantContent::Text { text });
                         }
                         message::AssistantContent::ToolCall(message::ToolCall {
@@ -459,7 +459,7 @@ impl TryFrom<Message> for message::Message {
             Message::User { content } => Ok(message::Message::User {
                 content: content.map(|content| match content {
                     UserContent::Text { text } => {
-                        message::UserContent::Text(message::Text { text })
+                        message::UserContent::Text(message::Text::new(text))
                     }
                     UserContent::ImageUrl { image_url } => {
                         message::UserContent::image_url(image_url.url, None, None)
@@ -798,9 +798,7 @@ mod tests {
     fn test_convert_completion_message_to_message_and_back() {
         let completion_message = completion::Message::User {
             content: OneOrMany::one(completion::message::UserContent::Text(
-                completion::message::Text {
-                    text: "Hello, world!".to_string(),
-                },
+                completion::message::Text::new("Hello, world!".to_string()),
             )),
         };
 

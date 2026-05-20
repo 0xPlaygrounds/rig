@@ -240,3 +240,50 @@ async fn streaming_interaction() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn streaming_final_metadata_exposes_model_version() {
+    super::super::support::with_gemini_interactions_cassette(
+        "interactions_api/streaming_final_metadata_exposes_model_version",
+        |client| async move {
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = model
+                .completion_request("Reply with exactly: interaction metadata ok")
+                .temperature(0.0)
+                .build();
+            let mut stream = model.stream(request).await.expect("stream should start");
+
+            let mut text = String::new();
+            let mut final_model_version = None;
+            let mut final_response_count = 0;
+            let mut saw_usage = false;
+            while let Some(chunk) = stream.next().await {
+                match chunk.expect("stream chunk should succeed") {
+                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
+                    StreamedAssistantContent::Final(response) => {
+                        final_response_count += 1;
+                        saw_usage = response.token_usage().is_some();
+                        final_model_version = response.model_version.clone();
+                    }
+                    _ => {}
+                }
+            }
+
+            assert_nonempty_response(&text);
+            assert_eq!(
+                final_response_count, 1,
+                "stream should yield exactly one final response"
+            );
+            assert_eq!(
+                final_model_version.as_deref(),
+                Some("gemini-3-flash-preview"),
+                "expected Interactions stream final response to expose Interaction.model"
+            );
+            assert!(
+                saw_usage,
+                "expected final response to expose Interactions token usage"
+            );
+        },
+    )
+    .await;
+}

@@ -72,7 +72,9 @@ pub struct StreamGenerateContentResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
 }
 
@@ -134,8 +136,8 @@ where
 
         let stream = stream! {
             let mut final_usage = None;
-            let mut final_finish_reason = None;
-            let mut final_model_version = None;
+            let mut final_finish_reason: Option<FinishReason> = None;
+            let mut final_model_version: Option<String> = None;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -160,11 +162,9 @@ where
                         if let Some(response_id) = data.response_id.as_deref() {
                             span.record("gen_ai.response.id", response_id);
                         }
-                        if let Some(model_version) = data.model_version.as_deref() {
-                            span.record("gen_ai.response.model", model_version);
-                        }
-                        if data.model_version.is_some() {
-                            final_model_version = data.model_version.clone();
+                        if let Some(model_version) = &data.model_version {
+                            span.record("gen_ai.response.model", model_version.as_str());
+                            final_model_version = Some(model_version.clone());
                         }
                         if let Some(usage) = data.usage_metadata.as_ref() {
                             span.record_token_usage(usage);
@@ -177,12 +177,18 @@ where
                             continue;
                         };
 
+                        // Capture before partial moves of choice fields
+                        let should_stop = choice.finish_reason.is_some();
+                        if let Some(fr) = &choice.finish_reason {
+                            final_finish_reason = Some(fr.clone());
+                        }
+
                         let Some(content) = choice.content else {
-                            if choice.finish_reason.is_some() {
-                                final_finish_reason = choice.finish_reason;
+                            tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
+                            // Gemini's final chunk may carry finishReason with no content — break instead of skip
+                            if should_stop {
                                 break;
                             }
-                            tracing::debug!(finish_reason = ?choice.finish_reason, "Streaming candidate missing content");
                             continue;
                         };
 
@@ -244,8 +250,7 @@ where
                         }
 
                         // Check if this is the final response
-                        if choice.finish_reason.is_some() {
-                            final_finish_reason = choice.finish_reason;
+                        if should_stop {
                             break;
                         }
                     }
@@ -624,6 +629,34 @@ mod tests {
         assert_eq!(token_usage.output_tokens, 30);
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.total_tokens, 50);
+    }
+
+    #[test]
+    fn test_streaming_completion_response_has_finish_reason_and_model_version() {
+        use super::super::completion::gemini_api_types::FinishReason;
+
+        let response = StreamingCompletionResponse {
+            usage_metadata: PartialUsage::default(),
+            finish_reason: Some(FinishReason::Stop),
+            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+        };
+
+        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(
+            deserialized.finish_reason,
+            Some(FinishReason::Stop)
+        ));
+        assert_eq!(
+            deserialized.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
     }
 
     #[test]

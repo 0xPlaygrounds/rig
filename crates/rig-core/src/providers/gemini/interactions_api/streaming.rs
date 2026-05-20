@@ -25,6 +25,11 @@ use serde_json::{Map, Value};
 pub struct StreamingCompletionResponse {
     pub usage: Option<InteractionUsage>,
     pub interaction: Option<Interaction>,
+    /// Resolved model identifier (e.g. `gemini-2.5-pro-preview-05-06`), extracted from
+    /// `Interaction.model`. The Interactions API has no `FinishReason` field; use
+    /// `interaction.status` for lifecycle state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
 }
 
 #[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
@@ -160,9 +165,11 @@ where
 
             event_source.close();
 
+            let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
             yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
                 interaction: final_interaction,
+                model_version,
             }));
         }
         .instrument(span);
@@ -289,6 +296,27 @@ fn content_delta_to_choice(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_streaming_completion_response_has_model_version() {
+        let response = StreamingCompletionResponse {
+            usage: None,
+            interaction: None,
+            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+        };
+
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            deserialized.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+    }
 
     #[test]
     fn test_content_delta_text_event() {

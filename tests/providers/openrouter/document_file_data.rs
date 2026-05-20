@@ -43,11 +43,9 @@ fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
         content: OneOrMany::many(vec![
             RigUserContent::Document(verifier_document()),
-            RigUserContent::Text(Text {
-                text: format!(
-                    "What verifier token is printed on page {page_number}? Reply with only the exact token."
-                ),
-            }),
+            RigUserContent::Text(Text::new(format!(
+                "What verifier token is printed on page {page_number}? Reply with only the exact token."
+            ))),
         ])
         .expect("content should be non-empty"),
     }
@@ -160,7 +158,7 @@ fn assert_no_verifier_leaked_into_prompt(message: &RigMessage) {
     };
 
     for content in content.iter() {
-        let RigUserContent::Text(Text { text }) = content else {
+        let RigUserContent::Text(Text { text, .. }) = content else {
             continue;
         };
 

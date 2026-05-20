@@ -16,7 +16,7 @@ use std::{pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::ToolCallHookAction;
+use super::{CompletionCall, ToolCallHookAction, reported_usage};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -40,6 +40,21 @@ pub enum MultiTurnStreamItem<R> {
     StreamAssistantItem(StreamedAssistantContent<R>),
     /// A streamed user content item (mostly for tool results).
     StreamUserItem(StreamedUserContent),
+    /// Details for one successfully completed completion request made by this agent stream.
+    ///
+    /// This is emitted when a provider call finishes. Usage is the provider's
+    /// final usage for that completion request when available; it is not
+    /// incremental per streamed token.
+    ///
+    /// ```rust,ignore
+    /// match item {
+    ///     MultiTurnStreamItem::CompletionCall(completion_call) => {
+    ///         let context_tokens = completion_call.usage.map(|usage| usage.input_tokens);
+    ///     }
+    ///     _ => {}
+    /// }
+    /// ```
+    CompletionCall(CompletionCall),
     /// The final result from the stream.
     FinalResponse(FinalResponse),
 }
@@ -47,20 +62,40 @@ pub enum MultiTurnStreamItem<R> {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalResponse {
+    /// Structured assistant content for the final turn.
+    content: OneOrMany<AssistantContent>,
     /// Concatenated assistant text for the final turn.
     /// This is empty only when the turn completed without emitting any text.
     response: String,
     aggregated_usage: crate::completion::Usage,
+    /// Successfully completed completion requests made by this agent stream.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    completion_calls: Vec<CompletionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<Vec<Message>>,
 }
 
 impl FinalResponse {
     pub fn empty() -> Self {
+        Self::new(
+            OneOrMany::one(AssistantContent::text("")),
+            crate::completion::Usage::new(),
+            None,
+        )
+    }
+
+    pub fn new(
+        content: OneOrMany<AssistantContent>,
+        aggregated_usage: crate::completion::Usage,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        let response = assistant_text_from_choice(&content);
         Self {
-            response: String::new(),
-            aggregated_usage: crate::completion::Usage::new(),
-            history: None,
+            content,
+            response,
+            aggregated_usage,
+            completion_calls: Vec::new(),
+            history,
         }
     }
 
@@ -69,8 +104,28 @@ impl FinalResponse {
         &self.response
     }
 
+    /// Returns the structured assistant content for the final turn.
+    pub fn content(&self) -> &OneOrMany<AssistantContent> {
+        &self.content
+    }
+
+    /// Returns the structured assistant content for the final turn.
+    pub fn assistant_content(&self) -> &OneOrMany<AssistantContent> {
+        &self.content
+    }
+
     pub fn usage(&self) -> crate::completion::Usage {
         self.aggregated_usage
+    }
+
+    /// Returns successfully completed completion requests made by this agent stream, with usage when available.
+    ///
+    /// Each entry represents one provider completion request. When present,
+    /// usage is a whole-request provider snapshot, not incremental usage per
+    /// streamed token. Streaming providers may omit usage for some calls; those
+    /// calls have an entry with `None` usage.
+    pub fn completion_calls(&self) -> &[CompletionCall] {
+        &self.completion_calls
     }
 
     pub fn history(&self) -> Option<&[Message]> {
@@ -83,24 +138,30 @@ impl<R> MultiTurnStreamItem<R> {
         Self::StreamAssistantItem(item)
     }
 
-    pub fn final_response(response: &str, aggregated_usage: crate::completion::Usage) -> Self {
-        Self::FinalResponse(FinalResponse {
-            response: response.to_string(),
-            aggregated_usage,
-            history: None,
-        })
+    pub fn final_response(
+        content: OneOrMany<AssistantContent>,
+        aggregated_usage: crate::completion::Usage,
+    ) -> Self {
+        Self::FinalResponse(FinalResponse::new(content, aggregated_usage, None))
     }
 
     pub fn final_response_with_history(
-        response: &str,
+        content: OneOrMany<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
         history: Option<Vec<Message>>,
     ) -> Self {
-        Self::FinalResponse(FinalResponse {
-            response: response.to_string(),
-            aggregated_usage,
-            history,
-        })
+        Self::FinalResponse(FinalResponse::new(content, aggregated_usage, history))
+    }
+
+    pub(crate) fn final_response_with_completion_calls(
+        content: OneOrMany<AssistantContent>,
+        aggregated_usage: crate::completion::Usage,
+        completion_calls: Vec<CompletionCall>,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        let mut response = FinalResponse::new(content, aggregated_usage, history);
+        response.completion_calls = completion_calls;
+        Self::FinalResponse(response)
     }
 }
 
@@ -179,6 +240,27 @@ fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
             _ => None,
         })
         .collect()
+}
+
+fn assistant_text_items_from_choice(choice: &OneOrMany<AssistantContent>) -> Vec<AssistantContent> {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => (!text.text.is_empty()
+                || text.additional_params.is_some())
+            .then(|| AssistantContent::Text(text.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn is_empty_assistant_choice(choice: &OneOrMany<AssistantContent>) -> bool {
+    choice.len() == 1
+        && matches!(
+            choice.first(),
+            AssistantContent::Text(text)
+                if text.text.is_empty() && text.additional_params.is_none()
+        )
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -455,6 +537,8 @@ where
         let output_schema = self.output_schema;
 
         let mut aggregated_usage = crate::completion::Usage::new();
+        let mut completion_calls = Vec::new();
+        let mut completion_call_index = 0;
 
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
         // span context leaking to other concurrent tasks. Using span.enter() inside
@@ -547,6 +631,10 @@ where
 
                 .await?;
 
+                let call_index = completion_call_index;
+                completion_call_index += 1;
+                let mut current_call_usage = None;
+                let mut completion_call_emitted = false;
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
                 let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
@@ -677,6 +765,8 @@ where
                                     break 'outer;
                                 }
                             }
+
+                            yield Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }));
                         }
                         Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                             // Accumulate reasoning for inclusion in chat history with tool calls.
@@ -696,7 +786,17 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
-                            if let Some(usage) = final_resp.token_usage() { aggregated_usage += usage; };
+                            if let Some(usage) = final_resp.token_usage() {
+                                current_call_usage = reported_usage(usage);
+                            }
+                            if let Some(usage) = current_call_usage {
+                                aggregated_usage += usage;
+                            }
+                            let completion_call = CompletionCall::new(call_index, current_call_usage);
+                            completion_calls.push(completion_call);
+                            completion_call_emitted = true;
+                            yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
+
                             if saw_text_this_turn {
                                 if let Some(ref hook) = self.hook &&
                                      let HookAction::Terminate { reason } = hook.on_stream_completion_response_finish(&current_prompt, &final_resp).await {
@@ -715,6 +815,12 @@ where
                     }
                 }
 
+                if !completion_call_emitted {
+                    let completion_call = CompletionCall::new(call_index, current_call_usage);
+                    completion_calls.push(completion_call);
+                    yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
+                }
+
                 // Providers like Gemini emit thinking as incremental deltas
                 // without signatures; assemble into a single block so
                 // reasoning survives into the next turn's chat history.
@@ -726,18 +832,15 @@ where
                     accumulated_reasoning.push(assembled);
                 }
 
-                let turn_text_response = assistant_text_from_choice(&stream.choice);
+                let final_turn_content = stream.choice.clone();
+                let turn_text_response = assistant_text_from_choice(&final_turn_content);
                 tracing::Span::current().record("gen_ai.completion", &turn_text_response);
 
                 // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
-                    let mut content_items: Vec<rig::message::AssistantContent> = vec![];
-
-                    // Text before tool calls so the model sees its own prior output
-                    if !turn_text_response.is_empty() {
-                        content_items.push(rig::message::AssistantContent::text(&turn_text_response));
-                    }
+                    // Text before tool calls so the model sees its own prior output.
+                    let mut content_items = assistant_text_items_from_choice(&final_turn_content);
 
                     // Reasoning must come before tool calls (OpenAI requirement)
                     for reasoning in accumulated_reasoning.drain(..) {
@@ -760,8 +863,11 @@ where
 
                 if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
-                    if !turn_text_response.is_empty() {
-                        new_messages.push(Message::assistant(&turn_text_response));
+                    if !is_empty_assistant_choice(&final_turn_content) {
+                        new_messages.push(Message::Assistant {
+                            id: stream.message_id.clone(),
+                            content: final_turn_content.clone(),
+                        });
                     } else {
                         tracing::warn!(
                             agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
@@ -791,9 +897,10 @@ where
                     } else {
                         None
                     };
-                    yield Ok(MultiTurnStreamItem::final_response_with_history(
-                        &turn_text_response,
+                    yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
+                        final_turn_content,
                         aggregated_usage,
+                        completion_calls,
                         final_messages,
                     ));
                     break;
@@ -828,7 +935,12 @@ where
     }
 }
 
-/// Helper function to stream a completion request to stdout.
+/// Helper function to stream assistant-visible completion output to stdout.
+///
+/// This helper prints streamed assistant text and reasoning only. Streaming
+/// metadata events, such as `MultiTurnStreamItem::CompletionCall`, are not
+/// printed; metadata is returned on the `FinalResponse` via accessors such as
+/// `FinalResponse::completion_calls`.
 pub async fn stream_to_stdout<R>(
     stream: &mut StreamingResult<R>,
 ) -> Result<FinalResponse, std::io::Error> {
@@ -837,7 +949,7 @@ pub async fn stream_to_stdout<R>(
     while let Some(content) = stream.next().await {
         match content {
             Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text },
+                Text { text, .. },
             ))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
@@ -868,19 +980,19 @@ mod tests {
     use crate::agent::AgentBuilder;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::CompletionRequest;
+    use crate::completion::{CompletionRequest, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolResultContent, UserContent,
     };
     use crate::providers::anthropic;
-    use crate::streaming::StreamingPrompt;
+    use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
-        AppendFailingMemory, FailingMemory, MockCompletionModel, MockStreamEvent,
+        AppendFailingMemory, FailingMemory, MockCompletionModel, MockResponse, MockStreamEvent,
     };
     use futures::StreamExt;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
@@ -1117,6 +1229,103 @@ mod tests {
         ])
     }
 
+    fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+        Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: input_tokens + output_tokens,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        }
+    }
+
+    #[test]
+    fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
+        let item: MultiTurnStreamItem<MockResponse> =
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, Some(usage(3, 4))));
+
+        let value = serde_json::to_value(&item).expect("serialize completion call event");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "completionCall",
+                "call_index": 2,
+                "usage": {
+                    "input_tokens": 3,
+                    "output_tokens": 4,
+                    "total_tokens": 7,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "tool_use_prompt_tokens": 0,
+                    "reasoning_tokens": 0,
+                }
+            })
+        );
+
+        let item: MultiTurnStreamItem<MockResponse> =
+            serde_json::from_value(value).expect("deserialize completion call event");
+        match item {
+            MultiTurnStreamItem::CompletionCall(call_usage) => {
+                assert_eq!(call_usage, CompletionCall::new(2, Some(usage(3, 4))));
+            }
+            other => panic!("expected completion call event, got {other:?}"),
+        }
+
+        let item: MultiTurnStreamItem<MockResponse> =
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, None));
+        let value = serde_json::to_value(&item).expect("serialize missing usage event");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "type": "completionCall",
+                "call_index": 3,
+                "usage": null
+            })
+        );
+    }
+
+    #[test]
+    fn final_response_serializes_completion_calls_with_missing_usage() {
+        let item: MultiTurnStreamItem<MockResponse> =
+            MultiTurnStreamItem::final_response_with_completion_calls(
+                OneOrMany::one(AssistantContent::text("done")),
+                usage(3, 4),
+                vec![
+                    CompletionCall::new(0, None),
+                    CompletionCall::new(1, Some(usage(3, 4))),
+                ],
+                None,
+            );
+
+        let value = serde_json::to_value(&item).expect("serialize final response");
+
+        assert_eq!(
+            value.get("completionCalls"),
+            Some(&serde_json::json!([
+                {
+                    "call_index": 0,
+                    "usage": null,
+                },
+                {
+                    "call_index": 1,
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "total_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
+                }
+            ]))
+        );
+    }
+
     fn streaming_text_then_final_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("hello"),
@@ -1125,10 +1334,154 @@ mod tests {
         ]])
     }
 
+    fn citation_metadata() -> serde_json::Value {
+        serde_json::json!({
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was born in 1916.",
+                "url": "https://example.com/shannon",
+                "title": "Claude Shannon",
+                "encrypted_index": "encrypted-reference"
+            }]
+        })
+    }
+
+    fn streaming_cited_text_then_final_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text_start(Some(citation_metadata())),
+            MockStreamEvent::text("cited "),
+            MockStreamEvent::text_start(None),
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]])
+    }
+
+    fn streaming_cited_text_then_tool_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text_start(Some(citation_metadata())),
+                MockStreamEvent::text("I need a tool. "),
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ])
+    }
+
     fn streaming_final_only_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::final_response_with_total_tokens(1),
         ]])
+    }
+
+    #[derive(Clone)]
+    struct TerminateOnStreamFinish;
+
+    impl PromptHook<MockCompletionModel> for TerminateOnStreamFinish {
+        async fn on_stream_completion_response_finish(
+            &self,
+            _prompt: &Message,
+            _response: &<MockCompletionModel as CompletionModel>::StreamingResponse,
+        ) -> HookAction {
+            HookAction::terminate("stop after completion call")
+        }
+    }
+
+    type RecordedToolCallDelta = (String, String, Option<String>, String);
+
+    #[derive(Clone, Default)]
+    struct RecordingToolCallDeltaHook {
+        deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
+    }
+
+    impl RecordingToolCallDeltaHook {
+        fn observed(&self) -> Vec<RecordedToolCallDelta> {
+            self.deltas
+                .lock()
+                .expect("tool call delta hook records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingToolCallDeltaHook {
+        fn on_tool_call_delta(
+            &self,
+            tool_call_id: &str,
+            internal_call_id: &str,
+            tool_name: Option<&str>,
+            tool_call_delta: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            let deltas = self.deltas.clone();
+            let event = (
+                tool_call_id.to_string(),
+                internal_call_id.to_string(),
+                tool_name.map(str::to_string),
+                tool_call_delta.to_string(),
+            );
+
+            async move {
+                deltas
+                    .lock()
+                    .expect("tool call delta hook records mutex was poisoned")
+                    .push(event);
+                HookAction::cont()
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct TerminatingToolCallDeltaHook {
+        deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
+    }
+
+    impl TerminatingToolCallDeltaHook {
+        fn observed(&self) -> Vec<RecordedToolCallDelta> {
+            self.deltas
+                .lock()
+                .expect("tool call delta hook records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl PromptHook<MockCompletionModel> for TerminatingToolCallDeltaHook {
+        fn on_tool_call_delta(
+            &self,
+            tool_call_id: &str,
+            internal_call_id: &str,
+            tool_name: Option<&str>,
+            tool_call_delta: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            let deltas = self.deltas.clone();
+            let event = (
+                tool_call_id.to_string(),
+                internal_call_id.to_string(),
+                tool_name.map(str::to_string),
+                tool_call_delta.to_string(),
+            );
+
+            async move {
+                deltas
+                    .lock()
+                    .expect("tool call delta hook records mutex was poisoned")
+                    .push(event);
+                HookAction::terminate("stop on tool call delta")
+            }
+        }
+    }
+
+    fn text_metadata(content: &OneOrMany<AssistantContent>) -> Option<&serde_json::Value> {
+        content.iter().find_map(|item| match item {
+            AssistantContent::Text(text) => text.additional_params.as_ref(),
+            _ => None,
+        })
     }
 
     #[tokio::test]
@@ -1198,6 +1551,357 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stream_prompt_emits_tool_call_deltas_without_hook() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("stream a tool call").await;
+        let mut deltas = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    },
+                )) => {
+                    deltas.push((id, internal_call_id, content));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            deltas,
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("calculator".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let hook = RecordingToolCallDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("stream a tool call")
+            .with_hook(hook.clone())
+            .await;
+        let mut stream_deltas = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    },
+                )) => {
+                    stream_deltas.push((id, internal_call_id, content));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            hook.observed(),
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    Some("calculator".to_string()),
+                    String::new()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "{\"x\":".to_string()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "1}".to_string()
+                ),
+            ]
+        );
+        assert_eq!(
+            stream_deltas,
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("calculator".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let hook = TerminatingToolCallDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("stream a tool call")
+            .with_hook(hook.clone())
+            .await;
+        let mut saw_delta = false;
+        let mut saw_final_response = false;
+        let mut error_message = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => {
+                    saw_delta = true;
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    saw_final_response = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error_message = Some(err.to_string());
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            hook.observed(),
+            vec![(
+                "tool_1".to_string(),
+                "internal_1".to_string(),
+                Some("calculator".to_string()),
+                String::new()
+            )]
+        );
+        assert!(!saw_delta);
+        assert!(!saw_final_response);
+        assert!(
+            error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("PromptCancelled: stop on tool call delta")),
+            "expected hook termination error, got {error_message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_exposes_completion_calls() {
+        let first_call_usage = usage(10, 2);
+        let second_call_usage = usage(25, 5);
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response(first_call_usage),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response(second_call_usage),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
+        let mut completion_calls_events = Vec::new();
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::CompletionCall(call_usage)) => {
+                    completion_calls_events.push(call_usage);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response = Some(response);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            completion_calls_events,
+            vec![
+                CompletionCall::new(0, Some(first_call_usage)),
+                CompletionCall::new(1, Some(second_call_usage))
+            ]
+        );
+
+        let final_response = final_response.expect("expected final response");
+        assert_eq!(
+            final_response.usage(),
+            Usage {
+                input_tokens: 35,
+                output_tokens: 7,
+                total_tokens: 42,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            }
+        );
+        assert_eq!(
+            final_response.completion_calls(),
+            &[
+                CompletionCall::new(0, Some(first_call_usage)),
+                CompletionCall::new(1, Some(second_call_usage))
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
+        let call_usage = usage(10, 2);
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(call_usage),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("say done")
+            .with_hook(TerminateOnStreamFinish)
+            .await;
+        let mut completion_calls = Vec::new();
+        let mut saw_error = false;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::CompletionCall(completion_call)) => {
+                    completion_calls.push(completion_call);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    panic!("unexpected final response after hook termination: {response:?}");
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    saw_error = true;
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            completion_calls,
+            vec![CompletionCall::new(0, Some(call_usage))]
+        );
+        assert!(saw_error);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_completion_calls_records_unreported_usage() {
+        let second_call_usage = usage(25, 5);
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response(second_call_usage),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
+        let mut completion_calls_events = Vec::new();
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::CompletionCall(call_usage)) => {
+                    completion_calls_events.push(call_usage);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response = Some(response);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let expected_usage = vec![
+            CompletionCall::new(0, None),
+            CompletionCall::new(1, Some(second_call_usage)),
+        ];
+        assert_eq!(completion_calls_events, expected_usage);
+
+        let final_response = final_response.expect("expected final response");
+        assert_eq!(final_response.completion_calls(), expected_usage.as_slice());
+    }
+
+    #[tokio::test]
     async fn final_response_matches_streamed_text_when_provider_final_is_textless() {
         let agent = AgentBuilder::new(streaming_text_then_final_model()).build();
 
@@ -1221,6 +1925,114 @@ mod tests {
 
         assert_eq!(streamed_text, "hello world");
         assert_eq!(final_response_text.as_deref(), Some("hello world"));
+    }
+
+    #[tokio::test]
+    async fn final_response_preserves_structured_text_metadata() {
+        let agent = AgentBuilder::new(streaming_cited_text_then_final_model()).build();
+
+        let mut stream = agent.stream_prompt("answer with citations").await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let final_response = final_response.expect("expected final response");
+        assert_eq!(final_response.response(), "cited answer");
+        let metadata = text_metadata(final_response.content())
+            .expect("expected text metadata in final content");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    #[tokio::test]
+    async fn final_response_history_preserves_structured_text_metadata() {
+        let agent = AgentBuilder::new(streaming_cited_text_then_final_model()).build();
+
+        let empty_history: &[Message] = &[];
+        let mut stream = agent
+            .stream_prompt("answer with citations")
+            .with_history(empty_history)
+            .await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let final_response = final_response.expect("expected final response");
+        let history = final_response
+            .history()
+            .expect("with_history should include final history");
+        let assistant_content = history
+            .iter()
+            .find_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .expect("expected assistant message in history");
+        let metadata =
+            text_metadata(assistant_content).expect("expected text metadata in assistant history");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_follow_up_history_preserves_structured_text_metadata() {
+        let model = streaming_cited_text_then_tool_model();
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).build();
+        let empty_history: &[Message] = &[];
+
+        let mut stream = agent
+            .stream_prompt("use a tool with citations")
+            .with_history(empty_history)
+            .multi_turn(3)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up_history = requests[1].chat_history.iter().collect::<Vec<_>>();
+        let assistant_content = follow_up_history
+            .iter()
+            .find_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .expect("expected assistant message in follow-up history");
+        let metadata = text_metadata(assistant_content)
+            .expect("expected citation metadata in follow-up assistant history");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
     }
 
     #[tokio::test]
