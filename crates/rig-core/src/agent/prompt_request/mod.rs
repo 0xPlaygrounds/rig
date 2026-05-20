@@ -416,6 +416,16 @@ fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
         )
 }
 
+fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
 impl<M, P> PromptRequest<Extended, M, P>
 where
     M: CompletionModel,
@@ -582,10 +592,11 @@ where
                 ));
             }
 
-            let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
+            let tool_calls = resp
                 .choice
                 .iter()
-                .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
+                .filter(|choice| matches!(choice, AssistantContent::ToolCall(_)))
+                .collect::<Vec<_>>();
 
             // Some providers normalize textless terminal turns into a single empty text item
             // because the generic completion response cannot represent an empty choice. Treat
@@ -598,17 +609,7 @@ where
             }
 
             if tool_calls.is_empty() {
-                let merged_texts = texts
-                    .into_iter()
-                    .filter_map(|content| {
-                        if let AssistantContent::Text(text) = content {
-                            Some(text.text.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                let merged_texts = assistant_text_from_choice(&resp.choice);
 
                 if self.max_turns > 1 {
                     tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
@@ -1012,7 +1013,7 @@ mod tests {
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
             TypedPrompt, Usage,
         },
-        message::UserContent,
+        message::{Text, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockCompletionModel, MockTurn,
         },
@@ -1305,6 +1306,27 @@ mod tests {
         let requests = agent.model.requests();
         assert_eq!(requests.len(), 2);
         validate_follow_up_tool_history(&requests[1]);
+    }
+
+    #[tokio::test]
+    async fn prompt_request_concatenates_text_blocks_without_inserted_newlines() {
+        let model = MockCompletionModel::new([MockTurn::from_contents([
+            AssistantContent::Text(Text::new("According to the document, ")),
+            AssistantContent::Text(Text::new("the grass is green")),
+            AssistantContent::Text(Text::new(" and the sky is blue.")),
+        ])
+        .expect("mock response should contain text blocks")]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("answer with cited spans")
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(
+            response,
+            "According to the document, the grass is green and the sky is blue."
+        );
     }
 
     // ----- Conversation memory integration tests -----

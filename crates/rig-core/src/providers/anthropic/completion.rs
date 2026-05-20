@@ -85,13 +85,12 @@ impl ProviderResponseExt for CompletionResponse {
             .iter()
             .filter_map(|x| {
                 if let Content::Text { text, .. } = x {
-                    Some(text.to_owned())
+                    Some(text.as_str())
                 } else {
                     None
                 }
             })
-            .collect::<Vec<String>>()
-            .join("\n");
+            .collect::<String>();
 
         if res.is_empty() { None } else { Some(res) }
     }
@@ -495,6 +494,23 @@ pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_
     }
 }
 
+fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
+    anthropic_citations(text).map_err(|err| {
+        MessageError::ConversionError(format!(
+            "Text `additional_params.citations` is not valid Anthropic citations: {err}"
+        ))
+    })
+}
+
+fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
+    let citations = extract_anthropic_text_citations(&text)?;
+    Ok(Content::Text {
+        text: text.text,
+        citations,
+        cache_control: None,
+    })
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
@@ -684,11 +700,7 @@ impl TryFrom<message::AssistantContent> for Content {
     type Error = MessageError;
     fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text, .. }) => Ok(Content::Text {
-                text,
-                citations: Vec::new(),
-                cache_control: None,
-            }),
+            message::AssistantContent::Text(text) => anthropic_text_content_from_message_text(text),
             message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
                 "Anthropic currently doesn't support images.".to_string(),
             )),
@@ -711,11 +723,9 @@ fn anthropic_content_from_assistant_content(
     content: message::AssistantContent,
 ) -> Result<Vec<Content>, MessageError> {
     match content {
-        message::AssistantContent::Text(message::Text { text, .. }) => Ok(vec![Content::Text {
-            text,
-            citations: Vec::new(),
-            cache_control: None,
-        }]),
+        message::AssistantContent::Text(text) => {
+            Ok(vec![anthropic_text_content_from_message_text(text)?])
+        }
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),
@@ -2910,6 +2920,104 @@ mod tests {
         };
         let recovered = anthropic_citations(&text).unwrap();
         assert_eq!(recovered.len(), 1);
+    }
+
+    #[test]
+    fn provider_text_response_concatenates_text_blocks_without_inserted_newlines() {
+        let response = CompletionResponse {
+            content: vec![
+                Content::Text {
+                    text: "According to the document, ".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+                Content::Text {
+                    text: "the grass is green".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+                Content::Text {
+                    text: " and the sky is blue.".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+            ],
+            id: "msg_1".into(),
+            model: "claude-test".into(),
+            role: "assistant".into(),
+            stop_reason: Some("end_turn".into()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 1,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                output_tokens: 1,
+            },
+        };
+
+        assert_eq!(
+            response.get_text_response().as_deref(),
+            Some("According to the document, the grass is green and the sky is blue.")
+        );
+    }
+
+    #[test]
+    fn assistant_text_citations_survive_anthropic_request_conversion() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+                text: "the grass is green".into(),
+                additional_params: Some(json!({
+                    "citations": [{
+                        "type": "char_location",
+                        "cited_text": "The grass is green.",
+                        "document_index": 0,
+                        "start_char_index": 0,
+                        "end_char_index": 20
+                    }]
+                })),
+            })),
+        };
+
+        let converted: Message = assistant.try_into().unwrap();
+        let Content::Text {
+            citations, text, ..
+        } = converted.content.first()
+        else {
+            panic!("expected assistant text content");
+        };
+
+        assert_eq!(text, "the grass is green");
+        assert_eq!(
+            citations,
+            vec![Citation::CharLocation {
+                cited_text: "The grass is green.".into(),
+                document_index: 0,
+                document_title: None,
+                start_char_index: 0,
+                end_char_index: 20,
+            }]
+        );
+    }
+
+    #[test]
+    fn assistant_text_invalid_citations_are_rejected_for_anthropic_request_conversion() {
+        let text = message::AssistantContent::Text(message::Text {
+            text: "bad citation".into(),
+            additional_params: Some(json!({
+                "citations": [{
+                    "type": "unknown_location",
+                    "cited_text": "bad"
+                }]
+            })),
+        });
+
+        let result = Content::try_from(text);
+
+        assert!(
+            result.is_err(),
+            "invalid Anthropic citation metadata should not be silently dropped"
+        );
     }
 
     #[test]
