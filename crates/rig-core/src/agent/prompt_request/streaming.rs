@@ -484,6 +484,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -605,6 +606,7 @@ where
                     gen_ai.usage.input_tokens = tracing::field::Empty,
                     gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                     gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                     gen_ai.usage.reasoning_tokens = tracing::field::Empty,
                     gen_ai.input.messages = tracing::field::Empty,
                     gen_ai.output.messages = tracing::field::Empty,
@@ -881,6 +883,7 @@ where
                     current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
                     current_span.record("gen_ai.usage.cache_read.input_tokens", aggregated_usage.cached_input_tokens);
                     current_span.record("gen_ai.usage.cache_creation.input_tokens", aggregated_usage.cache_creation_input_tokens);
+                    current_span.record("gen_ai.usage.tool_use_prompt_tokens", aggregated_usage.tool_use_prompt_tokens);
                     current_span.record("gen_ai.usage.reasoning_tokens", aggregated_usage.reasoning_tokens);
                     tracing::info!("Agent multi-turn stream finished");
                     if let Some((memory, id)) = memory_handle.as_ref()
