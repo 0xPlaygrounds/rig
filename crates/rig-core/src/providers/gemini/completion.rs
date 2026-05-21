@@ -111,6 +111,7 @@ where
         };
 
         let request = create_request_body(completion_request)?;
+        let declared_function_names = declared_function_names_from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -163,7 +164,10 @@ where
                     );
                 }
 
-                response.try_into()
+                completion_response_from_generate_content_response(
+                    response,
+                    Some(&declared_function_names),
+                )
             } else {
                 let text = String::from_utf8_lossy(
                     &response
@@ -408,111 +412,189 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     }
 }
 
+pub(crate) fn declared_function_names_from_request(
+    request: &GenerateContentRequest,
+) -> Vec<String> {
+    let mut names = Vec::new();
+
+    let Some(tools) = &request.tools else {
+        return names;
+    };
+
+    for tool in tools {
+        for key in ["functionDeclarations", "function_declarations"] {
+            let Some(function_declarations) = tool.get(key).and_then(Value::as_array) else {
+                continue;
+            };
+
+            for declaration in function_declarations {
+                let Some(name) = declaration.get("name").and_then(Value::as_str) else {
+                    continue;
+                };
+
+                if !names.iter().any(|declared| declared == name) {
+                    names.push(name.to_string());
+                }
+            }
+        }
+    }
+
+    names
+}
+
+pub(crate) fn validate_function_call_name(
+    function_name: &str,
+    declared_function_names: &[String],
+) -> Result<(), CompletionError> {
+    if declared_function_names
+        .iter()
+        .any(|declared| declared == function_name)
+    {
+        tracing::trace!(
+            target: "rig::completions",
+            provider = "gemini",
+            raw_function_name = function_name,
+            declared_function_names = ?declared_function_names,
+            validation = "accepted",
+            "Gemini function call matched a declared function"
+        );
+        return Ok(());
+    }
+
+    tracing::warn!(
+        target: "rig::completions",
+        provider = "gemini",
+        raw_function_name = function_name,
+        declared_function_names = ?declared_function_names,
+        validation = "rejected",
+        "Gemini returned a function call for an undeclared function"
+    );
+
+    Err(CompletionError::ResponseError(format!(
+        "Gemini returned function call `{function_name}`, but it was not declared in the request. Declared functions: [{}]",
+        declared_function_names.join(", ")
+    )))
+}
+
+pub(crate) fn completion_response_from_generate_content_response(
+    response: GenerateContentResponse,
+    declared_function_names: Option<&[String]>,
+) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    let candidate = response.candidates.first().ok_or_else(|| {
+        CompletionError::ResponseError("No response candidates in response".into())
+    })?;
+
+    let content = candidate
+        .content
+        .as_ref()
+        .ok_or_else(|| {
+            let reason = candidate
+                .finish_reason
+                .as_ref()
+                .map(|r| format!("finish_reason={r:?}"))
+                .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
+            let message = candidate
+                .finish_message
+                .as_deref()
+                .unwrap_or("no finish message provided");
+            CompletionError::ResponseError(format!(
+                "Gemini candidate missing content ({reason}, finish_message={message})"
+            ))
+        })?
+        .parts
+        .iter()
+        .map(
+            |Part {
+                 thought,
+                 thought_signature,
+                 part,
+                 ..
+             }| {
+                Ok(match part {
+                    PartKind::Text(text) => {
+                        if let Some(thought) = thought
+                            && *thought
+                        {
+                            completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                                text,
+                                thought_signature.clone(),
+                            ))
+                        } else {
+                            completion::AssistantContent::text(text)
+                        }
+                    }
+                    PartKind::InlineData(inline_data) => {
+                        let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+
+                        match mime_type {
+                            Some(message::MediaType::Image(media_type)) => {
+                                message::AssistantContent::image_base64(
+                                    &inline_data.data,
+                                    Some(media_type),
+                                    Some(message::ImageDetail::default()),
+                                )
+                            }
+                            _ => {
+                                return Err(CompletionError::ResponseError(format!(
+                                    "Unsupported media type {mime_type:?}"
+                                )));
+                            }
+                        }
+                    }
+                    PartKind::FunctionCall(function_call) => {
+                        if let Some(declared_function_names) = declared_function_names {
+                            validate_function_call_name(
+                                &function_call.name,
+                                declared_function_names,
+                            )?;
+                        }
+
+                        completion::AssistantContent::ToolCall(
+                            message::ToolCall::new(
+                                function_call.name.clone(),
+                                message::ToolFunction::new(
+                                    function_call.name.clone(),
+                                    function_call.args.clone(),
+                                ),
+                            )
+                            .with_signature(thought_signature.clone()),
+                        )
+                    }
+                    _ => {
+                        return Err(CompletionError::ResponseError(
+                            "Response did not contain a message or tool call".into(),
+                        ));
+                    }
+                })
+            },
+        )
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let choice = OneOrMany::many(content).map_err(|_| {
+        CompletionError::ResponseError(
+            "Response contained no message or tool call (empty)".to_owned(),
+        )
+    })?;
+
+    let usage = response
+        .usage_metadata
+        .as_ref()
+        .and_then(GetTokenUsage::token_usage)
+        .unwrap_or_default();
+
+    Ok(completion::CompletionResponse {
+        choice,
+        usage,
+        raw_response: response,
+        message_id: None,
+    })
+}
+
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
-        let candidate = response.candidates.first().ok_or_else(|| {
-            CompletionError::ResponseError("No response candidates in response".into())
-        })?;
-
-        let content = candidate
-            .content
-            .as_ref()
-            .ok_or_else(|| {
-                let reason = candidate
-                    .finish_reason
-                    .as_ref()
-                    .map(|r| format!("finish_reason={r:?}"))
-                    .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
-                let message = candidate
-                    .finish_message
-                    .as_deref()
-                    .unwrap_or("no finish message provided");
-                CompletionError::ResponseError(format!(
-                    "Gemini candidate missing content ({reason}, finish_message={message})"
-                ))
-            })?
-            .parts
-            .iter()
-            .map(
-                |Part {
-                     thought,
-                     thought_signature,
-                     part,
-                     ..
-                 }| {
-                    Ok(match part {
-                        PartKind::Text(text) => {
-                            if let Some(thought) = thought
-                                && *thought
-                            {
-                                completion::AssistantContent::Reasoning(
-                                    Reasoning::new_with_signature(text, thought_signature.clone()),
-                                )
-                            } else {
-                                completion::AssistantContent::text(text)
-                            }
-                        }
-                        PartKind::InlineData(inline_data) => {
-                            let mime_type =
-                                message::MediaType::from_mime_type(&inline_data.mime_type);
-
-                            match mime_type {
-                                Some(message::MediaType::Image(media_type)) => {
-                                    message::AssistantContent::image_base64(
-                                        &inline_data.data,
-                                        Some(media_type),
-                                        Some(message::ImageDetail::default()),
-                                    )
-                                }
-                                _ => {
-                                    return Err(CompletionError::ResponseError(format!(
-                                        "Unsupported media type {mime_type:?}"
-                                    )));
-                                }
-                            }
-                        }
-                        PartKind::FunctionCall(function_call) => {
-                            completion::AssistantContent::ToolCall(
-                                message::ToolCall::new(
-                                    function_call.name.clone(),
-                                    message::ToolFunction::new(
-                                        function_call.name.clone(),
-                                        function_call.args.clone(),
-                                    ),
-                                )
-                                .with_signature(thought_signature.clone()),
-                            )
-                        }
-                        _ => {
-                            return Err(CompletionError::ResponseError(
-                                "Response did not contain a message or tool call".into(),
-                            ));
-                        }
-                    })
-                },
-            )
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        let usage = response
-            .usage_metadata
-            .as_ref()
-            .and_then(GetTokenUsage::token_usage)
-            .unwrap_or_default();
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        completion_response_from_generate_content_response(response, None)
     }
 }
 
@@ -2090,6 +2172,37 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn function_call_response(name: &str) -> GenerateContentResponse {
+        GenerateContentResponse {
+            response_id: "resp_1".to_string(),
+            candidates: vec![ContentCandidate {
+                content: Some(Content {
+                    parts: vec![Part {
+                        thought: None,
+                        thought_signature: None,
+                        part: PartKind::FunctionCall(gemini_api_types::FunctionCall {
+                            name: name.to_string(),
+                            args: json!({"code": "return 2 + 2;"}),
+                        }),
+                        additional_params: None,
+                    }],
+                    role: Some(Role::Model),
+                }),
+                finish_reason: Some(FinishReason::Stop),
+                safety_ratings: None,
+                citation_metadata: None,
+                token_count: None,
+                avg_logprobs: None,
+                logprobs_result: None,
+                index: Some(0),
+                finish_message: None,
+            }],
+            prompt_feedback: None,
+            usage_metadata: None,
+            model_version: None,
+        }
+    }
+
     #[test]
     fn test_resolve_request_model_uses_override() {
         let request = CompletionRequest {
@@ -2401,6 +2514,41 @@ mod tests {
         assert_eq!(converted.usage.output_tokens, 30);
         assert_eq!(converted.usage.reasoning_tokens, 10);
         assert_eq!(converted.usage.total_tokens, 100);
+    }
+
+    #[test]
+    fn test_completion_response_accepts_declared_function_call_name() {
+        let declared = vec!["JavaScript".to_string()];
+        let response = function_call_response("JavaScript");
+
+        let converted =
+            completion_response_from_generate_content_response(response, Some(&declared))
+                .expect("declared function call should convert");
+
+        assert!(matches!(
+            converted.choice.first(),
+            message::AssistantContent::ToolCall(tool_call)
+                if tool_call.function.name == "JavaScript"
+                    && tool_call.id == "JavaScript"
+        ));
+    }
+
+    #[test]
+    fn test_completion_response_rejects_undeclared_default_api_function_call() {
+        let declared = vec!["JavaScript".to_string()];
+        let response = function_call_response("default_api");
+
+        let err = completion_response_from_generate_content_response(response, Some(&declared))
+            .expect_err("undeclared Gemini function call should be rejected");
+
+        assert!(
+            matches!(
+                err,
+                CompletionError::ResponseError(ref message)
+                    if message.contains("default_api") && message.contains("JavaScript")
+            ),
+            "expected response error describing rejected function call, got {err:?}"
+        );
     }
 
     #[test]

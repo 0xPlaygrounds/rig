@@ -7,7 +7,7 @@ use crate::{
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResult, ToolResultContent, UserContent},
     streaming::{StreamedAssistantContent, StreamedUserContent},
-    tool::server::ToolServerHandle,
+    tool::server::{ToolServerError, ToolServerHandle},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
@@ -707,6 +707,17 @@ where
                                 let tool_result = match
                                 tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
                                     Ok(thing) => thing,
+                                    Err(ToolServerError::ToolsetError(
+                                        ToolSetError::ToolNotFoundError(name),
+                                    )) => {
+                                        tracing::warn!(
+                                            tool_name = name.as_str(),
+                                            "Model requested an unknown tool"
+                                        );
+                                        return Err(StreamingError::Tool(
+                                            ToolSetError::ToolNotFoundError(name),
+                                        ));
+                                    }
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
                                         e.to_string()
@@ -988,7 +999,8 @@ mod tests {
     use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
-        AppendFailingMemory, FailingMemory, MockCompletionModel, MockResponse, MockStreamEvent,
+        AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockResponse,
+        MockStreamEvent,
     };
     use futures::StreamExt;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1216,8 +1228,8 @@ mod tests {
             vec![
                 MockStreamEvent::tool_call(
                     "tool_call_1",
-                    "missing_tool",
-                    serde_json::json!({"input": "value"}),
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_1"),
                 MockStreamEvent::final_response_with_total_tokens(4),
@@ -1360,8 +1372,8 @@ mod tests {
                 MockStreamEvent::text("I need a tool. "),
                 MockStreamEvent::tool_call(
                     "tool_call_1",
-                    "missing_tool",
-                    serde_json::json!({"input": "value"}),
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_1"),
                 MockStreamEvent::final_response_with_total_tokens(4),
@@ -1485,7 +1497,7 @@ mod tests {
     async fn stream_prompt_continues_after_tool_call_turn() {
         let model = streaming_tool_then_text_model();
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
         let empty_history: &[Message] = &[];
 
         let mut stream = agent
@@ -1545,6 +1557,63 @@ mod tests {
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
         assert!(validate_follow_up_tool_history(&requests[1]).is_ok());
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_unknown_tool_errors_without_tool_result_or_follow_up_turn() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "missing_tool",
+                    serde_json::json!({"input": "value"}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be called"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("do tool work").multi_turn(3).await;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut saw_final_response = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => saw_tool_call = true,
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => saw_tool_result = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(saw_tool_call);
+        assert!(!saw_tool_result);
+        assert!(!saw_final_response);
+        assert!(
+            matches!(
+                error,
+                Some(StreamingError::Tool(crate::tool::ToolSetError::ToolNotFoundError(ref name)))
+                    if name == "missing_tool"
+            ),
+            "expected missing tool error, got {error:?}"
+        );
+        assert_eq!(recorded.requests().len(), 1);
     }
 
     #[tokio::test]
@@ -1741,8 +1810,8 @@ mod tests {
             vec![
                 MockStreamEvent::tool_call(
                     "tool_call_1",
-                    "missing_tool",
-                    serde_json::json!({"input": "value"}),
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_1"),
                 MockStreamEvent::final_response(first_call_usage),
@@ -1752,7 +1821,7 @@ mod tests {
                 MockStreamEvent::final_response(second_call_usage),
             ],
         ]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
         let empty_history: &[Message] = &[];
 
         let mut stream = agent
@@ -1852,8 +1921,8 @@ mod tests {
             vec![
                 MockStreamEvent::tool_call(
                     "tool_call_1",
-                    "missing_tool",
-                    serde_json::json!({"input": "value"}),
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_1"),
             ],
@@ -1862,7 +1931,7 @@ mod tests {
                 MockStreamEvent::final_response(second_call_usage),
             ],
         ]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
         let empty_history: &[Message] = &[];
 
         let mut stream = agent
@@ -1996,7 +2065,7 @@ mod tests {
     async fn tool_follow_up_history_preserves_structured_text_metadata() {
         let model = streaming_cited_text_then_tool_model();
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
         let empty_history: &[Message] = &[];
 
         let mut stream = agent

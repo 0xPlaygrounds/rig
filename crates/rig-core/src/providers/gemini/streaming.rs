@@ -8,7 +8,8 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
+    CompletionModel, create_request_body, declared_function_names_from_request,
+    resolve_request_model, streaming_endpoint, validate_function_call_name,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -113,6 +114,7 @@ where
             tracing::Span::current()
         };
         let request = create_request_body(completion_request)?;
+        let declared_function_names = declared_function_names_from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -137,7 +139,8 @@ where
             let mut final_usage = None;
             let mut final_finish_reason: Option<FinishReason> = None;
             let mut final_model_version: Option<String> = None;
-            while let Some(event_result) = event_source.next().await {
+            let mut fatal_error = false;
+            'events: while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
                         tracing::debug!("SSE connection opened");
@@ -196,54 +199,13 @@ where
                         }
 
                         for part in content.parts {
-                            match part {
-                                Part {
-                                    part: PartKind::Text(text),
-                                    thought: Some(true),
-                                    thought_signature,
-                                    ..
-                                } => {
-                                    if !text.is_empty() {
-                                        if thought_signature.is_some() {
-                                            // Signature arrives on the final chunk of a
-                                            // thinking block; emit a full Reasoning so the
-                                            // core accumulator captures the signature for
-                                            // Gemini 3+ roundtrip.
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                                id: None,
-                                                content: ReasoningContent::Text {
-                                                    text,
-                                                    signature: thought_signature,
-                                                },
-                                            });
-                                        } else {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                id: None,
-                                                reasoning: text,
-                                            });
-                                        }
-                                    }
-                                },
-                                Part {
-                                    part: PartKind::Text(text),
-                                    ..
-                                } => {
-                                    if !text.is_empty() {
-                                        yield Ok(streaming::RawStreamingChoice::Message(text));
-                                    }
-                                },
-                                Part {
-                                    part: PartKind::FunctionCall(function_call),
-                                    thought_signature,
-                                    ..
-                                } => {
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall(
-                                        streaming::RawStreamingToolCall::new(function_call.name.clone(), function_call.name.clone(), function_call.args.clone())
-                                            .with_signature(thought_signature)
-                                    ));
-                                },
-                                part => {
-                                    tracing::warn!(?part, "Unsupported response type with streaming");
+                            match raw_streaming_choice_from_part(part, &declared_function_names) {
+                                Ok(Some(choice)) => yield Ok(choice),
+                                Ok(None) => {}
+                                Err(error) => {
+                                    fatal_error = true;
+                                    yield Err(error);
+                                    break 'events;
                                 }
                             }
                         }
@@ -258,6 +220,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
+                        fatal_error = true;
                         yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
@@ -267,11 +230,13 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage_metadata: final_usage.unwrap_or_default(),
-                finish_reason: final_finish_reason,
-                model_version: final_model_version,
-            }));
+            if !fatal_error {
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage_metadata: final_usage.unwrap_or_default(),
+                    finish_reason: final_finish_reason,
+                    model_version: final_model_version,
+                }));
+            }
         }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
@@ -280,10 +245,90 @@ where
     }
 }
 
+pub(crate) fn raw_streaming_choice_from_part(
+    part: Part,
+    declared_function_names: &[String],
+) -> Result<Option<streaming::RawStreamingChoice<StreamingCompletionResponse>>, CompletionError> {
+    match part {
+        Part {
+            part: PartKind::Text(text),
+            thought: Some(true),
+            thought_signature,
+            ..
+        } => {
+            if text.is_empty() {
+                return Ok(None);
+            }
+
+            if thought_signature.is_some() {
+                // Signature arrives on the final chunk of a thinking block; emit a full
+                // Reasoning so the core accumulator captures the signature for Gemini 3+
+                // roundtrip.
+                Ok(Some(streaming::RawStreamingChoice::Reasoning {
+                    id: None,
+                    content: ReasoningContent::Text {
+                        text,
+                        signature: thought_signature,
+                    },
+                }))
+            } else {
+                Ok(Some(streaming::RawStreamingChoice::ReasoningDelta {
+                    id: None,
+                    reasoning: text,
+                }))
+            }
+        }
+        Part {
+            part: PartKind::Text(text),
+            ..
+        } => {
+            if text.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(streaming::RawStreamingChoice::Message(text)))
+            }
+        }
+        Part {
+            part: PartKind::FunctionCall(function_call),
+            thought_signature,
+            ..
+        } => {
+            validate_function_call_name(&function_call.name, declared_function_names)?;
+
+            Ok(Some(streaming::RawStreamingChoice::ToolCall(
+                streaming::RawStreamingToolCall::new(
+                    function_call.name.clone(),
+                    function_call.name,
+                    function_call.args,
+                )
+                .with_signature(thought_signature),
+            )))
+        }
+        part => {
+            tracing::warn!(?part, "Unsupported response type with streaming");
+            Ok(None)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn function_call_part(name: &str) -> Part {
+        Part {
+            thought: None,
+            thought_signature: Some("sig_123".to_string()),
+            part: PartKind::FunctionCall(
+                crate::providers::gemini::completion::gemini_api_types::FunctionCall {
+                    name: name.to_string(),
+                    args: json!({"code": "return 2 + 2;"}),
+                },
+            ),
+            additional_params: None,
+        }
+    }
 
     #[test]
     fn test_deserialize_stream_response_with_single_text_part() {
@@ -457,6 +502,38 @@ mod tests {
         } else {
             panic!("Expected function call at index 1");
         }
+    }
+
+    #[test]
+    fn test_streaming_part_accepts_declared_function_call_name() {
+        let declared = vec!["JavaScript".to_string()];
+        let choice = raw_streaming_choice_from_part(function_call_part("JavaScript"), &declared)
+            .expect("declared function call should convert")
+            .expect("declared function call should emit a streaming choice");
+
+        assert!(matches!(
+            choice,
+            streaming::RawStreamingChoice::ToolCall(tool_call)
+                if tool_call.name == "JavaScript"
+                    && tool_call.id == "JavaScript"
+                    && tool_call.signature.as_deref() == Some("sig_123")
+        ));
+    }
+
+    #[test]
+    fn test_streaming_part_rejects_undeclared_default_api_function_call() {
+        let declared = vec!["JavaScript".to_string()];
+        let err = raw_streaming_choice_from_part(function_call_part("default_api"), &declared)
+            .expect_err("undeclared Gemini function call should be rejected");
+
+        assert!(
+            matches!(
+                err,
+                CompletionError::ResponseError(ref message)
+                    if message.contains("default_api") && message.contains("JavaScript")
+            ),
+            "expected response error describing rejected function call, got {err:?}"
+        );
     }
 
     #[test]
