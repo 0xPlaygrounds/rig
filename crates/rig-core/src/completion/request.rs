@@ -413,6 +413,9 @@ pub struct Usage {
     pub cached_input_tokens: u64,
     /// The number of input tokens written to a provider-managed cache
     pub cache_creation_input_tokens: u64,
+    /// The number of tool-use prompt tokens used in a given request.
+    #[serde(default)]
+    pub tool_use_prompt_tokens: u64,
     /// The number of tokens spent on internal reasoning / "thoughts" by reasoning-capable
     /// models (e.g. Gemini thinking, Anthropic extended thinking, OpenAI o-series).
     pub reasoning_tokens: u64,
@@ -427,6 +430,7 @@ impl Usage {
             total_tokens: 0,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
     }
@@ -449,6 +453,7 @@ impl Add for Usage {
             cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
             cache_creation_input_tokens: self.cache_creation_input_tokens
                 + other.cache_creation_input_tokens,
+            tool_use_prompt_tokens: self.tool_use_prompt_tokens + other.tool_use_prompt_tokens,
             reasoning_tokens: self.reasoning_tokens + other.reasoning_tokens,
         }
     }
@@ -461,6 +466,7 @@ impl AddAssign for Usage {
         self.total_tokens += other.total_tokens;
         self.cached_input_tokens += other.cached_input_tokens;
         self.cache_creation_input_tokens += other.cache_creation_input_tokens;
+        self.tool_use_prompt_tokens += other.tool_use_prompt_tokens;
         self.reasoning_tokens += other.reasoning_tokens;
     }
 }

@@ -18,6 +18,7 @@ fn simple_text_turn() -> MockTurn {
             total_tokens: 15,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         })
         .with_message_id("msg_mock_1")
@@ -36,6 +37,7 @@ fn tool_then_text_model() -> MockCompletionModel {
                 total_tokens: 23,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .with_message_id("msg_tool"),
@@ -46,6 +48,7 @@ fn tool_then_text_model() -> MockCompletionModel {
                 total_tokens: 24,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .with_message_id("msg_text"),

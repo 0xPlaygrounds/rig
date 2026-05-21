@@ -30,6 +30,8 @@ pub enum SqliteError {
 }
 
 /// Value that can be stored in a SQLite vector store document column.
+///
+/// Use [`serde_json::Value`] for columns declared as `JSON`.
 pub trait ColumnValue: Send + Sync {
     /// Converts this value to a typed SQLite value.
     fn to_sql_value(&self) -> Value;
@@ -1928,12 +1930,50 @@ fn sqlite_text_value(
     Ok(serde_json::Value::String(value.to_string()))
 }
 
+fn sqlite_column_declares_json(column_type: &str) -> bool {
+    column_type
+        .split_whitespace()
+        .next()
+        .is_some_and(|token| token.eq_ignore_ascii_case("JSON"))
+}
+
+fn sqlite_json_text_value(
+    index: usize,
+    value_type: Type,
+    column: &Column,
+    value: &[u8],
+) -> rusqlite::Result<serde_json::Value> {
+    let value = std::str::from_utf8(value).map_err(|e| {
+        sqlite_column_value_error(
+            index,
+            value_type,
+            column,
+            format!("invalid UTF-8 JSON text: {e}"),
+        )
+    })?;
+
+    serde_json::from_str(value).map_err(|e| {
+        sqlite_column_value_error(index, value_type, column, format!("invalid JSON text: {e}"))
+    })
+}
+
 fn sqlite_column_value_to_json(
     index: usize,
     column: &Column,
     value: ValueRef<'_>,
 ) -> rusqlite::Result<serde_json::Value> {
     let value_type = value.data_type();
+
+    if sqlite_column_declares_json(column.col_type) {
+        return match value {
+            ValueRef::Null => Ok(serde_json::Value::Null),
+            ValueRef::Text(value) => sqlite_json_text_value(index, value_type, column, value),
+            ValueRef::Integer(value) => Ok(serde_json::Value::Number(value.into())),
+            ValueRef::Real(value) => sqlite_number_value(index, value_type, column, value),
+            ValueRef::Blob(value) => sqlite_json_text_value(index, value_type, column, value),
+        };
+    }
+
     let column_affinity = SqliteColumnAffinity::from_column_type(column.col_type);
 
     match (column_affinity, value) {
@@ -2236,6 +2276,16 @@ impl ColumnValue for bool {
     }
 }
 
+impl ColumnValue for serde_json::Value {
+    fn to_sql_value(&self) -> Value {
+        Value::Text(self.to_string())
+    }
+
+    fn column_type(&self) -> &'static str {
+        "JSON"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2271,6 +2321,95 @@ mod tests {
                 metadata_type: SqliteMetadataType::Boolean,
             },
         ]
+    }
+
+    #[test]
+    fn json_column_text_decodes_to_json_object() -> anyhow::Result<()> {
+        let column = Column::new("metadata", "JSON");
+        let value = sqlite_column_value_to_json(
+            0,
+            &column,
+            ValueRef::Text(br#"{"knowledge_doc_id":361,"knowledge_id":1,"user_id":1}"#),
+        )?;
+
+        let expected = serde_json::json!({
+            "knowledge_doc_id": 361,
+            "knowledge_id": 1,
+            "user_id": 1
+        });
+        anyhow::ensure!(
+            value == expected,
+            "JSON column text should decode to a JSON object, got {value:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn text_column_json_looking_text_stays_string() -> anyhow::Result<()> {
+        let column = Column::new("metadata", "TEXT");
+        let value = sqlite_column_value_to_json(
+            0,
+            &column,
+            ValueRef::Text(br#"{"knowledge_doc_id":361,"knowledge_id":1,"user_id":1}"#),
+        )?;
+
+        let expected =
+            serde_json::json!(r#"{"knowledge_doc_id":361,"knowledge_id":1,"user_id":1}"#);
+        anyhow::ensure!(
+            value == expected,
+            "TEXT column should preserve JSON-looking text as a string, got {value:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn json_column_invalid_text_returns_conversion_error() -> anyhow::Result<()> {
+        let column = Column::new("metadata", "JSON");
+        let err = match sqlite_column_value_to_json(0, &column, ValueRef::Text(b"not json")) {
+            Ok(value) => anyhow::bail!("invalid JSON column text should fail, got {value:?}"),
+            Err(err) => err,
+        };
+
+        anyhow::ensure!(
+            matches!(
+                err,
+                rusqlite::Error::FromSqlConversionFailure(0, Type::Text, _)
+            ),
+            "invalid JSON column text should return a conversion error, got {err}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn serde_json_value_column_value_round_trips_json_column() -> anyhow::Result<()> {
+        let value = serde_json::json!({
+            "knowledge_doc_id": 361,
+            "knowledge_id": 1,
+            "user_id": 1
+        });
+        anyhow::ensure!(
+            value.column_type() == "JSON",
+            "serde_json::Value should declare JSON column type"
+        );
+
+        let text = match value.to_sql_value() {
+            Value::Text(text) => text,
+            value => {
+                anyhow::bail!("serde_json::Value should serialize as JSON text, got {value:?}")
+            }
+        };
+
+        let column = Column::new("metadata", "JSON");
+        let round_trip = sqlite_column_value_to_json(0, &column, ValueRef::Text(text.as_bytes()))?;
+        anyhow::ensure!(
+            round_trip == value,
+            "serde_json::Value should round-trip through a JSON column, got {round_trip:?}"
+        );
+
+        Ok(())
     }
 
     fn filter_error<T: std::fmt::Debug>(
@@ -3231,6 +3370,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn live_json_column_structured_metadata_round_trips_in_top_n() -> anyhow::Result<()> {
+        let metadata = StructuredMetadata {
+            user_id: 1,
+            knowledge_id: 1,
+            knowledge_doc_id: 361,
+        };
+        let index = live_structured_json_metadata_test_index(
+            "live_json_column_structured_metadata_round_trips_in_top_n",
+            vec![structured_json_metadata_row(
+                "structured",
+                metadata.clone(),
+                "metadata document",
+                vec![1.0, 0.0],
+            )],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .build();
+        let results = index
+            .top_n::<StructuredJsonMetadataDocument>(req.clone())
+            .await?;
+
+        let Some((_, id, doc)) = results.first() else {
+            anyhow::bail!("expected structured JSON metadata document result");
+        };
+        anyhow::ensure!(id == "structured", "unexpected id: {id}");
+        anyhow::ensure!(
+            doc.metadata == metadata,
+            "JSON column should deserialize into structured metadata: {doc:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        anyhow::ensure!(
+            id_results.first().is_some_and(|(_, id)| id == "structured"),
+            "top_n_ids should still return the structured metadata document id: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn live_text_affinity_metadata_filters_during_candidate_search() -> anyhow::Result<()> {
         let index = live_common_type_test_index(
             "live_text_affinity_metadata_filters_during_candidate_search",
@@ -4140,6 +4323,22 @@ mod tests {
         Ok(vector_store.index(model))
     }
 
+    async fn live_structured_json_metadata_test_index(
+        name: &str,
+        rows: Vec<(StructuredJsonMetadataDocument, OneOrMany<Embedding>)>,
+    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, StructuredJsonMetadataDocument>> {
+        register_sqlite_vec_extension();
+
+        let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
+        let model = TestEmbeddingModel;
+        let vector_store: SqliteVectorStore<_, StructuredJsonMetadataDocument> =
+            SqliteVectorStore::new(conn, &model).await?;
+
+        vector_store.add_rows(rows).await?;
+
+        Ok(vector_store.index(model))
+    }
+
     fn row(
         id: impl Into<String>,
         category: impl Into<String>,
@@ -4195,6 +4394,27 @@ mod tests {
             id: id.into(),
             category: category.into(),
             metadata: serde_json::json!({ "xxx": xxx.as_ref() }).to_string(),
+            title: title.into(),
+        };
+
+        (
+            document.clone(),
+            OneOrMany::one(Embedding {
+                document: document.title.clone(),
+                vec,
+            }),
+        )
+    }
+
+    fn structured_json_metadata_row(
+        id: impl Into<String>,
+        metadata: StructuredMetadata,
+        title: impl Into<String>,
+        vec: Vec<f64>,
+    ) -> (StructuredJsonMetadataDocument, OneOrMany<Embedding>) {
+        let document = StructuredJsonMetadataDocument {
+            id: id.into(),
+            metadata,
             title: title.into(),
         };
 
@@ -4670,6 +4890,53 @@ mod tests {
                 ("id", Box::new(self.id.clone())),
                 ("category", Box::new(self.category.clone())),
                 ("metadata", Box::new(self.metadata.clone())),
+                ("title", Box::new(self.title.clone())),
+            ]
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+    struct StructuredMetadata {
+        user_id: i64,
+        knowledge_id: i64,
+        knowledge_doc_id: i64,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    struct StructuredJsonMetadataDocument {
+        id: String,
+        metadata: StructuredMetadata,
+        title: String,
+    }
+
+    impl SqliteVectorStoreTable for StructuredJsonMetadataDocument {
+        fn name() -> &'static str {
+            "live_structured_json_metadata_test_documents"
+        }
+
+        fn schema() -> Vec<Column> {
+            vec![
+                Column::new("id", "TEXT PRIMARY KEY"),
+                Column::new("metadata", "JSON"),
+                Column::new("title", "TEXT"),
+            ]
+        }
+
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+            vec![
+                ("id", Box::new(self.id.clone())),
+                (
+                    "metadata",
+                    Box::new(serde_json::json!({
+                        "user_id": self.metadata.user_id,
+                        "knowledge_id": self.metadata.knowledge_id,
+                        "knowledge_doc_id": self.metadata.knowledge_doc_id,
+                    })),
+                ),
                 ("title", Box::new(self.title.clone())),
             ]
         }

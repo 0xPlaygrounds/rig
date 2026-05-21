@@ -693,6 +693,7 @@ impl GetTokenUsage for ResponsesUsage {
                 .map(|details| details.cached_tokens)
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: self.output_tokens_details.reasoning_tokens,
         })
     }
