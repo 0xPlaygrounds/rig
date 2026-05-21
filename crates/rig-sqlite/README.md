@@ -26,9 +26,13 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 [dependencies]
 rig-sqlite = "0.2.6"
 rig-core = "0.37.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ```
 
-You can also run `cargo add rig-sqlite rig-core` to add the most recent versions of the dependencies to your project.
+You can also run `cargo add rig-sqlite rig-core serde_json` and
+`cargo add serde --features derive` to add the most recent versions of the
+dependencies to your project.
 
 See the [`/examples`](./examples) folder for usage examples.
 
