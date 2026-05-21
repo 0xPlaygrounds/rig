@@ -45,6 +45,52 @@ unsafe {
 }
 ```
 
+## Storing JSON Metadata
+
+Declare JSON metadata columns with `Column::new("metadata", "JSON")` and store
+the value as `serde_json::Value`. Rig writes the value as JSON text and parses
+it back as structured JSON when documents are returned from vector searches.
+
+```rust
+use rig_core::Embed;
+use rig_sqlite::{Column, ColumnValue, SqliteVectorStoreTable};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Deserialize, Embed, Serialize)]
+struct Document {
+    id: String,
+    #[embed]
+    text: String,
+    metadata: serde_json::Value,
+}
+
+impl SqliteVectorStoreTable for Document {
+    fn name() -> &'static str {
+        "documents"
+    }
+
+    fn schema() -> Vec<Column> {
+        vec![
+            Column::new("id", "TEXT PRIMARY KEY"),
+            Column::new("text", "TEXT"),
+            Column::new("metadata", "JSON"),
+        ]
+    }
+
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        vec![
+            ("id", Box::new(self.id.clone())),
+            ("text", Box::new(self.text.clone())),
+            ("metadata", Box::new(self.metadata.clone())),
+        ]
+    }
+}
+```
+
 ## Filtering JSON Metadata
 
 SQLite filters can target document-table columns that store JSON text. Use
