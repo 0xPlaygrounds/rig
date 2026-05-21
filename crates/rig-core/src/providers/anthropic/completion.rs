@@ -242,6 +242,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 + response.usage.output_tokens,
             cached_input_tokens: response.usage.cache_read_input_tokens.unwrap_or(0),
             cache_creation_input_tokens: response.usage.cache_creation_input_tokens.unwrap_or(0),
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
 
@@ -742,8 +743,8 @@ fn extract_anthropic_doc_params(
 /// # Example
 ///
 /// ```no_run
-/// use rig::completion::message::{self, AssistantContent};
-/// use rig::providers::anthropic::completion::anthropic_citations;
+/// use rig_core::completion::message::{self, AssistantContent};
+/// use rig_core::providers::anthropic::completion::anthropic_citations;
 ///
 /// fn print_citations(content: &AssistantContent) {
 ///     if let AssistantContent::Text(text) = content

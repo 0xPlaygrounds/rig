@@ -51,6 +51,7 @@ impl GetTokenUsage for PartialUsage {
         usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
         usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
         usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
+        usage.tool_use_prompt_tokens = self.tool_use_prompt_token_count.unwrap_or_default() as u64;
         usage.total_tokens = self.total_token_count as u64;
 
         Some(usage)
@@ -307,6 +308,10 @@ mod tests {
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
         assert_eq!(response.candidates.len(), 1);
+        assert!(matches!(
+            response.candidates[0].finish_reason,
+            Some(FinishReason::Stop)
+        ));
         let content = response.candidates[0]
             .content
             .as_ref()
@@ -588,7 +593,7 @@ mod tests {
             prompt_tokens_details: None,
             cache_tokens_details: None,
             candidates_tokens_details: None,
-            tool_use_prompt_token_count: None,
+            tool_use_prompt_token_count: Some(12),
             tool_use_prompt_tokens_details: None,
             traffic_type: None,
         };
@@ -598,6 +603,7 @@ mod tests {
         assert_eq!(token_usage.cached_input_tokens, 20);
         assert_eq!(token_usage.output_tokens, 30);
         assert_eq!(token_usage.reasoning_tokens, 10);
+        assert_eq!(token_usage.tool_use_prompt_tokens, 12);
         assert_eq!(token_usage.total_tokens, 100);
     }
 
@@ -669,8 +675,8 @@ mod tests {
                 tool_use_prompt_tokens_details: None,
                 traffic_type: None,
             },
-            finish_reason: None,
-            model_version: None,
+            finish_reason: Some(FinishReason::Stop),
+            model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
         let token_usage = response.token_usage().unwrap();
@@ -679,6 +685,11 @@ mod tests {
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.total_tokens, 150);
+        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.0-flash-001")
+        );
     }
 
     #[test]
@@ -728,6 +739,7 @@ mod tests {
         assert_eq!(token_usage.cached_input_tokens, 25);
         assert_eq!(token_usage.output_tokens, 50);
         assert_eq!(token_usage.reasoning_tokens, 15);
+        assert_eq!(token_usage.tool_use_prompt_tokens, 12);
         assert_eq!(token_usage.total_tokens, 190);
     }
 }

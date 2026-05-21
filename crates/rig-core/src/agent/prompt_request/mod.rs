@@ -1044,6 +1044,7 @@ mod tests {
             total_tokens: input_tokens + output_tokens,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
     }
@@ -1058,6 +1059,7 @@ mod tests {
                 total_tokens: 3,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             },
         );
@@ -1104,6 +1106,7 @@ mod tests {
                         "total_tokens": 7,
                         "cached_input_tokens": 0,
                         "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
                         "reasoning_tokens": 0,
                     }
                 }
@@ -1145,6 +1148,7 @@ mod tests {
             total_tokens: 10,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
         let model =
@@ -1218,6 +1222,7 @@ mod tests {
             total_tokens: 2,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
         let second_call_usage = Usage {
@@ -1226,6 +1231,7 @@ mod tests {
             total_tokens: 2,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
         let model = MockCompletionModel::new([
@@ -1252,6 +1258,7 @@ mod tests {
                 total_tokens: 4,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             }
         );
