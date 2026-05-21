@@ -96,6 +96,16 @@ pub enum PromptError {
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
 
+    /// The model requested a tool that is not registered for this prompt.
+    #[error(
+        "UnknownToolCall: model requested unknown tool `{tool_name}` (tool_call_id={tool_call_id}, call_id={call_id:?})"
+    )]
+    UnknownToolCall {
+        tool_name: String,
+        tool_call_id: String,
+        call_id: Option<String>,
+    },
+
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]
     ToolServerError(#[from] Box<ToolServerError>),

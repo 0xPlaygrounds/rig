@@ -740,11 +740,15 @@ where
                                 )) => {
                                     tracing::warn!(
                                         tool_name = name.as_str(),
+                                        tool_call_id = tool_call.id.as_str(),
+                                        call_id = ?tool_call.call_id,
                                         "Model requested an unknown tool"
                                     );
-                                    return Err(PromptError::ToolError(
-                                        ToolSetError::ToolNotFoundError(name),
-                                    ));
+                                    return Err(PromptError::UnknownToolCall {
+                                        tool_name: name,
+                                        tool_call_id: tool_call.id.clone(),
+                                        call_id: tool_call.call_id.clone(),
+                                    });
                                 }
                                 Err(e) => {
                                     tracing::warn!("Error while executing tool: {e}");
@@ -1342,8 +1346,13 @@ mod tests {
         assert!(
             matches!(
                 err,
-                PromptError::ToolError(crate::tool::ToolSetError::ToolNotFoundError(ref name))
-                    if name == "missing_tool"
+                PromptError::UnknownToolCall {
+                    ref tool_name,
+                    ref tool_call_id,
+                    ref call_id,
+                } if tool_name == "missing_tool"
+                    && tool_call_id == "tool_call_1"
+                    && call_id.as_deref() == Some("call_1")
             ),
             "expected missing tool error, got {err:?}"
         );

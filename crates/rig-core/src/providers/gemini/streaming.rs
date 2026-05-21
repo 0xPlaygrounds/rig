@@ -8,8 +8,8 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, declared_function_names_from_request,
-    resolve_request_model, streaming_endpoint, validate_function_call_name,
+    CompletionModel, FunctionCallNameValidator, create_request_body, resolve_request_model,
+    streaming_endpoint, validate_function_call_name,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -114,7 +114,7 @@ where
             tracing::Span::current()
         };
         let request = create_request_body(completion_request)?;
-        let declared_function_names = declared_function_names_from_request(&request);
+        let function_call_validator = FunctionCallNameValidator::from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -199,7 +199,7 @@ where
                         }
 
                         for part in content.parts {
-                            match raw_streaming_choice_from_part(part, &declared_function_names) {
+                            match raw_streaming_choice_from_part(part, &function_call_validator) {
                                 Ok(Some(choice)) => yield Ok(choice),
                                 Ok(None) => {}
                                 Err(error) => {
@@ -247,7 +247,7 @@ where
 
 pub(crate) fn raw_streaming_choice_from_part(
     part: Part,
-    declared_function_names: &[String],
+    function_call_validator: &FunctionCallNameValidator,
 ) -> Result<Option<streaming::RawStreamingChoice<StreamingCompletionResponse>>, CompletionError> {
     match part {
         Part {
@@ -293,7 +293,7 @@ pub(crate) fn raw_streaming_choice_from_part(
             thought_signature,
             ..
         } => {
-            validate_function_call_name(&function_call.name, declared_function_names)?;
+            validate_function_call_name(&function_call.name, function_call_validator)?;
 
             Ok(Some(streaming::RawStreamingChoice::ToolCall(
                 streaming::RawStreamingToolCall::new(
@@ -506,8 +506,8 @@ mod tests {
 
     #[test]
     fn test_streaming_part_accepts_declared_function_call_name() {
-        let declared = vec!["JavaScript".to_string()];
-        let choice = raw_streaming_choice_from_part(function_call_part("JavaScript"), &declared)
+        let validator = FunctionCallNameValidator::new(vec!["JavaScript".to_string()], None);
+        let choice = raw_streaming_choice_from_part(function_call_part("JavaScript"), &validator)
             .expect("declared function call should convert")
             .expect("declared function call should emit a streaming choice");
 
@@ -522,8 +522,8 @@ mod tests {
 
     #[test]
     fn test_streaming_part_rejects_undeclared_default_api_function_call() {
-        let declared = vec!["JavaScript".to_string()];
-        let err = raw_streaming_choice_from_part(function_call_part("default_api"), &declared)
+        let validator = FunctionCallNameValidator::new(vec!["JavaScript".to_string()], None);
+        let err = raw_streaming_choice_from_part(function_call_part("default_api"), &validator)
             .expect_err("undeclared Gemini function call should be rejected");
 
         assert!(
@@ -531,6 +531,27 @@ mod tests {
                 err,
                 CompletionError::ResponseError(ref message)
                     if message.contains("default_api") && message.contains("JavaScript")
+            ),
+            "expected response error describing rejected function call, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_streaming_part_rejects_declared_but_disallowed_function_call() {
+        let validator = FunctionCallNameValidator::new(
+            vec!["JavaScript".to_string(), "OtherTool".to_string()],
+            Some(vec!["JavaScript".to_string()]),
+        );
+        let err = raw_streaming_choice_from_part(function_call_part("OtherTool"), &validator)
+            .expect_err("disallowed Gemini function call should be rejected");
+
+        assert!(
+            matches!(
+                err,
+                CompletionError::ResponseError(ref message)
+                    if message.contains("OtherTool")
+                        && message.contains("allowed")
+                        && message.contains("JavaScript")
             ),
             "expected response error describing rejected function call, got {err:?}"
         );

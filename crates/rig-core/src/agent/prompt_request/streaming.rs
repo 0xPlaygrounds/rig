@@ -271,6 +271,14 @@ pub enum StreamingError {
     Prompt(#[from] Box<PromptError>),
     #[error("ToolSetError: {0}")]
     Tool(#[from] ToolSetError),
+    #[error(
+        "UnknownToolCall: model requested unknown tool `{tool_name}` (tool_call_id={tool_call_id}, call_id={call_id:?})"
+    )]
+    UnknownToolCall {
+        tool_name: String,
+        tool_call_id: String,
+        call_id: Option<String>,
+    },
 }
 
 /// Surface [`crate::memory::ConversationMemory`] failures through the existing
@@ -712,11 +720,15 @@ where
                                     )) => {
                                         tracing::warn!(
                                             tool_name = name.as_str(),
+                                            tool_call_id = tool_call.id.as_str(),
+                                            call_id = ?tool_call.call_id,
                                             "Model requested an unknown tool"
                                         );
-                                        return Err(StreamingError::Tool(
-                                            ToolSetError::ToolNotFoundError(name),
-                                        ));
+                                        return Err(StreamingError::UnknownToolCall {
+                                            tool_name: name,
+                                            tool_call_id: tool_call.id.clone(),
+                                            call_id: tool_call.call_id.clone(),
+                                        });
                                     }
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
@@ -1608,8 +1620,13 @@ mod tests {
         assert!(
             matches!(
                 error,
-                Some(StreamingError::Tool(crate::tool::ToolSetError::ToolNotFoundError(ref name)))
-                    if name == "missing_tool"
+                Some(StreamingError::UnknownToolCall {
+                    ref tool_name,
+                    ref tool_call_id,
+                    ref call_id,
+                }) if tool_name == "missing_tool"
+                    && tool_call_id == "tool_call_1"
+                    && call_id.as_deref() == Some("call_1")
             ),
             "expected missing tool error, got {error:?}"
         );
