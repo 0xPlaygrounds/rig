@@ -30,6 +30,8 @@ pub enum SqliteError {
 }
 
 /// Value that can be stored in a SQLite vector store document column.
+///
+/// Use [`serde_json::Value`] for columns declared as `JSON`.
 pub trait ColumnValue: Send + Sync {
     /// Converts this value to a typed SQLite value.
     fn to_sql_value(&self) -> Value;
@@ -2274,6 +2276,16 @@ impl ColumnValue for bool {
     }
 }
 
+impl ColumnValue for serde_json::Value {
+    fn to_sql_value(&self) -> Value {
+        Value::Text(self.to_string())
+    }
+
+    fn column_type(&self) -> &'static str {
+        "JSON"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2366,6 +2378,35 @@ mod tests {
                 rusqlite::Error::FromSqlConversionFailure(0, Type::Text, _)
             ),
             "invalid JSON column text should return a conversion error, got {err}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn serde_json_value_column_value_round_trips_json_column() -> anyhow::Result<()> {
+        let value = serde_json::json!({
+            "knowledge_doc_id": 361,
+            "knowledge_id": 1,
+            "user_id": 1
+        });
+        anyhow::ensure!(
+            value.column_type() == "JSON",
+            "serde_json::Value should declare JSON column type"
+        );
+
+        let text = match value.to_sql_value() {
+            Value::Text(text) => text,
+            value => {
+                anyhow::bail!("serde_json::Value should serialize as JSON text, got {value:?}")
+            }
+        };
+
+        let column = Column::new("metadata", "JSON");
+        let round_trip = sqlite_column_value_to_json(0, &column, ValueRef::Text(text.as_bytes()))?;
+        anyhow::ensure!(
+            round_trip == value,
+            "serde_json::Value should round-trip through a JSON column, got {round_trip:?}"
         );
 
         Ok(())
@@ -4890,7 +4931,11 @@ mod tests {
                 ("id", Box::new(self.id.clone())),
                 (
                     "metadata",
-                    Box::new(serde_json::to_string(&self.metadata).unwrap_or_default()),
+                    Box::new(serde_json::json!({
+                        "user_id": self.metadata.user_id,
+                        "knowledge_id": self.metadata.knowledge_id,
+                        "knowledge_doc_id": self.metadata.knowledge_doc_id,
+                    })),
                 ),
                 ("title", Box::new(self.title.clone())),
             ]

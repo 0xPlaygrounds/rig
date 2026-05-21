@@ -26,9 +26,13 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 [dependencies]
 rig-sqlite = "0.2.6"
 rig-core = "0.37.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ```
 
-You can also run `cargo add rig-sqlite rig-core` to add the most recent versions of the dependencies to your project.
+You can also run `cargo add rig-sqlite rig-core serde_json` and
+`cargo add serde --features derive` to add the most recent versions of the
+dependencies to your project.
 
 See the [`/examples`](./examples) folder for usage examples.
 
@@ -42,6 +46,52 @@ use sqlite_vec::sqlite3_vec_init;
 
 unsafe {
     sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
+}
+```
+
+## Storing JSON Metadata
+
+Declare JSON metadata columns with `Column::new("metadata", "JSON")` and store
+the value as `serde_json::Value`. Rig writes the value as JSON text and parses
+it back as structured JSON when documents are returned from vector searches.
+
+```rust
+use rig_core::Embed;
+use rig_sqlite::{Column, ColumnValue, SqliteVectorStoreTable};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Deserialize, Embed, Serialize)]
+struct Document {
+    id: String,
+    #[embed]
+    text: String,
+    metadata: serde_json::Value,
+}
+
+impl SqliteVectorStoreTable for Document {
+    fn name() -> &'static str {
+        "documents"
+    }
+
+    fn schema() -> Vec<Column> {
+        vec![
+            Column::new("id", "TEXT PRIMARY KEY"),
+            Column::new("text", "TEXT"),
+            Column::new("metadata", "JSON"),
+        ]
+    }
+
+    fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        vec![
+            ("id", Box::new(self.id.clone())),
+            ("text", Box::new(self.text.clone())),
+            ("metadata", Box::new(self.metadata.clone())),
+        ]
+    }
 }
 ```
 
