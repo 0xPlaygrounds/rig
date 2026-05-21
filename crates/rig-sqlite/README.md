@@ -24,8 +24,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-sqlite = "0.2.5"
-rig-core = "0.36.0"
+rig-sqlite = "0.2.6"
+rig-core = "0.37.0"
 ```
 
 You can also run `cargo add rig-sqlite rig-core` to add the most recent versions of the dependencies to your project.
@@ -44,3 +44,33 @@ unsafe {
     sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
 }
 ```
+
+## Filtering JSON Metadata
+
+SQLite filters can target document-table columns that store JSON text. Use
+SQLite's JSON extraction operators in the filter key:
+
+```rust
+use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_sqlite::SqliteSearchFilter;
+
+let req = VectorSearchRequest::builder()
+    .query("release notes")
+    .samples(5)
+    .filter(SqliteSearchFilter::eq(
+        "metadata->>'$.source'",
+        serde_json::json!("docs"),
+    ))
+    .build();
+```
+
+Use `->>` when you want SQLite to compare a JSON value as a SQL scalar, such as
+text, number, or boolean. Use `->` when you want to compare against JSON text;
+Rig serializes the right-hand side as JSON for that form.
+
+JSON metadata filters are applied after sqlite-vec candidate search because
+they reference the document table, not sqlite-vec metadata columns. This keeps
+results correct, including with `samples(1)`, but requires exhaustive candidate
+retrieval. For frequently-used scalar filters, prefer storing the value in a
+regular column marked with `Column::indexed()` so sqlite-vec can apply it during
+candidate search.
