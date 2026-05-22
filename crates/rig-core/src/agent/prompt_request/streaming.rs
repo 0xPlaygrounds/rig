@@ -19,7 +19,7 @@ use tracing_futures::Instrument;
 use super::{CompletionCall, ToolCallHookAction, reported_usage};
 use crate::{
     agent::Agent,
-    completion::{CompletionError, CompletionModel, PromptError},
+    completion::{CompletionError, CompletionModel, PromptError, UnknownToolCallError},
     message::{Message, Text},
     tool::ToolSetError,
 };
@@ -271,14 +271,8 @@ pub enum StreamingError {
     Prompt(#[from] Box<PromptError>),
     #[error("ToolSetError: {0}")]
     Tool(#[from] ToolSetError),
-    #[error(
-        "UnknownToolCall: model requested unknown tool `{tool_name}` (tool_call_id={tool_call_id}, call_id={call_id:?})"
-    )]
-    UnknownToolCall {
-        tool_name: String,
-        tool_call_id: String,
-        call_id: Option<String>,
-    },
+    #[error("UnknownToolCall: {0}")]
+    UnknownToolCall(UnknownToolCallError),
 }
 
 /// Surface [`crate::memory::ConversationMemory`] failures through the existing
@@ -669,6 +663,26 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
+                            let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
+                            if !tool_server_handle.has_tool(&tool_call.function.name).await {
+                                let available_tool_names = tool_server_handle.tool_names().await;
+                                tracing::warn!(
+                                    tool_name = tool_call.function.name.as_str(),
+                                    tool_call_id = tool_call.id.as_str(),
+                                    call_id = ?tool_call.call_id,
+                                    available_tool_names = ?available_tool_names,
+                                    "Model requested an unknown tool"
+                                );
+                                yield Err(StreamingError::UnknownToolCall(UnknownToolCallError::new(
+                                    tool_call.function.name.clone(),
+                                    tool_call.id.clone(),
+                                    tool_call.call_id.clone(),
+                                    tool_call.function.arguments.clone(),
+                                    available_tool_names,
+                                )));
+                                break 'outer;
+                            }
+
                             let tool_span = info_span!(
                                 parent: tracing::Span::current(),
                                 "execute_tool",
@@ -684,7 +698,6 @@ where
 
                             let tc_result = async {
                                 let tool_span = tracing::Span::current();
-                                let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
                                     let action = hook
                                         .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
@@ -724,11 +737,15 @@ where
                                             call_id = ?tool_call.call_id,
                                             "Model requested an unknown tool"
                                         );
-                                        return Err(StreamingError::UnknownToolCall {
-                                            tool_name: name,
-                                            tool_call_id: tool_call.id.clone(),
-                                            call_id: tool_call.call_id.clone(),
-                                        });
+                                        return Err(StreamingError::UnknownToolCall(
+                                            UnknownToolCallError::new(
+                                                name,
+                                                tool_call.id.clone(),
+                                                tool_call.call_id.clone(),
+                                                tool_call.function.arguments.clone(),
+                                                tool_server_handle.tool_names().await,
+                                            ),
+                                        ));
                                     }
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
@@ -1617,19 +1634,18 @@ mod tests {
             }
         }
 
-        assert!(saw_tool_call);
+        assert!(!saw_tool_call);
         assert!(!saw_tool_result);
         assert!(!saw_final_response);
         assert!(
             matches!(
                 error,
-                Some(StreamingError::UnknownToolCall {
-                    ref tool_name,
-                    ref tool_call_id,
-                    ref call_id,
-                }) if tool_name == "missing_tool"
-                    && tool_call_id == "tool_call_1"
-                    && call_id.as_deref() == Some("call_1")
+                Some(StreamingError::UnknownToolCall(ref error))
+                    if error.tool_name == "missing_tool"
+                        && error.tool_call_id == "tool_call_1"
+                        && error.call_id.as_deref() == Some("call_1")
+                        && error.arguments == serde_json::json!({"input": "value"})
+                        && error.available_tool_names.is_empty()
             ),
             "expected missing tool error, got {error:?}"
         );

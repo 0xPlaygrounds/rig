@@ -8,8 +8,8 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, FunctionCallNameValidator, create_request_body, resolve_request_model,
-    streaming_endpoint, validate_function_call_name,
+    CompletionModel, create_request_body, function_call_validator_from_request,
+    resolve_request_model, streaming_endpoint, validate_function_call_name,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -115,7 +115,7 @@ where
             tracing::Span::current()
         };
         let request = create_request_body(completion_request)?;
-        let function_call_validator = FunctionCallNameValidator::from_request(&request);
+        let function_call_validator = function_call_validator_from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -248,7 +248,7 @@ where
 
 pub(crate) fn raw_streaming_choice_from_part(
     part: Part,
-    function_call_validator: &FunctionCallNameValidator,
+    function_call_validator: &crate::completion::ToolCallNameValidator,
 ) -> Result<Option<streaming::RawStreamingChoice<StreamingCompletionResponse>>, CompletionError> {
     match part {
         Part {
@@ -511,7 +511,11 @@ mod tests {
 
     #[test]
     fn test_streaming_part_accepts_declared_function_call_name() {
-        let validator = FunctionCallNameValidator::new(vec!["JavaScript".to_string()], None);
+        let validator = crate::completion::ToolCallNameValidator::new(
+            "gemini",
+            vec!["JavaScript".to_string()],
+            None,
+        );
         let choice = raw_streaming_choice_from_part(function_call_part("JavaScript"), &validator)
             .expect("declared function call should convert")
             .expect("declared function call should emit a streaming choice");
@@ -527,15 +531,23 @@ mod tests {
 
     #[test]
     fn test_streaming_part_rejects_undeclared_default_api_function_call() {
-        let validator = FunctionCallNameValidator::new(vec!["JavaScript".to_string()], None);
+        let validator = crate::completion::ToolCallNameValidator::new(
+            "gemini",
+            vec!["JavaScript".to_string()],
+            None,
+        );
         let err = raw_streaming_choice_from_part(function_call_part("default_api"), &validator)
             .expect_err("undeclared Gemini function call should be rejected");
 
         assert!(
             matches!(
                 err,
-                CompletionError::ResponseError(ref message)
-                    if message.contains("default_api") && message.contains("JavaScript")
+                CompletionError::InvalidToolCall(ref invalid)
+                    if invalid.provider == "gemini"
+                        && invalid.tool_name == "default_api"
+                        && invalid.declared_tool_names == vec!["JavaScript".to_string()]
+                        && invalid.allowed_tool_names.is_none()
+                        && invalid.reason == crate::completion::ToolCallValidationReason::Undeclared
             ),
             "expected response error describing rejected function call, got {err:?}"
         );
@@ -543,7 +555,8 @@ mod tests {
 
     #[test]
     fn test_streaming_part_rejects_declared_but_disallowed_function_call() {
-        let validator = FunctionCallNameValidator::new(
+        let validator = crate::completion::ToolCallNameValidator::new(
+            "gemini",
             vec!["JavaScript".to_string(), "OtherTool".to_string()],
             Some(vec!["JavaScript".to_string()]),
         );
@@ -553,10 +566,13 @@ mod tests {
         assert!(
             matches!(
                 err,
-                CompletionError::ResponseError(ref message)
-                    if message.contains("OtherTool")
-                        && message.contains("allowed")
-                        && message.contains("JavaScript")
+                CompletionError::InvalidToolCall(ref invalid)
+                    if invalid.provider == "gemini"
+                        && invalid.tool_name == "OtherTool"
+                        && invalid.declared_tool_names
+                            == vec!["JavaScript".to_string(), "OtherTool".to_string()]
+                        && invalid.allowed_tool_names == Some(vec!["JavaScript".to_string()])
+                        && invalid.reason == crate::completion::ToolCallValidationReason::Disallowed
             ),
             "expected response error describing rejected function call, got {err:?}"
         );

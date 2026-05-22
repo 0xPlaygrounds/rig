@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Document, Message, PromptError, Usage},
+    completion::{CompletionModel, Document, Message, PromptError, UnknownToolCallError, Usage},
     json_utils,
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
@@ -694,6 +694,25 @@ where
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
+                            if !tool_server_handle.has_tool(tool_name).await {
+                                let available_tool_names = tool_server_handle.tool_names().await;
+                                tracing::warn!(
+                                    tool_name = tool_name,
+                                    tool_call_id = tool_call.id.as_str(),
+                                    call_id = ?tool_call.call_id,
+                                    available_tool_names = ?available_tool_names,
+                                    "Model requested an unknown tool"
+                                );
+                                return Err(PromptError::UnknownToolCall(
+                                    UnknownToolCallError::new(
+                                        tool_name.to_string(),
+                                        tool_call.id.clone(),
+                                        tool_call.call_id.clone(),
+                                        tool_call.function.arguments.clone(),
+                                        available_tool_names,
+                                    ),
+                                ));
+                            }
                             if let Some(hook) = hook1 {
                                 let action = hook
                                     .on_tool_call(
@@ -744,11 +763,15 @@ where
                                         call_id = ?tool_call.call_id,
                                         "Model requested an unknown tool"
                                     );
-                                    return Err(PromptError::UnknownToolCall {
-                                        tool_name: name,
-                                        tool_call_id: tool_call.id.clone(),
-                                        call_id: tool_call.call_id.clone(),
-                                    });
+                                    return Err(PromptError::UnknownToolCall(
+                                        UnknownToolCallError::new(
+                                            name,
+                                            tool_call.id.clone(),
+                                            tool_call.call_id.clone(),
+                                            tool_call.function.arguments.clone(),
+                                            tool_server_handle.tool_names().await,
+                                        ),
+                                    ));
                                 }
                                 Err(e) => {
                                     tracing::warn!("Error while executing tool: {e}");
@@ -1353,13 +1376,12 @@ mod tests {
         assert!(
             matches!(
                 err,
-                PromptError::UnknownToolCall {
-                    ref tool_name,
-                    ref tool_call_id,
-                    ref call_id,
-                } if tool_name == "missing_tool"
-                    && tool_call_id == "tool_call_1"
-                    && call_id.as_deref() == Some("call_1")
+                PromptError::UnknownToolCall(ref error)
+                    if error.tool_name == "missing_tool"
+                        && error.tool_call_id == "tool_call_1"
+                        && error.call_id.as_deref() == Some("call_1")
+                        && error.arguments == json!({"input": "value"})
+                        && error.available_tool_names.is_empty()
             ),
             "expected missing tool error, got {err:?}"
         );

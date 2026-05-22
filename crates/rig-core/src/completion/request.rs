@@ -47,9 +47,174 @@ use crate::{
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
+use std::{collections::HashMap, fmt};
 use thiserror::Error;
+
+/// Why a provider-emitted tool call did not match the request contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolCallValidationReason {
+    /// The provider returned a tool name that was not declared in the request.
+    Undeclared,
+    /// The provider returned a declared tool name that was excluded by the request's tool-choice allowlist.
+    Disallowed,
+}
+
+impl fmt::Display for ToolCallValidationReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Undeclared => write!(f, "undeclared"),
+            Self::Disallowed => write!(f, "disallowed"),
+        }
+    }
+}
+
+/// A provider emitted a tool call that does not match the request's declared or allowed tools.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolCallValidationError {
+    /// Provider that emitted the invalid tool call.
+    pub provider: &'static str,
+    /// Tool name emitted by the provider.
+    pub tool_name: String,
+    /// Tool names declared in the request sent to the provider.
+    pub declared_tool_names: Vec<String>,
+    /// Optional tool names allowed by request-level tool choice settings.
+    pub allowed_tool_names: Option<Vec<String>>,
+    /// Why the emitted tool name was invalid.
+    pub reason: ToolCallValidationReason,
+}
+
+impl fmt::Display for ToolCallValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} returned {} tool call `{}`; declared tools: [{}]",
+            self.provider,
+            self.reason,
+            self.tool_name,
+            self.declared_tool_names.join(", ")
+        )?;
+
+        if let Some(allowed_tool_names) = &self.allowed_tool_names {
+            write!(f, "; allowed tools: [{}]", allowed_tool_names.join(", "))?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Validates provider-emitted tool calls against the request's declared and allowed tool names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolCallNameValidator {
+    provider: &'static str,
+    declared_tool_names: Vec<String>,
+    allowed_tool_names: Option<Vec<String>>,
+}
+
+impl ToolCallNameValidator {
+    /// Create a validator from the provider name, declared tools, and optional allowed tools.
+    pub fn new(
+        provider: &'static str,
+        declared_tool_names: Vec<String>,
+        allowed_tool_names: Option<Vec<String>>,
+    ) -> Self {
+        Self {
+            provider,
+            declared_tool_names,
+            allowed_tool_names,
+        }
+    }
+
+    /// Validate a provider-emitted tool name against this request contract.
+    pub fn validate(&self, tool_name: &str) -> Result<(), CompletionError> {
+        if !self
+            .declared_tool_names
+            .iter()
+            .any(|declared| declared == tool_name)
+        {
+            return Err(CompletionError::InvalidToolCall(ToolCallValidationError {
+                provider: self.provider,
+                tool_name: tool_name.to_string(),
+                declared_tool_names: self.declared_tool_names.clone(),
+                allowed_tool_names: self.allowed_tool_names.clone(),
+                reason: ToolCallValidationReason::Undeclared,
+            }));
+        }
+
+        if let Some(allowed_tool_names) = &self.allowed_tool_names
+            && !allowed_tool_names
+                .iter()
+                .any(|allowed| allowed == tool_name)
+        {
+            return Err(CompletionError::InvalidToolCall(ToolCallValidationError {
+                provider: self.provider,
+                tool_name: tool_name.to_string(),
+                declared_tool_names: self.declared_tool_names.clone(),
+                allowed_tool_names: self.allowed_tool_names.clone(),
+                reason: ToolCallValidationReason::Disallowed,
+            }));
+        }
+
+        Ok(())
+    }
+
+    /// Tool names declared in the request sent to the provider.
+    pub fn declared_tool_names(&self) -> &[String] {
+        &self.declared_tool_names
+    }
+
+    /// Optional request-level tool-choice allowlist.
+    pub fn allowed_tool_names(&self) -> Option<&[String]> {
+        self.allowed_tool_names.as_deref()
+    }
+}
+
+/// The model requested a tool that is not registered for this prompt.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnknownToolCallError {
+    /// Tool name requested by the model.
+    pub tool_name: String,
+    /// Provider/tool-call identifier for the attempted tool call.
+    pub tool_call_id: String,
+    /// Optional provider call id associated with the attempted tool call.
+    pub call_id: Option<String>,
+    /// Arguments the model supplied for the attempted tool call.
+    pub arguments: serde_json::Value,
+    /// Tool names registered with the prompt at the time of validation.
+    pub available_tool_names: Vec<String>,
+}
+
+impl UnknownToolCallError {
+    /// Create an unknown-tool error with the attempted call and available tool context.
+    pub fn new(
+        tool_name: String,
+        tool_call_id: String,
+        call_id: Option<String>,
+        arguments: serde_json::Value,
+        available_tool_names: Vec<String>,
+    ) -> Self {
+        Self {
+            tool_name,
+            tool_call_id,
+            call_id,
+            arguments,
+            available_tool_names,
+        }
+    }
+}
+
+impl fmt::Display for UnknownToolCallError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "model requested unknown tool `{}` (tool_call_id={}, call_id={:?}, available_tools=[{}])",
+            self.tool_name,
+            self.tool_call_id,
+            self.call_id,
+            self.available_tool_names.join(", ")
+        )
+    }
+}
 
 // Errors
 #[derive(Debug, Error)]
@@ -80,6 +245,10 @@ pub enum CompletionError {
     #[error("ResponseError: {0}")]
     ResponseError(String),
 
+    /// A provider emitted a tool call outside the request's declared or allowed tool set.
+    #[error("InvalidToolCall: {0}")]
+    InvalidToolCall(ToolCallValidationError),
+
     /// Error returned by the completion model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
@@ -97,14 +266,8 @@ pub enum PromptError {
     ToolError(#[from] ToolSetError),
 
     /// The model requested a tool that is not registered for this prompt.
-    #[error(
-        "UnknownToolCall: model requested unknown tool `{tool_name}` (tool_call_id={tool_call_id}, call_id={call_id:?})"
-    )]
-    UnknownToolCall {
-        tool_name: String,
-        tool_call_id: String,
-        call_id: Option<String>,
-    },
+    #[error("UnknownToolCall: {0}")]
+    UnknownToolCall(UnknownToolCallError),
 
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]

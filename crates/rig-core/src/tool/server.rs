@@ -136,6 +136,20 @@ impl ToolServerHandle {
         Ok(())
     }
 
+    /// Return the names of all tools registered with the server.
+    pub async fn tool_names(&self) -> Vec<String> {
+        let state = self.0.read().await;
+        let mut names = state.toolset.names();
+        names.sort();
+        names
+    }
+
+    /// Check whether a tool is registered with the server.
+    pub async fn has_tool(&self, tool_name: &str) -> bool {
+        let state = self.0.read().await;
+        state.toolset.contains(tool_name)
+    }
+
     /// Look up and execute a tool by name.
     ///
     /// The tool handle is cloned under a brief read lock so that

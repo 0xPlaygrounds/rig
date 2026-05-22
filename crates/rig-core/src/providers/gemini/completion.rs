@@ -34,7 +34,7 @@ use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::SpanCombinator;
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
+    completion::{self, CompletionError, CompletionRequest, GetTokenUsage, ToolCallNameValidator},
 };
 use gemini_api_types::{
     Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -111,7 +111,7 @@ where
         };
 
         let request = create_request_body(completion_request)?;
-        let function_call_validator = FunctionCallNameValidator::from_request(&request);
+        let function_call_validator = function_call_validator_from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -412,81 +412,14 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FunctionCallNameValidator {
-    declared_function_names: Vec<String>,
-    allowed_function_names: Option<Vec<String>>,
-}
-
-impl FunctionCallNameValidator {
-    pub(crate) fn new(
-        declared_function_names: Vec<String>,
-        allowed_function_names: Option<Vec<String>>,
-    ) -> Self {
-        Self {
-            declared_function_names,
-            allowed_function_names,
-        }
-    }
-
-    pub(crate) fn from_request(request: &GenerateContentRequest) -> Self {
-        Self::new(
-            declared_function_names_from_request(request),
-            allowed_function_names_from_request(request),
-        )
-    }
-
-    fn validate(&self, function_name: &str) -> Result<(), CompletionError> {
-        if !self
-            .declared_function_names
-            .iter()
-            .any(|declared| declared == function_name)
-        {
-            self.log_rejected(function_name, "undeclared");
-
-            return Err(CompletionError::ResponseError(format!(
-                "Gemini returned function call `{function_name}`, but it was not declared in the request. Declared functions: [{}]",
-                self.declared_function_names.join(", ")
-            )));
-        }
-
-        if let Some(allowed_function_names) = &self.allowed_function_names
-            && !allowed_function_names
-                .iter()
-                .any(|allowed| allowed == function_name)
-        {
-            self.log_rejected(function_name, "not_allowed");
-
-            return Err(CompletionError::ResponseError(format!(
-                "Gemini returned function call `{function_name}`, but it was not allowed by toolConfig.functionCallingConfig.allowedFunctionNames. Allowed functions: [{}]",
-                allowed_function_names.join(", ")
-            )));
-        }
-
-        tracing::trace!(
-            target: "rig::completions",
-            provider = "gemini",
-            raw_function_name = function_name,
-            declared_function_names = ?self.declared_function_names,
-            allowed_function_names = ?self.allowed_function_names,
-            validation = "accepted",
-            "Gemini function call matched an allowed function"
-        );
-
-        Ok(())
-    }
-
-    fn log_rejected(&self, function_name: &str, validation: &'static str) {
-        tracing::warn!(
-            target: "rig::completions",
-            provider = "gemini",
-            raw_function_name = function_name,
-            declared_function_names = ?self.declared_function_names,
-            allowed_function_names = ?self.allowed_function_names,
-            validation,
-            "Gemini returned a function call outside the request contract"
-        );
-    }
+pub(crate) fn function_call_validator_from_request(
+    request: &GenerateContentRequest,
+) -> ToolCallNameValidator {
+    ToolCallNameValidator::new(
+        "gemini",
+        declared_function_names_from_request(request),
+        allowed_function_names_from_request(request),
+    )
 }
 
 fn declared_function_names_from_request(request: &GenerateContentRequest) -> Vec<String> {
@@ -534,14 +467,42 @@ fn allowed_function_names_from_request(request: &GenerateContentRequest) -> Opti
 
 pub(crate) fn validate_function_call_name(
     function_name: &str,
-    validator: &FunctionCallNameValidator,
+    validator: &ToolCallNameValidator,
 ) -> Result<(), CompletionError> {
-    validator.validate(function_name)
+    match validator.validate(function_name) {
+        Ok(()) => {
+            tracing::trace!(
+                target: "rig::completions",
+                provider = "gemini",
+                raw_function_name = function_name,
+                declared_function_names = ?validator.declared_tool_names(),
+                allowed_function_names = ?validator.allowed_tool_names(),
+                validation = "accepted",
+                "Gemini function call matched an allowed function"
+            );
+            Ok(())
+        }
+        Err(error) => {
+            if let CompletionError::InvalidToolCall(invalid_tool_call) = &error {
+                tracing::warn!(
+                    target: "rig::completions",
+                    provider = "gemini",
+                    raw_function_name = function_name,
+                    declared_function_names = ?invalid_tool_call.declared_tool_names,
+                    allowed_function_names = ?invalid_tool_call.allowed_tool_names,
+                    validation = %invalid_tool_call.reason,
+                    "Gemini returned a function call outside the request contract"
+                );
+            }
+
+            Err(error)
+        }
+    }
 }
 
 pub(crate) fn completion_response_from_generate_content_response(
     response: GenerateContentResponse,
-    function_call_validator: &FunctionCallNameValidator,
+    function_call_validator: &ToolCallNameValidator,
 ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
     completion_response_from_generate_content_response_impl(response, Some(function_call_validator))
 }
@@ -554,7 +515,7 @@ fn completion_response_from_generate_content_response_unvalidated(
 
 fn completion_response_from_generate_content_response_impl(
     response: GenerateContentResponse,
-    function_call_validator: Option<&FunctionCallNameValidator>,
+    function_call_validator: Option<&ToolCallNameValidator>,
 ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
     let candidate = response.candidates.first().ok_or_else(|| {
         CompletionError::ResponseError("No response candidates in response".into())
@@ -2600,7 +2561,7 @@ mod tests {
 
     #[test]
     fn test_completion_response_accepts_declared_function_call_name() {
-        let validator = FunctionCallNameValidator::new(vec!["JavaScript".to_string()], None);
+        let validator = ToolCallNameValidator::new("gemini", vec!["JavaScript".to_string()], None);
         let response = function_call_response("JavaScript");
 
         let converted = completion_response_from_generate_content_response(response, &validator)
@@ -2616,7 +2577,7 @@ mod tests {
 
     #[test]
     fn test_completion_response_rejects_undeclared_default_api_function_call() {
-        let validator = FunctionCallNameValidator::new(vec!["JavaScript".to_string()], None);
+        let validator = ToolCallNameValidator::new("gemini", vec!["JavaScript".to_string()], None);
         let response = function_call_response("default_api");
 
         let err = completion_response_from_generate_content_response(response, &validator)
@@ -2625,8 +2586,12 @@ mod tests {
         assert!(
             matches!(
                 err,
-                CompletionError::ResponseError(ref message)
-                    if message.contains("default_api") && message.contains("JavaScript")
+                CompletionError::InvalidToolCall(ref invalid)
+                    if invalid.provider == "gemini"
+                        && invalid.tool_name == "default_api"
+                        && invalid.declared_tool_names == vec!["JavaScript".to_string()]
+                        && invalid.allowed_tool_names.is_none()
+                        && invalid.reason == crate::completion::ToolCallValidationReason::Undeclared
             ),
             "expected response error describing rejected function call, got {err:?}"
         );
@@ -2634,7 +2599,8 @@ mod tests {
 
     #[test]
     fn test_completion_response_rejects_declared_but_disallowed_function_call() {
-        let validator = FunctionCallNameValidator::new(
+        let validator = ToolCallNameValidator::new(
+            "gemini",
             vec!["JavaScript".to_string(), "OtherTool".to_string()],
             Some(vec!["JavaScript".to_string()]),
         );
@@ -2646,10 +2612,13 @@ mod tests {
         assert!(
             matches!(
                 err,
-                CompletionError::ResponseError(ref message)
-                    if message.contains("OtherTool")
-                        && message.contains("allowed")
-                        && message.contains("JavaScript")
+                CompletionError::InvalidToolCall(ref invalid)
+                    if invalid.provider == "gemini"
+                        && invalid.tool_name == "OtherTool"
+                        && invalid.declared_tool_names
+                            == vec!["JavaScript".to_string(), "OtherTool".to_string()]
+                        && invalid.allowed_tool_names == Some(vec!["JavaScript".to_string()])
+                        && invalid.reason == crate::completion::ToolCallValidationReason::Disallowed
             ),
             "expected response error describing rejected function call, got {err:?}"
         );
@@ -2675,7 +2644,7 @@ mod tests {
             system_instruction: None,
             additional_params: None,
         };
-        let validator = FunctionCallNameValidator::from_request(&request);
+        let validator = function_call_validator_from_request(&request);
 
         validate_function_call_name("JavaScript", &validator)
             .expect("allowed function should validate");
@@ -2685,8 +2654,11 @@ mod tests {
         assert!(
             matches!(
                 err,
-                CompletionError::ResponseError(ref message)
-                    if message.contains("OtherTool") && message.contains("allowed")
+                CompletionError::InvalidToolCall(ref invalid)
+                    if invalid.provider == "gemini"
+                        && invalid.tool_name == "OtherTool"
+                        && invalid.allowed_tool_names == Some(vec!["JavaScript".to_string()])
+                        && invalid.reason == crate::completion::ToolCallValidationReason::Disallowed
             ),
             "expected response error describing disallowed function, got {err:?}"
         );
