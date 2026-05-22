@@ -16,10 +16,15 @@ use std::{pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::{CompletionCall, ToolCallHookAction, reported_usage};
+use super::{
+    CompletionCall, ToolCallHookAction, reported_usage, unknown_tool_call_error,
+    validate_registered_tool_call,
+};
 use crate::{
     agent::Agent,
-    completion::{CompletionError, CompletionModel, PromptError, UnknownToolCallError},
+    completion::{
+        CompletionError, CompletionModel, PromptError, ToolCallNameValidator, UnknownToolCallError,
+    },
     message::{Message, Text},
     tool::ToolSetError,
 };
@@ -612,25 +617,28 @@ where
                     gen_ai.output.messages = tracing::field::Empty,
                 );
 
-                let mut stream = tracing::Instrument::instrument(
-                    build_completion_request(
-                        &model,
-                        current_prompt.clone(),
-                        &history_snapshot,
-                        preamble.as_deref(),
-                        &static_context,
-                        temperature,
-                        max_tokens,
-                        additional_params.as_ref(),
-                        tool_choice.as_ref(),
-                        &tool_server_handle,
-                        &dynamic_context,
-                        output_schema.as_ref(),
-                    )
-                    .await?
-                    .stream(), chat_stream_span
+                let completion_request = build_completion_request(
+                    &model,
+                    current_prompt.clone(),
+                    &history_snapshot,
+                    preamble.as_deref(),
+                    &static_context,
+                    temperature,
+                    max_tokens,
+                    additional_params.as_ref(),
+                    tool_choice.as_ref(),
+                    &tool_server_handle,
+                    &dynamic_context,
+                    output_schema.as_ref(),
                 )
-
+                .await?
+                .build();
+                let tool_call_validator =
+                    ToolCallNameValidator::from_completion_request("rig", &completion_request);
+                let mut stream = tracing::Instrument::instrument(
+                    model.stream(completion_request),
+                    chat_stream_span
+                )
                 .await?;
 
                 let call_index = completion_call_index;
@@ -664,22 +672,12 @@ where
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
                             let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
-                            if !tool_server_handle.has_tool(&tool_call.function.name).await {
-                                let available_tool_names = tool_server_handle.tool_names().await;
-                                tracing::warn!(
-                                    tool_name = tool_call.function.name.as_str(),
-                                    tool_call_id = tool_call.id.as_str(),
-                                    call_id = ?tool_call.call_id,
-                                    available_tool_names = ?available_tool_names,
-                                    "Model requested an unknown tool"
-                                );
-                                yield Err(StreamingError::UnknownToolCall(UnknownToolCallError::new(
-                                    tool_call.function.name.clone(),
-                                    tool_call.id.clone(),
-                                    tool_call.call_id.clone(),
-                                    tool_call.function.arguments.clone(),
-                                    available_tool_names,
-                                )));
+                            if let Err(error) = tool_call_validator.validate_tool_call(&tool_call) {
+                                yield Err(StreamingError::Completion(error));
+                                break 'outer;
+                            }
+                            if let Err(error) = validate_registered_tool_call(&tool_server_handle, &tool_call).await {
+                                yield Err(StreamingError::UnknownToolCall(error));
                                 break 'outer;
                             }
 
@@ -731,21 +729,13 @@ where
                                     Err(ToolServerError::ToolsetError(
                                         ToolSetError::ToolNotFoundError(name),
                                     )) => {
-                                        tracing::warn!(
-                                            tool_name = name.as_str(),
-                                            tool_call_id = tool_call.id.as_str(),
-                                            call_id = ?tool_call.call_id,
-                                            "Model requested an unknown tool"
-                                        );
-                                        return Err(StreamingError::UnknownToolCall(
-                                            UnknownToolCallError::new(
-                                                name,
-                                                tool_call.id.clone(),
-                                                tool_call.call_id.clone(),
-                                                tool_call.function.arguments.clone(),
-                                                tool_server_handle.tool_names().await,
-                                            ),
-                                        ));
+                                        let error = unknown_tool_call_error(
+                                            &tool_server_handle,
+                                            name,
+                                            &tool_call,
+                                        )
+                                        .await;
+                                        return Err(StreamingError::UnknownToolCall(error));
                                     }
                                     Err(e) => {
                                         tracing::warn!("Error while calling tool: {e}");
@@ -1020,16 +1010,16 @@ mod tests {
     use crate::agent::AgentBuilder;
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{CompletionRequest, Usage};
+    use crate::completion::{CompletionRequest, ToolCallValidationReason, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
-        ToolResultContent, UserContent,
+        ToolChoice, ToolResultContent, UserContent,
     };
     use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockResponse,
-        MockStreamEvent,
+        MockStreamEvent, MockSubtractTool,
     };
     use futures::StreamExt;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1592,7 +1582,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stream_prompt_unknown_tool_errors_without_tool_result_or_follow_up_turn() {
+    async fn stream_prompt_rejects_undeclared_tool_call_without_tool_result_or_follow_up_turn() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::tool_call(
@@ -1640,14 +1630,82 @@ mod tests {
         assert!(
             matches!(
                 error,
-                Some(StreamingError::UnknownToolCall(ref error))
-                    if error.tool_name == "missing_tool"
-                        && error.tool_call_id == "tool_call_1"
-                        && error.call_id.as_deref() == Some("call_1")
-                        && error.arguments == serde_json::json!({"input": "value"})
-                        && error.available_tool_names.is_empty()
+                Some(StreamingError::Completion(CompletionError::InvalidToolCall(ref error)))
+                    if error.provider == "rig"
+                        && error.tool_name == "missing_tool"
+                        && error.declared_tool_names.is_empty()
+                        && error.allowed_tool_names.is_none()
+                        && error.reason == ToolCallValidationReason::Undeclared
             ),
-            "expected missing tool error, got {error:?}"
+            "expected invalid tool call error, got {error:?}"
+        );
+        assert_eq!(recorded.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_rejects_registered_but_disallowed_tool_before_yield_or_dispatch() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "subtract",
+                    serde_json::json!({"x": 4, "y": 2}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be called"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let mut stream = agent.stream_prompt("do tool work").multi_turn(3).await;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut saw_final_response = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => saw_tool_call = true,
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => saw_tool_result = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_call);
+        assert!(!saw_tool_result);
+        assert!(!saw_final_response);
+        assert!(
+            matches!(
+                error,
+                Some(StreamingError::Completion(CompletionError::InvalidToolCall(ref invalid)))
+                    if invalid.provider == "rig"
+                        && invalid.tool_name == "subtract"
+                        && invalid.declared_tool_names
+                            == vec!["add".to_string(), "subtract".to_string()]
+                        && invalid.allowed_tool_names == Some(vec!["add".to_string()])
+                        && invalid.reason == ToolCallValidationReason::Disallowed
+            ),
+            "expected invalid tool-call error, got {error:?}"
         );
         assert_eq!(recorded.requests().len(), 1);
     }

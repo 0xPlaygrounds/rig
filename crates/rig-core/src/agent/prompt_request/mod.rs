@@ -7,7 +7,10 @@ use super::{
 };
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Document, Message, PromptError, UnknownToolCallError, Usage},
+    completion::{
+        CompletionModel, Document, Message, PromptError, ToolCallNameValidator,
+        UnknownToolCallError, Usage,
+    },
     json_utils,
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
@@ -429,6 +432,61 @@ fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
         .collect()
 }
 
+fn log_unknown_tool_call(error: &UnknownToolCallError) {
+    tracing::warn!(
+        tool_name = error.tool_name.as_str(),
+        tool_call_id = error.tool_call_id.as_str(),
+        call_id = ?error.call_id,
+        available_tool_names = ?error.available_tool_names,
+        "Model requested an unknown tool"
+    );
+}
+
+pub(super) async fn validate_registered_tool_call(
+    tool_server_handle: &ToolServerHandle,
+    tool_call: &crate::message::ToolCall,
+) -> Result<(), UnknownToolCallError> {
+    tool_server_handle
+        .validate_tool_call_name(
+            &tool_call.function.name,
+            &tool_call.id,
+            tool_call.call_id.clone(),
+            tool_call.function.arguments.clone(),
+        )
+        .await
+        .inspect_err(log_unknown_tool_call)
+}
+
+pub(super) async fn unknown_tool_call_error(
+    tool_server_handle: &ToolServerHandle,
+    tool_name: String,
+    tool_call: &crate::message::ToolCall,
+) -> UnknownToolCallError {
+    let error = tool_server_handle
+        .unknown_tool_call_error(
+            tool_name,
+            &tool_call.id,
+            tool_call.call_id.clone(),
+            tool_call.function.arguments.clone(),
+        )
+        .await;
+    log_unknown_tool_call(&error);
+    error
+}
+
+fn validate_response_tool_calls(
+    tool_call_validator: &ToolCallNameValidator,
+    choice: &OneOrMany<AssistantContent>,
+) -> Result<(), crate::completion::CompletionError> {
+    for content in choice.iter() {
+        if let AssistantContent::ToolCall(tool_call) = content {
+            tool_call_validator.validate_tool_call(tool_call)?;
+        }
+    }
+
+    Ok(())
+}
+
 impl<M, P> PromptRequest<Extended, M, P>
 where
     M: CompletionModel,
@@ -559,7 +617,7 @@ where
             let history_for_request =
                 build_history_for_request(chat_history.as_deref(), history_for_current_turn);
 
-            let resp = build_completion_request(
+            let completion_request = build_completion_request(
                 &self.model,
                 prompt.clone(),
                 &history_for_request,
@@ -574,9 +632,14 @@ where
                 self.output_schema.as_ref(),
             )
             .await?
-            .send()
-            .instrument(chat_span.clone())
-            .await?;
+            .build();
+            let tool_call_validator =
+                ToolCallNameValidator::from_completion_request("rig", &completion_request);
+            let resp = self
+                .model
+                .completion(completion_request)
+                .instrument(chat_span.clone())
+                .await?;
 
             completion_calls.push(CompletionCall::from_reported_usage(
                 completion_call_index,
@@ -584,6 +647,8 @@ where
             ));
             completion_call_index += 1;
             usage += resp.usage;
+
+            validate_response_tool_calls(&tool_call_validator, &resp.choice)?;
 
             if let Some(ref hook) = self.hook
                 && let HookAction::Terminate { reason } =
@@ -694,25 +759,9 @@ where
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
-                            if !tool_server_handle.has_tool(tool_name).await {
-                                let available_tool_names = tool_server_handle.tool_names().await;
-                                tracing::warn!(
-                                    tool_name = tool_name,
-                                    tool_call_id = tool_call.id.as_str(),
-                                    call_id = ?tool_call.call_id,
-                                    available_tool_names = ?available_tool_names,
-                                    "Model requested an unknown tool"
-                                );
-                                return Err(PromptError::UnknownToolCall(
-                                    UnknownToolCallError::new(
-                                        tool_name.to_string(),
-                                        tool_call.id.clone(),
-                                        tool_call.call_id.clone(),
-                                        tool_call.function.arguments.clone(),
-                                        available_tool_names,
-                                    ),
-                                ));
-                            }
+                            validate_registered_tool_call(&tool_server_handle, &tool_call)
+                                .await
+                                .map_err(PromptError::UnknownToolCall)?;
                             if let Some(hook) = hook1 {
                                 let action = hook
                                     .on_tool_call(
@@ -757,21 +806,13 @@ where
                                 Err(ToolServerError::ToolsetError(
                                     ToolSetError::ToolNotFoundError(name),
                                 )) => {
-                                    tracing::warn!(
-                                        tool_name = name.as_str(),
-                                        tool_call_id = tool_call.id.as_str(),
-                                        call_id = ?tool_call.call_id,
-                                        "Model requested an unknown tool"
-                                    );
-                                    return Err(PromptError::UnknownToolCall(
-                                        UnknownToolCallError::new(
-                                            name,
-                                            tool_call.id.clone(),
-                                            tool_call.call_id.clone(),
-                                            tool_call.function.arguments.clone(),
-                                            tool_server_handle.tool_names().await,
-                                        ),
-                                    ));
+                                    let error = unknown_tool_call_error(
+                                        &tool_server_handle,
+                                        name,
+                                        &tool_call,
+                                    )
+                                    .await;
+                                    return Err(PromptError::UnknownToolCall(error));
                                 }
                                 Err(e) => {
                                     tracing::warn!("Error while executing tool: {e}");
@@ -1052,12 +1093,12 @@ mod tests {
         agent::AgentBuilder,
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            TypedPrompt, Usage,
+            ToolCallValidationReason, TypedPrompt, Usage,
         },
-        message::{Text, UserContent},
+        message::{Text, ToolChoice, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockTurn,
+            MockSubtractTool, MockTurn,
         },
     };
     use schemars::JsonSchema;
@@ -1358,7 +1399,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prompt_request_unknown_tool_returns_error_without_follow_up_turn() {
+    async fn prompt_request_rejects_undeclared_tool_call_without_follow_up_turn() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "missing_tool", json!({"input": "value"}))
                 .with_call_id("call_1"),
@@ -1371,19 +1412,57 @@ mod tests {
             .prompt("do tool work")
             .max_turns(3)
             .await
-            .expect_err("unknown tool should stop the prompt");
+            .expect_err("undeclared tool call should stop the prompt");
 
         assert!(
             matches!(
                 err,
-                PromptError::UnknownToolCall(ref error)
-                    if error.tool_name == "missing_tool"
-                        && error.tool_call_id == "tool_call_1"
-                        && error.call_id.as_deref() == Some("call_1")
-                        && error.arguments == json!({"input": "value"})
-                        && error.available_tool_names.is_empty()
+                PromptError::CompletionError(CompletionError::InvalidToolCall(ref error))
+                    if error.provider == "rig"
+                        && error.tool_name == "missing_tool"
+                        && error.declared_tool_names.is_empty()
+                        && error.allowed_tool_names.is_none()
+                        && error.reason == ToolCallValidationReason::Undeclared
             ),
-            "expected missing tool error, got {err:?}"
+            "expected invalid tool call error, got {err:?}"
+        );
+        assert_eq!(recorded.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn prompt_request_rejects_registered_but_disallowed_tool_without_dispatch() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "subtract", json!({"x": 4, "y": 2}))
+                .with_call_id("call_1"),
+            MockTurn::text("should not be called"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let err = agent
+            .prompt("do tool work")
+            .max_turns(3)
+            .await
+            .expect_err("disallowed tool should stop the prompt");
+
+        assert!(
+            matches!(
+                err,
+                PromptError::CompletionError(CompletionError::InvalidToolCall(ref invalid))
+                    if invalid.provider == "rig"
+                        && invalid.tool_name == "subtract"
+                        && invalid.declared_tool_names
+                            == vec!["add".to_string(), "subtract".to_string()]
+                        && invalid.allowed_tool_names == Some(vec!["add".to_string()])
+                        && invalid.reason == ToolCallValidationReason::Disallowed
+            ),
+            "expected invalid tool-call error, got {err:?}"
         );
         assert_eq!(recorded.requests().len(), 1);
     }

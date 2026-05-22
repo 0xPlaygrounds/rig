@@ -2,7 +2,9 @@
 //! From <https://ai.google.dev/api/interactions-api>
 
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    self, CompletionError, CompletionRequest, GetTokenUsage, ToolCallNameValidator,
+};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::SpanCombinator;
@@ -140,6 +142,8 @@ where
             tracing::Span::current()
         };
 
+        let function_call_validator =
+            ToolCallNameValidator::from_completion_request("gemini", &completion_request);
         let request = self.create_completion_request(completion_request, Some(false))?;
 
         if enabled!(Level::TRACE) {
@@ -190,7 +194,7 @@ where
                     );
                 }
 
-                response.try_into()
+                completion_response_from_interaction(response, &function_call_validator)
             } else {
                 let text = String::from_utf8_lossy(
                     &response
@@ -471,51 +475,68 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
-        if response.outputs.is_empty() {
-            let status = response.status.as_ref().map(|status| format!("{status:?}"));
-            let message = match status {
-                Some(status) => format!(
-                    "Interaction contained no outputs (status: {status}). Use get_interaction for background tasks."
-                ),
-                None => "Interaction contained no outputs".to_string(),
-            };
-            return Err(CompletionError::ResponseError(message));
-        }
+        completion_response_from_interaction_impl(response, None)
+    }
+}
 
-        let content = response
-            .outputs
-            .iter()
-            .cloned()
-            .filter_map(|output| match assistant_content_from_output(output) {
+fn completion_response_from_interaction(
+    response: Interaction,
+    function_call_validator: &ToolCallNameValidator,
+) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
+    completion_response_from_interaction_impl(response, Some(function_call_validator))
+}
+
+fn completion_response_from_interaction_impl(
+    response: Interaction,
+    function_call_validator: Option<&ToolCallNameValidator>,
+) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
+    if response.outputs.is_empty() {
+        let status = response.status.as_ref().map(|status| format!("{status:?}"));
+        let message = match status {
+            Some(status) => format!(
+                "Interaction contained no outputs (status: {status}). Use get_interaction for background tasks."
+            ),
+            None => "Interaction contained no outputs".to_string(),
+        };
+        return Err(CompletionError::ResponseError(message));
+    }
+
+    let content = response
+        .outputs
+        .iter()
+        .cloned()
+        .filter_map(
+            |output| match assistant_content_from_output(output, function_call_validator) {
                 Ok(Some(content)) => Some(Ok(content)),
                 Ok(None) => None,
                 Err(err) => Some(Err(err)),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            },
+        )
+        .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+    let choice = OneOrMany::many(content).map_err(|_| {
+        CompletionError::ResponseError(
+            "Response contained no message or tool call (empty)".to_owned(),
+        )
+    })?;
 
-        let usage = response
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.token_usage())
-            .unwrap_or_default();
+    let usage = response
+        .usage
+        .as_ref()
+        .and_then(|usage| usage.token_usage())
+        .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
-    }
+    Ok(completion::CompletionResponse {
+        choice,
+        usage,
+        raw_response: response,
+        message_id: None,
+    })
 }
 
 fn assistant_content_from_output(
     output: Content,
+    function_call_validator: Option<&ToolCallNameValidator>,
 ) -> Result<Option<completion::AssistantContent>, CompletionError> {
     match output {
         Content::Text(TextContent { text, .. }) => {
@@ -530,6 +551,9 @@ fn assistant_content_from_output(
             let Some(name) = name else {
                 return Ok(None);
             };
+            if let Some(function_call_validator) = function_call_validator {
+                super::completion::validate_function_call_name(&name, function_call_validator)?;
+            }
             let call_id = id.unwrap_or_else(|| name.clone());
             Ok(Some(completion::AssistantContent::tool_call_with_call_id(
                 name.clone(),
@@ -2538,6 +2562,31 @@ mod tests {
         assert_eq!(response.usage.input_tokens, 5);
         assert_eq!(response.usage.output_tokens, 7);
         assert_eq!(response.usage.total_tokens, 12);
+    }
+
+    #[test]
+    fn test_response_function_call_validation_rejects_undeclared_name() {
+        let interaction = Interaction {
+            id: "interaction-1".to_string(),
+            outputs: vec![Content::FunctionCall(FunctionCallContent {
+                name: Some("default_api".to_string()),
+                arguments: Some(json!({"location": "Paris"})),
+                id: Some("call-123".to_string()),
+            })],
+            ..Default::default()
+        };
+        let validator = ToolCallNameValidator::new("gemini", vec!["get_weather".to_string()], None);
+
+        let err = completion_response_from_interaction(interaction, &validator)
+            .expect_err("undeclared function call should be rejected");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ref invalid)
+                if invalid.provider == "gemini"
+                    && invalid.tool_name == "default_api"
+                    && invalid.declared_tool_names == vec!["get_weather".to_string()]
+        ));
     }
 
     #[test]

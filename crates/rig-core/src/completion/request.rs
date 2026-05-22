@@ -125,6 +125,22 @@ impl ToolCallNameValidator {
         }
     }
 
+    /// Create a validator from the generic completion request contract sent to a provider.
+    pub fn from_completion_request(provider: &'static str, request: &CompletionRequest) -> Self {
+        let declared_tool_names =
+            dedupe_tool_names(request.tools.iter().map(|tool| tool.name.clone()));
+        let allowed_tool_names = match &request.tool_choice {
+            None | Some(ToolChoice::Auto) => None,
+            Some(ToolChoice::Required) => Some(declared_tool_names.clone()),
+            Some(ToolChoice::Specific { function_names }) => {
+                Some(dedupe_tool_names(function_names.iter().cloned()))
+            }
+            Some(ToolChoice::None) => Some(Vec::new()),
+        };
+
+        Self::new(provider, declared_tool_names, allowed_tool_names)
+    }
+
     /// Validate a provider-emitted tool name against this request contract.
     pub fn validate(&self, tool_name: &str) -> Result<(), CompletionError> {
         if !self
@@ -158,6 +174,14 @@ impl ToolCallNameValidator {
         Ok(())
     }
 
+    /// Validate a provider-emitted tool call against this request contract.
+    pub fn validate_tool_call(
+        &self,
+        tool_call: &crate::message::ToolCall,
+    ) -> Result<(), CompletionError> {
+        self.validate(&tool_call.function.name)
+    }
+
     /// Tool names declared in the request sent to the provider.
     pub fn declared_tool_names(&self) -> &[String] {
         &self.declared_tool_names
@@ -167,6 +191,16 @@ impl ToolCallNameValidator {
     pub fn allowed_tool_names(&self) -> Option<&[String]> {
         self.allowed_tool_names.as_deref()
     }
+}
+
+fn dedupe_tool_names(names: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut deduped = Vec::new();
+    for name in names {
+        if !deduped.iter().any(|existing| existing == &name) {
+            deduped.push(name);
+        }
+    }
+    deduped
 }
 
 /// The model requested a tool that is not registered for this prompt.
@@ -1093,6 +1127,165 @@ mod tests {
 
     use super::*;
     use crate::test_utils::MockCompletionModel;
+
+    fn test_tool(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} tool"),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    fn validator_request(
+        tools: Vec<ToolDefinition>,
+        tool_choice: Option<ToolChoice>,
+    ) -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(Message::user("use a tool")),
+            documents: Vec::new(),
+            tools,
+            temperature: None,
+            max_tokens: None,
+            tool_choice,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn tool_call_name_validator_accepts_declared_tool() {
+        let request = validator_request(vec![test_tool("add")], None);
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+
+        validator
+            .validate("add")
+            .expect("declared tool should validate");
+    }
+
+    #[test]
+    fn tool_call_name_validator_rejects_undeclared_tool() {
+        let request = validator_request(vec![test_tool("add")], None);
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+        let err = validator
+            .validate("subtract")
+            .expect_err("undeclared tool should be rejected");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                provider: "test",
+                ref tool_name,
+                ref declared_tool_names,
+                allowed_tool_names: None,
+                reason: ToolCallValidationReason::Undeclared,
+            }) if tool_name == "subtract" && declared_tool_names == &vec!["add".to_string()]
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_rejects_declared_but_disallowed_tool() {
+        let request = validator_request(
+            vec![test_tool("add"), test_tool("subtract")],
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            }),
+        );
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+        let err = validator
+            .validate("subtract")
+            .expect_err("disallowed tool should be rejected");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                provider: "test",
+                ref tool_name,
+                ref declared_tool_names,
+                ref allowed_tool_names,
+                reason: ToolCallValidationReason::Disallowed,
+            }) if tool_name == "subtract"
+                && declared_tool_names == &vec!["add".to_string(), "subtract".to_string()]
+                && allowed_tool_names.as_ref() == Some(&vec!["add".to_string()])
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_specific_choice_sets_allowlist() {
+        let request = validator_request(
+            vec![test_tool("add"), test_tool("subtract")],
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string(), "add".to_string()],
+            }),
+        );
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+
+        assert_eq!(
+            validator.allowed_tool_names(),
+            Some(["add".to_string()].as_slice())
+        );
+        validator
+            .validate("add")
+            .expect("specific allowed tool should validate");
+    }
+
+    #[test]
+    fn tool_call_name_validator_none_choice_disallows_declared_tools() {
+        let request = validator_request(vec![test_tool("add")], Some(ToolChoice::None));
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+        let err = validator
+            .validate("add")
+            .expect_err("tool_choice none should reject declared tool calls");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Disallowed,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_required_choice_allows_declared_tools() {
+        let request = validator_request(
+            vec![test_tool("add"), test_tool("subtract")],
+            Some(ToolChoice::Required),
+        );
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+
+        assert_eq!(
+            validator.allowed_tool_names(),
+            Some(["add".to_string(), "subtract".to_string()].as_slice())
+        );
+        validator
+            .validate("subtract")
+            .expect("required choice should allow declared tools");
+    }
+
+    #[test]
+    fn tool_call_name_validator_deduplicates_names_in_order() {
+        let request = validator_request(
+            vec![test_tool("subtract"), test_tool("add"), test_tool("add")],
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string(), "subtract".to_string(), "add".to_string()],
+            }),
+        );
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+
+        assert_eq!(
+            validator.declared_tool_names(),
+            ["subtract".to_string(), "add".to_string()].as_slice()
+        );
+        assert_eq!(
+            validator.allowed_tool_names(),
+            Some(["add".to_string(), "subtract".to_string()].as_slice())
+        );
+    }
 
     #[test]
     fn test_document_display_without_metadata() {

@@ -8,8 +8,8 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, function_call_validator_from_request,
-    resolve_request_model, streaming_endpoint, validate_function_call_name,
+    CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
+    validate_function_call_name,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -114,8 +114,12 @@ where
         } else {
             tracing::Span::current()
         };
+        let function_call_validator =
+            crate::completion::ToolCallNameValidator::from_completion_request(
+                "gemini",
+                &completion_request,
+            );
         let request = create_request_body(completion_request)?;
-        let function_call_validator = function_call_validator_from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(

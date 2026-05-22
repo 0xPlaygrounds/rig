@@ -12,7 +12,7 @@ use super::interactions_api_types::{
     InteractionSseEvent, InteractionUsage, TextContent, TextDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage, ToolCallNameValidator};
 use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -75,6 +75,8 @@ where
             tracing::Span::current()
         };
 
+        let function_call_validator =
+            ToolCallNameValidator::from_completion_request("gemini", &completion_request);
         let request = create_request_body(self.model.clone(), completion_request, Some(true))?;
 
         if enabled!(Level::TRACE) {
@@ -98,6 +100,7 @@ where
         let stream = stream! {
             let mut final_interaction: Option<Interaction> = None;
             let mut final_usage: Option<InteractionUsage> = None;
+            let mut fatal_error = false;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -123,13 +126,25 @@ where
 
                         match data {
                             InteractionSseEvent::ContentDelta { delta, .. } => {
-                                if let Some(choice) = content_delta_to_choice(delta) {
-                                    yield Ok(choice);
+                                match content_delta_to_choice(delta, &function_call_validator) {
+                                    Ok(Some(choice)) => yield Ok(choice),
+                                    Ok(None) => {}
+                                    Err(error) => {
+                                        fatal_error = true;
+                                        yield Err(error);
+                                        break;
+                                    }
                                 }
                             }
                             InteractionSseEvent::ContentStart { content, .. } => {
-                                if let Some(choice) = content_start_to_choice(content) {
-                                    yield Ok(choice);
+                                match content_start_to_choice(content, &function_call_validator) {
+                                    Ok(Some(choice)) => yield Ok(choice),
+                                    Ok(None) => {}
+                                    Err(error) => {
+                                        fatal_error = true;
+                                        yield Err(error);
+                                        break;
+                                    }
                                 }
                             }
                             InteractionSseEvent::InteractionComplete { interaction, .. } => {
@@ -146,6 +161,7 @@ where
                                 final_interaction = Some(interaction);
                             }
                             InteractionSseEvent::Error { error, .. } => {
+                                fatal_error = true;
                                 yield Err(CompletionError::ProviderError(error.message));
                                 break;
                             }
@@ -157,6 +173,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
+                        fatal_error = true;
                         yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
@@ -165,12 +182,14 @@ where
 
             event_source.close();
 
-            let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
-                interaction: final_interaction,
-                model_version,
-            }));
+            if !fatal_error {
+                let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
+                    interaction: final_interaction,
+                    model_version,
+                }));
+            }
         }
         .instrument(span);
 
@@ -226,13 +245,14 @@ where
 
 fn content_start_to_choice(
     content: Content,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+    function_call_validator: &ToolCallNameValidator,
+) -> Result<Option<streaming::RawStreamingChoice<StreamingCompletionResponse>>, CompletionError> {
     match content {
         Content::Text(TextContent { text, .. }) => {
             if text.is_empty() {
-                None
+                Ok(None)
             } else {
-                Some(streaming::RawStreamingChoice::Message(text))
+                Ok(Some(streaming::RawStreamingChoice::Message(text)))
             }
         }
         Content::FunctionCall(FunctionCallContent {
@@ -240,55 +260,68 @@ fn content_start_to_choice(
             arguments,
             id,
         }) => {
-            let name = name?;
+            let Some(name) = name else {
+                return Ok(None);
+            };
+            crate::providers::gemini::completion::validate_function_call_name(
+                &name,
+                function_call_validator,
+            )?;
             let call_id = id.unwrap_or_else(|| name.clone());
-            Some(streaming::RawStreamingChoice::ToolCall(
+            Ok(Some(streaming::RawStreamingChoice::ToolCall(
                 streaming::RawStreamingToolCall::new(
                     name.clone(),
                     name,
                     arguments.unwrap_or(Value::Object(Map::new())),
                 )
                 .with_call_id(call_id),
-            ))
+            )))
         }
-        _ => None,
+        _ => Ok(None),
     }
 }
 
 fn content_delta_to_choice(
     delta: ContentDelta,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+    function_call_validator: &ToolCallNameValidator,
+) -> Result<Option<streaming::RawStreamingChoice<StreamingCompletionResponse>>, CompletionError> {
     match delta {
         ContentDelta::Text(TextDelta {
             text: Some(text), ..
-        }) => Some(streaming::RawStreamingChoice::Message(text)),
+        }) => Ok(Some(streaming::RawStreamingChoice::Message(text))),
         ContentDelta::FunctionCall(FunctionCallDelta {
             name,
             arguments,
             id,
         }) => {
-            let name = name?;
+            let Some(name) = name else {
+                return Ok(None);
+            };
+            crate::providers::gemini::completion::validate_function_call_name(
+                &name,
+                function_call_validator,
+            )?;
             let call_id = id.unwrap_or_else(|| name.clone());
-            Some(streaming::RawStreamingChoice::ToolCall(
+            Ok(Some(streaming::RawStreamingChoice::ToolCall(
                 streaming::RawStreamingToolCall::new(
                     name.clone(),
                     name,
                     arguments.unwrap_or(Value::Object(Map::new())),
                 )
                 .with_call_id(call_id),
-            ))
+            )))
         }
         ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
             let text = match content {
                 ThoughtSummaryContent::Text(text) => text.text,
-                _ => return None,
+                _ => return Ok(None),
             };
-            Some(streaming::RawStreamingChoice::ReasoningDelta {
+            Ok(Some(streaming::RawStreamingChoice::ReasoningDelta {
                 id: None,
                 reasoning: text,
-            })
+            }))
         }
-        _ => None,
+        _ => Ok(None),
     }
 }
 
@@ -296,6 +329,14 @@ fn content_delta_to_choice(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn test_validator(function_names: &[&str]) -> ToolCallNameValidator {
+        ToolCallNameValidator::new(
+            "gemini",
+            function_names.iter().map(|name| name.to_string()).collect(),
+            None,
+        )
+    }
 
     #[test]
     fn test_streaming_completion_response_has_model_version() {
@@ -334,7 +375,10 @@ mod tests {
             panic!("expected content delta");
         };
 
-        let choice = content_delta_to_choice(delta).expect("choice should exist");
+        let validator = test_validator(&[]);
+        let choice = content_delta_to_choice(delta, &validator)
+            .expect("content delta should convert")
+            .expect("choice should exist");
         match choice {
             crate::streaming::RawStreamingChoice::Message(text) => {
                 assert_eq!(text, "Hello");
@@ -361,7 +405,10 @@ mod tests {
             panic!("expected content delta");
         };
 
-        let choice = content_delta_to_choice(delta).expect("choice should exist");
+        let validator = test_validator(&["get_weather"]);
+        let choice = content_delta_to_choice(delta, &validator)
+            .expect("content delta should convert")
+            .expect("choice should exist");
         match choice {
             crate::streaming::RawStreamingChoice::ToolCall(call) => {
                 assert_eq!(call.name, "get_weather");
@@ -369,5 +416,36 @@ mod tests {
             }
             other => panic!("unexpected choice: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_content_delta_function_call_rejects_undeclared_name() {
+        let event_json = json!({
+            "event_type": "content.delta",
+            "index": 0,
+            "delta": {
+                "type": "function_call",
+                "name": "default_api",
+                "arguments": {"location": "Paris"},
+                "id": "call-1"
+            }
+        });
+
+        let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
+        let InteractionSseEvent::ContentDelta { delta, .. } = event else {
+            panic!("expected content delta");
+        };
+
+        let validator = test_validator(&["get_weather"]);
+        let err = content_delta_to_choice(delta, &validator)
+            .expect_err("undeclared function call should be rejected");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ref invalid)
+                if invalid.provider == "gemini"
+                    && invalid.tool_name == "default_api"
+                    && invalid.declared_tool_names == vec!["get_weather".to_string()]
+        ));
     }
 }

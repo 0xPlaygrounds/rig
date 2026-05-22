@@ -110,8 +110,9 @@ where
             tracing::Span::current()
         };
 
+        let function_call_validator =
+            ToolCallNameValidator::from_completion_request("gemini", &completion_request);
         let request = create_request_body(completion_request)?;
-        let function_call_validator = function_call_validator_from_request(&request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -409,59 +410,6 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
             function_declarations,
             code_execution: None,
         })
-    }
-}
-
-pub(crate) fn function_call_validator_from_request(
-    request: &GenerateContentRequest,
-) -> ToolCallNameValidator {
-    ToolCallNameValidator::new(
-        "gemini",
-        declared_function_names_from_request(request),
-        allowed_function_names_from_request(request),
-    )
-}
-
-fn declared_function_names_from_request(request: &GenerateContentRequest) -> Vec<String> {
-    let mut names = Vec::new();
-
-    let Some(tools) = &request.tools else {
-        return names;
-    };
-
-    for tool in tools {
-        for key in ["functionDeclarations", "function_declarations"] {
-            let Some(function_declarations) = tool.get(key).and_then(Value::as_array) else {
-                continue;
-            };
-
-            for declaration in function_declarations {
-                let Some(name) = declaration.get("name").and_then(Value::as_str) else {
-                    continue;
-                };
-
-                if !names.iter().any(|declared| declared == name) {
-                    names.push(name.to_string());
-                }
-            }
-        }
-    }
-
-    names
-}
-
-fn allowed_function_names_from_request(request: &GenerateContentRequest) -> Option<Vec<String>> {
-    let function_calling_config = request
-        .tool_config
-        .as_ref()
-        .and_then(|tool_config| tool_config.function_calling_config.as_ref())?;
-
-    match function_calling_config {
-        FunctionCallingMode::Any {
-            allowed_function_names,
-        } => allowed_function_names.clone(),
-        FunctionCallingMode::None => Some(Vec::new()),
-        FunctionCallingMode::Auto => None,
     }
 }
 
@@ -2625,26 +2573,33 @@ mod tests {
     }
 
     #[test]
-    fn test_function_call_validator_from_request_respects_allowed_function_names() {
-        let request = GenerateContentRequest {
-            contents: vec![],
-            tools: Some(vec![json!({
-                "functionDeclarations": [
-                    { "name": "JavaScript" },
-                    { "name": "OtherTool" }
-                ]
-            })]),
-            tool_config: Some(ToolConfig {
-                function_calling_config: Some(FunctionCallingMode::Any {
-                    allowed_function_names: Some(vec!["JavaScript".to_string()]),
-                }),
+    fn test_completion_request_validator_respects_allowed_function_names() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::user("use a tool")),
+            documents: vec![],
+            tools: vec![
+                completion::ToolDefinition {
+                    name: "JavaScript".to_string(),
+                    description: "JavaScript runtime".to_string(),
+                    parameters: json!({"type": "object"}),
+                },
+                completion::ToolDefinition {
+                    name: "OtherTool".to_string(),
+                    description: "Other tool".to_string(),
+                    parameters: json!({"type": "object"}),
+                },
+            ],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(message::ToolChoice::Specific {
+                function_names: vec!["JavaScript".to_string()],
             }),
-            generation_config: None,
-            safety_settings: None,
-            system_instruction: None,
             additional_params: None,
+            output_schema: None,
         };
-        let validator = function_call_validator_from_request(&request);
+        let validator = ToolCallNameValidator::from_completion_request("gemini", &request);
 
         validate_function_call_name("JavaScript", &validator)
             .expect("allowed function should validate");
