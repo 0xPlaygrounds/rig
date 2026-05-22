@@ -1287,6 +1287,7 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
+    #[serde(alias = "model")]
     Assistant {
         #[serde(
             default,
@@ -2122,6 +2123,47 @@ mod tests {
 
         assert_eq!(converted.usage.cached_input_tokens, 0);
         assert_eq!(converted.usage.cache_creation_input_tokens, 0);
+    }
+
+    #[test]
+    fn test_completion_response_deserialization_gemini_model_role() {
+        let json = json!({
+            "id": "gen-BBBBBBBBBB-BBBBBBBBBBBBBBBBBBBB",
+            "provider": "Google",
+            "model": "google/gemini-2.5-pro-exp-03-25:free",
+            "object": "chat.completion",
+            "created": 1743780565u64,
+            "choices": [{
+                "logprobs": null,
+                "finish_reason": "stop",
+                "native_finish_reason": "STOP",
+                "index": 0,
+                "message": {
+                    "role": "model",
+                    "content": "CONTENT",
+                    "refusal": null,
+                    "reasoning": null
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 669,
+                "completion_tokens": 5,
+                "total_tokens": 674
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(
+            converted.raw_response.model,
+            "google/gemini-2.5-pro-exp-03-25:free"
+        );
+        assert!(matches!(
+            converted.choice.first(),
+            completion::AssistantContent::Text(text) if text.text == "CONTENT"
+        ));
     }
 
     #[test]
