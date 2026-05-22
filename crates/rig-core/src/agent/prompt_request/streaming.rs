@@ -779,6 +779,13 @@ where
                             }
                         },
                         Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
+                            if let rig::streaming::ToolCallDeltaContent::Name(name) = &content
+                                && let Err(error) = tool_call_validator.validate(name)
+                            {
+                                yield Err(StreamingError::Completion(error));
+                                break 'outer;
+                            }
+
                             if let Some(ref hook) = self.hook {
                                 let (name, delta) = match &content {
                                     rig::streaming::ToolCallDeltaContent::Name(n) => {
@@ -1021,6 +1028,7 @@ mod tests {
         AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockResponse,
         MockStreamEvent, MockSubtractTool,
     };
+    use crate::tool::{ToolSet, server::ToolServer};
     use futures::StreamExt;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
@@ -1363,6 +1371,22 @@ mod tests {
             MockStreamEvent::text(" world"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]])
+    }
+
+    fn calculator_provider_params() -> serde_json::Value {
+        serde_json::json!({
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "calculator",
+                    "description": "Calculate a result",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            ]
+        })
     }
 
     fn citation_metadata() -> serde_json::Value {
@@ -1711,6 +1735,123 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stream_prompt_rejects_disallowed_tool_name_delta_before_yield() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "subtract"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ]]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let mut stream = agent.stream_prompt("do tool work").multi_turn(3).await;
+        let mut saw_tool_delta = false;
+        let mut saw_final_response = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => saw_tool_delta = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_delta);
+        assert!(!saw_final_response);
+        assert!(
+            matches!(
+                error,
+                Some(StreamingError::Completion(CompletionError::InvalidToolCall(ref invalid)))
+                    if invalid.provider == "rig"
+                        && invalid.tool_name == "subtract"
+                        && invalid.reason == ToolCallValidationReason::Disallowed
+            ),
+            "expected invalid tool-call delta error, got {error:?}"
+        );
+        assert_eq!(recorded.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_accepts_provider_extra_function_declared_in_params() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 2, "y": 3}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let tool_server_handle = ToolServer::new()
+            .add_tools(ToolSet::from_tools(vec![MockAddTool]))
+            .run();
+        let agent = AgentBuilder::new(model)
+            .additional_params(serde_json::json!({
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "add",
+                        "description": "Add numbers",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "x": { "type": "number" },
+                                "y": { "type": "number" }
+                            },
+                            "required": ["x", "y"]
+                        }
+                    }
+                ]
+            }))
+            .tool_server_handle(tool_server_handle)
+            .build();
+
+        let mut stream = agent.stream_prompt("do tool work").multi_turn(3).await;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item.expect("stream should succeed") {
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
+                    ..
+                }) => saw_tool_call = true,
+                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
+                    saw_tool_result = true
+                }
+                MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
+                _ => {}
+            }
+        }
+
+        assert!(saw_tool_call);
+        assert!(saw_tool_result);
+        assert!(matches!(final_response, Some(ref response) if response.response() == "done"));
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[0].tools.is_empty());
+    }
+
+    #[tokio::test]
     async fn stream_prompt_emits_tool_call_deltas_without_hook() {
         let model = MockCompletionModel::from_stream_turns([[
             MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
@@ -1718,7 +1859,9 @@ mod tests {
             MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model)
+            .additional_params(calculator_provider_params())
+            .build();
 
         let mut stream = agent.stream_prompt("stream a tool call").await;
         let mut deltas = Vec::new();
@@ -1771,7 +1914,9 @@ mod tests {
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = RecordingToolCallDeltaHook::default();
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model)
+            .additional_params(calculator_provider_params())
+            .build();
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
@@ -1849,7 +1994,9 @@ mod tests {
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = TerminatingToolCallDeltaHook::default();
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model)
+            .additional_params(calculator_provider_params())
+            .build();
 
         let mut stream = agent
             .stream_prompt("stream a tool call")

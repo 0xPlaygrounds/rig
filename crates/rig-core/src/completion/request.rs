@@ -127,9 +127,21 @@ impl ToolCallNameValidator {
 
     /// Create a validator from the generic completion request contract sent to a provider.
     pub fn from_completion_request(provider: &'static str, request: &CompletionRequest) -> Self {
-        let declared_tool_names =
-            dedupe_tool_names(request.tools.iter().map(|tool| tool.name.clone()));
-        let allowed_tool_names = match &request.tool_choice {
+        let declared_tool_names = request.tools.iter().map(|tool| tool.name.clone()).chain(
+            provider_declared_function_names(request.additional_params.as_ref()),
+        );
+
+        Self::from_declared_tool_names(provider, declared_tool_names, request.tool_choice.as_ref())
+    }
+
+    /// Create a validator from explicit declared tool names and a generic tool-choice policy.
+    pub fn from_declared_tool_names(
+        provider: &'static str,
+        declared_tool_names: impl IntoIterator<Item = String>,
+        tool_choice: Option<&ToolChoice>,
+    ) -> Self {
+        let declared_tool_names = dedupe_tool_names(declared_tool_names);
+        let allowed_tool_names = match tool_choice {
             None | Some(ToolChoice::Auto) => None,
             Some(ToolChoice::Required) => Some(declared_tool_names.clone()),
             Some(ToolChoice::Specific { function_names }) => {
@@ -201,6 +213,52 @@ fn dedupe_tool_names(names: impl IntoIterator<Item = String>) -> Vec<String> {
         }
     }
     deduped
+}
+
+fn provider_declared_function_names(additional_params: Option<&serde_json::Value>) -> Vec<String> {
+    additional_params
+        .and_then(|params| params.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .map(|tools| {
+            tools
+                .iter()
+                .flat_map(provider_tool_function_names)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn provider_tool_function_names(tool: &serde_json::Value) -> Vec<String> {
+    let Some(tool) = tool.as_object() else {
+        return Vec::new();
+    };
+
+    let mut names = Vec::new();
+
+    if tool.get("type").and_then(serde_json::Value::as_str) == Some("function") {
+        if let Some(name) = tool.get("name").and_then(serde_json::Value::as_str) {
+            names.push(name.to_string());
+        }
+
+        if let Some(function) = tool.get("function").and_then(serde_json::Value::as_object)
+            && let Some(name) = function.get("name").and_then(serde_json::Value::as_str)
+        {
+            names.push(name.to_string());
+        }
+    }
+
+    for key in ["functionDeclarations", "function_declarations"] {
+        if let Some(function_declarations) = tool.get(key).and_then(serde_json::Value::as_array) {
+            names.extend(function_declarations.iter().filter_map(|declaration| {
+                declaration
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from)
+            }));
+        }
+    }
+
+    names
 }
 
 /// The model requested a tool that is not registered for this prompt.
@@ -1285,6 +1343,143 @@ mod tests {
             validator.allowed_tool_names(),
             Some(["add".to_string(), "subtract".to_string()].as_slice())
         );
+    }
+
+    #[test]
+    fn tool_call_name_validator_accepts_generate_content_extra_function_declaration() {
+        let mut request = validator_request(vec![test_tool("add")], None);
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                {
+                    "functionDeclarations": [
+                        {
+                            "name": "lookup_weather",
+                            "description": "Lookup weather",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {}
+                            }
+                        }
+                    ]
+                }
+            ]
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+
+        assert_eq!(
+            validator.declared_tool_names(),
+            ["add".to_string(), "lookup_weather".to_string()].as_slice()
+        );
+        validator
+            .validate("lookup_weather")
+            .expect("extra provider function declaration should validate");
+    }
+
+    #[test]
+    fn tool_call_name_validator_accepts_interactions_extra_function_tool() {
+        let mut request = validator_request(Vec::new(), None);
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "lookup_weather",
+                    "description": "Lookup weather",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            ]
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+
+        assert_eq!(
+            validator.declared_tool_names(),
+            ["lookup_weather".to_string()].as_slice()
+        );
+        validator
+            .validate("lookup_weather")
+            .expect("extra provider function tool should validate");
+    }
+
+    #[test]
+    fn tool_call_name_validator_ignores_provider_built_in_tools() {
+        let mut request = validator_request(Vec::new(), None);
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                { "type": "google_search" },
+                { "codeExecution": {} }
+            ]
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+        let err = validator
+            .validate("google_search")
+            .expect_err("provider built-ins should not become executable Rig tool names");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Undeclared,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_specific_choice_still_rejects_extra_function() {
+        let mut request = validator_request(
+            vec![test_tool("add")],
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            }),
+        );
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                {
+                    "functionDeclarations": [
+                        { "name": "lookup_weather", "description": "Lookup weather" }
+                    ]
+                }
+            ]
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+        let err = validator
+            .validate("lookup_weather")
+            .expect_err("specific tool choice should reject unlisted extra functions");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Disallowed,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_none_choice_rejects_extra_function() {
+        let mut request = validator_request(Vec::new(), Some(ToolChoice::None));
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                {
+                    "functionDeclarations": [
+                        { "name": "lookup_weather", "description": "Lookup weather" }
+                    ]
+                }
+            ]
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("test", &request);
+        let err = validator
+            .validate("lookup_weather")
+            .expect_err("tool_choice none should reject extra provider functions");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Disallowed,
+                ..
+            })
+        ));
     }
 
     #[test]

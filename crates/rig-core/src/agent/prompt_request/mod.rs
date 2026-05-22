@@ -1100,6 +1100,7 @@ mod tests {
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
             MockSubtractTool, MockTurn,
         },
+        tool::{ToolSet, server::ToolServer},
     };
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -1465,6 +1466,50 @@ mod tests {
             "expected invalid tool-call error, got {err:?}"
         );
         assert_eq!(recorded.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn prompt_request_accepts_provider_extra_function_declared_in_params() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 2, "y": 3}))
+                .with_call_id("call_1"),
+            MockTurn::text("done"),
+        ]);
+        let recorded = model.clone();
+        let tool_server_handle = ToolServer::new()
+            .add_tools(ToolSet::from_tools(vec![MockAddTool]))
+            .run();
+        let agent = AgentBuilder::new(model)
+            .additional_params(json!({
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "add",
+                        "description": "Add numbers",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "x": { "type": "number" },
+                                "y": { "type": "number" }
+                            },
+                            "required": ["x", "y"]
+                        }
+                    }
+                ]
+            }))
+            .tool_server_handle(tool_server_handle)
+            .build();
+
+        let response = agent
+            .prompt("do tool work")
+            .max_turns(3)
+            .await
+            .expect("provider-extra function should be accepted and dispatched");
+
+        assert_eq!(response, "done");
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[0].tools.is_empty());
     }
 
     #[tokio::test]
