@@ -448,6 +448,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -536,6 +537,7 @@ where
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
@@ -625,6 +627,10 @@ where
                 agent_span.record(
                     "gen_ai.usage.cache_creation.input_tokens",
                     usage.cache_creation_input_tokens,
+                );
+                agent_span.record(
+                    "gen_ai.usage.tool_use_prompt_tokens",
+                    usage.tool_use_prompt_tokens,
                 );
                 agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 
