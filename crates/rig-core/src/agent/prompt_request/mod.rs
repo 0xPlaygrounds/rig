@@ -446,13 +446,25 @@ pub(super) async fn validate_registered_tool_call(
     tool_server_handle: &ToolServerHandle,
     tool_call: &crate::message::ToolCall,
 ) -> Result<(), UnknownToolCallError> {
+    validate_registered_tool_name(
+        tool_server_handle,
+        &tool_call.function.name,
+        &tool_call.id,
+        tool_call.call_id.clone(),
+        tool_call.function.arguments.clone(),
+    )
+    .await
+}
+
+pub(super) async fn validate_registered_tool_name(
+    tool_server_handle: &ToolServerHandle,
+    tool_name: &str,
+    tool_call_id: &str,
+    call_id: Option<String>,
+    arguments: serde_json::Value,
+) -> Result<(), UnknownToolCallError> {
     tool_server_handle
-        .validate_tool_call_name(
-            &tool_call.function.name,
-            &tool_call.id,
-            tool_call.call_id.clone(),
-            tool_call.function.arguments.clone(),
-        )
+        .validate_tool_call_name(tool_name, tool_call_id, call_id, arguments)
         .await
         .inspect_err(log_unknown_tool_call)
 }

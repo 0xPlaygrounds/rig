@@ -18,7 +18,7 @@ use tracing_futures::Instrument;
 
 use super::{
     CompletionCall, ToolCallHookAction, reported_usage, unknown_tool_call_error,
-    validate_registered_tool_call,
+    validate_registered_tool_call, validate_registered_tool_name,
 };
 use crate::{
     agent::Agent,
@@ -779,11 +779,23 @@ where
                             }
                         },
                         Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
-                            if let rig::streaming::ToolCallDeltaContent::Name(name) = &content
-                                && let Err(error) = tool_call_validator.validate(name)
-                            {
-                                yield Err(StreamingError::Completion(error));
-                                break 'outer;
+                            if let rig::streaming::ToolCallDeltaContent::Name(name) = &content {
+                                if let Err(error) = tool_call_validator.validate(name) {
+                                    yield Err(StreamingError::Completion(error));
+                                    break 'outer;
+                                }
+                                if let Err(error) = validate_registered_tool_name(
+                                    &tool_server_handle,
+                                    name,
+                                    &id,
+                                    None,
+                                    serde_json::Value::Null,
+                                )
+                                .await
+                                {
+                                    yield Err(StreamingError::UnknownToolCall(error));
+                                    break 'outer;
+                                }
                             }
 
                             if let Some(ref hook) = self.hook {
@@ -1373,22 +1385,6 @@ mod tests {
         ]])
     }
 
-    fn calculator_provider_params() -> serde_json::Value {
-        serde_json::json!({
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "calculator",
-                    "description": "Calculate a result",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                }
-            ]
-        })
-    }
-
     fn citation_metadata() -> serde_json::Value {
         serde_json::json!({
             "citations": [{
@@ -1784,6 +1780,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stream_prompt_rejects_unregistered_tool_name_delta_before_yield_or_hook() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "add"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ]]);
+        let recorded = model.clone();
+        let hook = RecordingToolCallDeltaHook::default();
+        let agent = AgentBuilder::new(model)
+            .additional_params(serde_json::json!({
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "add",
+                        "description": "Add numbers",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "x": { "type": "number" },
+                                "y": { "type": "number" }
+                            },
+                            "required": ["x", "y"]
+                        }
+                    }
+                ]
+            }))
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_hook(hook.clone())
+            .multi_turn(3)
+            .await;
+        let mut saw_tool_delta = false;
+        let mut saw_final_response = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => saw_tool_delta = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_delta);
+        assert!(!saw_final_response);
+        assert!(hook.observed().is_empty());
+        assert!(
+            matches!(
+                error,
+                Some(StreamingError::UnknownToolCall(ref unknown))
+                    if unknown.tool_name == "add"
+                        && unknown.tool_call_id == "tool_call_1"
+                        && unknown.call_id.is_none()
+                        && unknown.arguments.is_null()
+                        && unknown.available_tool_names.is_empty()
+            ),
+            "expected unknown tool-call delta error, got {error:?}"
+        );
+        assert_eq!(recorded.requests().len(), 1);
+    }
+
+    #[tokio::test]
     async fn stream_prompt_accepts_provider_extra_function_declared_in_params() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
@@ -1854,14 +1919,12 @@ mod tests {
     #[tokio::test]
     async fn stream_prompt_emits_tool_call_deltas_without_hook() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
             MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
-        let agent = AgentBuilder::new(model)
-            .additional_params(calculator_provider_params())
-            .build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
         let mut stream = agent.stream_prompt("stream a tool call").await;
         let mut deltas = Vec::new();
@@ -1889,7 +1952,7 @@ mod tests {
                 (
                     "tool_1".to_string(),
                     "internal_1".to_string(),
-                    ToolCallDeltaContent::Name("calculator".to_string())
+                    ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
                     "tool_1".to_string(),
@@ -1908,15 +1971,13 @@ mod tests {
     #[tokio::test]
     async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
             MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = RecordingToolCallDeltaHook::default();
-        let agent = AgentBuilder::new(model)
-            .additional_params(calculator_provider_params())
-            .build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
@@ -1947,7 +2008,7 @@ mod tests {
                 (
                     "tool_1".to_string(),
                     "internal_1".to_string(),
-                    Some("calculator".to_string()),
+                    Some("add".to_string()),
                     String::new()
                 ),
                 (
@@ -1970,7 +2031,7 @@ mod tests {
                 (
                     "tool_1".to_string(),
                     "internal_1".to_string(),
-                    ToolCallDeltaContent::Name("calculator".to_string())
+                    ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
                     "tool_1".to_string(),
@@ -1989,14 +2050,12 @@ mod tests {
     #[tokio::test]
     async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = TerminatingToolCallDeltaHook::default();
-        let agent = AgentBuilder::new(model)
-            .additional_params(calculator_provider_params())
-            .build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
         let mut stream = agent
             .stream_prompt("stream a tool call")
@@ -2029,7 +2088,7 @@ mod tests {
             vec![(
                 "tool_1".to_string(),
                 "internal_1".to_string(),
-                Some("calculator".to_string()),
+                Some("add".to_string()),
                 String::new()
             )]
         );

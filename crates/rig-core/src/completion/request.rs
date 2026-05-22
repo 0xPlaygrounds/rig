@@ -127,11 +127,21 @@ impl ToolCallNameValidator {
 
     /// Create a validator from the generic completion request contract sent to a provider.
     pub fn from_completion_request(provider: &'static str, request: &CompletionRequest) -> Self {
-        let declared_tool_names = request.tools.iter().map(|tool| tool.name.clone()).chain(
-            provider_declared_function_names(request.additional_params.as_ref()),
-        );
+        let declared_tool_names =
+            dedupe_tool_names(request.tools.iter().map(|tool| tool.name.clone()).chain(
+                provider_declared_function_names(request.additional_params.as_ref()),
+            ));
+        let allowed_tool_names =
+            allowed_tool_names_from_tool_choice(request.tool_choice.as_ref(), &declared_tool_names)
+                .or_else(|| {
+                    provider_allowed_tool_names(
+                        provider,
+                        request.additional_params.as_ref(),
+                        &declared_tool_names,
+                    )
+                });
 
-        Self::from_declared_tool_names(provider, declared_tool_names, request.tool_choice.as_ref())
+        Self::new(provider, declared_tool_names, allowed_tool_names)
     }
 
     /// Create a validator from explicit declared tool names and a generic tool-choice policy.
@@ -141,14 +151,8 @@ impl ToolCallNameValidator {
         tool_choice: Option<&ToolChoice>,
     ) -> Self {
         let declared_tool_names = dedupe_tool_names(declared_tool_names);
-        let allowed_tool_names = match tool_choice {
-            None | Some(ToolChoice::Auto) => None,
-            Some(ToolChoice::Required) => Some(declared_tool_names.clone()),
-            Some(ToolChoice::Specific { function_names }) => {
-                Some(dedupe_tool_names(function_names.iter().cloned()))
-            }
-            Some(ToolChoice::None) => Some(Vec::new()),
-        };
+        let allowed_tool_names =
+            allowed_tool_names_from_tool_choice(tool_choice, &declared_tool_names);
 
         Self::new(provider, declared_tool_names, allowed_tool_names)
     }
@@ -215,6 +219,20 @@ fn dedupe_tool_names(names: impl IntoIterator<Item = String>) -> Vec<String> {
     deduped
 }
 
+fn allowed_tool_names_from_tool_choice(
+    tool_choice: Option<&ToolChoice>,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    match tool_choice {
+        None | Some(ToolChoice::Auto) => None,
+        Some(ToolChoice::Required) => Some(declared_tool_names.to_vec()),
+        Some(ToolChoice::Specific { function_names }) => {
+            Some(dedupe_tool_names(function_names.iter().cloned()))
+        }
+        Some(ToolChoice::None) => Some(Vec::new()),
+    }
+}
+
 fn provider_declared_function_names(additional_params: Option<&serde_json::Value>) -> Vec<String> {
     additional_params
         .and_then(|params| params.get("tools"))
@@ -226,6 +244,23 @@ fn provider_declared_function_names(additional_params: Option<&serde_json::Value
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn provider_allowed_tool_names(
+    provider: &'static str,
+    additional_params: Option<&serde_json::Value>,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    let additional_params = additional_params?;
+
+    match provider {
+        "gemini" => generate_content_allowed_tool_names(additional_params, declared_tool_names)
+            .or_else(|| interactions_allowed_tool_names(additional_params, declared_tool_names)),
+        "anthropic" => anthropic_allowed_tool_names(additional_params, declared_tool_names),
+        _ => generate_content_allowed_tool_names(additional_params, declared_tool_names)
+            .or_else(|| interactions_allowed_tool_names(additional_params, declared_tool_names))
+            .or_else(|| anthropic_allowed_tool_names(additional_params, declared_tool_names)),
+    }
 }
 
 fn provider_tool_function_names(tool: &serde_json::Value) -> Vec<String> {
@@ -247,6 +282,13 @@ fn provider_tool_function_names(tool: &serde_json::Value) -> Vec<String> {
         }
     }
 
+    if tool.get("type").is_none()
+        && tool.get("input_schema").is_some()
+        && let Some(name) = tool.get("name").and_then(serde_json::Value::as_str)
+    {
+        names.push(name.to_string());
+    }
+
     for key in ["functionDeclarations", "function_declarations"] {
         if let Some(function_declarations) = tool.get(key).and_then(serde_json::Value::as_array) {
             names.extend(function_declarations.iter().filter_map(|declaration| {
@@ -259,6 +301,119 @@ fn provider_tool_function_names(tool: &serde_json::Value) -> Vec<String> {
     }
 
     names
+}
+
+fn generate_content_allowed_tool_names(
+    additional_params: &serde_json::Value,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    let function_calling_config = additional_params
+        .get("toolConfig")
+        .or_else(|| additional_params.get("tool_config"))
+        .and_then(|tool_config| {
+            tool_config
+                .get("functionCallingConfig")
+                .or_else(|| tool_config.get("function_calling_config"))
+        })?;
+
+    allowed_tool_names_from_mode_and_names(
+        function_calling_config
+            .get("mode")
+            .and_then(serde_json::Value::as_str),
+        function_calling_config
+            .get("allowedFunctionNames")
+            .or_else(|| function_calling_config.get("allowed_function_names")),
+        declared_tool_names,
+    )
+}
+
+fn interactions_allowed_tool_names(
+    additional_params: &serde_json::Value,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    let tool_choice = additional_params
+        .get("generation_config")
+        .or_else(|| additional_params.get("generationConfig"))
+        .and_then(|generation_config| {
+            generation_config
+                .get("tool_choice")
+                .or_else(|| generation_config.get("toolChoice"))
+        })?;
+
+    allowed_tool_names_from_interactions_tool_choice(tool_choice, declared_tool_names)
+}
+
+fn anthropic_allowed_tool_names(
+    additional_params: &serde_json::Value,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    let tool_choice = additional_params.get("tool_choice")?;
+
+    allowed_tool_names_from_type_tool_choice(tool_choice, declared_tool_names)
+}
+
+fn allowed_tool_names_from_interactions_tool_choice(
+    tool_choice: &serde_json::Value,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    if let Some(mode) = tool_choice.as_str() {
+        return allowed_tool_names_from_mode_and_names(mode.into(), None, declared_tool_names);
+    }
+
+    let allowed_tools = tool_choice.get("allowed_tools")?;
+
+    allowed_tool_names_from_mode_and_names(
+        allowed_tools
+            .get("mode")
+            .and_then(serde_json::Value::as_str),
+        allowed_tools.get("tools"),
+        declared_tool_names,
+    )
+}
+
+fn allowed_tool_names_from_type_tool_choice(
+    tool_choice: &serde_json::Value,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    let mode = tool_choice
+        .get("type")
+        .and_then(serde_json::Value::as_str)?;
+
+    match mode.to_ascii_lowercase().as_str() {
+        "auto" => None,
+        "any" => Some(declared_tool_names.to_vec()),
+        "none" => Some(Vec::new()),
+        "tool" => tool_choice
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .map(|name| vec![name.to_string()]),
+        _ => None,
+    }
+}
+
+fn allowed_tool_names_from_mode_and_names(
+    mode: Option<&str>,
+    names: Option<&serde_json::Value>,
+    declared_tool_names: &[String],
+) -> Option<Vec<String>> {
+    let names = names.and_then(serde_json::Value::as_array).map(|names| {
+        dedupe_tool_names(
+            names
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(String::from),
+        )
+    });
+
+    match mode.map(|mode| mode.to_ascii_lowercase()) {
+        Some(mode) if mode == "none" => Some(Vec::new()),
+        Some(mode) if mode == "any" || mode == "validated" => {
+            names.or_else(|| Some(declared_tool_names.to_vec()))
+        }
+        Some(mode) if mode == "auto" => names,
+        Some(_) => names,
+        None => names,
+    }
 }
 
 /// The model requested a tool that is not registered for this prompt.
@@ -1403,6 +1558,32 @@ mod tests {
     }
 
     #[test]
+    fn tool_call_name_validator_accepts_anthropic_extra_function_tool() {
+        let mut request = validator_request(Vec::new(), None);
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                {
+                    "name": "lookup_weather",
+                    "description": "Lookup weather",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            ]
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("anthropic", &request);
+
+        assert_eq!(
+            validator.declared_tool_names(),
+            ["lookup_weather".to_string()].as_slice()
+        );
+        validator
+            .validate("lookup_weather")
+            .expect("Anthropic extra function tool should validate");
+    }
+
+    #[test]
     fn tool_call_name_validator_ignores_provider_built_in_tools() {
         let mut request = validator_request(Vec::new(), None);
         request.additional_params = Some(serde_json::json!({
@@ -1420,6 +1601,97 @@ mod tests {
             err,
             CompletionError::InvalidToolCall(ToolCallValidationError {
                 reason: ToolCallValidationReason::Undeclared,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_respects_generate_content_extra_tool_config_allowlist() {
+        let mut request = validator_request(vec![test_tool("add"), test_tool("subtract")], None);
+        request.additional_params = Some(serde_json::json!({
+            "toolConfig": {
+                "functionCallingConfig": {
+                    "mode": "ANY",
+                    "allowedFunctionNames": ["add"]
+                }
+            }
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("rig", &request);
+
+        validator
+            .validate("add")
+            .expect("provider-native allowed function should validate");
+        let err = validator
+            .validate("subtract")
+            .expect_err("provider-native allowlist should reject disallowed functions");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Disallowed,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_respects_interactions_extra_tool_choice_allowlist() {
+        let mut request = validator_request(vec![test_tool("add"), test_tool("subtract")], None);
+        request.additional_params = Some(serde_json::json!({
+            "generation_config": {
+                "tool_choice": {
+                    "allowed_tools": {
+                        "mode": "validated",
+                        "tools": ["add"]
+                    }
+                }
+            }
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("rig", &request);
+
+        validator
+            .validate("add")
+            .expect("provider-native allowed interaction function should validate");
+        let err = validator
+            .validate("subtract")
+            .expect_err("provider-native interaction allowlist should reject disallowed functions");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Disallowed,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn tool_call_name_validator_respects_anthropic_extra_tool_choice() {
+        let mut request = validator_request(vec![test_tool("add"), test_tool("subtract")], None);
+        request.additional_params = Some(serde_json::json!({
+            "tool_choice": {
+                "type": "tool",
+                "name": "add"
+            }
+        }));
+        let validator = ToolCallNameValidator::from_completion_request("rig", &request);
+
+        assert_eq!(
+            validator.allowed_tool_names(),
+            Some(["add".to_string()].as_slice())
+        );
+        validator
+            .validate("add")
+            .expect("provider-native Anthropic tool choice should validate");
+        let err = validator
+            .validate("subtract")
+            .expect_err("provider-native Anthropic tool choice should reject other tools");
+
+        assert!(matches!(
+            err,
+            CompletionError::InvalidToolCall(ToolCallValidationError {
+                reason: ToolCallValidationReason::Disallowed,
                 ..
             })
         ));
