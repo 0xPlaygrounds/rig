@@ -716,14 +716,21 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+            .map(|usage| {
+                let (cached_input, cache_creation) = usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
+                    .unwrap_or((0, 0));
+                completion::Usage {
+                    input_tokens: usage.prompt_tokens as u64,
+                    output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                    total_tokens: usage.total_tokens as u64,
+                    cached_input_tokens: cached_input,
+                    cache_creation_input_tokens: cache_creation,
+                    tool_use_prompt_tokens: 0,
+                    reasoning_tokens: 0,
+                }
             })
             .unwrap_or_default();
 
@@ -2049,6 +2056,72 @@ mod tests {
         assert_eq!(response.model, "google/gemini-2.5-flash");
         assert_eq!(response.choices.len(), 1);
         assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
+    }
+
+    #[test]
+    fn test_completion_response_maps_cache_token_accounting() {
+        let json = json!({
+            "id": "gen-cache-test",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-3.5-sonnet",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Hi"
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 10,
+                "total_tokens": 510,
+                "prompt_tokens_details": {
+                    "cached_tokens": 400,
+                    "cache_write_tokens": 50
+                }
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(converted.usage.input_tokens, 500);
+        assert_eq!(converted.usage.output_tokens, 10);
+        assert_eq!(converted.usage.cached_input_tokens, 400);
+        assert_eq!(converted.usage.cache_creation_input_tokens, 50);
+    }
+
+    #[test]
+    fn test_completion_response_cache_tokens_absent_defaults_to_zero() {
+        let json = json!({
+            "id": "gen-no-cache",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4o",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Hi"
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "total_tokens": 110
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(converted.usage.cached_input_tokens, 0);
+        assert_eq!(converted.usage.cache_creation_input_tokens, 0);
     }
 
     #[test]
