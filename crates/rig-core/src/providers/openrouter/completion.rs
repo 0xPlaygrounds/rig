@@ -605,6 +605,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 tool_calls,
                 reasoning,
                 reasoning_details,
+                images,
                 ..
             } => {
                 let mut content = content
@@ -698,6 +699,28 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                             },
                         ));
                     }
+                }
+
+                // Generated images arrive out-of-band from `content`.
+                // Base64 data URIs become inline image blocks; plain
+                // URLs are carried through as URL-sourced images.
+                for img in images {
+                    let url = &img.image_url.url;
+                    let block = if let Some((mime, b64)) = parse_data_uri(url) {
+                        completion::AssistantContent::image_base64(
+                            b64.to_string(),
+                            message::ImageMediaType::from_mime_type(mime),
+                            None,
+                        )
+                    } else {
+                        completion::AssistantContent::Image(message::Image {
+                            data: message::DocumentSourceKind::Url(url.clone()),
+                            media_type: None,
+                            detail: None,
+                            additional_params: None,
+                        })
+                    };
+                    content.push(block);
                 }
 
                 Ok(content)
@@ -963,6 +986,20 @@ pub struct ImageUrl {
     /// Image detail level (optional)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
+}
+
+/// An image emitted by an image-generation model. OpenRouter returns generated images
+/// out-of-band from `content`, as a sibling `images` array on the assistant message.
+/// Each entry mirrors the request-side `image_url` content part structure.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ResponseImage {
+    pub image_url: ImageUrl,
+}
+
+/// Split a `data:<mime>;base64,<payload>` URI into `(mime, payload)`.
+/// Returns `None` for plain URLs or non-base64 data URIs.
+fn parse_data_uri(url: &str) -> Option<(&str, &str)> {
+    url.strip_prefix("data:")?.split_once(";base64,")
 }
 
 /// Video URL content structure for OpenRouter video support
@@ -1311,6 +1348,11 @@ pub enum Message {
         reasoning: Option<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         reasoning_details: Vec<ReasoningDetails>,
+        /// Generated images (image-generation models). Inbound only —
+        /// never serialized back into a request (assistant images are
+        /// not a supported request content type on OpenRouter).
+        #[serde(default, skip_serializing)]
+        images: Vec<ResponseImage>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -1424,6 +1466,7 @@ impl TryFrom<openai::Message> for Message {
                 tool_calls,
                 reasoning,
                 reasoning_details: Vec::new(),
+                images: Vec::new(),
             },
             openai::Message::ToolResult {
                 tool_call_id,
@@ -1549,6 +1592,7 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
             tool_calls,
             reasoning,
             reasoning_details,
+            images: Vec::new(),
         }])
     }
 }
@@ -3843,6 +3887,106 @@ mod tests {
         assert_eq!(
             body, body_before,
             "body should be unchanged when no system message exists"
+        );
+    }
+
+    #[test]
+    fn test_completion_response_extracts_generated_images() {
+        let json = json!({
+            "id": "resp_img",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "google/gemini-flash-image-preview",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Here is your image.",
+                    "images": [
+                        {"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgo="}}
+                    ]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
+        assert_eq!(items.len(), 2);
+
+        assert!(items.iter().any(|item| matches!(
+            item,
+            completion::AssistantContent::Text(t) if t.text == "Here is your image."
+        )));
+        assert!(items.iter().any(|item| matches!(
+            item,
+            completion::AssistantContent::Image(message::Image {
+                data: message::DocumentSourceKind::Base64(b64),
+                media_type: Some(message::ImageMediaType::PNG),
+                ..
+            }) if b64 == "iVBORw0KGgo="
+        )));
+    }
+
+    #[test]
+    fn test_completion_response_extracts_generated_images_url() {
+        let json = json!({
+            "id": "resp_img_url",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "google/gemini-flash-image-preview",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Here is your image.",
+                    "images": [
+                        {"type":"image_url","image_url":{"url":"https://example.com/generated.png"}}
+                    ]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
+        assert_eq!(items.len(), 2);
+
+        assert!(items.iter().any(|item| matches!(
+            item,
+            completion::AssistantContent::Image(message::Image {
+                data: message::DocumentSourceKind::Url(url),
+                media_type: None,
+                ..
+            }) if url == "https://example.com/generated.png"
+        )));
+    }
+
+    #[test]
+    fn test_assistant_images_not_serialized_in_request() {
+        let msg = Message::Assistant {
+            content: vec!["Hello".to_string().into()],
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: vec![],
+            reasoning: None,
+            reasoning_details: vec![],
+            images: vec![ResponseImage {
+                image_url: ImageUrl {
+                    url: "data:image/png;base64,abc".to_string(),
+                    detail: None,
+                },
+            }],
+        };
+        let serialized = serde_json::to_value(&msg).unwrap();
+        assert!(
+            serialized.get("images").is_none(),
+            "images field must not appear in serialized assistant message"
         );
     }
 }
