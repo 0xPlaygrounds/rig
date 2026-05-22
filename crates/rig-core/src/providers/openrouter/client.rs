@@ -8,6 +8,7 @@ use crate::{
     completion::GetTokenUsage,
     http_client,
 };
+use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
@@ -124,6 +125,23 @@ impl GetTokenUsage for Usage {
         ))
     }
 }
+impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
+    /// Attach OpenRouter app-identification headers (`X-Title` and `HTTP-Referer`) to
+    /// every request made by this client. `title` appears in the dashboard activity feed;
+    /// `url` is used for per-app analytics and the public rankings page. Both are optional.
+    pub fn with_app_identity(mut self, title: impl AsRef<str>, url: impl AsRef<str>) -> Self {
+        if let Ok(val) = HeaderValue::from_str(title.as_ref()) {
+            self.headers_mut()
+                .insert(http::header::HeaderName::from_static("x-title"), val);
+        }
+        if let Ok(val) = HeaderValue::from_str(url.as_ref()) {
+            self.headers_mut()
+                .insert(http::header::HeaderName::from_static("http-referer"), val);
+        }
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -134,5 +152,44 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn test_with_app_identity_sets_headers() {
+        let client = crate::providers::openrouter::Client::builder()
+            .with_app_identity("My App", "https://myapp.example.com")
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        let headers = client.headers();
+        assert_eq!(
+            headers.get("x-title").and_then(|v| v.to_str().ok()),
+            Some("My App"),
+            "X-Title header should be set"
+        );
+        assert_eq!(
+            headers.get("http-referer").and_then(|v| v.to_str().ok()),
+            Some("https://myapp.example.com"),
+            "HTTP-Referer header should be set"
+        );
+    }
+
+    #[test]
+    fn test_without_app_identity_no_extra_headers() {
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        let headers = client.headers();
+        assert!(
+            headers.get("x-title").is_none(),
+            "X-Title header should not be present without with_app_identity"
+        );
+        assert!(
+            headers.get("http-referer").is_none(),
+            "HTTP-Referer header should not be present without with_app_identity"
+        );
     }
 }
