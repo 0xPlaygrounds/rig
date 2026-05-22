@@ -148,7 +148,13 @@ where
 
         request.additional_params = Some(params);
 
-        let body = serde_json::to_vec(&request)?;
+        let body = if self.prompt_caching {
+            let mut v = serde_json::to_value(&request)?;
+            super::completion::apply_prompt_caching(&mut v);
+            serde_json::to_vec(&v)?
+        } else {
+            serde_json::to_vec(&request)?
+        };
 
         let req = self
             .client
