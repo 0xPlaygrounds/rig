@@ -200,6 +200,16 @@ impl<T: Tool> ToolDyn for T {
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
+            // LLMs frequently send `null` for tools whose arguments are all optional.
+            // `serde_json::from_str::<T>("null")` fails for struct types even when
+            // every field is `Option<_>`, because JSON null does not deserialize to an
+            // empty object. Normalise to `{}` so callers do not need to wrap their
+            // entire args type in `Option<T>` just to handle the no-argument case.
+            let args = if args.trim() == "null" {
+                "{}".to_string()
+            } else {
+                args
+            };
             match serde_json::from_str(&args) {
                 Ok(args) => <Self as Tool>::call(self, args)
                     .await
@@ -539,5 +549,52 @@ mod tests {
                 "count": 42
             })
         );
+    }
+
+    // Struct-typed args with all-optional fields — serde rejects `null` for these
+    // even though the fields are optional. The normalization in `ToolDyn::call`
+    // converts `null` to `{}` before deserialization so callers can omit the
+    // wrapping `Option<Args>` workaround.
+    #[tokio::test]
+    async fn null_args_are_normalized_to_empty_object() {
+        use crate::test_utils::MockToolError;
+
+        #[derive(serde::Deserialize, serde::Serialize)]
+        struct NoRequiredArgs {
+            label: Option<String>,
+        }
+
+        struct NoArgTool;
+
+        impl Tool for NoArgTool {
+            const NAME: &'static str = "no_arg_tool";
+            type Error = MockToolError;
+            type Args = NoRequiredArgs;
+            type Output = String;
+
+            async fn definition(&self, _prompt: String) -> ToolDefinition {
+                ToolDefinition {
+                    name: Self::NAME.to_string(),
+                    description: "Tool with no required arguments".to_string(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                }
+            }
+
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                Ok(args.label.unwrap_or_else(|| "default".to_string()))
+            }
+        }
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(NoArgTool);
+
+        // `null` is what LLMs send when no arguments are provided; without the
+        // normalization this would return `ToolError::JsonError`.
+        let output = toolset
+            .call("no_arg_tool", "null".to_string())
+            .await
+            .expect("null args should succeed after normalisation");
+
+        assert_eq!(output, "default");
     }
 }
