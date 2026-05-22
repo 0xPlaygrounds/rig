@@ -47,8 +47,8 @@ use crate::{
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
+use std::{collections::HashMap, fmt};
 use thiserror::Error;
 
 // Errors
@@ -96,6 +96,10 @@ pub enum PromptError {
     #[error("ToolCallError: {0}")]
     ToolError(#[from] ToolSetError),
 
+    /// The model requested a tool that is not registered for this prompt.
+    #[error("UnknownToolCall: {0}")]
+    UnknownToolCall(UnknownToolCallError),
+
     /// There was an issue while executing a tool on a tool server
     #[error("ToolServerError: {0}")]
     ToolServerError(#[from] Box<ToolServerError>),
@@ -116,6 +120,53 @@ pub enum PromptError {
         chat_history: Vec<Message>,
         reason: String,
     },
+}
+
+/// The model requested a tool that is not registered for this prompt.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnknownToolCallError {
+    /// Tool name requested by the model.
+    pub tool_name: String,
+    /// Provider/tool-call identifier for the attempted tool call.
+    pub tool_call_id: String,
+    /// Optional provider call id associated with the attempted tool call.
+    pub call_id: Option<String>,
+    /// Arguments the model supplied for the attempted tool call.
+    pub arguments: serde_json::Value,
+    /// Tool names registered with the prompt at the time of validation.
+    pub available_tool_names: Vec<String>,
+}
+
+impl UnknownToolCallError {
+    /// Create an unknown-tool error with the attempted call and available tool context.
+    pub fn new(
+        tool_name: String,
+        tool_call_id: String,
+        call_id: Option<String>,
+        arguments: serde_json::Value,
+        available_tool_names: Vec<String>,
+    ) -> Self {
+        Self {
+            tool_name,
+            tool_call_id,
+            call_id,
+            arguments,
+            available_tool_names,
+        }
+    }
+}
+
+impl fmt::Display for UnknownToolCallError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "model requested unknown tool `{}` (tool_call_id={}, call_id={:?}, available_tools=[{}])",
+            self.tool_name,
+            self.tool_call_id,
+            self.call_id,
+            self.available_tool_names.join(", ")
+        )
+    }
 }
 
 /// Surface [`crate::memory::ConversationMemory`] failures through the existing

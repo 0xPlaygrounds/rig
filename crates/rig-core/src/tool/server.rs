@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::{
-    completion::{CompletionError, ToolDefinition},
+    completion::{CompletionError, ToolDefinition, UnknownToolCallError},
     tool::{Tool, ToolDyn, ToolSet, ToolSetError},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
@@ -134,6 +134,54 @@ impl ToolServerHandle {
         state.static_tool_names.retain(|x| *x != tool_name);
         state.toolset.delete_tool(tool_name);
         Ok(())
+    }
+
+    /// Return the names of all tools registered with the server.
+    pub async fn tool_names(&self) -> Vec<String> {
+        let state = self.0.read().await;
+        let mut names = state.toolset.names();
+        names.sort();
+        names
+    }
+
+    /// Check whether a tool is registered with the server.
+    pub async fn has_tool(&self, tool_name: &str) -> bool {
+        let state = self.0.read().await;
+        state.toolset.contains(tool_name)
+    }
+
+    /// Validate that a model-requested tool call targets a registered tool.
+    pub async fn validate_tool_call_name(
+        &self,
+        tool_name: &str,
+        tool_call_id: &str,
+        call_id: Option<String>,
+        arguments: serde_json::Value,
+    ) -> Result<(), UnknownToolCallError> {
+        if self.has_tool(tool_name).await {
+            Ok(())
+        } else {
+            Err(self
+                .unknown_tool_call_error(tool_name.to_string(), tool_call_id, call_id, arguments)
+                .await)
+        }
+    }
+
+    /// Build an unknown-tool error using the server's current registered tool names.
+    pub async fn unknown_tool_call_error(
+        &self,
+        tool_name: String,
+        tool_call_id: &str,
+        call_id: Option<String>,
+        arguments: serde_json::Value,
+    ) -> UnknownToolCallError {
+        UnknownToolCallError::new(
+            tool_name,
+            tool_call_id.to_string(),
+            call_id,
+            arguments,
+            self.tool_names().await,
+        )
     }
 
     /// Look up and execute a tool by name.

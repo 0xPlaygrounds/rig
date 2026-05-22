@@ -7,11 +7,14 @@ use super::{
 };
 use crate::{
     OneOrMany,
-    completion::{CompletionModel, Document, Message, PromptError, Usage},
+    completion::{CompletionModel, Document, Message, PromptError, UnknownToolCallError, Usage},
     json_utils,
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
-    tool::server::ToolServerHandle,
+    tool::{
+        ToolSetError,
+        server::{ToolServerError, ToolServerHandle},
+    },
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{StreamExt, stream};
@@ -426,6 +429,48 @@ fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
         .collect()
 }
 
+fn log_unknown_tool_call(error: &UnknownToolCallError) {
+    tracing::warn!(
+        tool_name = error.tool_name.as_str(),
+        tool_call_id = error.tool_call_id.as_str(),
+        call_id = ?error.call_id,
+        available_tool_names = ?error.available_tool_names,
+        "Model requested an unknown tool"
+    );
+}
+
+pub(super) async fn validate_registered_tool_call(
+    tool_server_handle: &ToolServerHandle,
+    tool_call: &crate::message::ToolCall,
+) -> Result<(), UnknownToolCallError> {
+    tool_server_handle
+        .validate_tool_call_name(
+            &tool_call.function.name,
+            &tool_call.id,
+            tool_call.call_id.clone(),
+            tool_call.function.arguments.clone(),
+        )
+        .await
+        .inspect_err(log_unknown_tool_call)
+}
+
+pub(super) async fn unknown_tool_call_error(
+    tool_server_handle: &ToolServerHandle,
+    tool_name: String,
+    tool_call: &crate::message::ToolCall,
+) -> UnknownToolCallError {
+    let error = tool_server_handle
+        .unknown_tool_call_error(
+            tool_name,
+            &tool_call.id,
+            tool_call.call_id.clone(),
+            tool_call.function.arguments.clone(),
+        )
+        .await;
+    log_unknown_tool_call(&error);
+    error
+}
+
 impl<M, P> PromptRequest<Extended, M, P>
 where
     M: CompletionModel,
@@ -697,6 +742,9 @@ where
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
                             tool_span.record("gen_ai.tool.call.arguments", &args);
+                            validate_registered_tool_call(&tool_server_handle, &tool_call)
+                                .await
+                                .map_err(PromptError::UnknownToolCall)?;
                             if let Some(hook) = hook1 {
                                 let action = hook
                                     .on_tool_call(
@@ -738,6 +786,17 @@ where
                             let output = match tool_server_handle.call_tool(tool_name, &args).await
                             {
                                 Ok(res) => res,
+                                Err(ToolServerError::ToolsetError(
+                                    ToolSetError::ToolNotFoundError(name),
+                                )) => {
+                                    let error = unknown_tool_call_error(
+                                        &tool_server_handle,
+                                        name,
+                                        &tool_call,
+                                    )
+                                    .await;
+                                    return Err(PromptError::UnknownToolCall(error));
+                                }
                                 Err(e) => {
                                     tracing::warn!("Error while executing tool: {e}");
                                     e.to_string()
@@ -1021,7 +1080,8 @@ mod tests {
         },
         message::{Text, UserContent},
         test_utils::{
-            AppendFailingMemory, CountingMemory, FailingMemory, MockCompletionModel, MockTurn,
+            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
+            MockTurn,
         },
     };
     use schemars::JsonSchema;
@@ -1221,7 +1281,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
+    async fn prompt_request_stops_cleanly_on_empty_terminal_turn_after_known_tool() {
         let first_call_usage = Usage {
             input_tokens: 1,
             output_tokens: 1,
@@ -1241,12 +1301,12 @@ mod tests {
             reasoning_tokens: 0,
         };
         let model = MockCompletionModel::new([
-            MockTurn::tool_call("tool_call_1", "missing_tool", json!({"input": "value"}))
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
                 .with_call_id("call_1")
                 .with_usage(first_call_usage),
             MockTurn::text("").with_usage(second_call_usage),
         ]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt("do tool work")
@@ -1319,6 +1379,37 @@ mod tests {
         let requests = agent.model.requests();
         assert_eq!(requests.len(), 2);
         validate_follow_up_tool_history(&requests[1]);
+    }
+
+    #[tokio::test]
+    async fn prompt_request_rejects_unknown_tool_without_follow_up_turn() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "missing_tool", json!({"input": "value"}))
+                .with_call_id("call_1"),
+            MockTurn::text("should not be called"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).build();
+
+        let err = agent
+            .prompt("do tool work")
+            .max_turns(3)
+            .await
+            .expect_err("unknown tool should stop the prompt");
+
+        assert!(
+            matches!(
+                err,
+                PromptError::UnknownToolCall(ref error)
+                    if error.tool_name == "missing_tool"
+                        && error.tool_call_id == "tool_call_1"
+                        && error.call_id.as_deref() == Some("call_1")
+                        && error.arguments == json!({"input": "value"})
+                        && error.available_tool_names.is_empty()
+            ),
+            "expected unknown tool-call error, got {err:?}"
+        );
+        assert_eq!(recorded.requests().len(), 1);
     }
 
     #[tokio::test]

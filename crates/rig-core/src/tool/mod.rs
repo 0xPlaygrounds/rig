@@ -320,6 +320,11 @@ impl ToolSet {
         self.tools.contains_key(toolname)
     }
 
+    /// Return the names of all registered tools.
+    pub fn names(&self) -> Vec<String> {
+        self.tools.keys().cloned().collect()
+    }
+
     /// Add a tool to the toolset
     pub fn add_tool(&mut self, tool: impl ToolDyn + 'static) {
         self.tools
