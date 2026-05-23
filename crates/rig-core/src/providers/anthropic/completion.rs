@@ -150,6 +150,11 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
+    /// Cache breakpoint marker. Set on the last tool in the array to cache
+    /// the tools layer independently of the system prompt. Anthropic accepts
+    /// up to 4 `cache_control` markers per request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 /// TTL for a cache control breakpoint.
@@ -1883,6 +1888,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
                 name: tool.name,
                 description: Some(tool.description),
                 input_schema: tool.parameters,
+                cache_control: None,
             })
             .map(serde_json::to_value)
             .collect::<Result<Vec<_>, _>>()?;

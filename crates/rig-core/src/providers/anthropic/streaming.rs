@@ -279,6 +279,7 @@ where
                 name: tool.name,
                 description: Some(tool.description),
                 input_schema: tool.parameters,
+                cache_control: None,
             })
             .map(serde_json::to_value)
             .collect::<Result<Vec<_>, _>>()?;
