@@ -203,14 +203,15 @@ impl<T: Tool> ToolDyn for T {
             // LLMs frequently send `null` for tools whose arguments are all optional.
             // `serde_json::from_str::<T>("null")` fails for struct types even when
             // every field is `Option<_>`, because JSON null does not deserialize to an
-            // empty object. Normalise to `{}` so callers do not need to wrap their
-            // entire args type in `Option<T>` just to handle the no-argument case.
-            let args = if args.trim() == "null" {
-                "{}".to_string()
-            } else {
-                args
+            // empty object. Preserve any args type that already accepts `null` (such as
+            // `()` or `Option<T>`) and fall back to `{}` only after the original parse
+            // fails.
+            let args = match serde_json::from_str(&args) {
+                Ok(args) => Ok(args),
+                Err(err) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| err),
+                Err(err) => Err(err),
             };
-            match serde_json::from_str(&args) {
+            match args {
                 Ok(args) => <Self as Tool>::call(self, args)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
@@ -471,7 +472,8 @@ impl ToolSetBuilder {
 mod tests {
     use crate::message::{DocumentSourceKind, ToolResultContent};
     use crate::test_utils::{
-        MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool, mock_math_toolset,
+        MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
+        mock_math_toolset,
     };
     use serde_json::json;
 
@@ -551,9 +553,22 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn null_args_are_preserved_for_unit_args() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(MockExampleTool);
+
+        let output = toolset
+            .call("example_tool", "null".to_string())
+            .await
+            .expect("unit args should accept null without object fallback");
+
+        assert_eq!(output, "Example answer");
+    }
+
     // Struct-typed args with all-optional fields — serde rejects `null` for these
     // even though the fields are optional. The normalization in `ToolDyn::call`
-    // converts `null` to `{}` before deserialization so callers can omit the
+    // falls back from `null` to `{}` so callers can omit the
     // wrapping `Option<Args>` workaround.
     #[tokio::test]
     async fn null_args_are_normalized_to_empty_object() {
