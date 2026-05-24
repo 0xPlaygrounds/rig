@@ -145,6 +145,7 @@ When modifying hook behavior, preserve the intended control flow:
 - `ToolCallHookAction::Continue`
 - `ToolCallHookAction::Skip`
 - `ToolCallHookAction::Terminate`
+- `ToolCallHookAction::Replace`
 
 Check both streaming and non-streaming paths.
 

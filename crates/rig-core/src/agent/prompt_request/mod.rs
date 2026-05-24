@@ -690,7 +690,7 @@ where
                     async move {
                         if let AssistantContent::ToolCall(tool_call) = choice {
                             let tool_name = &tool_call.function.name;
-                            let args =
+                            let mut args =
                                 json_utils::value_to_json_string(&tool_call.function.arguments);
                             let internal_call_id = nanoid::nanoid!();
                             let tool_span = tracing::Span::current();
@@ -707,31 +707,49 @@ where
                                     )
                                     .await;
 
-                                if let ToolCallHookAction::Terminate { reason } = action {
-                                    return Err(PromptError::prompt_cancelled(
-                                        cloned_history_for_error,
-                                        reason,
-                                    ));
-                                }
+                                match action {
+                                    ToolCallHookAction::Continue => {}
 
-                                if let ToolCallHookAction::Skip { reason } = action {
-                                    // Tool execution rejected, return rejection message as tool result
-                                    tracing::info!(
-                                        tool_name = tool_name,
-                                        reason = reason,
-                                        "Tool call rejected"
-                                    );
-                                    if let Some(call_id) = tool_call.call_id.clone() {
-                                        return Ok(UserContent::tool_result_with_call_id(
-                                            tool_call.id.clone(),
-                                            call_id,
-                                            OneOrMany::one(reason.into()),
+                                    ToolCallHookAction::Replace {
+                                        args: replacement_args,
+                                    } => {
+                                        args = json_utils::value_to_json_string(&replacement_args);
+
+                                        tool_span.record("gen_ai.tool.call.arguments", &args);
+
+                                        tracing::info!(
+                                            tool_name = tool_name,
+                                            args = args,
+                                            "Tool call arguments replaced"
+                                        );
+                                    }
+
+                                    ToolCallHookAction::Terminate { reason } => {
+                                        return Err(PromptError::prompt_cancelled(
+                                            cloned_history_for_error,
+                                            reason,
                                         ));
-                                    } else {
-                                        return Ok(UserContent::tool_result(
-                                            tool_call.id.clone(),
-                                            OneOrMany::one(reason.into()),
-                                        ));
+                                    }
+
+                                    ToolCallHookAction::Skip { reason } => {
+                                        tracing::info!(
+                                            tool_name = tool_name,
+                                            reason = reason,
+                                            "Tool call rejected"
+                                        );
+
+                                        if let Some(call_id) = tool_call.call_id.clone() {
+                                            return Ok(UserContent::tool_result_with_call_id(
+                                                tool_call.id.clone(),
+                                                call_id,
+                                                OneOrMany::one(reason.into()),
+                                            ));
+                                        } else {
+                                            return Ok(UserContent::tool_result(
+                                                tool_call.id.clone(),
+                                                OneOrMany::one(reason.into()),
+                                            ));
+                                        }
                                     }
                                 }
                             }

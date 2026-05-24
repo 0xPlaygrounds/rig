@@ -678,31 +678,45 @@ where
 
                             let tc_result = async {
                                 let tool_span = tracing::Span::current();
-                                let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
+                                let mut tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 if let Some(ref hook) = self.hook {
                                     let action = hook
                                         .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
                                         .await;
 
-                                    if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                    }
+                                    match action{
+                                        ToolCallHookAction::Continue => {}
 
-                                    if let ToolCallHookAction::Skip { reason } = action {
-                                        // Tool execution rejected, return rejection message as tool result
-                                        tracing::info!(
-                                            tool_name = tool_call.function.name.as_str(),
-                                            reason = reason,
-                                            "Tool call rejected"
-                                        );
-                                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-                                        tool_calls.push(tool_call_msg);
-                                        tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
-                                        saw_tool_call_this_turn = true;
-                                        return Ok(reason);
+                                        ToolCallHookAction::Replace {args: replacement_args} =>{
+                                            tool_args = json_utils::value_to_json_string(&replacement_args);
+
+                                            tracing::error!(
+                                                tool_name = tool_call.function.name.as_str(),
+                                                args = tool_args,
+                                                "Tool call argsuments replaced"
+                                            );
+                                        }
+
+                                        ToolCallHookAction::Terminate { reason } => {
+                                            return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                        }
+                                        
+                                        ToolCallHookAction::Skip { reason } => {
+                                            // Tool execution rejected, return rejection message as tool result
+                                            tracing::info!(
+                                                tool_name = tool_call.function.name.as_str(),
+                                                reason = reason,
+                                                "Tool call rejected"
+                                            );
+                                            let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
+                                            tool_calls.push(tool_call_msg);
+                                            tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
+                                            saw_tool_call_this_turn = true;
+                                            return Ok(reason);
+                                        }
                                     }
                                 }
-
+                                    
                                 tool_span.record("gen_ai.tool.name", &tool_call.function.name);
                                 tool_span.record("gen_ai.tool.call.arguments", &tool_args);
 
