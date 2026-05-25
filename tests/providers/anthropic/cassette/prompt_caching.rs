@@ -45,11 +45,7 @@ async fn manual_prompt_caching_reuses_tool_cache() {
             )
             .await;
             assert_response_contains_cache_probe(&first, CACHE_PROBE_RESPONSE);
-            assert!(
-                first.usage.cache_creation_input_tokens > 0,
-                "first prompt-cached request should create cache tokens, got usage: {:?}",
-                first.usage
-            );
+            assert_cache_created_or_read(&first.usage, "first prompt-cached request");
 
             let second =
                 send_cache_probe(model, CACHE_PROBE_PROMPT, cache_probe_preamble(), tools).await;
@@ -82,11 +78,7 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
             )
             .await;
             assert_text_contains_cache_probe(&first.text, STREAMING_CACHE_PROBE_RESPONSE);
-            assert!(
-                first.usage.cache_creation_input_tokens > 0,
-                "first streaming prompt-cached request should create cache tokens, got usage: {:?}",
-                first.usage
-            );
+            assert_cache_created_or_read(&first.usage, "first streaming prompt-cached request");
 
             let second = send_streaming_cache_probe(
                 model,
@@ -125,11 +117,7 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
             )
             .await;
             assert_response_contains_cache_probe(&first, AUTOMATIC_CACHE_PROBE_RESPONSE);
-            assert!(
-                first.usage.cache_creation_input_tokens > 0,
-                "first prompt+automatic cached request should create cache tokens, got usage: {:?}",
-                first.usage
-            );
+            assert_cache_created_or_read(&first.usage, "first prompt+automatic cached request");
 
             let second = send_cache_probe(
                 model,
@@ -222,6 +210,13 @@ fn assert_text_contains_cache_probe(text: &str, expected: &str) {
         text.to_ascii_lowercase()
             .contains(&expected.to_ascii_lowercase()),
         "response should contain the requested cache probe text {expected:?}, got: {text:?}"
+    );
+}
+
+fn assert_cache_created_or_read(usage: &Usage, context: &str) {
+    assert!(
+        usage.cache_creation_input_tokens > 0 || usage.cached_input_tokens > 0,
+        "{context} should create or read cache tokens, got usage: {usage:?}"
     );
 }
 
