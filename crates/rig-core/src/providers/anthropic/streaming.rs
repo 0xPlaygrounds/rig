@@ -6,9 +6,9 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    AnthropicCompatibleProvider, CacheControl, Content, GenericCompletionModel, Message,
-    SystemContent, ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
-    split_system_messages_from_history,
+    AnthropicCompatibleProvider, Content, GenericCompletionModel, Message, SystemContent,
+    ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
+    resolve_top_level_cache_control, split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -236,6 +236,11 @@ where
             .additional_params
             .take()
             .unwrap_or(Value::Null);
+        let top_level_cache_control = resolve_top_level_cache_control(
+            self.automatic_caching,
+            self.automatic_caching_ttl.clone(),
+            &mut additional_params_payload,
+        )?;
         let mut tools =
             build_tool_definitions(completion_request.tools, &mut additional_params_payload)?;
 
@@ -244,8 +249,7 @@ where
             &mut messages,
             &mut tools,
             self.prompt_caching,
-            self.automatic_caching,
-            self.automatic_caching_ttl.clone(),
+            top_level_cache_control.as_ref(),
         )?;
 
         let mut body = json!({
@@ -257,13 +261,10 @@ where
 
         // Automatic caching: one top-level field; the API moves the breakpoint automatically.
         // No beta header is required.
-        if self.automatic_caching {
-            let cc = CacheControl::Ephemeral {
-                ttl: self.automatic_caching_ttl.clone(),
-            };
+        if let Some(cache_control) = top_level_cache_control {
             merge_inplace(
                 &mut body,
-                json!({ "cache_control": serde_json::to_value(&cc)? }),
+                json!({ "cache_control": serde_json::to_value(&cache_control)? }),
             );
         }
 
@@ -581,6 +582,7 @@ fn handle_event(
 
 #[cfg(test)]
 mod tests {
+    use super::super::completion::{CacheControl, CacheTtl};
     use super::*;
     use async_stream::stream;
     use futures::StreamExt;
@@ -625,13 +627,55 @@ mod tests {
         .unwrap();
         let mut system: Vec<SystemContent> = Vec::new();
         let mut messages: Vec<Message> = Vec::new();
-        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, false, None)
-            .unwrap();
+        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None).unwrap();
 
         assert_eq!(tools.len(), 2);
         assert!(tools[0].get("cache_control").is_none());
         assert_eq!(tools[1]["name"], "provider_tool");
         assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
+        let mut additional_params = json!({
+            "cache_control": {"type": "ephemeral", "ttl": "1h"}
+        });
+        let top_level_cache_control =
+            resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
+        let mut tools = build_tool_definitions(
+            vec![crate::completion::ToolDefinition {
+                name: "rig_tool".to_string(),
+                description: "Rig tool".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }],
+            &mut additional_params,
+        )
+        .unwrap();
+        let mut system = vec![SystemContent::Text {
+            text: "System prompt".to_string(),
+            cache_control: None,
+        }];
+        let mut messages: Vec<Message> = Vec::new();
+
+        apply_prompt_cache_control(
+            &mut system,
+            &mut messages,
+            &mut tools,
+            true,
+            top_level_cache_control.as_ref(),
+        )
+        .unwrap();
+
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        match &system[0] {
+            SystemContent::Text {
+                cache_control: Some(CacheControl::Ephemeral { ttl }),
+                ..
+            } => assert_eq!(ttl.as_ref(), Some(&CacheTtl::OneHour)),
+            other => panic!("expected system cache_control, got {other:?}"),
+        }
+        assert!(additional_params.get("cache_control").is_none());
     }
 
     fn handle_event(

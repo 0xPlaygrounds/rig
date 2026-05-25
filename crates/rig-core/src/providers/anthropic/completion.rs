@@ -1548,9 +1548,10 @@ where
     /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
     /// instead when you need fine-grained, per-block control over what is cached.
     ///
-    /// To use a one-hour TTL instead of the default five minutes, pass `ttl: "1h"` via
-    /// `additional_params` or combine with an explicit block-level breakpoint that carries the
-    /// extended TTL.
+    /// To use a one-hour TTL instead of the default five minutes, use
+    /// [`with_automatic_caching_1h`] or pass top-level `cache_control` with
+    /// `ttl: "1h"` via `additional_params`. Rig normalizes raw top-level
+    /// `cache_control` before budgeting and ordering manual prompt cache markers.
     ///
     /// ```ignore
     /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
@@ -1570,6 +1571,7 @@ where
     /// | `claude-haiku-4-5` | 4 096 |
     ///
     /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
+    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -1915,7 +1917,7 @@ fn validate_cache_control_ttl_order(
     system: &[SystemContent],
     messages: &[Message],
     tools: &[serde_json::Value],
-    automatic_caching_ttl: Option<&CacheTtl>,
+    top_level_cache_control: Option<&CacheControl>,
 ) -> Result<(), CompletionError> {
     let mut shorter_ttl_seen = false;
 
@@ -1945,15 +1947,19 @@ fn validate_cache_control_ttl_order(
         }
     }
 
-    if let Some(ttl) = automatic_caching_ttl {
-        let cache_ttl = match ttl {
-            CacheTtl::OneHour => CacheControlTtl::OneHour,
-            CacheTtl::FiveMinutes => CacheControlTtl::FiveMinutes,
-        };
-        validate_cache_control_ttl(cache_ttl, &mut shorter_ttl_seen)?;
+    if let Some(cache_control) = top_level_cache_control {
+        validate_cache_control_ttl(cache_control_ttl(cache_control), &mut shorter_ttl_seen)?;
     }
 
     Ok(())
+}
+
+fn top_level_cache_control_ttl(cache_control: Option<&CacheControl>) -> Option<CacheTtl> {
+    cache_control
+        .map(|cache_control| match cache_control {
+            CacheControl::Ephemeral { ttl } => ttl.clone(),
+        })
+        .unwrap_or_default()
 }
 
 /// Apply a cache-control breakpoint to the final cacheable tool definition in the request.
@@ -2044,12 +2050,11 @@ pub(super) fn apply_prompt_cache_control(
     messages: &mut [Message],
     tools: &mut [serde_json::Value],
     prompt_caching: bool,
-    automatic_caching: bool,
-    automatic_caching_ttl: Option<CacheTtl>,
+    top_level_cache_control: Option<&CacheControl>,
 ) -> Result<(), CompletionError> {
     normalize_tool_cache_control(tools);
 
-    let max_cache_markers = if automatic_caching {
+    let max_cache_markers = if top_level_cache_control.is_some() {
         MAX_CACHE_CONTROL_MARKERS - 1
     } else {
         MAX_CACHE_CONTROL_MARKERS
@@ -2069,11 +2074,8 @@ pub(super) fn apply_prompt_cache_control(
     let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
 
     if prompt_caching {
-        let generated_cache_control = build_cache_control(if automatic_caching {
-            automatic_caching_ttl.clone()
-        } else {
-            None
-        });
+        let generated_cache_control =
+            build_cache_control(top_level_cache_control_ttl(top_level_cache_control));
 
         apply_tool_cache_control(
             tools,
@@ -2086,7 +2088,7 @@ pub(super) fn apply_prompt_cache_control(
             &generated_cache_control,
         );
 
-        if automatic_caching {
+        if top_level_cache_control.is_some() {
             clear_message_cache_control(messages);
         } else {
             apply_message_cache_control(
@@ -2097,16 +2099,61 @@ pub(super) fn apply_prompt_cache_control(
         }
     }
 
-    validate_cache_control_ttl_order(
-        system,
-        messages,
-        tools,
-        automatic_caching
-            .then_some(automatic_caching_ttl.as_ref())
-            .flatten(),
-    )?;
+    validate_cache_control_ttl_order(system, messages, tools, top_level_cache_control)?;
 
     Ok(())
+}
+
+pub(super) fn extract_top_level_cache_control(
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<CacheControl>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_cache_control) = map.remove("cache_control")
+    {
+        if raw_cache_control.is_null() {
+            return Ok(None);
+        }
+
+        return serde_json::from_value::<CacheControl>(raw_cache_control)
+            .map(Some)
+            .map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid Anthropic `additional_params.cache_control` payload: {err}")
+                        .into(),
+                )
+            });
+    }
+
+    Ok(None)
+}
+
+pub(super) fn resolve_top_level_cache_control(
+    automatic_caching: bool,
+    automatic_caching_ttl: Option<CacheTtl>,
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<CacheControl>, CompletionError> {
+    let raw_cache_control = extract_top_level_cache_control(additional_params)?;
+    let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
+        ttl: automatic_caching_ttl.clone(),
+    });
+
+    match (typed_cache_control, raw_cache_control) {
+        (Some(typed_cache_control), Some(raw_cache_control)) => {
+            if automatic_caching_ttl.is_some()
+                && cache_control_ttl(&typed_cache_control) != cache_control_ttl(&raw_cache_control)
+            {
+                return Err(CompletionError::RequestError(
+                    "Anthropic `additional_params.cache_control` conflicts with the typed \
+                     automatic caching TTL"
+                        .into(),
+                ));
+            }
+
+            Ok(Some(raw_cache_control))
+        }
+        (Some(typed_cache_control), None) => Ok(Some(typed_cache_control)),
+        (None, raw_cache_control) => Ok(raw_cache_control),
+    }
 }
 
 pub(super) fn split_system_messages_from_history(
@@ -2178,6 +2225,11 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             .additional_params
             .take()
             .unwrap_or(serde_json::Value::Null);
+        let top_level_cache_control = resolve_top_level_cache_control(
+            automatic_caching,
+            automatic_caching_ttl,
+            &mut additional_params_payload,
+        )?;
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
 
         // Convert system prompt to array format for cache_control support
@@ -2200,8 +2252,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             &mut messages,
             &mut tools,
             prompt_caching,
-            automatic_caching,
-            automatic_caching_ttl.clone(),
+            top_level_cache_control.as_ref(),
         )?;
 
         let output_config = if let Some(schema) = req.output_schema {
@@ -2226,13 +2277,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             tools,
             output_config,
             // Automatic caching: one top-level field; the API moves the breakpoint automatically.
-            cache_control: if automatic_caching {
-                Some(CacheControl::Ephemeral {
-                    ttl: automatic_caching_ttl,
-                })
-            } else {
-                None
-            },
+            cache_control: top_level_cache_control,
             additional_params: if additional_params_payload.is_null() {
                 None
             } else {
@@ -3682,6 +3727,139 @@ mod tests {
         );
         assert_eq!(value["cache_control"]["ttl"], "1h");
         assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_and_raw_top_level_automatic_caching_1h_uses_1h_generated_markers() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "metadata": {"source": "test"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert_eq!(value["metadata"]["source"], "test");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_raw_top_level_automatic_caching_reduces_marker_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral"},
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_raw_top_level_automatic_caching_1h_errors_after_explicit_five_minute_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_typed_automatic_caching_ttl_errors_on_conflicting_raw_top_level_ttl() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral"}
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("conflicts with the typed automatic caching TTL")
+        );
     }
 
     #[test]
