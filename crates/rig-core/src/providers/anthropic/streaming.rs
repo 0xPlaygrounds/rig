@@ -239,15 +239,14 @@ where
         let mut tools =
             build_tool_definitions(completion_request.tools, &mut additional_params_payload)?;
 
-        // Apply cache control breakpoints only if prompt_caching is enabled
-        if self.prompt_caching {
-            apply_prompt_cache_control(
-                &mut system,
-                &mut messages,
-                &mut tools,
-                self.automatic_caching,
-            )?;
-        }
+        apply_prompt_cache_control(
+            &mut system,
+            &mut messages,
+            &mut tools,
+            self.prompt_caching,
+            self.automatic_caching,
+            self.automatic_caching_ttl.clone(),
+        )?;
 
         let mut body = json!({
             "model": request_model,
@@ -626,7 +625,8 @@ mod tests {
         .unwrap();
         let mut system: Vec<SystemContent> = Vec::new();
         let mut messages: Vec<Message> = Vec::new();
-        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, false).unwrap();
+        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, false, None)
+            .unwrap();
 
         assert_eq!(tools.len(), 2);
         assert!(tools[0].get("cache_control").is_none());
