@@ -1465,7 +1465,8 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
     pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
-    /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
+    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
+    /// tools, and messages)
     pub prompt_caching: bool,
     /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
     /// request). The API automatically places the breakpoint on the last cacheable block and moves
@@ -1515,13 +1516,18 @@ where
         }
     }
 
-    /// Enable automatic prompt caching.
+    /// Enable manual prompt caching.
     ///
     /// When enabled, cache_control breakpoints are automatically added to:
     /// - The system prompt (marked with ephemeral cache)
+    /// - The final tool definition, when tools are present (marked with ephemeral cache)
     /// - The last content block of the last message (marked with ephemeral cache)
     ///
-    /// This allows Anthropic to cache the conversation history for cost savings.
+    /// This allows Anthropic to cache the system prompt, tools layer, and conversation
+    /// history for cost savings. Use [`with_automatic_caching`] when you want Anthropic
+    /// to choose and advance a single top-level cache breakpoint automatically.
+    ///
+    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
@@ -1809,6 +1815,24 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
     }
 }
 
+/// Apply a cache-control breakpoint to the final tool definition in the request.
+fn apply_tool_cache_control(tools: &mut [serde_json::Value]) -> Result<(), CompletionError> {
+    for tool in tools.iter_mut() {
+        if let Some(tool) = tool.as_object_mut() {
+            tool.remove("cache_control");
+        }
+    }
+
+    if let Some(last_tool) = tools.last_mut().and_then(serde_json::Value::as_object_mut) {
+        last_tool.insert(
+            "cache_control".to_string(),
+            serde_json::to_value(CacheControl::ephemeral())?,
+        );
+    }
+
+    Ok(())
+}
+
 pub(super) fn split_system_messages_from_history(
     history: Vec<message::Message>,
 ) -> (Vec<SystemContent>, Vec<message::Message>) {
@@ -1878,21 +1902,8 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             .additional_params
             .take()
             .unwrap_or(serde_json::Value::Null);
-        let mut additional_tools =
-            extract_tools_from_additional_params(&mut additional_params_payload)?;
-
-        let mut tools = req
-            .tools
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: Some(tool.description),
-                input_schema: tool.parameters,
-                cache_control: None,
-            })
-            .map(serde_json::to_value)
-            .collect::<Result<Vec<_>, _>>()?;
-        tools.append(&mut additional_tools);
+        let tools =
+            build_tool_definitions(req.tools, &mut additional_params_payload, prompt_caching)?;
 
         // Convert system prompt to array format for cache_control support
         let mut system = if let Some(preamble) = req.preamble {
@@ -1952,7 +1963,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     }
 }
 
-fn extract_tools_from_additional_params(
+pub(super) fn extract_tools_from_additional_params(
     additional_params: &mut serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, CompletionError> {
     if let Some(map) = additional_params.as_object_mut()
@@ -1966,6 +1977,32 @@ fn extract_tools_from_additional_params(
     }
 
     Ok(Vec::new())
+}
+
+pub(super) fn build_tool_definitions(
+    tools: Vec<completion::ToolDefinition>,
+    additional_params_payload: &mut serde_json::Value,
+    prompt_caching: bool,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
+    let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
+
+    let mut tools = tools
+        .into_iter()
+        .map(|tool| ToolDefinition {
+            name: tool.name,
+            description: Some(tool.description),
+            input_schema: tool.parameters,
+            cache_control: None,
+        })
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    tools.append(&mut additional_tools);
+
+    if prompt_caching {
+        apply_tool_cache_control(&mut tools)?;
+    }
+
+    Ok(tools)
 }
 
 impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
@@ -2539,6 +2576,152 @@ mod tests {
                 assert!(cache_control.is_some());
             }
         }
+    }
+
+    fn generic_tool(name: &str) -> completion::ToolDefinition {
+        completion::ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            parameters: json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    fn completion_request_with_tools(
+        tools: Vec<completion::ToolDefinition>,
+        additional_params: Option<serde_json::Value>,
+    ) -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: Some("System prompt".to_string()),
+            chat_history: OneOrMany::one(message::Message::from("Hello")),
+            documents: Vec::new(),
+            tools,
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn test_tool_definition_cache_control_serialization() {
+        let tool = ToolDefinition {
+            name: "cached_tool".to_string(),
+            description: Some("Cached tool".to_string()),
+            input_schema: json!({"type": "object"}),
+            cache_control: Some(CacheControl::ephemeral()),
+        };
+
+        let value = serde_json::to_value(tool).unwrap();
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+
+        let tool_without_cache = ToolDefinition {
+            name: "uncached_tool".to_string(),
+            description: Some("Uncached tool".to_string()),
+            input_schema: json!({"type": "object"}),
+            cache_control: None,
+        };
+
+        let value = serde_json::to_value(tool_without_cache).unwrap();
+        assert!(value.get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_apply_tool_cache_control_marks_only_final_tool() {
+        let mut tools = vec![
+            json!({
+                "name": "first_tool",
+                "description": "First tool",
+                "input_schema": {"type": "object"},
+                "cache_control": {"type": "ephemeral"}
+            }),
+            json!({
+                "name": "second_tool",
+                "description": "Second tool",
+                "input_schema": {"type": "object"}
+            }),
+        ];
+
+        apply_tool_cache_control(&mut tools).unwrap();
+
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_marks_final_tool_in_request() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("first_tool"), generic_tool("second_tool")],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_marks_final_additional_tool_in_request() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("rig_tool")],
+            Some(json!({
+                "tools": [{
+                    "name": "provider_tool",
+                    "description": "Provider tool",
+                    "input_schema": {"type": "object"}
+                }],
+                "metadata": {"source": "test"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["name"], "provider_tool");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(value["metadata"]["source"], "test");
+    }
+
+    #[test]
+    fn test_prompt_caching_without_tools_omits_tools() {
+        let request = completion_request_with_tools(Vec::new(), None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value.get("tools").is_none());
     }
 
     #[test]

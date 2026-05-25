@@ -7,7 +7,7 @@ use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, CacheControl, Content, GenericCompletionModel, Message,
-    SystemContent, ToolChoice, ToolDefinition, Usage, apply_cache_control,
+    SystemContent, ToolChoice, Usage, apply_cache_control, build_tool_definitions,
     split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -269,21 +269,11 @@ where
             .additional_params
             .take()
             .unwrap_or(Value::Null);
-        let mut additional_tools =
-            extract_tools_from_additional_params(&mut additional_params_payload)?;
-
-        let mut tools = completion_request
-            .tools
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: Some(tool.description),
-                input_schema: tool.parameters,
-                cache_control: None,
-            })
-            .map(serde_json::to_value)
-            .collect::<Result<Vec<_>, _>>()?;
-        tools.append(&mut additional_tools);
+        let tools = build_tool_definitions(
+            completion_request.tools,
+            &mut additional_params_payload,
+            self.prompt_caching,
+        )?;
 
         if !tools.is_empty() {
             merge_inplace(
@@ -402,22 +392,6 @@ where
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
-}
-
-fn extract_tools_from_additional_params(
-    additional_params: &mut Value,
-) -> Result<Vec<Value>, CompletionError> {
-    if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.remove("tools")
-    {
-        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
-                format!("Invalid Anthropic `additional_params.tools` payload: {err}").into(),
-            )
-        });
-    }
-
-    Ok(Vec::new())
 }
 
 fn handle_event(
@@ -627,6 +601,33 @@ mod tests {
         > + 'static,
     ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
         Box::pin(stream)
+    }
+
+    #[test]
+    fn test_streaming_tool_build_marks_final_combined_tool() {
+        let mut additional_params = json!({
+            "tools": [{
+                "name": "provider_tool",
+                "description": "Provider tool",
+                "input_schema": {"type": "object"}
+            }]
+        });
+
+        let tools = build_tool_definitions(
+            vec![crate::completion::ToolDefinition {
+                name: "rig_tool".to_string(),
+                description: "Rig tool".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }],
+            &mut additional_params,
+            true,
+        )
+        .unwrap();
+
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["name"], "provider_tool");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
     }
 
     fn handle_event(
