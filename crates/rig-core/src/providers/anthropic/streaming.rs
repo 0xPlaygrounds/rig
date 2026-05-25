@@ -7,7 +7,7 @@ use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, CacheControl, Content, GenericCompletionModel, Message,
-    SystemContent, ToolChoice, Usage, apply_cache_control, build_tool_definitions,
+    SystemContent, ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
     split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -232,9 +232,21 @@ where
             };
         system.extend(history_system);
 
+        let mut additional_params_payload = completion_request
+            .additional_params
+            .take()
+            .unwrap_or(Value::Null);
+        let mut tools =
+            build_tool_definitions(completion_request.tools, &mut additional_params_payload)?;
+
         // Apply cache control breakpoints only if prompt_caching is enabled
         if self.prompt_caching {
-            apply_cache_control(&mut system, &mut messages);
+            apply_prompt_cache_control(
+                &mut system,
+                &mut messages,
+                &mut tools,
+                self.automatic_caching,
+            )?;
         }
 
         let mut body = json!({
@@ -264,16 +276,6 @@ where
         if let Some(temperature) = completion_request.temperature {
             merge_inplace(&mut body, json!({ "temperature": temperature }));
         }
-
-        let mut additional_params_payload = completion_request
-            .additional_params
-            .take()
-            .unwrap_or(Value::Null);
-        let tools = build_tool_definitions(
-            completion_request.tools,
-            &mut additional_params_payload,
-            self.prompt_caching,
-        )?;
 
         if !tools.is_empty() {
             merge_inplace(
@@ -613,16 +615,18 @@ mod tests {
             }]
         });
 
-        let tools = build_tool_definitions(
+        let mut tools = build_tool_definitions(
             vec![crate::completion::ToolDefinition {
                 name: "rig_tool".to_string(),
                 description: "Rig tool".to_string(),
                 parameters: json!({"type": "object", "properties": {}}),
             }],
             &mut additional_params,
-            true,
         )
         .unwrap();
+        let mut system: Vec<SystemContent> = Vec::new();
+        let mut messages: Vec<Message> = Vec::new();
+        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, false).unwrap();
 
         assert_eq!(tools.len(), 2);
         assert!(tools[0].get("cache_control").is_none());
