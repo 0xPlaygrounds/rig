@@ -121,9 +121,14 @@ impl ToolServerHandle {
         Ok(())
     }
 
-    /// Merge an entire toolset into the server.
+    /// Merge an entire toolset into the server. Tool names from `toolset`
+    /// are appended to the static-tool list, so the tools become visible
+    /// to the LLM via [`Self::get_tool_defs`].
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
+        state
+            .static_tool_names
+            .extend(toolset.tools.keys().cloned());
         state.toolset.add_tools(toolset);
         Ok(())
     }
