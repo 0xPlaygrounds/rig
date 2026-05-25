@@ -3765,6 +3765,41 @@ mod tests {
     }
 
     #[test]
+    fn test_prompt_caching_uses_raw_top_level_cache_control_ttl() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "metadata": {"source": "raw-cache-control"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert_eq!(value["metadata"]["source"], "raw-cache-control");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
     fn test_raw_top_level_automatic_caching_reduces_marker_budget() {
         let request = completion_request_with_tools(
             Vec::new(),
