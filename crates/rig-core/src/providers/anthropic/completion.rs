@@ -1835,7 +1835,9 @@ fn apply_tool_cache_control(tools: &mut [serde_json::Value]) -> Result<(), Compl
     }
 
     if let Some(idx) = selected_tool_idx
-        && let Some(tool) = tools[idx].as_object_mut()
+        && let Some(tool) = tools
+            .get_mut(idx)
+            .and_then(serde_json::Value::as_object_mut)
         && !tool.contains_key("cache_control")
     {
         tool.insert(
