@@ -1817,6 +1817,10 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
 
 /// Apply a cache-control breakpoint to the final cacheable tool definition in the request.
 fn apply_tool_cache_control(tools: &mut [serde_json::Value]) -> Result<(), CompletionError> {
+    if tools.iter().any(|tool| tool.get("cache_control").is_some()) {
+        return Ok(());
+    }
+
     let selected_tool_idx = tools.iter().rposition(|tool| {
         tool.as_object().is_some_and(|tool| {
             !matches!(
@@ -1826,19 +1830,10 @@ fn apply_tool_cache_control(tools: &mut [serde_json::Value]) -> Result<(), Compl
         })
     });
 
-    for (idx, tool) in tools.iter_mut().enumerate() {
-        if Some(idx) != selected_tool_idx
-            && let Some(tool) = tool.as_object_mut()
-        {
-            tool.remove("cache_control");
-        }
-    }
-
     if let Some(idx) = selected_tool_idx
         && let Some(tool) = tools
             .get_mut(idx)
             .and_then(serde_json::Value::as_object_mut)
-        && !tool.contains_key("cache_control")
     {
         tool.insert(
             "cache_control".to_string(),
@@ -2652,8 +2647,7 @@ mod tests {
             json!({
                 "name": "first_tool",
                 "description": "First tool",
-                "input_schema": {"type": "object"},
-                "cache_control": {"type": "ephemeral"}
+                "input_schema": {"type": "object"}
             }),
             json!({
                 "name": "second_tool",
@@ -2745,8 +2739,7 @@ mod tests {
                         "name": "first_deferred_tool",
                         "description": "First deferred tool",
                         "input_schema": {"type": "object"},
-                        "defer_loading": true,
-                        "cache_control": {"type": "ephemeral"}
+                        "defer_loading": true
                     },
                     {
                         "name": "second_deferred_tool",
@@ -2774,7 +2767,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prompt_caching_removes_earlier_tool_cache_control() {
+    fn test_prompt_caching_preserves_earlier_tool_cache_control() {
         let request = completion_request_with_tools(
             Vec::new(),
             Some(json!({
@@ -2805,8 +2798,76 @@ mod tests {
 
         let value = serde_json::to_value(request).unwrap();
         let tools = value["tools"].as_array().unwrap();
-        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_multiple_explicit_tool_cache_controls() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
         assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["ttl"], "1h");
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_deferred_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "deferred_cached_tool",
+                    "description": "Deferred cached tool",
+                    "input_schema": {"type": "object"},
+                    "defer_loading": true,
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
     }
 
     #[test]
