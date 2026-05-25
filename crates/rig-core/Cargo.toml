@@ -15,7 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [lib]
-name = "rig"
+name = "rig_core"
 path = "src/lib.rs"
 doctest = true
 
