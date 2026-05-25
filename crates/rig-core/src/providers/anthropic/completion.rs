@@ -161,14 +161,14 @@ pub struct ToolDefinition {
 ///
 /// The Anthropic API supports two TTL values:
 /// - `"5m"` — 5 minutes (default when `ttl` is omitted)
-/// - `"1h"` — 1 hour (requires the `extended-cache-ttl-2025-04-11` beta header)
+/// - `"1h"` — 1 hour
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
     #[default]
     #[serde(rename = "5m")]
     FiveMinutes,
-    /// 1-hour TTL. Requires the `extended-cache-ttl-2025-04-11` beta header.
+    /// 1-hour TTL.
     #[serde(rename = "1h")]
     OneHour,
 }
@@ -1473,8 +1473,7 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
     /// it forward as the conversation grows. No beta header is required.
     pub automatic_caching: bool,
     /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL (requires the
-    /// `extended-cache-ttl-2025-04-11` beta header).
+    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
@@ -1580,14 +1579,9 @@ where
     /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
     ///
     /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
-    /// top-level `cache_control` field. Requires the
-    /// `extended-cache-ttl-2025-04-11` beta header to be sent with the client:
+    /// top-level `cache_control` field:
     ///
     /// ```ignore
-    /// let client = anthropic::Client::builder()
-    ///     .api_key(std::env::var("ANTHROPIC_API_KEY").unwrap())
-    ///     .anthropic_beta("extended-cache-ttl-2025-04-11")
-    ///     .build()?;
     /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching_1h();
     /// ```
