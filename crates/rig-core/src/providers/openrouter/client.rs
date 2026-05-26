@@ -8,6 +8,7 @@ use crate::{
     completion::GetTokenUsage,
     http_client,
 };
+use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
@@ -150,6 +151,48 @@ impl GetTokenUsage for Usage {
         })
     }
 }
+impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
+    /// Attach OpenRouter app-identification headers (`X-OpenRouter-Title` and `HTTP-Referer`)
+    /// to every request made by this client. `title` appears in the dashboard activity feed
+    /// and rankings page; `url` is the primary app identifier required to create an app page
+    /// on OpenRouter. Invalid (non-ASCII) values are silently skipped.
+    pub fn with_app_identity(mut self, title: impl AsRef<str>, url: impl AsRef<str>) -> Self {
+        if let Ok(val) = HeaderValue::from_str(title.as_ref()) {
+            self.headers_mut().insert(
+                http::header::HeaderName::from_static("x-openrouter-title"),
+                val,
+            );
+        }
+        if let Ok(val) = HeaderValue::from_str(url.as_ref()) {
+            self.headers_mut()
+                .insert(http::header::HeaderName::from_static("http-referer"), val);
+        }
+        self
+    }
+
+    /// Assign this app to one or more OpenRouter marketplace categories via the
+    /// `X-OpenRouter-Categories` header. Categories must be lowercase and hyphen-separated
+    /// (e.g. `"cli-agent"`, `"ide-extension"`). Unrecognized categories are silently ignored
+    /// by OpenRouter. Invalid (non-ASCII) values are silently skipped.
+    pub fn with_app_categories<S>(mut self, categories: &[S]) -> Self
+    where
+        S: AsRef<str>,
+    {
+        let joined = categories
+            .iter()
+            .map(|c| c.as_ref())
+            .collect::<Vec<_>>()
+            .join(",");
+        if let Ok(val) = HeaderValue::from_str(&joined) {
+            self.headers_mut().insert(
+                http::header::HeaderName::from_static("x-openrouter-categories"),
+                val,
+            );
+        }
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -160,5 +203,65 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn test_with_app_identity_sets_headers() {
+        let client = crate::providers::openrouter::Client::builder()
+            .with_app_identity("My App", "https://myapp.example.com")
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        let headers = client.headers();
+        assert_eq!(
+            headers
+                .get("x-openrouter-title")
+                .and_then(|v| v.to_str().ok()),
+            Some("My App"),
+        );
+        assert_eq!(
+            headers.get("http-referer").and_then(|v| v.to_str().ok()),
+            Some("https://myapp.example.com"),
+        );
+    }
+
+    #[test]
+    fn test_without_app_identity_no_extra_headers() {
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        let headers = client.headers();
+        assert!(headers.get("x-openrouter-title").is_none());
+        assert!(headers.get("http-referer").is_none());
+    }
+
+    #[test]
+    fn test_with_app_categories_sets_header() {
+        let client = crate::providers::openrouter::Client::builder()
+            .with_app_categories(&["cli-agent", "ide-extension"])
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        assert_eq!(
+            client
+                .headers()
+                .get("x-openrouter-categories")
+                .and_then(|v| v.to_str().ok()),
+            Some("cli-agent,ide-extension"),
+        );
+    }
+
+    #[test]
+    fn test_without_app_categories_no_header() {
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        assert!(client.headers().get("x-openrouter-categories").is_none());
     }
 }
