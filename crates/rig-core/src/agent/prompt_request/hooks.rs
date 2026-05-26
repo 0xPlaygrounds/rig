@@ -8,6 +8,8 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
+use serde_json::Value;
+
 /// Trait for per-request hooks to observe tool call events.
 pub trait PromptHook<M>: Clone + WasmCompatSend + WasmCompatSync
 where
@@ -100,6 +102,8 @@ pub enum ToolCallHookAction {
     Skip { reason: String },
     /// Terminate agent loop early
     Terminate { reason: String },
+    /// Replace the tool call arguments and continue tool execution.
+    Replace { args: Value },
 }
 
 impl ToolCallHookAction {
@@ -120,6 +124,11 @@ impl ToolCallHookAction {
         Self::Terminate {
             reason: reason.into(),
         }
+    }
+
+    /// Replace the tool call arguments and continue execution.
+    pub fn replace(args: Value) -> Self {
+        Self::Replace { args }
     }
 }
 
