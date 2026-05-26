@@ -628,6 +628,7 @@ where
                 )
                 .await?;
                 let executable_tool_names = prepared_request.executable_tool_names.clone();
+                let allowed_tool_names = prepared_request.allowed_tool_names.clone();
 
                 let mut stream = prepared_request
                     .builder
@@ -677,6 +678,7 @@ where
                             if let Err(err) = validate_tool_call_name(
                                 &tool_call.function.name,
                                 &executable_tool_names,
+                                &allowed_tool_names,
                                 diagnostic_history,
                             ) {
                                 yield Err(Box::new(err).into());
@@ -1007,13 +1009,13 @@ mod tests {
     use crate::completion::{CompletionRequest, PromptError, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
-        ToolResultContent, UserContent,
+        ToolChoice, ToolResultContent, UserContent,
     };
     use crate::providers::anthropic;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockResponse,
-        MockStreamEvent,
+        MockStreamEvent, MockSubtractTool,
     };
     use futures::StreamExt;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -1653,11 +1655,153 @@ mod tests {
                 PromptError::UnknownToolCall {
                     tool_name,
                     available_tools,
+                    allowed_tools,
                     chat_history,
                 } => {
                     assert_eq!(tool_name, "default_api");
                     assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert_eq!(allowed_tools, vec!["add".to_string()]);
                     assert!(history_contains_tool_call(&chat_history, "default_api"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "subtract",
+                    serde_json::json!({"x": 3, "y": 1}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use the allowed tool")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_tool_call = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_call);
+        let error = error.expect("disallowed model-emitted tool should fail");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "subtract");
+                    assert_eq!(
+                        available_tools,
+                        vec!["add".to_string(), "subtract".to_string()]
+                    );
+                    assert_eq!(allowed_tools, vec!["add".to_string()]);
+                    assert!(history_contains_tool_call(&chat_history, "subtract"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_rejects_streaming_tool_call() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("do not use tools")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_tool_call = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_call);
+        let error = error.expect("ToolChoice::None should reject returned tool calls");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "add");
+                    assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert!(allowed_tools.is_empty());
+                    assert!(history_contains_tool_call(&chat_history, "add"));
                 }
                 other => panic!("expected UnknownToolCall, got {other:?}"),
             },

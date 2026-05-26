@@ -30,6 +30,44 @@ pub type DynamicContextStore = Arc<
 pub(crate) struct PreparedCompletionRequest<M: CompletionModel> {
     pub(crate) builder: CompletionRequestBuilder<M>,
     pub(crate) executable_tool_names: BTreeSet<String>,
+    pub(crate) allowed_tool_names: BTreeSet<String>,
+}
+
+pub(crate) fn allowed_tool_names_for_choice(
+    executable_tool_names: &BTreeSet<String>,
+    tool_choice: Option<&ToolChoice>,
+) -> Result<BTreeSet<String>, CompletionError> {
+    let allowed = match tool_choice {
+        None | Some(ToolChoice::Auto | ToolChoice::Required) => executable_tool_names.clone(),
+        Some(ToolChoice::None) => BTreeSet::new(),
+        Some(ToolChoice::Specific { function_names }) => {
+            if function_names.is_empty() {
+                return Err(CompletionError::RequestError(
+                    "ToolChoice::Specific requires at least one function name".into(),
+                ));
+            }
+
+            let requested = function_names.iter().cloned().collect::<BTreeSet<String>>();
+            let missing = requested
+                .difference(executable_tool_names)
+                .cloned()
+                .collect::<Vec<_>>();
+
+            if !missing.is_empty() {
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "ToolChoice::Specific requested unknown tool names: {missing:?}. Available tools: {:?}",
+                        executable_tool_names.iter().collect::<Vec<_>>()
+                    )
+                    .into(),
+                ));
+            }
+
+            requested
+        }
+    };
+
+    Ok(allowed)
 }
 
 /// Helper function to build a completion request from agent components.
@@ -186,10 +224,12 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             (completion_request.tools(tooldefs), executable_tool_names)
         }
     };
+    let allowed_tool_names = allowed_tool_names_for_choice(&executable_tool_names, tool_choice)?;
 
     Ok(PreparedCompletionRequest {
         builder,
         executable_tool_names,
+        allowed_tool_names,
     })
 }
 
@@ -501,5 +541,97 @@ where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
         TypedPromptRequest::from_agent(*self, prompt)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tool_names(names: &[&str]) -> BTreeSet<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    #[test]
+    fn allowed_tool_names_defaults_to_all_executable_tools() {
+        let executable = tool_names(&["add", "subtract"]);
+
+        assert_eq!(
+            allowed_tool_names_for_choice(&executable, None).unwrap(),
+            executable
+        );
+    }
+
+    #[test]
+    fn allowed_tool_names_auto_and_required_allow_all_executable_tools() {
+        let executable = tool_names(&["add", "subtract"]);
+
+        assert_eq!(
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Auto)).unwrap(),
+            executable
+        );
+        assert_eq!(
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Required)).unwrap(),
+            executable
+        );
+    }
+
+    #[test]
+    fn allowed_tool_names_none_allows_no_tools() {
+        let executable = tool_names(&["add", "subtract"]);
+
+        assert!(
+            allowed_tool_names_for_choice(&executable, Some(&ToolChoice::None))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn allowed_tool_names_specific_allows_requested_executable_tools() {
+        let executable = tool_names(&["add", "subtract"]);
+        let choice = ToolChoice::Specific {
+            function_names: vec!["add".to_string()],
+        };
+
+        assert_eq!(
+            allowed_tool_names_for_choice(&executable, Some(&choice)).unwrap(),
+            tool_names(&["add"])
+        );
+    }
+
+    #[test]
+    fn allowed_tool_names_specific_rejects_missing_tools() {
+        let executable = tool_names(&["add"]);
+        let choice = ToolChoice::Specific {
+            function_names: vec!["missing".to_string()],
+        };
+
+        let err = allowed_tool_names_for_choice(&executable, Some(&choice))
+            .expect_err("missing specific tool should fail before provider request");
+
+        assert!(matches!(
+            err,
+            CompletionError::RequestError(err)
+                if err.to_string().contains("missing")
+                    && err.to_string().contains("add")
+        ));
+    }
+
+    #[test]
+    fn allowed_tool_names_specific_rejects_empty_names() {
+        let executable = tool_names(&["add"]);
+        let choice = ToolChoice::Specific {
+            function_names: vec![],
+        };
+
+        let err = allowed_tool_names_for_choice(&executable, Some(&choice))
+            .expect_err("empty specific tool choice should fail before provider request");
+
+        assert!(matches!(
+            err,
+            CompletionError::RequestError(err)
+                if err.to_string().contains("requires at least one function name")
+        ));
     }
 }

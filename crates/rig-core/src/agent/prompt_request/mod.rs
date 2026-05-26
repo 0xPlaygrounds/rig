@@ -412,15 +412,17 @@ fn build_full_history(
 pub(crate) fn validate_tool_call_name(
     tool_name: &str,
     executable_tool_names: &BTreeSet<String>,
+    allowed_tool_names: &BTreeSet<String>,
     chat_history: Vec<Message>,
 ) -> Result<(), PromptError> {
-    if executable_tool_names.contains(tool_name) {
+    if allowed_tool_names.contains(tool_name) {
         return Ok(());
     }
 
     Err(PromptError::UnknownToolCall {
         tool_name: tool_name.to_owned(),
         available_tools: executable_tool_names.iter().cloned().collect(),
+        allowed_tools: allowed_tool_names.iter().cloned().collect(),
         chat_history: Box::new(chat_history),
     })
 }
@@ -591,6 +593,7 @@ where
             )
             .await?;
             let executable_tool_names = prepared_request.executable_tool_names.clone();
+            let allowed_tool_names = prepared_request.allowed_tool_names.clone();
 
             let resp = prepared_request
                 .builder
@@ -631,6 +634,7 @@ where
                         validate_tool_call_name(
                             &tool_call.function.name,
                             &executable_tool_names,
+                            &allowed_tool_names,
                             build_full_history(
                                 chat_history.as_deref(),
                                 diagnostic_messages.clone(),
@@ -1066,10 +1070,10 @@ mod tests {
             AssistantContent, CompletionError, CompletionModel, CompletionRequest, Message, Prompt,
             PromptError, TypedPrompt, Usage,
         },
-        message::{Text, UserContent},
+        message::{Text, ToolChoice, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockTurn,
+            MockSubtractTool, MockTurn,
         },
     };
     use schemars::JsonSchema;
@@ -1327,15 +1331,146 @@ mod tests {
             PromptError::UnknownToolCall {
                 tool_name,
                 available_tools,
+                allowed_tools,
                 chat_history,
             } => {
                 assert_eq!(tool_name, "default_api");
                 assert_eq!(available_tools, vec!["add".to_string()]);
+                assert_eq!(allowed_tools, vec!["add".to_string()]);
                 assert!(history_contains_tool_call(&chat_history, "default_api"));
             }
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn disallowed_specific_tool_call_fails_before_non_streaming_second_request() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "subtract", json!({"x": 3, "y": 1})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let err = agent
+            .prompt("use the allowed tool")
+            .with_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .await
+            .expect_err("disallowed model-emitted tool should fail");
+
+        match err {
+            PromptError::UnknownToolCall {
+                tool_name,
+                available_tools,
+                allowed_tools,
+                chat_history,
+            } => {
+                assert_eq!(tool_name, "subtract");
+                assert_eq!(
+                    available_tools,
+                    vec!["add".to_string(), "subtract".to_string()]
+                );
+                assert_eq!(allowed_tools, vec!["add".to_string()]);
+                assert!(history_contains_tool_call(&chat_history, "subtract"));
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_rejects_non_streaming_tool_call() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let err = agent
+            .prompt("do not use tools")
+            .with_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .await
+            .expect_err("ToolChoice::None should reject returned tool calls");
+
+        match err {
+            PromptError::UnknownToolCall {
+                tool_name,
+                available_tools,
+                allowed_tools,
+                chat_history,
+            } => {
+                assert_eq!(tool_name, "add");
+                assert_eq!(available_tools, vec!["add".to_string()]);
+                assert!(allowed_tools.is_empty());
+                assert!(history_contains_tool_call(&chat_history, "add"));
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_request() {
+        let model = MockCompletionModel::text("should not be requested");
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["missing".to_string()],
+            })
+            .build();
+
+        let err = agent
+            .prompt("use the missing tool")
+            .await
+            .expect_err("invalid ToolChoice::Specific should fail before provider request");
+
+        match err {
+            PromptError::CompletionError(CompletionError::RequestError(err)) => {
+                let msg = err.to_string();
+                assert!(msg.contains("missing"), "got: {msg}");
+                assert!(msg.contains("add"), "got: {msg}");
+            }
+            other => panic!("expected CompletionError::RequestError, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn allowed_specific_tool_call_executes_normally() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
+            MockTurn::text("done"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let response = agent
+            .prompt("use the allowed tool")
+            .max_turns(3)
+            .await
+            .expect("allowed specific tool should execute");
+
+        assert_eq!(response, "done");
+        assert_eq!(recorded.request_count(), 2);
     }
 
     #[tokio::test]
