@@ -170,20 +170,24 @@ impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
         self
     }
 
-    /// Assign this app to one or more OpenRouter marketplace categories via the
+    /// Assign this app to up to two OpenRouter marketplace categories via the
     /// `X-OpenRouter-Categories` header. Categories must be lowercase and hyphen-separated
-    /// (e.g. `"cli-agent"`, `"ide-extension"`). Unrecognized categories are silently ignored
-    /// by OpenRouter. Invalid (non-ASCII) values are silently skipped.
+    /// (e.g. `"cli-agent"`, `"ide-extension"`). OpenRouter silently ignores unrecognized
+    /// categories. Extra categories beyond the first two are not sent. Invalid (non-ASCII)
+    /// values are silently skipped.
     pub fn with_app_categories<S>(mut self, categories: &[S]) -> Self
     where
         S: AsRef<str>,
     {
         let joined = categories
             .iter()
+            .take(2)
             .map(|c| c.as_ref())
             .collect::<Vec<_>>()
             .join(",");
-        if let Ok(val) = HeaderValue::from_str(&joined) {
+        if !joined.is_empty()
+            && let Ok(val) = HeaderValue::from_str(&joined)
+        {
             self.headers_mut().insert(
                 http::header::HeaderName::from_static("x-openrouter-categories"),
                 val,
@@ -253,6 +257,35 @@ mod tests {
                 .and_then(|v| v.to_str().ok()),
             Some("cli-agent,ide-extension"),
         );
+    }
+
+    #[test]
+    fn test_with_app_categories_sends_at_most_two_categories() {
+        let client = crate::providers::openrouter::Client::builder()
+            .with_app_categories(&["cli-agent", "ide-extension", "chat"])
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        assert_eq!(
+            client
+                .headers()
+                .get("x-openrouter-categories")
+                .and_then(|v| v.to_str().ok()),
+            Some("cli-agent,ide-extension"),
+        );
+    }
+
+    #[test]
+    fn test_with_app_categories_empty_list_no_header() {
+        let empty: [&str; 0] = [];
+        let client = crate::providers::openrouter::Client::builder()
+            .with_app_categories(&empty)
+            .api_key("dummy-key")
+            .build()
+            .expect("Client::builder() failed");
+
+        assert!(client.headers().get("x-openrouter-categories").is_none());
     }
 
     #[test]
