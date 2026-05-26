@@ -8,7 +8,8 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
+    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
+    streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -75,6 +76,8 @@ pub struct StreamingCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
 }
 
@@ -82,6 +85,11 @@ impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage_metadata.token_usage()
     }
+}
+
+fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
+    let reason = choice.finish_reason.as_ref()?;
+    function_call_finish_reason_error(reason, choice.finish_message.as_deref())
 }
 
 impl<T> CompletionModel<T>
@@ -138,7 +146,9 @@ where
         let stream = stream! {
             let mut final_usage = None;
             let mut final_finish_reason: Option<FinishReason> = None;
+            let mut final_finish_message: Option<String> = None;
             let mut final_model_version: Option<String> = None;
+            let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -155,7 +165,9 @@ where
                             Ok(d) => d,
                             Err(error) => {
                                 tracing::error!(?error, message = message.data, "Failed to parse SSE message");
-                                continue;
+                                stream_failed = true;
+                                yield Err(CompletionError::JsonError(error));
+                                break;
                             }
                         };
 
@@ -182,6 +194,15 @@ where
                         let should_stop = choice.finish_reason.is_some();
                         if let Some(fr) = &choice.finish_reason {
                             final_finish_reason = Some(fr.clone());
+                        }
+                        if let Some(message) = &choice.finish_message {
+                            final_finish_message = Some(message.clone());
+                        }
+
+                        if let Some(err) = tool_protocol_finish_reason_error(&choice) {
+                            stream_failed = true;
+                            yield Err(err);
+                            break;
                         }
 
                         let Some(content) = choice.content else {
@@ -260,6 +281,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
+                        stream_failed = true;
                         yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
@@ -269,11 +291,14 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage_metadata: final_usage.unwrap_or_default(),
-                finish_reason: final_finish_reason,
-                model_version: final_model_version,
-            }));
+            if !stream_failed {
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage_metadata: final_usage.unwrap_or_default(),
+                    finish_reason: final_finish_reason,
+                    finish_message: final_finish_message,
+                    model_version: final_model_version,
+                }));
+            }
         }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
@@ -328,6 +353,32 @@ mod tests {
         } else {
             panic!("Expected text part");
         }
+    }
+
+    #[test]
+    fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
+        let json_data = json!({
+            "candidates": [{
+                "finishReason": "MALFORMED_FUNCTION_CALL",
+                "finishMessage": "malformed function call: default_api",
+                "index": 0
+            }]
+        });
+
+        let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
+        let candidate = response
+            .candidates
+            .first()
+            .expect("expected terminal candidate");
+        let err = tool_protocol_finish_reason_error(candidate)
+            .expect("tool protocol finish reason should be an error");
+
+        assert!(matches!(
+            err,
+            CompletionError::ResponseError(message)
+                if message.contains("MalformedFunctionCall")
+                    && message.contains("default_api")
+        ));
     }
 
     #[test]
@@ -639,6 +690,7 @@ mod tests {
         let response = StreamingCompletionResponse {
             usage_metadata: PartialUsage::default(),
             finish_reason: Some(FinishReason::Stop),
+            finish_message: None,
             model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
         };
 
@@ -677,6 +729,7 @@ mod tests {
                 traffic_type: None,
             },
             finish_reason: Some(FinishReason::Stop),
+            finish_message: None,
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 

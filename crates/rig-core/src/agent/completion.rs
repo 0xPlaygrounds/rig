@@ -11,7 +11,10 @@ use crate::{
     vector_store::{VectorStoreError, request::VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+};
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
@@ -22,8 +25,15 @@ pub type DynamicContextStore = Arc<
     )>,
 >;
 
+/// A prepared completion request plus the executable Rig tool names advertised
+/// to the provider for this turn.
+pub(crate) struct PreparedCompletionRequest<M: CompletionModel> {
+    pub(crate) builder: CompletionRequestBuilder<M>,
+    pub(crate) executable_tool_names: BTreeSet<String>,
+}
+
 /// Helper function to build a completion request from agent components.
-/// This is used by both `Agent::completion()` and `PromptRequest::send()`.
+/// This is used by `Agent::completion()` to preserve the public completion API.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn build_completion_request<M: CompletionModel>(
     model: &Arc<M>,
@@ -39,6 +49,41 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     dynamic_context: &DynamicContextStore,
     output_schema: Option<&schemars::Schema>,
 ) -> Result<CompletionRequestBuilder<M>, CompletionError> {
+    Ok(build_prepared_completion_request(
+        model,
+        prompt,
+        chat_history,
+        preamble,
+        static_context,
+        temperature,
+        max_tokens,
+        additional_params,
+        tool_choice,
+        tool_server_handle,
+        dynamic_context,
+        output_schema,
+    )
+    .await?
+    .builder)
+}
+
+/// Helper function to build a completion request from agent components while
+/// preserving the executable Rig tool names sent to the provider.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
+    model: &Arc<M>,
+    prompt: Message,
+    chat_history: &[Message],
+    preamble: Option<&str>,
+    static_context: &[Document],
+    temperature: Option<f64>,
+    max_tokens: Option<u64>,
+    additional_params: Option<&serde_json::Value>,
+    tool_choice: Option<&ToolChoice>,
+    tool_server_handle: &ToolServerHandle,
+    dynamic_context: &DynamicContextStore,
+    output_schema: Option<&schemars::Schema>,
+) -> Result<PreparedCompletionRequest<M>, CompletionError> {
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
     let rag_text = rag_text.or_else(|| {
@@ -73,7 +118,7 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
     };
 
     // If the agent has RAG text, we need to fetch the dynamic context and tools
-    let result = match &rag_text {
+    let (builder, executable_tool_names) = match &rag_text {
         Some(text) => {
             // Map over the vector to create async tasks
             let search_futures = dynamic_context.iter().map(|(num_sample, index)| {
@@ -123,21 +168,29 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
                 .map_err(|_| {
                     CompletionError::RequestError("Failed to get tool definitions".into())
                 })?;
+            let executable_tool_names = tooldefs.iter().map(|tool| tool.name.clone()).collect();
 
-            completion_request
-                .documents(fetched_context)
-                .tools(tooldefs)
+            (
+                completion_request
+                    .documents(fetched_context)
+                    .tools(tooldefs),
+                executable_tool_names,
+            )
         }
         None => {
             let tooldefs = tool_server_handle.get_tool_defs(None).await.map_err(|_| {
                 CompletionError::RequestError("Failed to get tool definitions".into())
             })?;
+            let executable_tool_names = tooldefs.iter().map(|tool| tool.name.clone()).collect();
 
-            completion_request.tools(tooldefs)
+            (completion_request.tools(tooldefs), executable_tool_names)
         }
     };
 
-    Ok(result)
+    Ok(PreparedCompletionRequest {
+        builder,
+        executable_tool_names,
+    })
 }
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
