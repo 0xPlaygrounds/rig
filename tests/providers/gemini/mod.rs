@@ -14,6 +14,7 @@ mod cassette {
     mod streaming_multimodal_tool_results;
     mod streaming_tools;
     mod structured_output;
+    mod tool_choice;
     mod transcription;
 }
 
