@@ -643,6 +643,7 @@ where
                 completion_call_index += 1;
                 let mut current_call_usage = None;
                 let mut completion_call_emitted = false;
+                let mut pending_tool_calls = vec![];
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
                 let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
@@ -669,111 +670,7 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
-                            let diagnostic_history = {
-                                let mut messages = new_messages.clone();
-                                messages.push(Message::Assistant {
-                                    id: stream.message_id.clone(),
-                                    content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
-                                });
-                                build_full_history(chat_history.as_deref(), messages)
-                            };
-
-                            if let Err(err) = validate_tool_call_name(
-                                &tool_call.function.name,
-                                &executable_tool_names,
-                                &allowed_tool_names,
-                                diagnostic_history,
-                            ) {
-                                yield Err(Box::new(err).into());
-                                break 'outer;
-                            }
-
-                            let tool_span = info_span!(
-                                parent: tracing::Span::current(),
-                                "execute_tool",
-                                gen_ai.operation.name = "execute_tool",
-                                gen_ai.tool.type = "function",
-                                gen_ai.tool.name = tracing::field::Empty,
-                                gen_ai.tool.call.id = tracing::field::Empty,
-                                gen_ai.tool.call.arguments = tracing::field::Empty,
-                                gen_ai.tool.call.result = tracing::field::Empty
-                            );
-
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall { tool_call: tool_call.clone(), internal_call_id: internal_call_id.clone() }));
-
-                            let tc_result = async {
-                                let tool_span = tracing::Span::current();
-                                let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
-                                if let Some(ref hook) = self.hook {
-                                    let action = hook
-                                        .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
-                                        .await;
-
-                                    if let ToolCallHookAction::Terminate { reason } = action {
-                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                    }
-
-                                    if let ToolCallHookAction::Skip { reason } = action {
-                                        // Tool execution rejected, return rejection message as tool result
-                                        tracing::info!(
-                                            tool_name = tool_call.function.name.as_str(),
-                                            reason = reason,
-                                            "Tool call rejected"
-                                        );
-                                        let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-                                        tool_calls.push(tool_call_msg);
-                                        tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
-                                        saw_tool_call_this_turn = true;
-                                        return Ok(reason);
-                                    }
-                                }
-
-                                tool_span.record("gen_ai.tool.name", &tool_call.function.name);
-                                tool_span.record("gen_ai.tool.call.arguments", &tool_args);
-
-                                let tool_result = match
-                                tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
-                                    Ok(thing) => thing,
-                                    Err(e) => {
-                                        tracing::warn!("Error while calling tool: {e}");
-                                        e.to_string()
-                                    }
-                                };
-
-                                tool_span.record("gen_ai.tool.call.result", &tool_result);
-
-                                if let Some(ref hook) = self.hook &&
-                                    let HookAction::Terminate { reason } =
-                                    hook.on_tool_result(
-                                        &tool_call.function.name,
-                                        tool_call.call_id.clone(),
-                                        &internal_call_id,
-                                        &tool_args,
-                                        &tool_result.to_string()
-                                    )
-                                    .await {
-                                        return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                    }
-
-                                let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
-
-                                tool_calls.push(tool_call_msg);
-                                tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
-
-                                saw_tool_call_this_turn = true;
-                                Ok(tool_result)
-                            }.instrument(tool_span).await;
-
-                            match tc_result {
-                                Ok(text) => {
-                                    let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
-                                    yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult{ tool_result: tr, internal_call_id }));
-                                }
-                                Err(e) => {
-                                    yield Err(e);
-                                    break 'outer;
-                                }
-                            }
+                            pending_tool_calls.push((tool_call, internal_call_id));
                         },
                         Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
                             if let rig::streaming::ToolCallDeltaContent::Name(name) = &content {
@@ -888,6 +785,129 @@ where
                 let final_turn_content = stream.choice.clone();
                 let turn_text_response = assistant_text_from_choice(&final_turn_content);
                 tracing::Span::current().record("gen_ai.completion", &turn_text_response);
+
+                if !pending_tool_calls.is_empty() {
+                    let diagnostic_history = {
+                        let mut messages = new_messages.clone();
+                        if !is_empty_assistant_choice(&final_turn_content) {
+                            messages.push(Message::Assistant {
+                                id: stream.message_id.clone(),
+                                content: final_turn_content.clone(),
+                            });
+                        } else if let Some(content) = OneOrMany::from_iter_optional(
+                            pending_tool_calls
+                                .iter()
+                                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
+                        ) {
+                            messages.push(Message::Assistant {
+                                id: stream.message_id.clone(),
+                                content,
+                            });
+                        }
+                        build_full_history(chat_history.as_deref(), messages)
+                    };
+
+                    for (tool_call, _) in &pending_tool_calls {
+                        if let Err(err) = validate_tool_call_name(
+                            &tool_call.function.name,
+                            &executable_tool_names,
+                            &allowed_tool_names,
+                            diagnostic_history.clone(),
+                        ) {
+                            yield Err(Box::new(err).into());
+                            break 'outer;
+                        }
+                    }
+
+                    for (tool_call, internal_call_id) in pending_tool_calls {
+                        let tool_span = info_span!(
+                            parent: tracing::Span::current(),
+                            "execute_tool",
+                            gen_ai.operation.name = "execute_tool",
+                            gen_ai.tool.type = "function",
+                            gen_ai.tool.name = tracing::field::Empty,
+                            gen_ai.tool.call.id = tracing::field::Empty,
+                            gen_ai.tool.call.arguments = tracing::field::Empty,
+                            gen_ai.tool.call.result = tracing::field::Empty
+                        );
+
+                        yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ToolCall { tool_call: tool_call.clone(), internal_call_id: internal_call_id.clone() }));
+
+                        let tc_result = async {
+                            let tool_span = tracing::Span::current();
+                            let tool_args = json_utils::value_to_json_string(&tool_call.function.arguments);
+                            if let Some(ref hook) = self.hook {
+                                let action = hook
+                                    .on_tool_call(&tool_call.function.name, tool_call.call_id.clone(), &internal_call_id, &tool_args)
+                                    .await;
+
+                                if let ToolCallHookAction::Terminate { reason } = action {
+                                    return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                }
+
+                                if let ToolCallHookAction::Skip { reason } = action {
+                                    // Tool execution rejected, return rejection message as tool result
+                                    tracing::info!(
+                                        tool_name = tool_call.function.name.as_str(),
+                                        reason = reason,
+                                        "Tool call rejected"
+                                    );
+                                    let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
+                                    tool_calls.push(tool_call_msg);
+                                    tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason.clone()));
+                                    saw_tool_call_this_turn = true;
+                                    return Ok(reason);
+                                }
+                            }
+
+                            tool_span.record("gen_ai.tool.name", &tool_call.function.name);
+                            tool_span.record("gen_ai.tool.call.arguments", &tool_args);
+
+                            let tool_result = match
+                            tool_server_handle.call_tool(&tool_call.function.name, &tool_args).await {
+                                Ok(thing) => thing,
+                                Err(e) => {
+                                    tracing::warn!("Error while calling tool: {e}");
+                                    e.to_string()
+                                }
+                            };
+
+                            tool_span.record("gen_ai.tool.call.result", &tool_result);
+
+                            if let Some(ref hook) = self.hook &&
+                                let HookAction::Terminate { reason } =
+                                hook.on_tool_result(
+                                    &tool_call.function.name,
+                                    tool_call.call_id.clone(),
+                                    &internal_call_id,
+                                    &tool_args,
+                                    &tool_result.to_string()
+                                )
+                                .await {
+                                    return Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                }
+
+                            let tool_call_msg = AssistantContent::ToolCall(tool_call.clone());
+
+                            tool_calls.push(tool_call_msg);
+                            tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), tool_result.clone()));
+
+                            saw_tool_call_this_turn = true;
+                            Ok(tool_result)
+                        }.instrument(tool_span).await;
+
+                        match tc_result {
+                            Ok(text) => {
+                                let tr = ToolResult { id: tool_call.id, call_id: tool_call.call_id, content: ToolResultContent::from_tool_output(text) };
+                                yield Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult{ tool_result: tr, internal_call_id }));
+                            }
+                            Err(e) => {
+                                yield Err(e);
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
 
                 // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
@@ -1035,7 +1055,7 @@ mod tests {
     use crate::agent::prompt_request::hooks::{PromptHook, ToolCallHookAction};
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{CompletionRequest, PromptError, Usage};
+    use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolChoice, ToolResultContent, UserContent,
@@ -1044,9 +1064,11 @@ mod tests {
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockCompletionModel, MockResponse,
-        MockStreamEvent, MockSubtractTool,
+        MockStreamEvent, MockSubtractTool, MockToolError,
     };
+    use crate::tool::Tool;
     use futures::StreamExt;
+    use serde::Deserialize;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -1303,6 +1325,75 @@ mod tests {
             _args: &str,
         ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
             async { panic!("unknown tool call should fail before tool hooks run") }
+        }
+    }
+
+    #[derive(Clone)]
+    struct CountingAddTool {
+        calls: Arc<AtomicU32>,
+    }
+
+    #[derive(Clone)]
+    struct CountingSubtractTool {
+        calls: Arc<AtomicU32>,
+    }
+
+    #[derive(Deserialize)]
+    struct CountingOperationArgs {
+        x: i32,
+        y: i32,
+    }
+
+    fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_string(),
+            description: description.to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "type": "number",
+                        "description": "The first operand"
+                    },
+                    "y": {
+                        "type": "number",
+                        "description": "The second operand"
+                    }
+                },
+                "required": ["x", "y"],
+            }),
+        }
+    }
+
+    impl Tool for CountingAddTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = CountingOperationArgs;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            arithmetic_tool_definition(Self::NAME, "Add x and y together")
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(args.x + args.y)
+        }
+    }
+
+    impl Tool for CountingSubtractTool {
+        const NAME: &'static str = "subtract";
+        type Error = MockToolError;
+        type Args = CountingOperationArgs;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            arithmetic_tool_definition(Self::NAME, "Subtract y from x")
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(args.x - args.y)
         }
     }
 
@@ -1710,6 +1801,165 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::tool_call(
+                    "tool_call_2",
+                    "default_api",
+                    serde_json::json!({"x": 3, "y": 4}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use tools")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => {
+                    saw_tool_result = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_call);
+        assert!(!saw_tool_result);
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let error = error.expect("mixed unknown streamed tool call should fail");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "default_api");
+                    assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert_eq!(allowed_tools, vec!["add".to_string()]);
+                    assert!(history_contains_tool_call(&chat_history, "default_api"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let subtract_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::tool_call(
+                    "tool_call_2",
+                    "subtract",
+                    serde_json::json!({"x": 8, "y": 3}),
+                )
+                .with_call_id("call_2"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .tool(CountingSubtractTool {
+                calls: subtract_calls.clone(),
+            })
+            .build();
+
+        let mut stream = agent.stream_prompt("use tools").multi_turn(3).await;
+        let mut tool_call_names = Vec::new();
+        let mut tool_result_ids = Vec::new();
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { tool_call, .. },
+                )) => {
+                    tool_call_names.push(tool_call.function.name);
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    tool_result,
+                    ..
+                })) => {
+                    tool_result_ids.push(tool_result.id);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response_text = Some(response.response().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            tool_call_names,
+            vec!["add".to_string(), "subtract".to_string()]
+        );
+        assert_eq!(
+            tool_result_ids,
+            vec!["tool_call_1".to_string(), "tool_call_2".to_string()]
+        );
+        assert_eq!(add_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(subtract_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(final_response_text.as_deref(), Some("done"));
+        assert_eq!(recorded.request_count(), 2);
+    }
+
+    #[tokio::test]
     async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
@@ -1783,6 +2033,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                ),
+                MockStreamEvent::tool_call(
+                    "tool_call_2",
+                    "subtract",
+                    serde_json::json!({"x": 3, "y": 1}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use the allowed tool")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => {
+                    saw_tool_result = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_tool_call);
+        assert!(!saw_tool_result);
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let error = error.expect("mixed disallowed streamed tool call should fail");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "subtract");
+                    assert_eq!(
+                        available_tools,
+                        vec!["add".to_string(), "subtract".to_string()]
+                    );
+                    assert_eq!(allowed_tools, vec!["add".to_string()]);
+                    assert!(history_contains_tool_call(&chat_history, "subtract"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
     async fn tool_choice_none_rejects_streaming_tool_call() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
@@ -1829,6 +2168,70 @@ mod tests {
 
         assert!(!saw_tool_call);
         let error = error.expect("ToolChoice::None should reject returned tool calls");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "add");
+                    assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert!(allowed_tools.is_empty());
+                    assert!(history_contains_tool_call(&chat_history, "add"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_emit() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("do not use tools")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_delta = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => {
+                    saw_delta = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_delta);
+        let error = error.expect("ToolChoice::None should reject returned tool-call deltas");
         match error {
             StreamingError::Prompt(err) => match *err {
                 PromptError::UnknownToolCall {
