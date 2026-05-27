@@ -1015,15 +1015,17 @@ where
                                         yield Ok(RawStreamingChoice::Message(delta.delta.clone()))
                                     }
                                     ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                        let internal_call_id = tool_call_internal_ids
-                                            .entry(delta.item_id.clone())
-                                            .or_insert_with(|| nanoid::nanoid!())
-                                            .clone();
-                                        yield Ok(RawStreamingChoice::ToolCallDelta {
-                                            id: delta.item_id.clone(),
-                                            internal_call_id,
-                                            content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
-                                        })
+                                        if let Some(item_id) = chunk.item_id.as_ref() {
+                                            let internal_call_id = tool_call_internal_ids
+                                                .entry(item_id.clone())
+                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .clone();
+                                            yield Ok(RawStreamingChoice::ToolCallDelta {
+                                                id: item_id.clone(),
+                                                internal_call_id,
+                                                content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
+                                            })
+                                        }
                                     }
                                     _ => continue,
                                 }
