@@ -1038,6 +1038,7 @@ pub struct CompletionResponse {
     /// Token usage
     pub usage: Option<ResponsesUsage>,
     /// The model output (messages, etc will go here)
+    #[serde(default)]
     pub output: Vec<Output>,
     /// Tools
     #[serde(default)]
