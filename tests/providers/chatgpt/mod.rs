@@ -1,3 +1,9 @@
+mod support;
+
+mod cassette {
+    mod streaming_tools;
+}
+
 mod agent;
 mod auth;
 mod completion;

@@ -28,6 +28,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         ],
     },
     ProviderCassetteSuite {
+        provider: "chatgpt",
+        source_dir: "tests/providers/chatgpt/cassette",
+        wrapper_names: &["with_chatgpt_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "anthropic",
         source_dir: "tests/providers/anthropic/cassette",
         wrapper_names: &[
