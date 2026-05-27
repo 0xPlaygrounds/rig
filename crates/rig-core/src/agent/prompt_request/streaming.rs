@@ -643,7 +643,7 @@ where
                 completion_call_index += 1;
                 let mut current_call_usage = None;
                 let mut completion_call_emitted = false;
-                let mut pending_tool_calls = vec![];
+                let mut pending_tool_calls: Vec<(ToolCall, String)> = vec![];
                 let mut tool_calls = vec![];
                 let mut tool_results = vec![];
                 let mut accumulated_reasoning: Vec<rig::message::Reasoning> = vec![];
@@ -670,6 +670,38 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
+                            let diagnostic_history = {
+                                let mut messages = new_messages.clone();
+                                let mut content_items = Vec::new();
+                                if saw_text_this_turn && !text_delta_response.is_empty() {
+                                    content_items
+                                        .push(AssistantContent::text(text_delta_response.clone()));
+                                }
+                                content_items.extend(pending_tool_calls.iter().map(
+                                    |(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()),
+                                ));
+                                content_items.push(AssistantContent::ToolCall(tool_call.clone()));
+
+                                if let Some(content) = OneOrMany::from_iter_optional(content_items)
+                                {
+                                    messages.push(Message::Assistant {
+                                        id: stream.message_id.clone(),
+                                        content,
+                                    });
+                                }
+                                build_full_history(chat_history.as_deref(), messages)
+                            };
+
+                            if let Err(err) = validate_tool_call_name(
+                                &tool_call.function.name,
+                                &executable_tool_names,
+                                &allowed_tool_names,
+                                diagnostic_history,
+                            ) {
+                                yield Err(Box::new(err).into());
+                                break 'outer;
+                            }
+
                             pending_tool_calls.push((tool_call, internal_call_id));
                         },
                         Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
@@ -1326,6 +1358,14 @@ mod tests {
         ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
             async { panic!("unknown tool call should fail before tool hooks run") }
         }
+
+        fn on_stream_completion_response_finish(
+            &self,
+            _prompt: &Message,
+            _response: &MockResponse,
+        ) -> impl std::future::Future<Output = HookAction> + Send {
+            async { panic!("unknown tool call should fail before stream finish hooks run") }
+        }
     }
 
     #[derive(Clone)]
@@ -1801,6 +1841,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_later_emit() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("thinking "),
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "default_api",
+                    serde_json::json!({"x": 1, "y": 2}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_text = false;
+        let mut saw_completion_call = false;
+        let mut saw_final_response = false;
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(_))) => {
+                    saw_text = true;
+                }
+                Ok(MultiTurnStreamItem::CompletionCall(_)) => {
+                    saw_completion_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    _,
+                )))
+                | Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    saw_final_response = true;
+                }
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => {
+                    saw_tool_result = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(saw_text);
+        assert!(!saw_completion_call);
+        assert!(!saw_final_response);
+        assert!(!saw_tool_call);
+        assert!(!saw_tool_result);
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let error = error.expect("completed unknown tool call should fail immediately");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "default_api");
+                    assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert_eq!(allowed_tools, vec!["add".to_string()]);
+                    assert!(history_contains_tool_call(&chat_history, "default_api"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
     async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
         let add_calls = Arc::new(AtomicU32::new(0));
         let model = MockCompletionModel::from_stream_turns([
@@ -1835,12 +1971,16 @@ mod tests {
             .with_hook(PanicOnUnknownToolHook)
             .multi_turn(3)
             .await;
+        let mut saw_completion_call = false;
         let mut saw_tool_call = false;
         let mut saw_tool_result = false;
         let mut error = None;
 
         while let Some(item) = stream.next().await {
             match item {
+                Ok(MultiTurnStreamItem::CompletionCall(_)) => {
+                    saw_completion_call = true;
+                }
                 Ok(MultiTurnStreamItem::StreamAssistantItem(
                     StreamedAssistantContent::ToolCall { .. },
                 )) => {
@@ -1859,6 +1999,7 @@ mod tests {
             }
         }
 
+        assert!(!saw_completion_call);
         assert!(!saw_tool_call);
         assert!(!saw_tool_result);
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
