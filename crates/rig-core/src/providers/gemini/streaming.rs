@@ -357,28 +357,57 @@ mod tests {
 
     #[test]
     fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
-        let json_data = json!({
-            "candidates": [{
-                "finishReason": "MALFORMED_FUNCTION_CALL",
-                "finishMessage": "malformed function call: default_api",
-                "index": 0
-            }]
-        });
+        for (finish_reason, reason_name, finish_message) in [
+            (
+                "MALFORMED_FUNCTION_CALL",
+                "MalformedFunctionCall",
+                "malformed function call: default_api",
+            ),
+            (
+                "UNEXPECTED_TOOL_CALL",
+                "UnexpectedToolCall",
+                "unexpected tool call: default_api",
+            ),
+            (
+                "MISSING_THOUGHT_SIGNATURE",
+                "MissingThoughtSignature",
+                "missing thought signature for tool call",
+            ),
+            (
+                "TOO_MANY_TOOL_CALLS",
+                "TooManyToolCalls",
+                "too many tool calls in response",
+            ),
+            (
+                "MALFORMED_RESPONSE",
+                "MalformedResponse",
+                "malformed response from provider",
+            ),
+        ] {
+            let json_data = json!({
+                "candidates": [{
+                    "finishReason": finish_reason,
+                    "finishMessage": finish_message,
+                    "index": 0
+                }]
+            });
 
-        let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
-        let candidate = response
-            .candidates
-            .first()
-            .expect("expected terminal candidate");
-        let err = tool_protocol_finish_reason_error(candidate)
-            .expect("tool protocol finish reason should be an error");
+            let response: StreamGenerateContentResponse =
+                serde_json::from_value(json_data).unwrap();
+            let candidate = response
+                .candidates
+                .first()
+                .expect("expected terminal candidate");
+            let err = tool_protocol_finish_reason_error(candidate)
+                .expect("tool protocol finish reason should be an error");
 
-        assert!(matches!(
-            err,
-            CompletionError::ResponseError(message)
-                if message.contains("MalformedFunctionCall")
-                    && message.contains("default_api")
-        ));
+            assert!(matches!(
+                err,
+                CompletionError::ResponseError(message)
+                    if message.contains(reason_name)
+                        && message.contains(finish_message)
+            ));
+        }
     }
 
     #[test]

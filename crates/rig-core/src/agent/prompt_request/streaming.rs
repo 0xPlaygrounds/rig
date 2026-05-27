@@ -199,6 +199,52 @@ fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
+fn build_tool_call_validation_history(
+    chat_history: Option<&[Message]>,
+    new_messages: &[Message],
+    assistant_message_id: &Option<String>,
+    final_turn_content: Option<&OneOrMany<AssistantContent>>,
+    text_delta_response: Option<&str>,
+    pending_tool_calls: &[(ToolCall, String)],
+    current_tool_call: Option<ToolCall>,
+) -> Vec<Message> {
+    let mut messages = new_messages.to_vec();
+
+    if let Some(final_turn_content) = final_turn_content
+        && !is_empty_assistant_choice(final_turn_content)
+    {
+        messages.push(Message::Assistant {
+            id: assistant_message_id.clone(),
+            content: final_turn_content.clone(),
+        });
+        return build_full_history(chat_history, messages);
+    }
+
+    let mut content_items = Vec::new();
+    if let Some(text) = text_delta_response
+        && !text.is_empty()
+    {
+        content_items.push(AssistantContent::text(text.to_string()));
+    }
+    content_items.extend(
+        pending_tool_calls
+            .iter()
+            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
+    );
+    if let Some(tool_call) = current_tool_call {
+        content_items.push(AssistantContent::ToolCall(tool_call));
+    }
+
+    if let Some(content) = OneOrMany::from_iter_optional(content_items) {
+        messages.push(Message::Assistant {
+            id: assistant_message_id.clone(),
+            content,
+        });
+    }
+
+    build_full_history(chat_history, messages)
+}
+
 /// Combine input history with new messages for building completion requests.
 fn build_history_for_request(
     chat_history: Option<&[Message]>,
@@ -692,27 +738,15 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
                         Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
-                            let diagnostic_history = {
-                                let mut messages = new_messages.clone();
-                                let mut content_items = Vec::new();
-                                if saw_text_this_turn && !text_delta_response.is_empty() {
-                                    content_items
-                                        .push(AssistantContent::text(text_delta_response.clone()));
-                                }
-                                content_items.extend(pending_tool_calls.iter().map(
-                                    |(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()),
-                                ));
-                                content_items.push(AssistantContent::ToolCall(tool_call.clone()));
-
-                                if let Some(content) = OneOrMany::from_iter_optional(content_items)
-                                {
-                                    messages.push(Message::Assistant {
-                                        id: stream.message_id.clone(),
-                                        content,
-                                    });
-                                }
-                                build_full_history(chat_history.as_deref(), messages)
-                            };
+                            let diagnostic_history = build_tool_call_validation_history(
+                                chat_history.as_deref(),
+                                &new_messages,
+                                &stream.message_id,
+                                None,
+                                saw_text_this_turn.then_some(text_delta_response.as_str()),
+                                &pending_tool_calls,
+                                Some(tool_call.clone()),
+                            );
 
                             if let Err(err) = validate_tool_call_name(
                                 &tool_call.function.name,
@@ -736,22 +770,19 @@ where
 
                             match content {
                                 ToolCallDeltaContent::Name(name) => {
-                                    let diagnostic_history = {
-                                        let mut messages = new_messages.clone();
-                                        messages.push(Message::Assistant {
-                                            id: stream.message_id.clone(),
-                                            content: OneOrMany::one(AssistantContent::ToolCall(
-                                                ToolCall::new(
-                                                    id.clone(),
-                                                    ToolFunction::new(
-                                                        name.clone(),
-                                                        serde_json::Value::Null,
-                                                    ),
-                                                ),
-                                            )),
-                                        });
-                                        build_full_history(chat_history.as_deref(), messages)
-                                    };
+                                    let diagnostic_tool_call = ToolCall::new(
+                                        id.clone(),
+                                        ToolFunction::new(name.clone(), serde_json::Value::Null),
+                                    );
+                                    let diagnostic_history = build_tool_call_validation_history(
+                                        chat_history.as_deref(),
+                                        &new_messages,
+                                        &stream.message_id,
+                                        None,
+                                        None,
+                                        &[],
+                                        Some(diagnostic_tool_call),
+                                    );
 
                                     if let Err(err) = validate_tool_call_name(
                                         &name,
@@ -898,25 +929,15 @@ where
                 tracing::Span::current().record("gen_ai.completion", &turn_text_response);
 
                 if !pending_tool_calls.is_empty() {
-                    let diagnostic_history = {
-                        let mut messages = new_messages.clone();
-                        if !is_empty_assistant_choice(&final_turn_content) {
-                            messages.push(Message::Assistant {
-                                id: stream.message_id.clone(),
-                                content: final_turn_content.clone(),
-                            });
-                        } else if let Some(content) = OneOrMany::from_iter_optional(
-                            pending_tool_calls
-                                .iter()
-                                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-                        ) {
-                            messages.push(Message::Assistant {
-                                id: stream.message_id.clone(),
-                                content,
-                            });
-                        }
-                        build_full_history(chat_history.as_deref(), messages)
-                    };
+                    let diagnostic_history = build_tool_call_validation_history(
+                        chat_history.as_deref(),
+                        &new_messages,
+                        &stream.message_id,
+                        Some(&final_turn_content),
+                        None,
+                        &pending_tool_calls,
+                        None,
+                    );
 
                     for (tool_call, _) in &pending_tool_calls {
                         if let Err(err) = validate_tool_call_name(

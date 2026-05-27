@@ -2392,45 +2392,70 @@ mod tests {
 
     #[test]
     fn test_tool_protocol_finish_reason_returns_response_error() {
-        let response = GenerateContentResponse {
-            response_id: "resp_tool_protocol_error".to_string(),
-            candidates: vec![ContentCandidate {
-                content: Some(Content {
-                    parts: vec![Part {
-                        thought: None,
-                        thought_signature: None,
-                        part: PartKind::FunctionCall(FunctionCall {
-                            name: "default_api".to_string(),
-                            args: json!({"x": 1}),
-                        }),
-                        additional_params: None,
-                    }],
-                    role: Some(Role::Model),
-                }),
-                finish_reason: Some(FinishReason::UnexpectedToolCall),
-                safety_ratings: None,
-                citation_metadata: None,
-                token_count: None,
-                avg_logprobs: None,
-                logprobs_result: None,
-                index: Some(0),
-                finish_message: Some("unexpected tool call: default_api".to_string()),
-            }],
-            prompt_feedback: None,
-            usage_metadata: None,
-            model_version: None,
-        };
+        for (reason, finish_message) in [
+            (
+                FinishReason::MalformedFunctionCall,
+                "malformed function call: default_api",
+            ),
+            (
+                FinishReason::UnexpectedToolCall,
+                "unexpected tool call: default_api",
+            ),
+            (
+                FinishReason::MissingThoughtSignature,
+                "missing thought signature for tool call",
+            ),
+            (
+                FinishReason::TooManyToolCalls,
+                "too many tool calls in response",
+            ),
+            (
+                FinishReason::MalformedResponse,
+                "malformed response from provider",
+            ),
+        ] {
+            let reason_name = format!("{reason:?}");
+            let response = GenerateContentResponse {
+                response_id: "resp_tool_protocol_error".to_string(),
+                candidates: vec![ContentCandidate {
+                    content: Some(Content {
+                        parts: vec![Part {
+                            thought: None,
+                            thought_signature: None,
+                            part: PartKind::FunctionCall(FunctionCall {
+                                name: "default_api".to_string(),
+                                args: json!({"x": 1}),
+                            }),
+                            additional_params: None,
+                        }],
+                        role: Some(Role::Model),
+                    }),
+                    finish_reason: Some(reason),
+                    safety_ratings: None,
+                    citation_metadata: None,
+                    token_count: None,
+                    avg_logprobs: None,
+                    logprobs_result: None,
+                    index: Some(0),
+                    finish_message: Some(finish_message.to_string()),
+                }],
+                prompt_feedback: None,
+                usage_metadata: None,
+                model_version: None,
+            };
 
-        let err =
-            crate::completion::CompletionResponse::<GenerateContentResponse>::try_from(response)
-                .expect_err("tool protocol finish reason should fail");
+            let err = crate::completion::CompletionResponse::<GenerateContentResponse>::try_from(
+                response,
+            )
+            .expect_err("tool protocol finish reason should fail");
 
-        assert!(matches!(
-            err,
-            CompletionError::ResponseError(message)
-                if message.contains("UnexpectedToolCall")
-                    && message.contains("default_api")
-        ));
+            assert!(matches!(
+                err,
+                CompletionError::ResponseError(message)
+                    if message.contains(&reason_name)
+                        && message.contains(finish_message)
+            ));
+        }
     }
 
     #[test]
