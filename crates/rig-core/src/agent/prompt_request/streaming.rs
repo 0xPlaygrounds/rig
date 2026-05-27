@@ -9,13 +9,13 @@ use crate::{
         AssistantContent, ToolCall, ToolChoice, ToolFunction, ToolResult, ToolResultContent,
         UserContent,
     },
-    streaming::{StreamedAssistantContent, StreamedUserContent},
+    streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{pin::Pin, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -264,6 +264,26 @@ fn is_empty_assistant_choice(choice: &OneOrMany<AssistantContent>) -> bool {
             AssistantContent::Text(text)
                 if text.text.is_empty() && text.additional_params.is_none()
         )
+}
+
+#[derive(Default)]
+struct ToolCallDeltaState {
+    name_validated: bool,
+    buffered_arguments: Vec<String>,
+}
+
+fn pending_tool_call_delta_error(
+    states: &HashMap<(String, String), ToolCallDeltaState>,
+) -> Option<CompletionError> {
+    states
+        .iter()
+        .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
+        .map(|((id, internal_call_id), state)| {
+            CompletionError::ResponseError(format!(
+                "streamed tool call arguments received before a validated tool name for id `{id}` and internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
+                state.buffered_arguments.len()
+            ))
+        })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -651,6 +671,8 @@ where
                 // signatures (e.g. Anthropic) never see unsigned blocks.
                 let mut pending_reasoning_delta_text = String::new();
                 let mut pending_reasoning_delta_id: Option<String> = None;
+                let mut tool_call_delta_states: HashMap<(String, String), ToolCallDeltaState> =
+                    HashMap::new();
                 let mut saw_tool_call_this_turn = false;
 
                 while let Some(content) = stream.next().await {
@@ -704,51 +726,96 @@ where
 
                             pending_tool_calls.push((tool_call, internal_call_id));
                         },
-                        Ok(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }) => {
-                            if let rig::streaming::ToolCallDeltaContent::Name(name) = &content {
-                                let diagnostic_history = {
-                                    let mut messages = new_messages.clone();
-                                    messages.push(Message::Assistant {
-                                        id: stream.message_id.clone(),
-                                        content: OneOrMany::one(AssistantContent::ToolCall(
-                                            ToolCall::new(
-                                                id.clone(),
-                                                ToolFunction::new(name.clone(), serde_json::Value::Null),
-                                            ),
-                                        )),
-                                    });
-                                    build_full_history(chat_history.as_deref(), messages)
-                                };
+                        Ok(StreamedAssistantContent::ToolCallDelta {
+                            id,
+                            internal_call_id,
+                            content,
+                        }) => {
+                            let key = (id.clone(), internal_call_id.clone());
+                            let mut deltas_to_emit = Vec::new();
 
-                                if let Err(err) = validate_tool_call_name(
-                                    name,
-                                    &executable_tool_names,
-                                    &allowed_tool_names,
-                                    diagnostic_history,
-                                ) {
-                                    yield Err(Box::new(err).into());
-                                    break 'outer;
+                            match content {
+                                ToolCallDeltaContent::Name(name) => {
+                                    let diagnostic_history = {
+                                        let mut messages = new_messages.clone();
+                                        messages.push(Message::Assistant {
+                                            id: stream.message_id.clone(),
+                                            content: OneOrMany::one(AssistantContent::ToolCall(
+                                                ToolCall::new(
+                                                    id.clone(),
+                                                    ToolFunction::new(
+                                                        name.clone(),
+                                                        serde_json::Value::Null,
+                                                    ),
+                                                ),
+                                            )),
+                                        });
+                                        build_full_history(chat_history.as_deref(), messages)
+                                    };
+
+                                    if let Err(err) = validate_tool_call_name(
+                                        &name,
+                                        &executable_tool_names,
+                                        &allowed_tool_names,
+                                        diagnostic_history,
+                                    ) {
+                                        yield Err(Box::new(err).into());
+                                        break 'outer;
+                                    }
+
+                                    let state =
+                                        tool_call_delta_states.entry(key.clone()).or_default();
+                                    state.name_validated = true;
+                                    let buffered_arguments =
+                                        std::mem::take(&mut state.buffered_arguments);
+
+                                    deltas_to_emit.push(ToolCallDeltaContent::Name(name));
+                                    deltas_to_emit.extend(
+                                        buffered_arguments
+                                            .into_iter()
+                                            .map(ToolCallDeltaContent::Delta),
+                                    );
+                                }
+                                ToolCallDeltaContent::Delta(arguments) => {
+                                    let state =
+                                        tool_call_delta_states.entry(key.clone()).or_default();
+                                    if state.name_validated {
+                                        deltas_to_emit.push(ToolCallDeltaContent::Delta(arguments));
+                                    } else {
+                                        state.buffered_arguments.push(arguments);
+                                    }
                                 }
                             }
 
-                            if let Some(ref hook) = self.hook {
-                                let (name, delta) = match &content {
-                                    rig::streaming::ToolCallDeltaContent::Name(n) => {
-                                        (Some(n.as_str()), "")
-                                    }
-                                    rig::streaming::ToolCallDeltaContent::Delta(d) => {
-                                        (None, d.as_str())
-                                    }
-                                };
+                            for content in deltas_to_emit {
+                                if let Some(ref hook) = self.hook {
+                                    let (name, delta) = match &content {
+                                        ToolCallDeltaContent::Name(n) => (Some(n.as_str()), ""),
+                                        ToolCallDeltaContent::Delta(d) => (None, d.as_str()),
+                                    };
 
-                                if let HookAction::Terminate { reason } = hook.on_tool_call_delta(&id, &internal_call_id, name, delta)
-                                .await {
-                                    yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
-                                    break 'outer;
+                                    if let HookAction::Terminate { reason } = hook
+                                        .on_tool_call_delta(
+                                            &id,
+                                            &internal_call_id,
+                                            name,
+                                            delta,
+                                        )
+                                        .await
+                                    {
+                                        yield Err(cancelled_prompt_error(chat_history.as_deref(), new_messages.clone(), reason).await);
+                                        break 'outer;
+                                    }
                                 }
-                            }
 
-                            yield Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta { id, internal_call_id, content }));
+                                yield Ok(MultiTurnStreamItem::StreamAssistantItem(
+                                    StreamedAssistantContent::ToolCallDelta {
+                                        id: id.clone(),
+                                        internal_call_id: internal_call_id.clone(),
+                                        content,
+                                    },
+                                ));
+                            }
                         }
                         Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
                             // Accumulate reasoning for inclusion in chat history with tool calls.
@@ -768,6 +835,13 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
+                            if let Some(err) =
+                                pending_tool_call_delta_error(&tool_call_delta_states)
+                            {
+                                yield Err(err.into());
+                                break 'outer;
+                            }
+
                             if let Some(usage) = final_resp.token_usage() {
                                 current_call_usage = reported_usage(usage);
                             }
@@ -795,6 +869,11 @@ where
                             break 'outer;
                         }
                     }
+                }
+
+                if let Some(err) = pending_tool_call_delta_error(&tool_call_delta_states) {
+                    yield Err(err.into());
+                    break 'outer;
                 }
 
                 if !completion_call_emitted {
@@ -2446,6 +2525,274 @@ mod tests {
                     assert_eq!(available_tools, vec!["add".to_string()]);
                     assert_eq!(allowed_tools, vec!["add".to_string()]);
                     assert!(history_contains_tool_call(&chat_history, "default_api"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "default_api"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("stream a bad tool call")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_delta = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => {
+                    saw_delta = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_delta);
+        let error = error.expect("unknown tool-call name should reject buffered args");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "default_api");
+                    assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert_eq!(allowed_tools, vec!["add".to_string()]);
+                    assert!(history_contains_tool_call(&chat_history, "default_api"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let hook = RecordingToolCallDeltaHook::default();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("stream a tool call")
+            .with_hook(hook.clone())
+            .await;
+        let mut stream_deltas = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    },
+                )) => {
+                    stream_deltas.push((id, internal_call_id, content));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            hook.observed(),
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    Some("add".to_string()),
+                    String::new()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "{\"x\":".to_string()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "1}".to_string()
+                ),
+            ]
+        );
+        assert_eq!(
+            stream_deltas,
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("add".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_call_args_delta_without_name_errors_at_stream_end() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("stream an incomplete tool call")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_delta = false;
+        let mut saw_completion_call = false;
+        let mut saw_final_response = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => {
+                    saw_delta = true;
+                }
+                Ok(MultiTurnStreamItem::CompletionCall(_)) => {
+                    saw_completion_call = true;
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    saw_final_response = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_delta);
+        assert!(!saw_completion_call);
+        assert!(!saw_final_response);
+        let error = error.expect("unterminated tool-call args delta should fail");
+        match error {
+            StreamingError::Completion(CompletionError::ResponseError(message)) => {
+                assert!(
+                    message.contains("streamed tool call arguments"),
+                    "{message}"
+                );
+                assert!(message.contains("tool_1"), "{message}");
+                assert!(message.contains("internal_1"), "{message}");
+            }
+            other => panic!("expected completion response error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("do not use tools")
+            .with_hook(PanicOnUnknownToolHook)
+            .multi_turn(3)
+            .await;
+        let mut saw_delta = false;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => {
+                    saw_delta = true;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(!saw_delta);
+        let error = error.expect("ToolChoice::None should reject buffered tool-call deltas");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools,
+                    allowed_tools,
+                    chat_history,
+                } => {
+                    assert_eq!(tool_name, "add");
+                    assert_eq!(available_tools, vec!["add".to_string()]);
+                    assert!(allowed_tools.is_empty());
+                    assert!(history_contains_tool_call(&chat_history, "add"));
                 }
                 other => panic!("expected UnknownToolCall, got {other:?}"),
             },
