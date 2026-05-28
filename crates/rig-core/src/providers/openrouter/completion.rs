@@ -1603,16 +1603,17 @@ pub enum ToolChoiceFunctionKind {
     Function { name: String },
 }
 
-/// Apply Anthropic-style prompt-caching markers to an already-serialized
-/// OpenRouter request body (automatic mode).
+/// Apply explicit prompt-caching markers to an already-serialized OpenRouter
+/// request body.
 ///
 /// Finds the first system message in `messages` and converts its `content`
 /// to a structured text block with `cache_control: {"type": "ephemeral"}`.
-/// This tells Anthropic (via OpenRouter) to cache the system prompt so
-/// subsequent turns that share the same prefix are billed at the cache-hit rate.
+/// This tells OpenRouter providers that support explicit `cache_control`
+/// breakpoints to cache the system prompt so subsequent turns that share the
+/// same prefix can be billed at the cache-hit rate.
 ///
-/// Non-Anthropic models routed through OpenRouter typically ignore the
-/// `cache_control` field, so enabling this is safe regardless of the model.
+/// This is intended for models and providers that support explicit
+/// `cache_control` breakpoints.
 pub(super) fn apply_prompt_caching(body: &mut serde_json::Value) {
     let Some(obj) = body.as_object_mut() else {
         return;
@@ -1658,6 +1659,17 @@ pub(super) fn apply_prompt_caching(body: &mut serde_json::Value) {
         }
         _ => {}
     }
+}
+
+pub(super) fn final_request_body(
+    request: &OpenrouterCompletionRequest,
+    prompt_caching: bool,
+) -> Result<serde_json::Value, CompletionError> {
+    let mut body = serde_json::to_value(request)?;
+    if prompt_caching {
+        apply_prompt_caching(&mut body);
+    }
+    Ok(body)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1787,12 +1799,12 @@ pub struct CompletionModel<T = reqwest::Client> {
     /// Enable strict mode for tool schemas.
     /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements.
     pub strict_tools: bool,
-    /// Enable Anthropic-style prompt caching via OpenRouter.
+    /// Enable explicit prompt caching via OpenRouter.
     ///
     /// When true, the outgoing JSON body is post-processed to attach
-    /// `cache_control: {"type": "ephemeral"}` to the system prompt, so
-    /// Anthropic (routed through OpenRouter) caches it at ~10% of the
-    /// normal input-token cost. Non-Anthropic backends ignore the field.
+    /// `cache_control: {"type": "ephemeral"}` to the system prompt. This is
+    /// intended for models and providers that support explicit cache
+    /// breakpoints.
     pub prompt_caching: bool,
 }
 
@@ -1806,13 +1818,12 @@ impl<T> CompletionModel<T> {
         }
     }
 
-    /// Enable Anthropic-style prompt caching for Anthropic models routed
-    /// through OpenRouter.
+    /// Enable explicit prompt caching for supported OpenRouter models.
     ///
     /// Adds `cache_control: {"type": "ephemeral"}` to the system-prompt
-    /// block so subsequent turns that share the same system prefix are billed
-    /// at the cache-hit rate. Non-Anthropic backends typically ignore the
-    /// field, so this is safe to enable regardless of the model.
+    /// block so subsequent turns that share the same system prefix can be
+    /// billed at the cache-hit rate when the selected model/provider supports
+    /// explicit cache breakpoints.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
@@ -1860,11 +1871,13 @@ where
             strict_tools: self.strict_tools,
         })?;
 
+        let body = final_request_body(&request, self.prompt_caching)?;
+
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
                 "OpenRouter completion request: {}",
-                serde_json::to_string_pretty(&request)?
+                serde_json::to_string_pretty(&body)?
             );
         }
 
@@ -1886,13 +1899,7 @@ where
             tracing::Span::current()
         };
 
-        let body = if self.prompt_caching {
-            let mut v = serde_json::to_value(&request)?;
-            apply_prompt_caching(&mut v);
-            serde_json::to_vec(&v)?
-        } else {
-            serde_json::to_vec(&request)?
-        };
+        let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
@@ -3566,6 +3573,65 @@ mod tests {
             }
             _ => panic!("Expected VideoUrl variant"),
         }
+    }
+
+    fn prompt_caching_completion_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: Some("You are a helpful assistant.".to_string()),
+            chat_history: crate::OneOrMany::one(crate::message::Message::user("Hello")),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn test_final_request_body_applies_prompt_caching_to_converted_completion_request() {
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "anthropic/claude-3.5-sonnet",
+            request: prompt_caching_completion_request(),
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+
+        let body = final_request_body(&request, true).expect("request body should serialize");
+        let system_block = &body["messages"][0]["content"][0];
+
+        assert_eq!(system_block["type"], "text");
+        assert_eq!(system_block["text"], "You are a helpful assistant.");
+        assert_eq!(system_block["cache_control"]["type"], "ephemeral");
+
+        let body = final_request_body(&request, false).expect("request body should serialize");
+        assert!(
+            body["messages"][0]["content"][0]
+                .get("cache_control")
+                .is_none(),
+            "prompt caching should be opt-in"
+        );
+    }
+
+    #[test]
+    fn test_final_request_body_preserves_stream_flag_when_prompt_caching_enabled() {
+        let mut request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "anthropic/claude-3.5-sonnet",
+            request: prompt_caching_completion_request(),
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        request.additional_params = Some(json!({ "stream": true }));
+
+        let body = final_request_body(&request, true).expect("request body should serialize");
+
+        assert_eq!(body["stream"], true);
+        assert_eq!(
+            body["messages"][0]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
     }
 
     #[test]
