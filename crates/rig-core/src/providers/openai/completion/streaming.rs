@@ -19,31 +19,11 @@ use crate::streaming;
 #[derive(Default, Deserialize, Debug)]
 pub(crate) struct StreamingFunction {
     pub(crate) name: Option<String>,
-    #[serde(default, deserialize_with = "de_tool_call_arguments")]
+    #[serde(
+        default,
+        deserialize_with = "crate::json_utils::deserialize_json_string_or_value"
+    )]
     pub(crate) arguments: Option<String>,
-}
-
-/// Deserialize `tool_calls[].function.arguments`, tolerating providers that send
-/// a JSON object/array instead of the spec-mandated JSON-encoded string.
-///
-/// The OpenAI Chat Completions spec defines `arguments` as a string (e.g.
-/// `"{\"city\":\"Paris\"}"`), and that is the only form rig produced before. Some
-/// OpenAI-compatible gateways instead emit a raw object (`"arguments": {}`), which
-/// previously failed deserialization with "invalid type: map, expected a string",
-/// causing the whole SSE chunk (and thus the tool call) to be silently dropped.
-///
-/// We now accept either: a string is taken verbatim; any other JSON value is
-/// re-serialized to its compact JSON-string form.
-fn de_tool_call_arguments<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(match value {
-        None | Some(serde_json::Value::Null) => None,
-        Some(serde_json::Value::String(s)) => Some(s),
-        Some(other) => Some(other.to_string()),
-    })
 }
 
 #[derive(Deserialize, Debug)]
