@@ -1095,18 +1095,19 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<T, S, M, P>
+pub struct TypedPromptRequest<T, S, M, P, I = ()>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
-    inner: PromptRequest<S, M, P>,
+    inner: PromptRequest<S, M, P, I>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
+impl<T, M, P> TypedPromptRequest<T, Standard, M, P, ()>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
@@ -1126,19 +1127,20 @@ where
     }
 }
 
-impl<T, S, M, P> TypedPromptRequest<T, S, M, P>
+impl<T, S, M, P, I> TypedPromptRequest<T, S, M, P, I>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage).
     ///
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M, P> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M, P, I> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -1155,6 +1157,14 @@ where
         self
     }
 
+    /// Set the retry budget for invalid tool-call recovery.
+    ///
+    /// Invalid tool-call retries also consume normal multi-turn depth.
+    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
+        self.inner = self.inner.max_invalid_tool_call_retries(retries);
+        self
+    }
+
     /// Add concurrency to the prompt request.
     ///
     /// This will cause the agent to execute tools concurrently.
@@ -1164,10 +1174,10 @@ where
     }
 
     /// Add chat history to the prompt request.
-    pub fn with_history<I, H>(mut self, history: I) -> Self
+    pub fn with_history<H, U>(mut self, history: H) -> Self
     where
-        I: IntoIterator<Item = H>,
-        H: Into<Message>,
+        H: IntoIterator<Item = U>,
+        U: Into<Message>,
     {
         self.inner = self.inner.with_history(history);
         self
@@ -1193,7 +1203,7 @@ where
     /// Attach a per-request hook for tool call events.
     ///
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<T, S, M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<T, S, M, P2, I>
     where
         P2: PromptHook<M>,
     {
@@ -1202,13 +1212,27 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
+
+    /// Attach a per-request hook for invalid model-emitted tool calls.
+    ///
+    /// Without this hook, Rig preserves fail-fast validation.
+    pub fn with_invalid_tool_call_hook<I2>(self, hook: I2) -> TypedPromptRequest<T, S, M, P, I2>
+    where
+        I2: InvalidToolCallHook<M>,
+    {
+        TypedPromptRequest {
+            inner: self.inner.with_invalid_tool_call_hook(hook),
+            _phantom: std::marker::PhantomData,
+        }
+    }
 }
 
-impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
+impl<T, M, P, I> TypedPromptRequest<T, Standard, M, P, I>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -1223,11 +1247,12 @@ where
     }
 }
 
-impl<T, M, P> TypedPromptRequest<T, Extended, M, P>
+impl<T, M, P, I> TypedPromptRequest<T, Extended, M, P, I>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -1243,11 +1268,12 @@ where
     }
 }
 
-impl<T, M, P> IntoFuture for TypedPromptRequest<T, Standard, M, P>
+impl<T, M, P, I> IntoFuture for TypedPromptRequest<T, Standard, M, P, I>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
+    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1257,11 +1283,12 @@ where
     }
 }
 
-impl<T, M, P> IntoFuture for TypedPromptRequest<T, Extended, M, P>
+impl<T, M, P, I> IntoFuture for TypedPromptRequest<T, Extended, M, P, I>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
+    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1284,7 +1311,7 @@ mod tests {
         },
         completion::{
             AssistantContent, CompletionError, CompletionModel, CompletionRequest, Message, Prompt,
-            PromptError, TypedPrompt, Usage,
+            PromptError, StructuredOutputError, TypedPrompt, Usage,
         },
         message::{Text, ToolChoice, UserContent},
         test_utils::{
@@ -1830,6 +1857,112 @@ mod tests {
                     })
             )
         }));
+    }
+
+    #[tokio::test]
+    async fn typed_prompt_default_invalid_tool_call_fails_fast() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text(r#"{"value":"should not be requested"}"#),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let err = agent
+            .prompt_typed::<TypedAnswer>("return typed json")
+            .with_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .await
+            .expect_err("typed prompt should preserve fail-fast default");
+
+        match err {
+            StructuredOutputError::PromptError(err) => match *err {
+                PromptError::UnknownToolCall { tool_name, .. } => {
+                    assert_eq!(tool_name, "default_api");
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn typed_prompt_invalid_tool_call_hook_can_repair_tool_name() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text(r#"{"value":"repaired"}"#),
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let response = agent
+            .prompt_typed::<TypedAnswer>("return typed json")
+            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .max_turns(3)
+            .await
+            .expect("typed prompt should repair invalid tool call");
+
+        assert_eq!(
+            response,
+            TypedAnswer {
+                value: "repaired".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn typed_prompt_invalid_tool_call_hook_can_retry_and_parse_response() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text(r#"{"value":"retried"}"#),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let response = agent
+            .prompt_typed::<TypedAnswer>("return typed json")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .max_invalid_tool_call_retries(1)
+            .max_turns(3)
+            .await
+            .expect("typed prompt should retry invalid tool call");
+
+        assert_eq!(
+            response,
+            TypedAnswer {
+                value: "retried".to_string()
+            }
+        );
+        assert_eq!(recorded.request_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn typed_prompt_invalid_tool_call_retry_budget_exhaustion_fails() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text(r#"{"value":"should not be requested"}"#),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let err = agent
+            .prompt_typed::<TypedAnswer>("return typed json")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .max_invalid_tool_call_retries(0)
+            .max_turns(3)
+            .await
+            .expect_err("typed prompt should fail when retry budget is exhausted");
+
+        match err {
+            StructuredOutputError::PromptError(err) => match *err {
+                PromptError::UnknownToolCall { tool_name, .. } => {
+                    assert_eq!(tool_name, "default_api");
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
     }
 
     #[tokio::test]
