@@ -707,17 +707,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 for img in images {
                     let url = &img.image_url.url;
                     let block = if let Some((mime, b64)) = parse_data_uri(url) {
-                        completion::AssistantContent::image_base64(
-                            b64.to_string(),
-                            message::ImageMediaType::from_mime_type(mime),
-                            None,
-                        )
+                        completion::AssistantContent::Image(message::Image {
+                            data: message::DocumentSourceKind::Base64(b64.to_string()),
+                            media_type: message::ImageMediaType::from_mime_type(mime),
+                            detail: None,
+                            additional_params: Some(openrouter_response_image_params()),
+                        })
                     } else {
                         completion::AssistantContent::Image(message::Image {
                             data: message::DocumentSourceKind::Url(url.clone()),
                             media_type: None,
                             detail: None,
-                            additional_params: None,
+                            additional_params: Some(openrouter_response_image_params()),
                         })
                     };
                     content.push(block);
@@ -994,6 +995,34 @@ pub struct ImageUrl {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ResponseImage {
     pub image_url: ImageUrl,
+}
+
+fn openrouter_response_image_params() -> serde_json::Value {
+    serde_json::json!({
+        "openrouter": {
+            "response_only": true,
+            "source": "assistant.images"
+        }
+    })
+}
+
+fn is_openrouter_response_image(image: &message::Image) -> bool {
+    let Some(openrouter) = image
+        .additional_params
+        .as_ref()
+        .and_then(|params| params.get("openrouter"))
+    else {
+        return false;
+    };
+
+    let response_only = openrouter
+        .get("response_only")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true);
+    let source_is_assistant_images =
+        openrouter.get("source").and_then(serde_json::Value::as_str) == Some("assistant.images");
+
+    response_only && source_is_assistant_images
 }
 
 /// Split a `data:<mime>;base64,<payload>` URI into `(mime, payload)`.
@@ -1572,9 +1601,15 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                     }
                 }
                 // Generated image responses are surfaced as assistant images for
-                // callers, but OpenRouter does not accept assistant image parts
-                // when replaying chat history.
-                message::AssistantContent::Image(_) => {}
+                // callers, but OpenRouter does not accept response-side image
+                // artifacts when replaying chat history.
+                message::AssistantContent::Image(image) if is_openrouter_response_image(&image) => {
+                }
+                message::AssistantContent::Image(_) => {
+                    return Err(Self::Error::ConversionError(
+                        "OpenRouter does not support assistant image content in request history; pass images as user image inputs instead".into(),
+                    ));
+                }
             }
         }
 
@@ -3930,9 +3965,18 @@ mod tests {
             completion::AssistantContent::Image(message::Image {
                 data: message::DocumentSourceKind::Base64(b64),
                 media_type: Some(message::ImageMediaType::PNG),
+                additional_params: Some(_),
                 ..
             }) if b64 == "iVBORw0KGgo="
         )));
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                completion::AssistantContent::Image(image)
+                    if is_openrouter_response_image(image)
+            )),
+            "generated images should be marked as OpenRouter response-only artifacts"
+        );
     }
 
     #[test]
@@ -3966,9 +4010,18 @@ mod tests {
             completion::AssistantContent::Image(message::Image {
                 data: message::DocumentSourceKind::Url(url),
                 media_type: None,
+                additional_params: Some(_),
                 ..
             }) if url == "https://example.com/generated.png"
         )));
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                completion::AssistantContent::Image(image)
+                    if is_openrouter_response_image(image)
+            )),
+            "generated URL images should be marked as OpenRouter response-only artifacts"
+        );
     }
 
     #[test]
@@ -4041,14 +4094,34 @@ mod tests {
 
     #[test]
     fn test_image_only_assistant_history_is_omitted_for_openrouter() {
-        let messages =
+        let messages = Vec::<Message>::try_from(OneOrMany::one(
+            completion::AssistantContent::Image(message::Image {
+                data: message::DocumentSourceKind::Base64("iVBORw0KGgo=".to_string()),
+                media_type: Some(message::ImageMediaType::PNG),
+                detail: None,
+                additional_params: Some(openrouter_response_image_params()),
+            }),
+        ))
+        .expect("response-only image assistant history should be ignored, not rejected");
+
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn test_unmarked_assistant_image_history_errors_for_openrouter() {
+        let err =
             Vec::<Message>::try_from(OneOrMany::one(completion::AssistantContent::image_base64(
                 "iVBORw0KGgo=".to_string(),
                 Some(message::ImageMediaType::PNG),
                 None,
             )))
-            .expect("image-only assistant history should be ignored, not rejected");
+            .expect_err("caller-authored assistant images should not be silently dropped");
 
-        assert!(messages.is_empty());
+        match err {
+            message::MessageError::ConversionError(message) => assert!(
+                message.contains("OpenRouter does not support assistant image content"),
+                "unexpected error: {message}"
+            ),
+        }
     }
 }

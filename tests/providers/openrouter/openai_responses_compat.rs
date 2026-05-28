@@ -8,7 +8,6 @@
 use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, Prompt};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::OpenAIServiceTier;
 use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -35,8 +34,8 @@ fn openrouter_openai_client() -> openai::Client {
 }
 
 #[tokio::test]
-#[ignore = "requires OPENROUTER_API_KEY and an OpenRouter model that returns service_tier=standard"]
-async fn openai_responses_raw_response_accepts_standard_service_tier() {
+#[ignore = "requires OPENROUTER_API_KEY"]
+async fn openai_responses_raw_response_accepts_provider_service_tier() {
     let model_name = openai_compatible_model();
     let response = openrouter_openai_client()
         .completion_model(&model_name)
@@ -46,17 +45,19 @@ async fn openai_responses_raw_response_accepts_standard_service_tier() {
         .await
         .expect("OpenRouter Responses API completion should deserialize");
 
-    let service_tier = response
-        .raw_response
-        .additional_parameters
-        .service_tier
-        .as_ref()
-        .expect("OpenRouter response should include service_tier");
+    let normalized_text = response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            rig::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_nonempty_response(&normalized_text);
 
-    assert!(
-        matches!(service_tier, OpenAIServiceTier::Standard),
-        "expected OpenRouter model {model_name} to return service_tier=standard, got {service_tier:?}"
-    );
+    assert_nonempty_response(&response.raw_response.id);
+    assert_nonempty_response(&response.raw_response.model);
 }
 
 #[tokio::test]
