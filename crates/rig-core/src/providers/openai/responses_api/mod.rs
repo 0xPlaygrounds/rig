@@ -1069,6 +1069,12 @@ pub struct AdditionalParameters {
     /// The username of the user (that you want to use).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// A stable cache routing key for prompt caching.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_key: Option<String>,
+    /// Prompt cache retention policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_retention: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
     #[serde(skip_serializing_if = "Map::is_empty", default)]
     pub metadata: serde_json::Map<String, serde_json::Value>,
