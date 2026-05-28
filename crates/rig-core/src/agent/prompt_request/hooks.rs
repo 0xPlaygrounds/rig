@@ -4,9 +4,95 @@
 
 use crate::{
     completion::CompletionModel,
-    message::Message,
+    message::{Message, ToolChoice},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
+
+/// Context passed to [`InvalidToolCallHook`] when the model emits a tool call
+/// that Rig would reject before normal tool-call hooks or execution.
+#[derive(Debug, Clone)]
+pub struct InvalidToolCallContext {
+    /// Tool name emitted by the model.
+    pub tool_name: String,
+    /// Provider-supplied tool call ID, when available.
+    pub tool_call_id: Option<String>,
+    /// Internal Rig call ID, when available.
+    pub internal_call_id: Option<String>,
+    /// JSON arguments emitted for the tool call, when available.
+    pub args: Option<String>,
+    /// Executable Rig tools advertised to the provider for this turn.
+    pub available_tools: Vec<String>,
+    /// Tools allowed by the active [`ToolChoice`] for this turn.
+    pub allowed_tools: Vec<String>,
+    /// Active tool choice for this turn.
+    pub tool_choice: Option<ToolChoice>,
+    /// Diagnostic chat history including the rejected model output when available.
+    pub chat_history: Vec<Message>,
+    /// Whether the rejected call came from the streaming path.
+    pub is_streaming: bool,
+}
+
+/// Trait for recovering from model-emitted tool calls that Rig rejects during
+/// validation.
+///
+/// The default behavior remains fail-fast. Attach an implementation with
+/// `.with_invalid_tool_call_hook(...)` to opt into recovery.
+pub trait InvalidToolCallHook<M>: Clone + WasmCompatSend + WasmCompatSync
+where
+    M: CompletionModel,
+{
+    /// Called when a model-emitted tool call is unknown or disallowed by the
+    /// current request's tool choice.
+    fn on_invalid_tool_call(
+        &self,
+        _context: &InvalidToolCallContext,
+    ) -> impl Future<Output = InvalidToolCallHookAction> + WasmCompatSend {
+        async { InvalidToolCallHookAction::fail() }
+    }
+}
+
+impl<M> InvalidToolCallHook<M> for () where M: CompletionModel {}
+
+/// Recovery action for invalid tool-call hooks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvalidToolCallHookAction {
+    /// Preserve Rig's default fail-fast behavior.
+    Fail,
+    /// Retry the model turn with corrective feedback.
+    Retry { feedback: String },
+    /// Rewrite the emitted tool name. The repaired name is revalidated before use.
+    Repair { tool_name: String },
+    /// Return a synthetic tool result for this invalid structured tool call.
+    Skip { reason: String },
+}
+
+impl InvalidToolCallHookAction {
+    /// Preserve Rig's default fail-fast behavior.
+    pub fn fail() -> Self {
+        Self::Fail
+    }
+
+    /// Retry the model turn with corrective feedback.
+    pub fn retry(feedback: impl Into<String>) -> Self {
+        Self::Retry {
+            feedback: feedback.into(),
+        }
+    }
+
+    /// Repair the emitted tool name.
+    pub fn repair(tool_name: impl Into<String>) -> Self {
+        Self::Repair {
+            tool_name: tool_name.into(),
+        }
+    }
+
+    /// Skip the invalid call with a synthetic tool result.
+    pub fn skip(reason: impl Into<String>) -> Self {
+        Self::Skip {
+            reason: reason.into(),
+        }
+    }
+}
 
 /// Trait for per-request hooks to observe tool call events.
 pub trait PromptHook<M>: Clone + WasmCompatSend + WasmCompatSync

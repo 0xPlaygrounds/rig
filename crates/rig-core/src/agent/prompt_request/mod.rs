@@ -15,10 +15,13 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{StreamExt, stream};
-use hooks::{HookAction, PromptHook, ToolCallHookAction};
+use hooks::{
+    HookAction, InvalidToolCallContext, InvalidToolCallHook, InvalidToolCallHookAction, PromptHook,
+    ToolCallHookAction,
+};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     future::IntoFuture,
     marker::PhantomData,
     sync::{
@@ -44,11 +47,12 @@ impl PromptType for Extended {}
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct PromptRequest<S, M, P>
+pub struct PromptRequest<S, M, P, I = ()>
 where
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -83,6 +87,10 @@ where
     state: PhantomData<S>,
     /// Optional per-request hook for events
     hook: Option<P>,
+    /// Optional per-request hook for invalid model-emitted tool calls.
+    invalid_tool_call_hook: Option<I>,
+    /// Maximum number of invalid tool-call retries for this request.
+    max_invalid_tool_call_retries: usize,
     /// How many tools should be executed at the same time (1 by default).
     concurrency: usize,
     /// Optional JSON Schema for structured output
@@ -93,7 +101,7 @@ where
     conversation_id: Option<String>,
 }
 
-impl<M, P> PromptRequest<Standard, M, P>
+impl<M, P> PromptRequest<Standard, M, P, ()>
 where
     M: CompletionModel,
     P: PromptHook<M>,
@@ -116,6 +124,8 @@ where
             tool_choice: agent.tool_choice.clone(),
             state: PhantomData,
             hook: agent.hook.clone(),
+            invalid_tool_call_hook: None,
+            max_invalid_tool_call_retries: 0,
             concurrency: 1,
             output_schema: agent.output_schema.clone(),
             memory: agent.memory.clone(),
@@ -124,11 +134,12 @@ where
     }
 }
 
-impl<S, M, P> PromptRequest<S, M, P>
+impl<S, M, P, I> PromptRequest<S, M, P, I>
 where
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
@@ -136,7 +147,7 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended, M, P> {
+    pub fn extended_details(self) -> PromptRequest<Extended, M, P, I> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -153,6 +164,8 @@ where
             tool_choice: self.tool_choice,
             state: PhantomData,
             hook: self.hook,
+            invalid_tool_call_hook: self.invalid_tool_call_hook,
+            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
             memory: self.memory,
@@ -175,9 +188,9 @@ where
     }
 
     /// Add chat history to the prompt request.
-    pub fn with_history<I, T>(mut self, history: I) -> Self
+    pub fn with_history<H, T>(mut self, history: H) -> Self
     where
-        I: IntoIterator<Item = T>,
+        H: IntoIterator<Item = T>,
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
@@ -204,7 +217,7 @@ where
 
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2, I>
     where
         P2: PromptHook<M>,
     {
@@ -224,21 +237,64 @@ where
             tool_choice: self.tool_choice,
             state: PhantomData,
             hook: Some(hook),
+            invalid_tool_call_hook: self.invalid_tool_call_hook,
+            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
             memory: self.memory,
             conversation_id: self.conversation_id,
         }
     }
+
+    /// Attach a per-request hook for invalid model-emitted tool calls.
+    ///
+    /// Without this hook, Rig preserves fail-fast validation.
+    pub fn with_invalid_tool_call_hook<I2>(self, hook: I2) -> PromptRequest<S, M, P, I2>
+    where
+        I2: InvalidToolCallHook<M>,
+    {
+        PromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_turns: self.max_turns,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
+            state: PhantomData,
+            hook: self.hook,
+            invalid_tool_call_hook: Some(hook),
+            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
+            concurrency: self.concurrency,
+            output_schema: self.output_schema,
+            memory: self.memory,
+            conversation_id: self.conversation_id,
+        }
+    }
+
+    /// Set the retry budget for [`InvalidToolCallHookAction::Retry`].
+    ///
+    /// Invalid tool-call retries also consume normal multi-turn depth.
+    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
+        self.max_invalid_tool_call_retries = retries;
+        self
+    }
 }
 
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<M, P> IntoFuture for PromptRequest<Standard, M, P>
+impl<M, P, I> IntoFuture for PromptRequest<Standard, M, P, I>
 where
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
+    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -248,10 +304,11 @@ where
     }
 }
 
-impl<M, P> IntoFuture for PromptRequest<Extended, M, P>
+impl<M, P, I> IntoFuture for PromptRequest<Extended, M, P, I>
 where
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
+    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -261,10 +318,11 @@ where
     }
 }
 
-impl<M, P> PromptRequest<Standard, M, P>
+impl<M, P, I> PromptRequest<Standard, M, P, I>
 where
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -427,6 +485,72 @@ pub(crate) fn validate_tool_call_name(
     })
 }
 
+enum InvalidToolCallResolution {
+    Fail(PromptError),
+    Retry(String),
+    Repair(String),
+    Skip(String),
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn resolve_invalid_tool_call<M, I>(
+    hook: Option<&I>,
+    tool_name: &str,
+    tool_call_id: Option<String>,
+    internal_call_id: Option<String>,
+    args: Option<String>,
+    executable_tool_names: &BTreeSet<String>,
+    allowed_tool_names: &BTreeSet<String>,
+    tool_choice: Option<&ToolChoice>,
+    chat_history: Vec<Message>,
+    is_streaming: bool,
+) -> InvalidToolCallResolution
+where
+    M: CompletionModel,
+    I: InvalidToolCallHook<M>,
+{
+    let err = PromptError::UnknownToolCall {
+        tool_name: tool_name.to_owned(),
+        available_tools: executable_tool_names.iter().cloned().collect(),
+        allowed_tools: allowed_tool_names.iter().cloned().collect(),
+        chat_history: Box::new(chat_history.clone()),
+    };
+
+    let Some(hook) = hook else {
+        return InvalidToolCallResolution::Fail(err);
+    };
+
+    let context = InvalidToolCallContext {
+        tool_name: tool_name.to_owned(),
+        tool_call_id,
+        internal_call_id,
+        args,
+        available_tools: executable_tool_names.iter().cloned().collect(),
+        allowed_tools: allowed_tool_names.iter().cloned().collect(),
+        tool_choice: tool_choice.cloned(),
+        chat_history,
+        is_streaming,
+    };
+
+    match hook.on_invalid_tool_call(&context).await {
+        InvalidToolCallHookAction::Fail => InvalidToolCallResolution::Fail(err),
+        InvalidToolCallHookAction::Retry { feedback } => InvalidToolCallResolution::Retry(feedback),
+        InvalidToolCallHookAction::Repair { tool_name } => {
+            if allowed_tool_names.contains(&tool_name) {
+                InvalidToolCallResolution::Repair(tool_name)
+            } else {
+                InvalidToolCallResolution::Fail(PromptError::UnknownToolCall {
+                    tool_name,
+                    available_tools: executable_tool_names.iter().cloned().collect(),
+                    allowed_tools: allowed_tool_names.iter().cloned().collect(),
+                    chat_history: Box::new(context.chat_history),
+                })
+            }
+        }
+        InvalidToolCallHookAction::Skip { reason } => InvalidToolCallResolution::Skip(reason),
+    }
+}
+
 fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
     choice.len() == 1
         && matches!(
@@ -445,10 +569,11 @@ fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
         .collect()
 }
 
-impl<M, P> PromptRequest<Extended, M, P>
+impl<M, P, I> PromptRequest<Extended, M, P, I>
 where
     M: CompletionModel,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     fn agent_name(&self) -> &str {
         self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
@@ -499,10 +624,11 @@ where
         let mut usage = Usage::new();
         let mut completion_calls = Vec::new();
         let mut completion_call_index = 0;
+        let mut invalid_tool_call_retries = 0;
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
-        let last_prompt = loop {
+        let last_prompt = 'prompt_loop: loop {
             // Get the last message (the current prompt)
             let Some((prompt_ref, history_for_current_turn)) = new_messages.split_last() else {
                 return Err(PromptError::prompt_cancelled(
@@ -608,43 +734,121 @@ where
             completion_call_index += 1;
             usage += resp.usage;
 
-            let tool_calls = resp
-                .choice
+            let mut response_choice = resp.choice.clone();
+            let has_tool_calls = response_choice
                 .iter()
-                .filter(|choice| matches!(choice, AssistantContent::ToolCall(_)))
-                .collect::<Vec<_>>();
+                .any(|choice| matches!(choice, AssistantContent::ToolCall(_)));
 
             // Some providers normalize textless terminal turns into a single empty text item
             // because the generic completion response cannot represent an empty choice. Treat
             // that sentinel as "no assistant output" so it does not pollute returned history.
-            let assistant_response_message =
-                (!is_empty_assistant_turn(&resp.choice)).then(|| Message::Assistant {
-                    id: resp.message_id.clone(),
-                    content: resp.choice.clone(),
-                });
+            let mut skipped_tool_results = BTreeMap::new();
+            let mut invalid_tool_call_recovered = false;
+            if has_tool_calls {
+                for choice in response_choice.iter_mut() {
+                    let AssistantContent::ToolCall(tool_call) = choice else {
+                        continue;
+                    };
 
-            if !tool_calls.is_empty() {
-                let mut diagnostic_messages = new_messages.clone();
-                if let Some(message) = assistant_response_message.clone() {
-                    diagnostic_messages.push(message);
-                }
+                    if allowed_tool_names.contains(&tool_call.function.name) {
+                        continue;
+                    }
 
-                for choice in &tool_calls {
-                    if let AssistantContent::ToolCall(tool_call) = choice {
-                        validate_tool_call_name(
-                            &tool_call.function.name,
-                            &executable_tool_names,
-                            &allowed_tool_names,
-                            build_full_history(
-                                chat_history.as_deref(),
-                                diagnostic_messages.clone(),
-                            ),
-                        )?;
+                    let mut diagnostic_messages = new_messages.clone();
+                    diagnostic_messages.push(Message::Assistant {
+                        id: resp.message_id.clone(),
+                        content: resp.choice.clone(),
+                    });
+                    let diagnostic_history =
+                        build_full_history(chat_history.as_deref(), diagnostic_messages);
+                    let args = json_utils::value_to_json_string(&tool_call.function.arguments);
+                    let emitted_tool_name = tool_call.function.name.clone();
+
+                    match resolve_invalid_tool_call::<M, I>(
+                        self.invalid_tool_call_hook.as_ref(),
+                        &emitted_tool_name,
+                        tool_call.call_id.clone(),
+                        None,
+                        Some(args),
+                        &executable_tool_names,
+                        &allowed_tool_names,
+                        self.tool_choice.as_ref(),
+                        diagnostic_history,
+                        false,
+                    )
+                    .await
+                    {
+                        InvalidToolCallResolution::Fail(err) => return Err(err),
+                        InvalidToolCallResolution::Retry(feedback) => {
+                            if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
+                                return Err(PromptError::UnknownToolCall {
+                                    tool_name: emitted_tool_name,
+                                    available_tools: executable_tool_names
+                                        .iter()
+                                        .cloned()
+                                        .collect(),
+                                    allowed_tools: allowed_tool_names.iter().cloned().collect(),
+                                    chat_history: Box::new(build_full_history(
+                                        chat_history.as_deref(),
+                                        new_messages.clone(),
+                                    )),
+                                });
+                            }
+
+                            invalid_tool_call_retries += 1;
+                            new_messages.push(Message::Assistant {
+                                id: resp.message_id.clone(),
+                                content: resp.choice.clone(),
+                            });
+                            let user_content = if let Some(call_id) = tool_call.call_id.clone() {
+                                UserContent::tool_result_with_call_id(
+                                    tool_call.id.clone(),
+                                    call_id,
+                                    OneOrMany::one(feedback.into()),
+                                )
+                            } else {
+                                UserContent::tool_result(
+                                    tool_call.id.clone(),
+                                    OneOrMany::one(feedback.into()),
+                                )
+                            };
+                            new_messages.push(Message::User {
+                                content: OneOrMany::one(user_content),
+                            });
+                            continue 'prompt_loop;
+                        }
+                        InvalidToolCallResolution::Repair(repaired_name) => {
+                            tool_call.function.name = repaired_name;
+                            invalid_tool_call_recovered = true;
+                        }
+                        InvalidToolCallResolution::Skip(reason) => {
+                            let user_content = if let Some(call_id) = tool_call.call_id.clone() {
+                                UserContent::tool_result_with_call_id(
+                                    tool_call.id.clone(),
+                                    call_id,
+                                    OneOrMany::one(reason.into()),
+                                )
+                            } else {
+                                UserContent::tool_result(
+                                    tool_call.id.clone(),
+                                    OneOrMany::one(reason.into()),
+                                )
+                            };
+                            skipped_tool_results.insert(tool_call.id.clone(), user_content);
+                            invalid_tool_call_recovered = true;
+                        }
                     }
                 }
             }
 
-            if let Some(ref hook) = self.hook
+            let assistant_response_message =
+                (!is_empty_assistant_turn(&response_choice)).then(|| Message::Assistant {
+                    id: resp.message_id.clone(),
+                    content: response_choice.clone(),
+                });
+
+            if !invalid_tool_call_recovered
+                && let Some(ref hook) = self.hook
                 && let HookAction::Terminate { reason } =
                     hook.on_completion_response(&prompt, &resp).await
             {
@@ -658,8 +862,8 @@ where
                 new_messages.push(message);
             }
 
-            if tool_calls.is_empty() {
-                let merged_texts = assistant_text_from_choice(&resp.choice);
+            if !has_tool_calls {
+                let merged_texts = assistant_text_from_choice(&response_choice);
 
                 if self.max_turns > 1 {
                     tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
@@ -699,17 +903,23 @@ where
 
             let hook = self.hook.clone();
             let tool_server_handle = self.tool_server_handle.clone();
+            let skipped_tool_results = Arc::new(skipped_tool_results);
 
             // For error handling in concurrent tool execution, we need to build full history
             let full_history_for_errors =
                 build_full_history(chat_history.as_deref(), new_messages.clone());
 
-            let tool_calls: Vec<AssistantContent> = tool_calls.into_iter().cloned().collect();
+            let tool_calls: Vec<AssistantContent> = response_choice
+                .iter()
+                .filter(|choice| matches!(choice, AssistantContent::ToolCall(_)))
+                .cloned()
+                .collect();
             let tool_content = stream::iter(tool_calls)
                 .map(|choice| {
                     let hook1 = hook.clone();
                     let hook2 = hook.clone();
                     let tool_server_handle = tool_server_handle.clone();
+                    let skipped_tool_results = skipped_tool_results.clone();
 
                     let tool_span = info_span!(
                         "execute_tool",
@@ -741,6 +951,9 @@ where
                             let args =
                                 json_utils::value_to_json_string(&tool_call.function.arguments);
                             let internal_call_id = nanoid::nanoid!();
+                            if let Some(result) = skipped_tool_results.get(&tool_call.id) {
+                                return Ok(result.clone());
+                            }
                             let tool_span = tracing::Span::current();
                             tool_span.record("gen_ai.tool.name", tool_name);
                             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
@@ -1064,7 +1277,10 @@ mod tests {
     use crate::{
         agent::{
             AgentBuilder,
-            prompt_request::hooks::{HookAction, PromptHook, ToolCallHookAction},
+            prompt_request::hooks::{
+                HookAction, InvalidToolCallContext, InvalidToolCallHook, InvalidToolCallHookAction,
+                PromptHook, ToolCallHookAction,
+            },
         },
         completion::{
             AssistantContent, CompletionError, CompletionModel, CompletionRequest, Message, Prompt,
@@ -1099,24 +1315,69 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        fn on_completion_response(
+        async fn on_completion_response(
             &self,
             _prompt: &Message,
             _response: &crate::completion::CompletionResponse<
                 <MockCompletionModel as CompletionModel>::Response,
             >,
-        ) -> impl std::future::Future<Output = HookAction> + Send {
-            async { panic!("unknown tool response should fail before response hooks run") }
+        ) -> HookAction {
+            panic!("unknown tool response should fail before response hooks run")
         }
 
-        fn on_tool_call(
+        async fn on_tool_call(
             &self,
             _tool_name: &str,
             _tool_call_id: Option<String>,
             _internal_call_id: &str,
             _args: &str,
-        ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
-            async { panic!("unknown tool call should fail before tool hooks run") }
+        ) -> ToolCallHookAction {
+            panic!("unknown tool call should fail before tool hooks run")
+        }
+    }
+
+    #[derive(Clone)]
+    struct RepairDefaultApiHook;
+
+    impl InvalidToolCallHook<MockCompletionModel> for RepairDefaultApiHook {
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl std::future::Future<Output = InvalidToolCallHookAction> + Send {
+            let tool_name = context.tool_name.clone();
+            async move {
+                assert_eq!(tool_name, "default_api");
+                InvalidToolCallHookAction::repair("add")
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct RetryDefaultApiHook;
+
+    impl InvalidToolCallHook<MockCompletionModel> for RetryDefaultApiHook {
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl std::future::Future<Output = InvalidToolCallHookAction> + Send {
+            let allowed_tools = context.allowed_tools.clone();
+            async move {
+                InvalidToolCallHookAction::retry(format!(
+                    "Use one of these tools instead: {allowed_tools:?}"
+                ))
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct SkipDefaultApiHook;
+
+    impl InvalidToolCallHook<MockCompletionModel> for SkipDefaultApiHook {
+        async fn on_invalid_tool_call(
+            &self,
+            _context: &InvalidToolCallContext,
+        ) -> InvalidToolCallHookAction {
+            InvalidToolCallHookAction::skip("default_api is not available")
         }
     }
 
@@ -1420,6 +1681,155 @@ mod tests {
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_can_repair_non_streaming_tool_name() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("done"),
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let response = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("repaired tool call should execute");
+
+        assert_eq!(response.output, "done");
+        let messages = response.messages.expect("messages should be present");
+        assert!(history_contains_tool_call(&messages, "add"));
+        assert!(!history_contains_tool_call(&messages, "default_api"));
+        assert!(messages.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|content| {
+                        matches!(
+                            content,
+                            UserContent::ToolResult(result)
+                                if result.content.iter().any(|content| {
+                                    matches!(
+                                        content,
+                                        crate::message::ToolResultContent::Text(text)
+                                            if text.text == "5"
+                                    )
+                                })
+                        )
+                    })
+            )
+        }));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_retry_adds_feedback_and_retries_non_streaming() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("retried"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let response = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .max_invalid_tool_call_retries(1)
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("retry should recover");
+
+        assert_eq!(response.output, "retried");
+        assert_eq!(recorded.request_count(), 2);
+        let messages = response.messages.expect("messages should be present");
+        assert!(messages.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|content| {
+                        matches!(
+                            content,
+                            UserContent::ToolResult(result)
+                                if result.content.iter().any(|content| {
+                                    matches!(
+                                        content,
+                                        crate::message::ToolResultContent::Text(text)
+                                            if text.text.contains("Use one of these tools instead")
+                                    )
+                                })
+                        )
+                    })
+            )
+        }));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_retry_budget_exhaustion_fails() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let err = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .max_invalid_tool_call_retries(0)
+            .max_turns(3)
+            .await
+            .expect_err("retry without budget should fail");
+
+        match err {
+            PromptError::UnknownToolCall { tool_name, .. } => {
+                assert_eq!(tool_name, "default_api");
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_can_skip_structured_non_streaming_call() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("skipped"),
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let response = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("skip should continue with synthetic tool result");
+
+        assert_eq!(response.output, "skipped");
+        let messages = response.messages.expect("messages should be present");
+        assert!(history_contains_tool_call(&messages, "default_api"));
+        assert!(messages.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|content| {
+                        matches!(
+                            content,
+                            UserContent::ToolResult(result)
+                                if result.content.iter().any(|content| {
+                                    matches!(
+                                        content,
+                                        crate::message::ToolResultContent::Text(text)
+                                            if text.text == "default_api is not available"
+                                    )
+                                })
+                        )
+                    })
+            )
+        }));
     }
 
     #[tokio::test]

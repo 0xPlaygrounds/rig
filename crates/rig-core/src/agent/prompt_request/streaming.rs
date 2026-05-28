@@ -1,7 +1,11 @@
 use crate::{
     OneOrMany,
     agent::completion::{DynamicContextStore, build_prepared_completion_request},
-    agent::prompt_request::{HookAction, hooks::PromptHook, validate_tool_call_name},
+    agent::prompt_request::{
+        HookAction, InvalidToolCallResolution,
+        hooks::{InvalidToolCallHook, PromptHook},
+        resolve_invalid_tool_call, validate_tool_call_name,
+    },
     completion::{Document, GetTokenUsage},
     json_utils,
     memory::ConversationMemory,
@@ -361,10 +365,11 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct StreamingPromptRequest<M, P>
+pub struct StreamingPromptRequest<M, P, I = ()>
 where
     M: CompletionModel,
     P: PromptHook<M> + 'static,
+    I: InvalidToolCallHook<M> + 'static,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -398,17 +403,22 @@ where
     output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
+    /// Optional per-request hook for invalid model-emitted tool calls.
+    invalid_tool_call_hook: Option<I>,
+    /// Maximum number of invalid tool-call retries for this request.
+    max_invalid_tool_call_retries: usize,
     /// Optional conversation memory backend cloned from the agent.
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional conversation id used for loading and saving memory.
     conversation_id: Option<String>,
 }
 
-impl<M, P> StreamingPromptRequest<M, P>
+impl<M, P, I> StreamingPromptRequest<M, P, I>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
     P: PromptHook<M>,
+    I: InvalidToolCallHook<M>,
 {
     /// Create a new StreamingPromptRequest with the given prompt and model.
     /// Note: This creates a request without an agent hook. Use `from_agent` to include the agent's hook.
@@ -429,6 +439,8 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: None,
+            invalid_tool_call_hook: None,
+            max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
         }
@@ -458,6 +470,8 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: agent.hook.clone(),
+            invalid_tool_call_hook: None,
+            max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
         }
@@ -486,9 +500,9 @@ where
     /// // ... consume stream ...
     /// // Access updated history from FinalResponse::history()
     /// ```
-    pub fn with_history<I, T>(mut self, history: I) -> Self
+    pub fn with_history<H, T>(mut self, history: H) -> Self
     where
-        I: IntoIterator<Item = T>,
+        H: IntoIterator<Item = T>,
         T: Into<Message>,
     {
         self.chat_history = Some(history.into_iter().map(Into::into).collect());
@@ -497,7 +511,7 @@ where
 
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
+    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2, I>
     where
         P2: PromptHook<M>,
     {
@@ -517,9 +531,49 @@ where
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
             hook: Some(hook),
+            invalid_tool_call_hook: self.invalid_tool_call_hook,
+            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             memory: self.memory,
             conversation_id: self.conversation_id,
         }
+    }
+
+    /// Attach a per-request hook for invalid model-emitted tool calls.
+    ///
+    /// Without this hook, Rig preserves fail-fast validation.
+    pub fn with_invalid_tool_call_hook<I2>(self, hook: I2) -> StreamingPromptRequest<M, P, I2>
+    where
+        I2: InvalidToolCallHook<M>,
+    {
+        StreamingPromptRequest {
+            prompt: self.prompt,
+            chat_history: self.chat_history,
+            max_turns: self.max_turns,
+            model: self.model,
+            agent_name: self.agent_name,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            tool_server_handle: self.tool_server_handle,
+            dynamic_context: self.dynamic_context,
+            tool_choice: self.tool_choice,
+            output_schema: self.output_schema,
+            hook: self.hook,
+            invalid_tool_call_hook: Some(hook),
+            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
+            memory: self.memory,
+            conversation_id: self.conversation_id,
+        }
+    }
+
+    /// Set the retry budget for [`crate::agent::prompt_request::hooks::InvalidToolCallHookAction::Retry`].
+    ///
+    /// Invalid tool-call retries also consume normal multi-turn depth.
+    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
+        self.max_invalid_tool_call_retries = retries;
+        self
     }
 
     /// Set the conversation id used to load and persist memory for this request.
@@ -609,6 +663,7 @@ where
         let mut aggregated_usage = crate::completion::Usage::new();
         let mut completion_calls = Vec::new();
         let mut completion_call_index = 0;
+        let mut invalid_tool_call_retries = 0;
 
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
         // span context leaking to other concurrent tasks. Using span.enter() inside
@@ -737,7 +792,7 @@ where
 
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
-                        Ok(StreamedAssistantContent::ToolCall { tool_call, internal_call_id }) => {
+                        Ok(StreamedAssistantContent::ToolCall { mut tool_call, internal_call_id }) => {
                             let diagnostic_history = build_tool_call_validation_history(
                                 chat_history.as_deref(),
                                 &new_messages,
@@ -748,14 +803,58 @@ where
                                 Some(tool_call.clone()),
                             );
 
-                            if let Err(err) = validate_tool_call_name(
-                                &tool_call.function.name,
-                                &executable_tool_names,
-                                &allowed_tool_names,
-                                diagnostic_history,
-                            ) {
-                                yield Err(Box::new(err).into());
-                                break 'outer;
+                            if !allowed_tool_names.contains(&tool_call.function.name) {
+                                let args = json_utils::value_to_json_string(&tool_call.function.arguments);
+                                let emitted_tool_name = tool_call.function.name.clone();
+                                match resolve_invalid_tool_call::<M, I>(
+                                    self.invalid_tool_call_hook.as_ref(),
+                                    &emitted_tool_name,
+                                    tool_call.call_id.clone(),
+                                    Some(internal_call_id.clone()),
+                                    Some(args),
+                                    &executable_tool_names,
+                                    &allowed_tool_names,
+                                    self.tool_choice.as_ref(),
+                                    diagnostic_history,
+                                    true,
+                                ).await {
+                                    InvalidToolCallResolution::Fail(err) => {
+                                        yield Err(Box::new(err).into());
+                                        break 'outer;
+                                    }
+                                    InvalidToolCallResolution::Retry(feedback) => {
+                                        if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
+                                            yield Err(Box::new(PromptError::UnknownToolCall {
+                                                tool_name: emitted_tool_name,
+                                                available_tools: executable_tool_names.iter().cloned().collect(),
+                                                allowed_tools: allowed_tool_names.iter().cloned().collect(),
+                                                chat_history: Box::new(build_full_history(chat_history.as_deref(), new_messages.clone())),
+                                            }).into());
+                                            break 'outer;
+                                        }
+
+                                        invalid_tool_call_retries += 1;
+                                        new_messages.push(Message::Assistant {
+                                            id: stream.message_id.clone(),
+                                            content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                                        });
+                                        new_messages.push(tool_result_to_user_message(
+                                            tool_call.id.clone(),
+                                            tool_call.call_id.clone(),
+                                            feedback,
+                                        ));
+                                        continue 'outer;
+                                    }
+                                    InvalidToolCallResolution::Repair(repaired_name) => {
+                                        tool_call.function.name = repaired_name;
+                                    }
+                                    InvalidToolCallResolution::Skip(reason) => {
+                                        tool_calls.push(AssistantContent::ToolCall(tool_call.clone()));
+                                        tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason));
+                                        saw_tool_call_this_turn = true;
+                                        continue;
+                                    }
+                                }
                             }
 
                             pending_tool_calls.push((tool_call, internal_call_id));
@@ -769,7 +868,7 @@ where
                             let mut deltas_to_emit = Vec::new();
 
                             match content {
-                                ToolCallDeltaContent::Name(name) => {
+                                ToolCallDeltaContent::Name(mut name) => {
                                     let diagnostic_tool_call = ToolCall::new(
                                         id.clone(),
                                         ToolFunction::new(name.clone(), serde_json::Value::Null),
@@ -784,14 +883,52 @@ where
                                         Some(diagnostic_tool_call),
                                     );
 
-                                    if let Err(err) = validate_tool_call_name(
-                                        &name,
-                                        &executable_tool_names,
-                                        &allowed_tool_names,
-                                        diagnostic_history,
-                                    ) {
-                                        yield Err(Box::new(err).into());
-                                        break 'outer;
+                                    if !allowed_tool_names.contains(&name) {
+                                        let emitted_tool_name = name.clone();
+                                        match resolve_invalid_tool_call::<M, I>(
+                                            self.invalid_tool_call_hook.as_ref(),
+                                            &emitted_tool_name,
+                                            None,
+                                            Some(internal_call_id.clone()),
+                                            None,
+                                            &executable_tool_names,
+                                            &allowed_tool_names,
+                                            self.tool_choice.as_ref(),
+                                            diagnostic_history,
+                                            true,
+                                        ).await {
+                                            InvalidToolCallResolution::Fail(err) => {
+                                                yield Err(Box::new(err).into());
+                                                break 'outer;
+                                            }
+                                            InvalidToolCallResolution::Skip(_) => {
+                                                yield Err(Box::new(PromptError::UnknownToolCall {
+                                                    tool_name: emitted_tool_name,
+                                                    available_tools: executable_tool_names.iter().cloned().collect(),
+                                                    allowed_tools: allowed_tool_names.iter().cloned().collect(),
+                                                    chat_history: Box::new(build_full_history(chat_history.as_deref(), new_messages.clone())),
+                                                }).into());
+                                                break 'outer;
+                                            }
+                                            InvalidToolCallResolution::Retry(feedback) => {
+                                                if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
+                                                    yield Err(Box::new(PromptError::UnknownToolCall {
+                                                        tool_name: emitted_tool_name,
+                                                        available_tools: executable_tool_names.iter().cloned().collect(),
+                                                        allowed_tools: allowed_tool_names.iter().cloned().collect(),
+                                                        chat_history: Box::new(build_full_history(chat_history.as_deref(), new_messages.clone())),
+                                                    }).into());
+                                                    break 'outer;
+                                                }
+
+                                                invalid_tool_call_retries += 1;
+                                                new_messages.push(Message::user(feedback));
+                                                continue 'outer;
+                                            }
+                                            InvalidToolCallResolution::Repair(repaired_name) => {
+                                                name = repaired_name;
+                                            }
+                                        }
                                     }
 
                                     let state =
@@ -1126,11 +1263,12 @@ where
     }
 }
 
-impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
+impl<M, P, I> IntoFuture for StreamingPromptRequest<M, P, I>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     P: PromptHook<M> + 'static,
+    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1184,7 +1322,10 @@ pub async fn stream_to_stdout<R>(
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::prompt_request::hooks::{PromptHook, ToolCallHookAction};
+    use crate::agent::prompt_request::hooks::{
+        InvalidToolCallContext, InvalidToolCallHook, InvalidToolCallHookAction, PromptHook,
+        ToolCallHookAction,
+    };
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
     use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
@@ -1439,32 +1580,32 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        fn on_tool_call_delta(
+        async fn on_tool_call_delta(
             &self,
             _tool_call_id: &str,
             _internal_call_id: &str,
             _tool_name: Option<&str>,
             _tool_call_delta: &str,
-        ) -> impl std::future::Future<Output = HookAction> + Send {
-            async { panic!("unknown tool call delta should fail before delta hooks run") }
+        ) -> HookAction {
+            panic!("unknown tool call delta should fail before delta hooks run")
         }
 
-        fn on_tool_call(
+        async fn on_tool_call(
             &self,
             _tool_name: &str,
             _tool_call_id: Option<String>,
             _internal_call_id: &str,
             _args: &str,
-        ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
-            async { panic!("unknown tool call should fail before tool hooks run") }
+        ) -> ToolCallHookAction {
+            panic!("unknown tool call should fail before tool hooks run")
         }
 
-        fn on_stream_completion_response_finish(
+        async fn on_stream_completion_response_finish(
             &self,
             _prompt: &Message,
             _response: &MockResponse,
-        ) -> impl std::future::Future<Output = HookAction> + Send {
-            async { panic!("unknown tool call should fail before stream finish hooks run") }
+        ) -> HookAction {
+            panic!("unknown tool call should fail before stream finish hooks run")
         }
     }
 
@@ -1723,6 +1864,22 @@ mod tests {
 
     type RecordedToolCallDelta = (String, String, Option<String>, String);
 
+    #[derive(Clone)]
+    struct RepairDefaultApiHook;
+
+    impl InvalidToolCallHook<MockCompletionModel> for RepairDefaultApiHook {
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            let tool_name = context.tool_name.clone();
+            async move {
+                assert_eq!(tool_name, "default_api");
+                InvalidToolCallHookAction::repair("add")
+            }
+        }
+    }
+
     #[derive(Clone, Default)]
     struct RecordingToolCallDeltaHook {
         deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
@@ -1938,6 +2095,70 @@ mod tests {
             other => panic!("expected prompt streaming error, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_can_repair_streaming_tool_name() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "default_api",
+                    serde_json::json!({"x": 2, "y": 3}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .await;
+        let mut saw_repaired_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { tool_call, .. },
+                )) => {
+                    assert_eq!(tool_call.function.name, "add");
+                    saw_repaired_tool_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    tool_result,
+                    ..
+                })) => {
+                    assert!(tool_result.content.iter().any(|content| {
+                        matches!(
+                            content,
+                            ToolResultContent::Text(text) if text.text == "5"
+                        )
+                    }));
+                    saw_tool_result = true;
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response_text = Some(response.response().to_string());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert!(saw_repaired_tool_call);
+        assert!(saw_tool_result);
+        assert_eq!(final_response_text.as_deref(), Some("done"));
+        assert_eq!(recorded.request_count(), 2);
     }
 
     #[tokio::test]
