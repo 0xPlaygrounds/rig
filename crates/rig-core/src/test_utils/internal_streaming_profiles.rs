@@ -29,6 +29,7 @@ fn tool_call_choice(
         reasoning: None,
         tool_calls,
         details: Vec::new(),
+        images: Vec::new(),
     }
 }
 

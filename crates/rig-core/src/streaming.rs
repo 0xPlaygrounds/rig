@@ -17,7 +17,7 @@ use crate::completion::{
     Message, Usage,
 };
 use crate::message::{
-    AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
+    AssistantContent, Image, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
@@ -125,6 +125,9 @@ where
         /// Partial reasoning text.
         reasoning: String,
     },
+
+    /// A complete image emitted by the assistant.
+    Image(Image),
 
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
@@ -491,6 +494,14 @@ where
                         id,
                         reasoning,
                     })))
+                }
+                RawStreamingChoice::Image(image) => {
+                    stream.text_item_index = None;
+                    stream.reasoning_item_index = None;
+                    stream
+                        .assistant_items
+                        .push(AssistantContent::Image(image.clone()));
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Image(image))))
                 }
                 RawStreamingChoice::ToolCall(raw_tool_call) => {
                     let internal_call_id = raw_tool_call.internal_call_id.clone();
@@ -904,6 +915,10 @@ mod tests {
                     println!("Reasoning delta: {reasoning}");
                     chunk_count += 1;
                 }
+                Ok(StreamedAssistantContent::Image(image)) => {
+                    println!("Image: {image:?}");
+                    chunk_count += 1;
+                }
                 Err(e) => {
                     eprintln!("Error: {e:?}");
                     break;
@@ -1082,6 +1097,8 @@ pub enum StreamedAssistantContent<R> {
         /// Partial reasoning text.
         reasoning: String,
     },
+    /// Complete image emitted by the assistant.
+    Image(Image),
     /// Final provider response object, if yielded by the provider stream.
     Final(R),
 }

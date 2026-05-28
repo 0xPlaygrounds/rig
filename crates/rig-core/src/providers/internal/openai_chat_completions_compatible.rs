@@ -17,6 +17,7 @@ use crate::completion::{CompletionError, GetTokenUsage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
+use crate::message::Image;
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::wasm_compat::WasmCompatSend;
 
@@ -66,6 +67,7 @@ pub(crate) struct CompatibleChoice<D> {
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
     pub(crate) details: Vec<D>,
+    pub(crate) images: Vec<Image>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +77,7 @@ pub(crate) struct CompatibleChoiceData<T, D> {
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<T>,
     pub(crate) details: Vec<D>,
+    pub(crate) images: Vec<Image>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +102,7 @@ where
             reasoning: value.reasoning,
             tool_calls: value.tool_calls.into_iter().map(Into::into).collect(),
             details: value.details,
+            images: value.images,
         }
     }
 }
@@ -307,6 +311,10 @@ where
 
                     for detail in &choice.details {
                         profile.decorate_tool_call(detail, &mut tool_calls);
+                    }
+
+                    for image in choice.images {
+                        yield Ok(RawStreamingChoice::Image(image));
                     }
 
                     if let Some(reasoning) = choice.reasoning

@@ -190,6 +190,7 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
+                    images: Vec::new(),
                 },
             ),
         ))

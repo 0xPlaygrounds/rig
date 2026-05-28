@@ -1,11 +1,13 @@
 //! OpenRouter live coverage for image-generation responses.
 
 use base64::Engine;
+use futures::StreamExt;
 use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{AssistantContent, CompletionModel, Message};
 use rig::message::{Image, ImageMediaType, UserContent};
 use rig::providers::openrouter;
+use rig::streaming::StreamedAssistantContent;
 use serde_json::json;
 
 use crate::support::{IMAGE_FIXTURE_PATH, assert_nonempty_response};
@@ -82,6 +84,64 @@ async fn generated_image_history_can_be_replayed_on_followup() {
         .send()
         .await
         .expect("generated image artifacts should not break follow-up history conversion");
+
+    let text = followup
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_nonempty_response(&text);
+}
+
+#[tokio::test]
+#[ignore = "requires OPENROUTER_API_KEY and an OpenRouter image-generation model"]
+async fn streaming_generated_image_history_can_be_replayed_on_followup() {
+    let client = openrouter::Client::from_env().expect("client should build");
+    let image_model = client.completion_model(IMAGE_GENERATION_MODEL);
+
+    let request = image_model
+        .completion_request(
+            "Generate a simple square icon of a green lighthouse on a white background.",
+        )
+        .additional_params(generated_image_params())
+        .build();
+    let mut stream = image_model
+        .stream(request)
+        .await
+        .expect("image-generation stream should start");
+    let mut streamed_images = Vec::new();
+
+    while let Some(item) = stream.next().await {
+        match item.expect("image-generation stream should not error") {
+            StreamedAssistantContent::Image(image) => streamed_images.push(image),
+            StreamedAssistantContent::Final(_) => {}
+            _ => {}
+        }
+    }
+
+    assert!(
+        !streamed_images.is_empty(),
+        "expected generated image events in streaming response"
+    );
+    assert!(
+        !generated_images(&stream.choice).is_empty(),
+        "expected generated images in final aggregated streaming choice, saw {:?}",
+        stream.choice
+    );
+
+    let followup = image_model
+        .completion_request("Reply with exactly: streaming followup ok")
+        .message(Message::Assistant {
+            id: None,
+            content: stream.choice.clone(),
+        })
+        .send()
+        .await
+        .expect("streamed generated image artifacts should not break follow-up history conversion");
 
     let text = followup
         .choice

@@ -677,6 +677,7 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
                         reasoning: Some(reasoning.clone()),
                         tool_calls: Vec::new(),
                         details: Vec::new(),
+                        images: Vec::new(),
                     },
                     StreamingDelta::MessageContent {
                         content,
@@ -689,6 +690,7 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
                             tool_calls,
                         ),
                         details: Vec::new(),
+                        images: Vec::new(),
                     },
                 },
             ),

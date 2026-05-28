@@ -705,23 +705,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 // Base64 data URIs become inline image blocks; plain
                 // URLs are carried through as URL-sourced images.
                 for img in images {
-                    let url = &img.image_url.url;
-                    let block = if let Some((mime, b64)) = parse_data_uri(url) {
-                        completion::AssistantContent::Image(message::Image {
-                            data: message::DocumentSourceKind::Base64(b64.to_string()),
-                            media_type: message::ImageMediaType::from_mime_type(mime),
-                            detail: None,
-                            additional_params: Some(openrouter_response_image_params()),
-                        })
-                    } else {
-                        completion::AssistantContent::Image(message::Image {
-                            data: message::DocumentSourceKind::Url(url.clone()),
-                            media_type: None,
-                            detail: None,
-                            additional_params: Some(openrouter_response_image_params()),
-                        })
-                    };
-                    content.push(block);
+                    content.push(completion::AssistantContent::Image(
+                        response_image_to_image(&img),
+                    ));
                 }
 
                 Ok(content)
@@ -1030,6 +1016,25 @@ fn is_openrouter_response_image(image: &message::Image) -> bool {
         == Some(OPENROUTER_ASSISTANT_IMAGES_SOURCE);
 
     response_only && source_is_assistant_images
+}
+
+pub(super) fn response_image_to_image(image: &ResponseImage) -> message::Image {
+    let url = &image.image_url.url;
+    if let Some((mime, b64)) = parse_data_uri(url) {
+        message::Image {
+            data: message::DocumentSourceKind::Base64(b64.to_string()),
+            media_type: message::ImageMediaType::from_mime_type(mime),
+            detail: None,
+            additional_params: Some(openrouter_response_image_params()),
+        }
+    } else {
+        message::Image {
+            data: message::DocumentSourceKind::Url(url.clone()),
+            media_type: None,
+            detail: None,
+            additional_params: Some(openrouter_response_image_params()),
+        }
+    }
 }
 
 /// Split a `data:<mime>;base64,<payload>` URI into `(mime, payload)`.

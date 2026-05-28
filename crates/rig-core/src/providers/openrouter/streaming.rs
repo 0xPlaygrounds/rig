@@ -10,8 +10,9 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
+use crate::providers::openrouter::completion::response_image_to_image;
 use crate::providers::openrouter::{
-    OpenRouterRequestParams, OpenrouterCompletionRequest, ReasoningDetails,
+    OpenRouterRequestParams, OpenrouterCompletionRequest, ReasoningDetails, ResponseImage,
 };
 use crate::streaming;
 
@@ -131,6 +132,8 @@ struct StreamingDelta {
     pub role: Option<String>,
     pub content: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    pub images: Vec<ResponseImage>,
+    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
     pub tool_calls: Vec<StreamingToolCall>,
     pub reasoning: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_vec")]
@@ -249,6 +252,12 @@ impl CompatibleStreamProfile for OpenRouterCompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: choice.delta.reasoning_details.clone(),
+                    images: choice
+                        .delta
+                        .images
+                        .iter()
+                        .map(response_image_to_image)
+                        .collect(),
                 },
             ),
         ))
@@ -332,6 +341,25 @@ mod tests {
         let delta: StreamingDelta = serde_json::from_value(json).unwrap();
         assert_eq!(delta.role, Some("assistant".to_string()));
         assert_eq!(delta.content, Some("Hello, world!".to_string()));
+    }
+
+    #[test]
+    fn test_delta_with_generated_image() {
+        let json = json!({
+            "role": "assistant",
+            "images": [{
+                "image_url": {
+                    "url": "data:image/png;base64,iVBORw0KGgo="
+                }
+            }]
+        });
+
+        let delta: StreamingDelta = serde_json::from_value(json).unwrap();
+        assert_eq!(delta.images.len(), 1);
+        assert_eq!(
+            delta.images[0].image_url.url,
+            "data:image/png;base64,iVBORw0KGgo="
+        );
     }
 
     #[test]
@@ -601,5 +629,58 @@ mod tests {
                 "data": "enc_blob"
             }))
         );
+    }
+
+    #[tokio::test]
+    async fn streaming_generated_images_emit_and_aggregate() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"id\":\"gen-img-1\",\"model\":\"google/gemini-2.5-flash-image\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Here is an image.\",\"images\":[{\"image_url\":{\"url\":\"data:image/png;base64,iVBORw0KGgo=\"}}]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"id\":\"gen-img-1\",\"model\":\"google/gemini-2.5-flash-image\",\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}",
+                "[DONE]",
+            ]),
+        };
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+        let mut saw_image_event = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream should not error") {
+                StreamedAssistantContent::Image(image) => {
+                    saw_image_event = true;
+                    assert!(matches!(
+                        image.data,
+                        crate::message::DocumentSourceKind::Base64(ref b64)
+                            if b64 == "iVBORw0KGgo="
+                    ));
+                    assert_eq!(image.media_type, Some(crate::message::ImageMediaType::PNG));
+                }
+                StreamedAssistantContent::Final(_) => {}
+                _ => {}
+            }
+        }
+
+        assert!(saw_image_event, "stream should emit generated image events");
+        let items = stream.choice.clone().into_iter().collect::<Vec<_>>();
+        assert!(items.iter().any(|item| matches!(
+            item,
+            crate::message::AssistantContent::Text(text) if text.text == "Here is an image."
+        )));
+        assert!(items.iter().any(|item| matches!(
+            item,
+            crate::message::AssistantContent::Image(image)
+                if image.additional_params.as_ref()
+                    .and_then(|params| params.get("openrouter"))
+                    .and_then(|openrouter| openrouter.get("source"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("assistant.images")
+        )));
     }
 }

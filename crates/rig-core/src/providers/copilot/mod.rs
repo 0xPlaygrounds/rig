@@ -1475,6 +1475,7 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
+                    images: Vec::new(),
                 },
             ),
         ))

@@ -865,6 +865,9 @@ where
                             }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
+                        Ok(StreamedAssistantContent::Image(image)) => {
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Image(image)));
+                        },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(err) =
                                 pending_tool_call_delta_error(&tool_call_delta_states)
