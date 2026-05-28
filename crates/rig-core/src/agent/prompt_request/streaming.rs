@@ -1442,32 +1442,32 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        fn on_tool_call_delta(
+        async fn on_tool_call_delta(
             &self,
             _tool_call_id: &str,
             _internal_call_id: &str,
             _tool_name: Option<&str>,
             _tool_call_delta: &str,
-        ) -> impl std::future::Future<Output = HookAction> + Send {
-            async { panic!("unknown tool call delta should fail before delta hooks run") }
+        ) -> HookAction {
+            panic!("unknown tool call delta should fail before delta hooks run")
         }
 
-        fn on_tool_call(
+        async fn on_tool_call(
             &self,
             _tool_name: &str,
             _tool_call_id: Option<String>,
             _internal_call_id: &str,
             _args: &str,
-        ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
-            async { panic!("unknown tool call should fail before tool hooks run") }
+        ) -> ToolCallHookAction {
+            panic!("unknown tool call should fail before tool hooks run")
         }
 
-        fn on_stream_completion_response_finish(
+        async fn on_stream_completion_response_finish(
             &self,
             _prompt: &Message,
             _response: &MockResponse,
-        ) -> impl std::future::Future<Output = HookAction> + Send {
-            async { panic!("unknown tool call should fail before stream finish hooks run") }
+        ) -> HookAction {
+            panic!("unknown tool call should fail before stream finish hooks run")
         }
     }
 

@@ -1099,24 +1099,24 @@ mod tests {
     struct PanicOnUnknownToolHook;
 
     impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
-        fn on_completion_response(
+        async fn on_completion_response(
             &self,
             _prompt: &Message,
             _response: &crate::completion::CompletionResponse<
                 <MockCompletionModel as CompletionModel>::Response,
             >,
-        ) -> impl std::future::Future<Output = HookAction> + Send {
-            async { panic!("unknown tool response should fail before response hooks run") }
+        ) -> HookAction {
+            panic!("unknown tool response should fail before response hooks run")
         }
 
-        fn on_tool_call(
+        async fn on_tool_call(
             &self,
             _tool_name: &str,
             _tool_call_id: Option<String>,
             _internal_call_id: &str,
             _args: &str,
-        ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
-            async { panic!("unknown tool call should fail before tool hooks run") }
+        ) -> ToolCallHookAction {
+            panic!("unknown tool call should fail before tool hooks run")
         }
     }
 

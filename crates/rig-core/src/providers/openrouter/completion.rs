@@ -706,7 +706,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 // URLs are carried through as URL-sourced images.
                 for img in images {
                     content.push(completion::AssistantContent::Image(
-                        response_image_to_image(&img),
+                        response_image_to_image(img),
                     ));
                 }
 
