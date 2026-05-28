@@ -174,7 +174,10 @@ where
 
         request.additional_params = Some(params);
 
-        let body = serde_json::to_vec(&request)?;
+        let body = serde_json::to_vec(&super::completion::final_request_body(
+            &request,
+            self.prompt_caching,
+        )?)?;
 
         let req = self
             .client
