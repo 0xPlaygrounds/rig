@@ -1571,16 +1571,21 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                         }
                     }
                 }
-                message::AssistantContent::Image(_) => {
-                    return Err(Self::Error::ConversionError(
-                        "OpenRouter currently doesn't support images.".into(),
-                    ));
-                }
+                // Generated image responses are surfaced as assistant images for
+                // callers, but OpenRouter does not accept assistant image parts
+                // when replaying chat history.
+                message::AssistantContent::Image(_) => {}
             }
         }
 
-        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-        //  so either `content` or `tool_calls` will have some content.
+        if text_content.is_empty()
+            && tool_calls.is_empty()
+            && reasoning.is_none()
+            && reasoning_details.is_empty()
+        {
+            return Ok(vec![]);
+        }
+
         Ok(vec![Message::Assistant {
             content: text_content
                 .into_iter()
@@ -3988,5 +3993,62 @@ mod tests {
             serialized.get("images").is_none(),
             "images field must not appear in serialized assistant message"
         );
+    }
+
+    #[test]
+    fn test_generated_images_do_not_break_assistant_history_conversion() {
+        let json = json!({
+            "id": "resp_img_history",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "google/gemini-flash-image-preview",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Here is your image.",
+                    "images": [
+                        {"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgo="}}
+                    ]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let messages = Vec::<Message>::try_from(converted.choice)
+            .expect("assistant image history should remain serializable");
+
+        assert_eq!(messages.len(), 1);
+        let Message::Assistant {
+            content, images, ..
+        } = messages.first().expect("expected assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert_eq!(content.len(), 1);
+        assert!(matches!(
+            content.first(),
+            Some(openai::AssistantContent::Text { text, .. }) if text == "Here is your image."
+        ));
+        assert!(images.is_empty());
+
+        let serialized = serde_json::to_value(messages.first().unwrap()).unwrap();
+        assert!(serialized.get("images").is_none());
+    }
+
+    #[test]
+    fn test_image_only_assistant_history_is_omitted_for_openrouter() {
+        let messages =
+            Vec::<Message>::try_from(OneOrMany::one(completion::AssistantContent::image_base64(
+                "iVBORw0KGgo=".to_string(),
+                Some(message::ImageMediaType::PNG),
+                None,
+            )))
+            .expect("image-only assistant history should be ignored, not rejected");
+
+        assert!(messages.is_empty());
     }
 }
