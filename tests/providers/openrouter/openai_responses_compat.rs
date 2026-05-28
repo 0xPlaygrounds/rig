@@ -35,7 +35,7 @@ fn openrouter_openai_client() -> openai::Client {
 
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY"]
-async fn openai_responses_raw_response_accepts_provider_service_tier() {
+async fn openai_responses_raw_response_deserializes_openrouter_metadata() {
     let model_name = openai_compatible_model();
     let response = openrouter_openai_client()
         .completion_model(&model_name)
