@@ -101,7 +101,7 @@ redis = "1.2.1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5.1", default-features = false }
 reqwest-retry = "0.9"
-rmcp = "1.6.0"
+rmcp = "1.7.0"
 url = "2.5"
 rusqlite = "0.32"
 scylla = "1.2.0"
@@ -119,11 +119,11 @@ term_size = "0.3.2"
 testcontainers = "0.27"
 textwrap = "0.16.2"
 thiserror = "2.0.12"
-tokio = "1.51.1"
+tokio = "1.52.3"
 tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
-tokio-tungstenite = { version = "0.23.1", default-features = false }
+tokio-tungstenite = { version = "0.28.0", default-features = false }
 tonic = "0.14.5"
 tonic-build = "0.14.6"
 tonic-prost = "0.14.5"

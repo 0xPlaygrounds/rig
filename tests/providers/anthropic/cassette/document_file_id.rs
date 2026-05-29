@@ -153,6 +153,9 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
             source: AnthropicDocumentSource::File {
                 file_id: file_id.to_string(),
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         }),
     };
@@ -175,11 +178,9 @@ fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
         content: OneOrMany::many(vec![
             content,
-            RigUserContent::Text(Text {
-                text: format!(
-                    "What verifier token is printed on page {page_number}? Reply with only the exact token."
-                ),
-            }),
+            RigUserContent::Text(Text::new(format!(
+                "What verifier token is printed on page {page_number}? Reply with only the exact token."
+            ))),
         ])
         .expect("content should be non-empty"),
     }
@@ -333,7 +334,7 @@ fn assert_no_verifier_leaked_into_prompt(message: &Message) {
     };
 
     for content in content.iter() {
-        let RigUserContent::Text(Text { text }) = content else {
+        let RigUserContent::Text(Text { text, .. }) = content else {
             continue;
         };
 

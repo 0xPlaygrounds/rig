@@ -13,6 +13,9 @@ use base64::Engine as _;
 use rig_core::OneOrMany;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::providers::gemini::completion::gemini_api_types::{
+    Schema as GeminiSchema, tool_parameters_to_schema,
+};
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
 
@@ -150,12 +153,15 @@ pub(crate) fn create_grpc_request(
     let tools = if !tools.is_empty() {
         let function_declarations = tools
             .into_iter()
-            .map(|tool| proto::FunctionDeclaration {
-                name: tool.name,
-                description: tool.description,
-                ..Default::default()
+            .map(|tool| {
+                Ok(proto::FunctionDeclaration {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool_parameters_to_proto_schema(&tool.parameters)?,
+                    ..Default::default()
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, CompletionError>>()?;
 
         vec![proto::Tool {
             function_declarations,
@@ -229,7 +235,7 @@ fn rig_user_content_to_grpc_part(
     content: message::UserContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::UserContent::Text(message::Text { text }) => Ok(proto::Part {
+        message::UserContent::Text(message::Text { text, .. }) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(text)),
             thought: false,
             thought_signature: Vec::new(),
@@ -334,7 +340,7 @@ fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::AssistantContent::Text(message::Text { text }) => Ok(proto::Part {
+        message::AssistantContent::Text(message::Text { text, .. }) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(text)),
             thought: false,
             thought_signature: Vec::new(),
@@ -467,6 +473,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: usage.cached_content_token_count as u64,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();
@@ -650,7 +657,56 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
     }
 }
 
+// Convert the JSON Schema carried by `ToolDefinition.parameters` into the typed
+// `proto::Schema` expected by `FunctionDeclaration.parameters`.
+//
+// Without this, every tool was sent to Gemini with `parameters = None`, which
+// caused the model to invoke tools with no argument shape (issue #1710).
+//
+// An empty object schema (`{"type": "object", "properties": {}}`, the default
+// when a tool takes no arguments) is mapped to `None` rather than a vacuous
+// schema, matching the convention used by `rig-core::providers::gemini`.
+fn tool_parameters_to_proto_schema(
+    value: &serde_json::Value,
+) -> Result<Option<proto::Schema>, CompletionError> {
+    tool_parameters_to_schema(value.clone()).map(|schema| schema.map(gemini_schema_to_proto_schema))
+}
+
+fn gemini_schema_to_proto_schema(schema: GeminiSchema) -> proto::Schema {
+    proto::Schema {
+        r#type: json_type_to_proto_type(&schema.r#type) as i32,
+        format: schema.format.unwrap_or_default(),
+        description: schema.description.unwrap_or_default(),
+        nullable: schema.nullable.unwrap_or(false),
+        r#enum: schema.r#enum.unwrap_or_default(),
+        items: schema
+            .items
+            .map(|items| Box::new(gemini_schema_to_proto_schema(*items))),
+        properties: schema
+            .properties
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(name, schema)| (name, gemini_schema_to_proto_schema(schema)))
+            .collect(),
+        required: schema.required.unwrap_or_default(),
+    }
+}
+
+fn json_type_to_proto_type(t: &str) -> proto::Type {
+    match t {
+        "string" => proto::Type::String,
+        "number" => proto::Type::Number,
+        "integer" => proto::Type::Integer,
+        "boolean" => proto::Type::Boolean,
+        "array" => proto::Type::Array,
+        "object" => proto::Type::Object,
+        "null" => proto::Type::Null,
+        _ => proto::Type::Unspecified,
+    }
+}
+
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -684,5 +740,231 @@ mod tests {
             decode_base64_bytes("data:text/plain;base64,Zm9v"),
             Ok(bytes) if bytes == b"foo".to_vec()
         ));
+    }
+
+    // ============================================================
+    // tool_parameters_to_proto_schema — regression coverage for #1710
+    // ============================================================
+
+    #[test]
+    fn tool_params_empty_object_maps_to_none() {
+        let v = serde_json::json!({"type": "object", "properties": {}});
+        assert!(tool_parameters_to_proto_schema(&v).unwrap().is_none());
+    }
+
+    #[test]
+    fn tool_params_null_maps_to_none() {
+        assert!(
+            tool_parameters_to_proto_schema(&serde_json::Value::Null)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn tool_params_object_with_scalar_properties_round_trips() {
+        let v = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "city":      { "type": "string",  "description": "City name" },
+                "max_price": { "type": "integer", "description": "Cap, USD"  }
+            },
+            "required": ["city"]
+        });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+        assert_eq!(schema.r#type, proto::Type::Object as i32);
+        assert_eq!(schema.required, vec!["city".to_string()]);
+        assert_eq!(schema.properties.len(), 2);
+
+        let city = schema.properties.get("city").expect("city prop");
+        assert_eq!(city.r#type, proto::Type::String as i32);
+        assert_eq!(city.description, "City name");
+
+        let max_price = schema.properties.get("max_price").expect("max_price prop");
+        assert_eq!(max_price.r#type, proto::Type::Integer as i32);
+    }
+
+    #[test]
+    fn tool_params_array_with_typed_items() {
+        let v = serde_json::json!({
+            "type": "array",
+            "items": { "type": "string" }
+        });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+        assert_eq!(schema.r#type, proto::Type::Array as i32);
+        let items = schema.items.expect("items");
+        assert_eq!(items.r#type, proto::Type::String as i32);
+    }
+
+    #[test]
+    fn tool_params_enum_strings_preserved() {
+        let v = serde_json::json!({
+            "type": "string",
+            "enum": ["celsius", "fahrenheit"]
+        });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+        assert_eq!(schema.r#type, proto::Type::String as i32);
+        assert_eq!(
+            schema.r#enum,
+            vec!["celsius".to_string(), "fahrenheit".to_string()]
+        );
+    }
+
+    #[test]
+    fn tool_params_resolves_defs_ref_properties() {
+        let v = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "destination": { "$ref": "#/$defs/Destination" }
+            },
+            "required": ["destination"],
+            "$defs": {
+                "Destination": {
+                    "type": "object",
+                    "properties": {
+                        "city": { "type": "string" },
+                        "country_code": { "type": "string" }
+                    },
+                    "required": ["city"]
+                }
+            }
+        });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+        let destination = schema
+            .properties
+            .get("destination")
+            .expect("destination prop");
+
+        assert_eq!(destination.r#type, proto::Type::Object as i32);
+        assert_eq!(destination.required, vec!["city".to_string()]);
+        assert_eq!(
+            destination
+                .properties
+                .get("city")
+                .expect("city prop")
+                .r#type,
+            proto::Type::String as i32
+        );
+    }
+
+    #[test]
+    fn tool_params_nullable_type_array_preserves_non_null_type() {
+        let v = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "nickname": { "type": ["null", "string"] }
+            }
+        });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+        let nickname = schema.properties.get("nickname").expect("nickname prop");
+
+        assert_eq!(nickname.r#type, proto::Type::String as i32);
+        assert!(nickname.nullable);
+    }
+
+    #[test]
+    fn tool_params_any_of_uses_non_null_schema() {
+        let v = serde_json::json!({
+            "anyOf": [
+                { "type": "null" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" }
+                    },
+                    "required": ["query"]
+                }
+            ]
+        });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+
+        assert_eq!(schema.r#type, proto::Type::Object as i32);
+        assert!(schema.nullable);
+        assert_eq!(schema.required, vec!["query".to_string()]);
+        assert_eq!(
+            schema.properties.get("query").expect("query prop").r#type,
+            proto::Type::String as i32
+        );
+    }
+
+    #[test]
+    fn tool_params_array_without_items_defaults_to_string_items() {
+        let v = serde_json::json!({ "type": "array" });
+
+        let schema = tool_parameters_to_proto_schema(&v)
+            .expect("schema conversion")
+            .expect("schema");
+
+        assert_eq!(schema.r#type, proto::Type::Array as i32);
+        assert_eq!(
+            schema.items.expect("items").r#type,
+            proto::Type::String as i32
+        );
+    }
+
+    #[test]
+    fn create_grpc_request_populates_tool_parameters() {
+        use rig_core::completion::ToolDefinition;
+
+        let tool = ToolDefinition {
+            name: "get_weather".to_string(),
+            description: "Look up the current weather for a city.".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "city": { "type": "string", "description": "City name" }
+                },
+                "required": ["city"]
+            }),
+        };
+
+        let req = create_grpc_request(
+            "gemini-2.5-flash".to_string(),
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::one(message::Message::user("forecast in Berlin?")),
+                documents: Vec::new(),
+                tools: vec![tool],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+            },
+        )
+        .expect("request build");
+
+        assert_eq!(req.tools.len(), 1);
+        let tool = req.tools.first().expect("tool entry");
+        let decl = tool
+            .function_declarations
+            .first()
+            .expect("function declaration");
+        assert_eq!(decl.name, "get_weather");
+
+        // The regression in #1710 was `parameters: None` here.
+        let params = decl.parameters.as_ref().expect("parameters populated");
+        assert_eq!(params.r#type, proto::Type::Object as i32);
+        assert_eq!(params.required, vec!["city".to_string()]);
+        assert!(params.properties.contains_key("city"));
     }
 }

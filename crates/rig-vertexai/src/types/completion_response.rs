@@ -39,7 +39,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                     ToolFunction::new(function_call.name.clone(), args_json),
                 )));
             } else if let Some(text) = part.text() {
-                assistant_contents.push(AssistantContent::Text(Text { text: text.clone() }));
+                assistant_contents.push(AssistantContent::Text(Text::new(text.clone())));
             }
         }
 
@@ -62,6 +62,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: 0, // unreported at time of writing
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();
@@ -126,9 +127,9 @@ mod tests {
         let response = completion_response.unwrap();
         assert_eq!(
             response.choice,
-            OneOrMany::one(AssistantContent::Text(Text {
-                text: "Hello, world!".to_string()
-            }))
+            OneOrMany::one(AssistantContent::Text(Text::new(
+                "Hello, world!".to_string()
+            )))
         );
     }
 
