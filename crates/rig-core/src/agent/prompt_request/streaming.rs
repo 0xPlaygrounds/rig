@@ -754,8 +754,20 @@ where
                     }
                 }
 
-                for (id, call_id, tool_result) in tool_results {
-                    new_messages.push(tool_result_to_user_message(id, call_id, tool_result));
+                // Combine all tool results into a single User message (required by Anthropic)
+                let tool_result_contents: Vec<UserContent> = tool_results
+                    .into_iter()
+                    .map(|(id, call_id, tool_result)| {
+                        let content = ToolResultContent::from_tool_output(tool_result);
+                        match call_id {
+                            Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
+                            None => UserContent::tool_result(id, content),
+                        }
+                    })
+                    .collect();
+
+                if let Some(content) = OneOrMany::from_iter_optional(tool_result_contents) {
+                    new_messages.push(Message::User { content });
                 }
 
                 if !saw_tool_call_this_turn {
