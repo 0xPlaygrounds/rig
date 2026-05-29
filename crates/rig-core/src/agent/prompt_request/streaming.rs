@@ -1013,6 +1013,8 @@ where
                                                 internal_call_id,
                                             },
                                         ));
+                                        text_delta_response.clear();
+                                        saw_text_this_turn = false;
                                         continue 'outer;
                                     }
                                 }
@@ -1108,6 +1110,8 @@ where
                                                         internal_call_id,
                                                     },
                                                 ));
+                                                text_delta_response.clear();
+                                                saw_text_this_turn = false;
                                                 continue 'outer;
                                             }
                                             InvalidToolCallResolution::Retry(feedback) => {
@@ -1143,6 +1147,8 @@ where
                                                 };
                                                 new_messages.push(assistant_message);
                                                 new_messages.push(user_message);
+                                                text_delta_response.clear();
+                                                saw_text_this_turn = false;
                                                 continue 'outer;
                                             }
                                             InvalidToolCallResolution::Repair(repaired_name) => {
@@ -2177,6 +2183,39 @@ mod tests {
     }
 
     #[derive(Clone, Default)]
+    struct RecordingTextDeltaHook {
+        deltas: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
+    impl RecordingTextDeltaHook {
+        fn observed(&self) -> Vec<(String, String)> {
+            self.deltas
+                .lock()
+                .expect("text delta hook records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingTextDeltaHook {
+        fn on_text_delta(
+            &self,
+            text_delta: &str,
+            full_text: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            let deltas = self.deltas.clone();
+            let event = (text_delta.to_string(), full_text.to_string());
+
+            async move {
+                deltas
+                    .lock()
+                    .expect("text delta hook records mutex was poisoned")
+                    .push(event);
+                HookAction::cont()
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
     struct TerminatingToolCallDeltaHook {
         deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
     }
@@ -2724,6 +2763,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_tool_call_hook_skip_resets_streaming_text_delta_state() {
+        let text_hook = RecordingTextDeltaHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("stale "),
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "default_api",
+                    serde_json::json!({"x": 2, "y": 3}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("fresh"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_hook(text_hook.clone())
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            text_hook.observed(),
+            vec![
+                ("stale ".to_string(), "stale ".to_string()),
+                ("fresh".to_string(), "fresh".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         let delta_hook = RecordingToolCallDeltaHook::default();
         let add_calls = Arc::new(AtomicU32::new(0));
@@ -2834,6 +2918,53 @@ mod tests {
                             ))
                 ))
         ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
+        let text_hook = RecordingTextDeltaHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("stale "),
+                MockStreamEvent::tool_call_arguments_delta(
+                    "tool_call_1",
+                    "internal_1",
+                    r#"{"x":2,"y":3}"#,
+                ),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("fresh"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_hook(text_hook.clone())
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .max_invalid_tool_call_retries(1)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(
+            text_hook.observed(),
+            vec![
+                ("stale ".to_string(), "stale ".to_string()),
+                ("fresh".to_string(), "fresh".to_string()),
+            ]
+        );
     }
 
     #[tokio::test]
