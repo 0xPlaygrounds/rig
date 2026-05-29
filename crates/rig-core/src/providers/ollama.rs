@@ -406,6 +406,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                         total_tokens: prompt_tokens + completion_tokens,
                         cached_input_tokens: 0,
                         cache_creation_input_tokens: 0,
+                        tool_use_prompt_tokens: 0,
                         reasoning_tokens: 0,
                     },
                     raw_response,
@@ -594,6 +595,38 @@ impl GetTokenUsage for StreamingCompletionResponse {
     }
 }
 
+/// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
+///
+/// `bytes_stream` makes no promises about chunk boundaries, so a single NDJSON
+/// line can be split across multiple chunks. `NdjsonBuffer` holds the trailing
+/// fragment between calls and yields only fully terminated lines.
+#[derive(Default)]
+struct NdjsonBuffer {
+    buf: Vec<u8>,
+}
+
+impl NdjsonBuffer {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    /// Appends `chunk` to the buffer and returns any newly completed lines.
+    /// Empty lines are skipped; trailing partial data is retained for the next call.
+    fn decode(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
+        self.buf.extend_from_slice(chunk);
+
+        let mut lines = Vec::new();
+        while let Some(pos) = self.buf.iter().position(|&b| b == b'\n') {
+            let mut line: Vec<u8> = self.buf.drain(..=pos).collect();
+            line.pop();
+            if !line.is_empty() {
+                lines.push(line);
+            }
+        }
+        lines
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
@@ -744,18 +777,15 @@ where
             let mut tool_calls_final = Vec::new();
             let mut text_response = String::new();
             let mut thinking_response = String::new();
+            let mut line_buf = NdjsonBuffer::new();
 
             while let Some(chunk) = byte_stream.next().await {
                 let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
 
-                for line in bytes.split(|&b| b == b'\n') {
-                    if line.is_empty() {
-                        continue;
-                    }
+                for line in line_buf.decode(&bytes) {
+                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
-                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(line));
-
-                    let response: CompletionResponse = serde_json::from_slice(line)?;
+                    let response: CompletionResponse = serde_json::from_slice(&line)?;
 
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
@@ -1013,6 +1043,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             match content {
                                 crate::message::UserContent::Text(crate::message::Text {
                                     text,
+                                    ..
                                 }) => texts.push(text),
                                 crate::message::UserContent::Image(crate::message::Image {
                                     data: DocumentSourceKind::Base64(data),
@@ -1098,9 +1129,9 @@ impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
             Message::User { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text::new(
+                    content,
+                ))),
             },
             Message::Assistant {
                 content,
@@ -1108,9 +1139,9 @@ impl From<Message> for crate::completion::Message {
                 ..
             } => {
                 let mut assistant_contents =
-                    vec![crate::completion::message::AssistantContent::Text(Text {
-                        text: content,
-                    })];
+                    vec![crate::completion::message::AssistantContent::Text(
+                        Text::new(content),
+                    )];
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
@@ -1122,18 +1153,18 @@ impl From<Message> for crate::completion::Message {
                 }
                 let content =
                     OneOrMany::from_iter_optional(assistant_contents).unwrap_or_else(|| {
-                        OneOrMany::one(crate::completion::message::AssistantContent::Text(Text {
-                            text: String::new(),
-                        }))
+                        OneOrMany::one(crate::completion::message::AssistantContent::Text(
+                            Text::new(String::new()),
+                        ))
                     });
 
                 crate::completion::Message::Assistant { id: None, content }
             }
             // System and ToolResult are converted to User message as needed.
             Message::System { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text {
-                    text: content,
-                })),
+                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text::new(
+                    content,
+                ))),
             },
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 content: OneOrMany::one(message::UserContent::tool_result(
@@ -1469,9 +1500,9 @@ mod tests {
             id: None,
             content: crate::OneOrMany::many(vec![
                 crate::message::AssistantContent::Reasoning(reasoning_content),
-                crate::message::AssistantContent::Text(crate::message::Text {
-                    text: "The answer is X".to_string(),
-                }),
+                crate::message::AssistantContent::Text(crate::message::Text::new(
+                    "The answer is X".to_string(),
+                )),
             ])
             .unwrap(),
         };
@@ -1594,9 +1625,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1662,9 +1691,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1730,9 +1757,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1798,9 +1823,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1866,9 +1889,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "What is 2 + 2?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1901,9 +1922,7 @@ mod tests {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "Hello!".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -1966,9 +1985,9 @@ mod tests {
             model: Some("llama3.1".to_string()),
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "How old is Ollama?".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new(
+                    "How old is Ollama?".to_string(),
+                ))),
             }),
             documents: vec![],
             tools: vec![],
@@ -2011,9 +2030,7 @@ mod tests {
             model: Some("llama3.1".to_string()),
             preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text {
-                    text: "Hello!".to_string(),
-                })),
+                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
             documents: vec![],
             tools: vec![],
@@ -2043,5 +2060,98 @@ mod tests {
             .api_key(Nothing)
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn ndjson_buffer_returns_complete_lines_in_single_chunk() {
+        let mut buf = NdjsonBuffer::new();
+        let lines = buf.decode(b"{\"a\":1}\n{\"b\":2}\n");
+        assert_eq!(lines, vec![b"{\"a\":1}".to_vec(), b"{\"b\":2}".to_vec()]);
+    }
+
+    #[test]
+    fn ndjson_buffer_reassembles_line_split_across_chunks() {
+        let mut buf = NdjsonBuffer::new();
+
+        assert!(buf.decode(b"{\"model\":\"llama\",\"mes").is_empty());
+
+        let lines = buf.decode(b"sage\":\"hi\"}\n{\"done\"");
+        assert_eq!(
+            lines,
+            vec![b"{\"model\":\"llama\",\"message\":\"hi\"}".to_vec()]
+        );
+
+        let lines = buf.decode(b":true}\n");
+        assert_eq!(lines, vec![b"{\"done\":true}".to_vec()]);
+    }
+
+    #[test]
+    fn ndjson_buffer_skips_blank_lines() {
+        let mut buf = NdjsonBuffer::new();
+        let lines = buf.decode(b"\n{\"a\":1}\n\n");
+        assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
+    }
+
+    #[test]
+    fn ndjson_buffer_retains_unterminated_trailing_data() {
+        let mut buf = NdjsonBuffer::new();
+        let lines = buf.decode(b"{\"a\":1}\n{\"b\":2");
+        assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
+        let lines = buf.decode(b"}\n");
+        assert_eq!(lines, vec![b"{\"b\":2}".to_vec()]);
+    }
+
+    #[test]
+    fn ndjson_buffer_handles_empty_chunk() {
+        let mut buf = NdjsonBuffer::new();
+        assert!(buf.decode(b"").is_empty());
+
+        buf.decode(b"{\"a\":1");
+        assert!(buf.decode(b"").is_empty());
+
+        let lines = buf.decode(b"}\n");
+        assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
+    }
+
+    #[test]
+    fn ndjson_buffer_handles_multi_byte_utf8_split_across_chunks() {
+        // `\n` (0x0A) cannot appear inside any UTF-8 continuation byte, so a
+        // byte-wise newline scan is always safe — but verify explicitly that a
+        // multi-byte sequence reassembles correctly when split across chunks.
+        let mut buf = NdjsonBuffer::new();
+        assert!(buf.decode(&[0xd0]).is_empty());
+        assert!(buf.decode(&[0xb8, 0xd0, 0xb7, 0xd0]).is_empty());
+        assert!(
+            buf.decode(&[
+                0xb2, 0xd0, 0xb5, 0xd1, 0x81, 0xd1, 0x82, 0xd0, 0xbd, 0xd0, 0xb8
+            ])
+            .is_empty()
+        );
+
+        let lines = buf.decode(b"\n");
+        assert_eq!(lines.len(), 1);
+        assert_eq!(std::str::from_utf8(&lines[0]).unwrap(), "известни");
+    }
+
+    #[test]
+    fn ndjson_buffer_yields_parseable_chunks_when_split_arbitrarily() {
+        let original = concat!(
+            "{\"model\":\"llama3.2\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"},\"done\":false}\n",
+            "{\"model\":\"llama3.2\",\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true}\n",
+        );
+
+        let mut buf = NdjsonBuffer::new();
+        let mut received = Vec::new();
+        for byte in original.as_bytes() {
+            for line in buf.decode(std::slice::from_ref(byte)) {
+                let parsed: serde_json::Value =
+                    serde_json::from_slice(&line).expect("each drained line must be valid JSON");
+                received.push(parsed);
+            }
+        }
+
+        assert_eq!(received.len(), 2);
+        assert_eq!(received[0]["message"]["content"], "hi");
+        assert_eq!(received[1]["done"], true);
     }
 }

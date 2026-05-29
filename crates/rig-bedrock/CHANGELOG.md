@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.4.6](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.5...rig-bedrock-v0.4.6) - 2026-05-13
+
+### Added
+
+- *(rig-bedrock)* add structured output support via Converse API ([#1667](https://github.com/0xPlaygrounds/rig/pull/1667)) (by @jdwil)
+
+### Fixed
+
+- *(gemini)* Token usage correctness for posthog llm analytics ([#1761](https://github.com/0xPlaygrounds/rig/pull/1761)) (by @mateobelanger)
+
+### Other
+
+- fix "a ancient" grammar in glarb-glarb sample text ([#1755](https://github.com/0xPlaygrounds/rig/pull/1755)) (by @abhicris) - #1755
+- AGENTS.MD, CONTRIBUTING.MD, and docs ([#1714](https://github.com/0xPlaygrounds/rig/pull/1714)) (by @gold-silver-copper) - #1714
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @mateobelanger
+* @abhicris
+* @jdwil
+* @gold-silver-copper
 ## [0.4.5](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.4...rig-bedrock-v0.4.5) - 2026-04-28
 
 ### Fixed

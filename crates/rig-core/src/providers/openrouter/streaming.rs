@@ -79,16 +79,42 @@ pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    /// OpenAI-compatible prompt-token details, returned by OpenRouter when a
+    /// provider reports cache activity (Anthropic with cache_control, OpenAI
+    /// with server-side automatic caching).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+/// Prompt-token breakdown reported by OpenRouter for cached streaming requests.
+// `u32` matches the parent `Usage` struct in this module; the non-streaming counterpart
+// in `client.rs` uses `usize` to match its own parent.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct PromptTokensDetails {
+    /// Tokens served from cache (cache hit).
+    #[serde(default)]
+    pub cached_tokens: u32,
+    /// Tokens written to cache on this call (cache miss that populated the cache).
+    #[serde(default)]
+    pub cache_write_tokens: u32,
 }
 
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::providers::internal::completion_usage(
-            self.prompt_tokens as u64,
-            self.completion_tokens as u64,
-            self.total_tokens as u64,
-            0,
-        ))
+        let (cached_input, cache_creation) = self
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
+            .unwrap_or((0, 0));
+        Some(crate::completion::Usage {
+            input_tokens: self.prompt_tokens as u64,
+            output_tokens: self.completion_tokens as u64,
+            total_tokens: self.total_tokens as u64,
+            cached_input_tokens: cached_input,
+            cache_creation_input_tokens: cache_creation,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        })
     }
 }
 
@@ -148,7 +174,10 @@ where
 
         request.additional_params = Some(params);
 
-        let body = serde_json::to_vec(&request)?;
+        let body = serde_json::to_vec(&super::completion::final_request_body(
+            &request,
+            self.prompt_caching,
+        )?)?;
 
         let req = self
             .client
@@ -370,6 +399,62 @@ mod tests {
         assert_eq!(usage.prompt_tokens, 100);
         assert_eq!(usage.completion_tokens, 50);
         assert_eq!(usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_streaming_usage_maps_cache_token_accounting() {
+        use crate::completion::GetTokenUsage;
+
+        let json = json!({
+            "id": "gen-stream-cache",
+            "choices": [],
+            "created": 1u64,
+            "model": "anthropic/claude-3.5-sonnet",
+            "object": "chat.completion.chunk",
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 20,
+                "total_tokens": 520,
+                "prompt_tokens_details": {
+                    "cached_tokens": 400,
+                    "cache_write_tokens": 60
+                }
+            }
+        });
+
+        let chunk: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
+        let usage = chunk.usage.unwrap();
+        let token_usage = usage.token_usage().unwrap();
+
+        assert_eq!(token_usage.input_tokens, 500);
+        assert_eq!(token_usage.output_tokens, 20);
+        assert_eq!(token_usage.cached_input_tokens, 400);
+        assert_eq!(token_usage.cache_creation_input_tokens, 60);
+    }
+
+    #[test]
+    fn test_streaming_usage_cache_tokens_absent_defaults_to_zero() {
+        use crate::completion::GetTokenUsage;
+
+        let json = json!({
+            "id": "gen-stream-no-cache",
+            "choices": [],
+            "created": 1u64,
+            "model": "openai/gpt-4o",
+            "object": "chat.completion.chunk",
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "total_tokens": 110
+            }
+        });
+
+        let chunk: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
+        let usage = chunk.usage.unwrap();
+        let token_usage = usage.token_usage().unwrap();
+
+        assert_eq!(token_usage.cached_input_tokens, 0);
+        assert_eq!(token_usage.cache_creation_input_tokens, 0);
     }
 
     #[test]

@@ -25,6 +25,7 @@ fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
         total_tokens: usage.total_tokens as u64,
         cached_input_tokens: usage.cache_read_input_tokens.unwrap_or_default() as u64,
         cache_creation_input_tokens: usage.cache_write_input_tokens.unwrap_or_default() as u64,
+        tool_use_prompt_tokens: 0,
         reasoning_tokens: 0,
     }
 }
@@ -126,7 +127,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
     fn try_from(value: aws_bedrock::ContentBlock) -> Result<Self, Self::Error> {
         match value {
             aws_bedrock::ContentBlock::Text(text) => {
-                Ok(RigAssistantContent(AssistantContent::Text(Text { text })))
+                Ok(RigAssistantContent(AssistantContent::Text(Text::new(text))))
             }
             aws_bedrock::ContentBlock::ToolUse(call) => Ok(RigAssistantContent(
                 completion::AssistantContent::tool_call(

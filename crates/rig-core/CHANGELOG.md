@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.37.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.36.0...rig-core-v0.37.0) - 2026-05-13
+
+### Added
+
+- *(openrouter)* add transcription (STT) and audio generation (TTS) support ([#1757](https://github.com/0xPlaygrounds/rig/pull/1757)) (by @fversaci)
+- *(memory)* add Compactor trait, CompactingMemory adapter, and TemplateCompactor ([#1748](https://github.com/0xPlaygrounds/rig/pull/1748)) (by @ForeverAngry)
+- *(ollama)* Enhance `think` parameter with string levels ([#1747](https://github.com/0xPlaygrounds/rig/pull/1747)) (by @cobaltburn)
+- *(memory)* Rig-managed conversation memory + rig-memory companion crate ([#1702](https://github.com/0xPlaygrounds/rig/pull/1702)) (by @ForeverAngry)
+- add copilot model listing ([#1700](https://github.com/0xPlaygrounds/rig/pull/1700)) (by @BigtoC) - #1700
+
+### Fixed
+
+- *(gemini)* Token usage correctness for posthog llm analytics ([#1761](https://github.com/0xPlaygrounds/rig/pull/1761)) (by @mateobelanger)
+- *(openrouter)* skip serializing empty content in Assistant messages ([#1735](https://github.com/0xPlaygrounds/rig/pull/1735)) (by @pablof7z)
+- *(openai)* send PDF Documents as file parts in chat completions ([#1732](https://github.com/0xPlaygrounds/rig/pull/1732)) (by @fangkangmi)
+- *(core)* [**breaking**] make Chat append messages to caller history ([#1733](https://github.com/0xPlaygrounds/rig/pull/1733)) (by @gold-silver-copper)
+- added a trailing newline after streamed agent response. The AgentImpl::request method streams tokens using print! macro with no trailing newline, so when the stream ends, the run loop prints the closing separator immediately which causes it to appear on the same line as the last response token - So added a println!() to the None arm of the streaming loop so a newline is always emitted after the final chunk which matches the ChatImpl path that uses println. ([#1712](https://github.com/0xPlaygrounds/rig/pull/1712)) (by @Shaurya-Sethi) - #1712
+- *(mistral)* expose cached and audio token fields in Usage ([#1725](https://github.com/0xPlaygrounds/rig/pull/1725)) (by @byQuexo)
+
+### Other
+
+- Clean up root facade features and integration docs ([#1764](https://github.com/0xPlaygrounds/rig/pull/1764)) (by @gold-silver-copper) - #1764
+- Improve GenAI token usage telemetry for Gemini and Responses API ([#1762](https://github.com/0xPlaygrounds/rig/pull/1762)) (by @gold-silver-copper) - #1762
+- Memory adapter cancellation safety and trait-object forwarding ([#1756](https://github.com/0xPlaygrounds/rig/pull/1756)) (by @gold-silver-copper) - #1756
+- Add demotion hooks for bounded conversation memory ([#1737](https://github.com/0xPlaygrounds/rig/pull/1737)) (by @ForeverAngry) - #1737
+- Move reusable test doubles into rig_core::test_utils ([#1745](https://github.com/0xPlaygrounds/rig/pull/1745)) (by @gold-silver-copper) - #1745
+- workspace and docs cleanup ([#1742](https://github.com/0xPlaygrounds/rig/pull/1742)) (by @gold-silver-copper) - #1742
+- openrouter vars ([#1741](https://github.com/0xPlaygrounds/rig/pull/1741)) (by @gold-silver-copper) - #1741
+- Add provider file ID support for document inputs ([#1740](https://github.com/0xPlaygrounds/rig/pull/1740)) (by @gold-silver-copper) - #1740
+- bump dependencies ([#1728](https://github.com/0xPlaygrounds/rig/pull/1728)) (by @gold-silver-copper) - #1728
+- Add a support of structured output for OpenRouter ([#1718](https://github.com/0xPlaygrounds/rig/pull/1718)) (by @Mnwa) - #1718
+- set doctest to true, and update doc comments ([#1716](https://github.com/0xPlaygrounds/rig/pull/1716)) (by @gold-silver-copper) - #1716
+- AGENTS.MD, CONTRIBUTING.MD, and docs ([#1714](https://github.com/0xPlaygrounds/rig/pull/1714)) (by @gold-silver-copper) - #1714
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @gold-silver-copper
+* @fversaci
+* @mateobelanger
+* @ForeverAngry
+* @cobaltburn
+* @pablof7z
+* @fangkangmi
+* @BigtoC
+* @Shaurya-Sethi
+* @Mnwa
+* @byQuexo
 
 ### Added
 

@@ -235,7 +235,7 @@ fn rig_user_content_to_grpc_part(
     content: message::UserContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::UserContent::Text(message::Text { text }) => Ok(proto::Part {
+        message::UserContent::Text(message::Text { text, .. }) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(text)),
             thought: false,
             thought_signature: Vec::new(),
@@ -340,7 +340,7 @@ fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::AssistantContent::Text(message::Text { text }) => Ok(proto::Part {
+        message::AssistantContent::Text(message::Text { text, .. }) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(text)),
             thought: false,
             thought_signature: Vec::new(),
@@ -473,6 +473,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                 total_tokens: usage.total_token_count as u64,
                 cached_input_tokens: usage.cached_content_token_count as u64,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();

@@ -5,10 +5,11 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
-    ContentCandidate, ModalityTokenCount, Part, PartKind, TrafficType,
+    ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, resolve_request_model, streaming_endpoint,
+    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
+    streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -51,6 +52,7 @@ impl GetTokenUsage for PartialUsage {
         usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
         usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
         usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
+        usage.tool_use_prompt_tokens = self.tool_use_prompt_token_count.unwrap_or_default() as u64;
         usage.total_tokens = self.total_token_count as u64;
 
         Some(usage)
@@ -71,12 +73,23 @@ pub struct StreamGenerateContentResponse {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_version: Option<String>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage_metadata.token_usage()
     }
+}
+
+fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
+    let reason = choice.finish_reason.as_ref()?;
+    function_call_finish_reason_error(reason, choice.finish_message.as_deref())
 }
 
 impl<T> CompletionModel<T>
@@ -103,6 +116,7 @@ where
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -131,6 +145,10 @@ where
 
         let stream = stream! {
             let mut final_usage = None;
+            let mut final_finish_reason: Option<FinishReason> = None;
+            let mut final_finish_message: Option<String> = None;
+            let mut final_model_version: Option<String> = None;
+            let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -147,7 +165,9 @@ where
                             Ok(d) => d,
                             Err(error) => {
                                 tracing::error!(?error, message = message.data, "Failed to parse SSE message");
-                                continue;
+                                stream_failed = true;
+                                yield Err(CompletionError::JsonError(error));
+                                break;
                             }
                         };
 
@@ -155,8 +175,9 @@ where
                         if let Some(response_id) = data.response_id.as_deref() {
                             span.record("gen_ai.response.id", response_id);
                         }
-                        if let Some(model_version) = data.model_version.as_deref() {
-                            span.record("gen_ai.response.model", model_version);
+                        if let Some(model_version) = &data.model_version {
+                            span.record("gen_ai.response.model", model_version.as_str());
+                            final_model_version = Some(model_version.clone());
                         }
                         if let Some(usage) = data.usage_metadata.as_ref() {
                             span.record_token_usage(usage);
@@ -169,8 +190,27 @@ where
                             continue;
                         };
 
+                        // Capture before partial moves of choice fields
+                        let should_stop = choice.finish_reason.is_some();
+                        if let Some(fr) = &choice.finish_reason {
+                            final_finish_reason = Some(fr.clone());
+                        }
+                        if let Some(message) = &choice.finish_message {
+                            final_finish_message = Some(message.clone());
+                        }
+
+                        if let Some(err) = tool_protocol_finish_reason_error(&choice) {
+                            stream_failed = true;
+                            yield Err(err);
+                            break;
+                        }
+
                         let Some(content) = choice.content else {
-                            tracing::debug!(finish_reason = ?choice.finish_reason, "Streaming candidate missing content");
+                            tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
+                            // Gemini's final chunk may carry finishReason with no content — break instead of skip
+                            if should_stop {
+                                break;
+                            }
                             continue;
                         };
 
@@ -232,7 +272,7 @@ where
                         }
 
                         // Check if this is the final response
-                        if choice.finish_reason.is_some() {
+                        if should_stop {
                             break;
                         }
                     }
@@ -241,6 +281,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
+                        stream_failed = true;
                         yield Err(CompletionError::ProviderError(error.to_string()));
                         break;
                     }
@@ -250,9 +291,14 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage_metadata: final_usage.unwrap_or_default()
-            }));
+            if !stream_failed {
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage_metadata: final_usage.unwrap_or_default(),
+                    finish_reason: final_finish_reason,
+                    finish_message: final_finish_message,
+                    model_version: final_model_version,
+                }));
+            }
         }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
@@ -288,6 +334,10 @@ mod tests {
 
         let response: StreamGenerateContentResponse = serde_json::from_value(json_data).unwrap();
         assert_eq!(response.candidates.len(), 1);
+        assert!(matches!(
+            response.candidates[0].finish_reason,
+            Some(FinishReason::Stop)
+        ));
         let content = response.candidates[0]
             .content
             .as_ref()
@@ -302,6 +352,61 @@ mod tests {
             assert_eq!(text, "Hello, world!");
         } else {
             panic!("Expected text part");
+        }
+    }
+
+    #[test]
+    fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
+        for (finish_reason, reason_name, finish_message) in [
+            (
+                "MALFORMED_FUNCTION_CALL",
+                "MalformedFunctionCall",
+                "malformed function call: default_api",
+            ),
+            (
+                "UNEXPECTED_TOOL_CALL",
+                "UnexpectedToolCall",
+                "unexpected tool call: default_api",
+            ),
+            (
+                "MISSING_THOUGHT_SIGNATURE",
+                "MissingThoughtSignature",
+                "missing thought signature for tool call",
+            ),
+            (
+                "TOO_MANY_TOOL_CALLS",
+                "TooManyToolCalls",
+                "too many tool calls in response",
+            ),
+            (
+                "MALFORMED_RESPONSE",
+                "MalformedResponse",
+                "malformed response from provider",
+            ),
+        ] {
+            let json_data = json!({
+                "candidates": [{
+                    "finishReason": finish_reason,
+                    "finishMessage": finish_message,
+                    "index": 0
+                }]
+            });
+
+            let response: StreamGenerateContentResponse =
+                serde_json::from_value(json_data).unwrap();
+            let candidate = response
+                .candidates
+                .first()
+                .expect("expected terminal candidate");
+            let err = tool_protocol_finish_reason_error(candidate)
+                .expect("tool protocol finish reason should be an error");
+
+            assert!(matches!(
+                err,
+                CompletionError::ResponseError(message)
+                    if message.contains(reason_name)
+                        && message.contains(finish_message)
+            ));
         }
     }
 
@@ -569,7 +674,7 @@ mod tests {
             prompt_tokens_details: None,
             cache_tokens_details: None,
             candidates_tokens_details: None,
-            tool_use_prompt_token_count: None,
+            tool_use_prompt_token_count: Some(12),
             tool_use_prompt_tokens_details: None,
             traffic_type: None,
         };
@@ -579,6 +684,7 @@ mod tests {
         assert_eq!(token_usage.cached_input_tokens, 20);
         assert_eq!(token_usage.output_tokens, 30);
         assert_eq!(token_usage.reasoning_tokens, 10);
+        assert_eq!(token_usage.tool_use_prompt_tokens, 12);
         assert_eq!(token_usage.total_tokens, 100);
     }
 
@@ -607,6 +713,35 @@ mod tests {
     }
 
     #[test]
+    fn test_streaming_completion_response_has_finish_reason_and_model_version() {
+        use super::super::completion::gemini_api_types::FinishReason;
+
+        let response = StreamingCompletionResponse {
+            usage_metadata: PartialUsage::default(),
+            finish_reason: Some(FinishReason::Stop),
+            finish_message: None,
+            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+        };
+
+        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(
+            deserialized.finish_reason,
+            Some(FinishReason::Stop)
+        ));
+        assert_eq!(
+            deserialized.model_version.as_deref(),
+            Some("gemini-2.5-pro-preview-05-06")
+        );
+    }
+
+    #[test]
     fn test_streaming_completion_response_token_usage() {
         let response = StreamingCompletionResponse {
             usage_metadata: PartialUsage {
@@ -622,6 +757,9 @@ mod tests {
                 tool_use_prompt_tokens_details: None,
                 traffic_type: None,
             },
+            finish_reason: Some(FinishReason::Stop),
+            finish_message: None,
+            model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
         let token_usage = response.token_usage().unwrap();
@@ -630,6 +768,11 @@ mod tests {
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.total_tokens, 150);
+        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert_eq!(
+            response.model_version.as_deref(),
+            Some("gemini-2.0-flash-001")
+        );
     }
 
     #[test]
@@ -679,6 +822,7 @@ mod tests {
         assert_eq!(token_usage.cached_input_tokens, 25);
         assert_eq!(token_usage.output_tokens, 50);
         assert_eq!(token_usage.reasoning_tokens, 15);
+        assert_eq!(token_usage.tool_use_prompt_tokens, 12);
         assert_eq!(token_usage.total_tokens, 190);
     }
 }

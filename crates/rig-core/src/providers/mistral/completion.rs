@@ -140,7 +140,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 tool_call_id: call_id_key,
                             });
                         }
-                        message::UserContent::Text(message::Text { text }) => {
+                        message::UserContent::Text(message::Text { text, .. }) => {
                             other_messages.push(Message::User { content: text });
                         }
                         _ => {}
@@ -541,6 +541,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 total_tokens: usage.total_tokens as u64,
                 cached_input_tokens: usage.cached_tokens(),
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();

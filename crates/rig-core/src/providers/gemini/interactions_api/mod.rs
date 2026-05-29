@@ -134,6 +134,7 @@ where
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -1752,10 +1753,12 @@ pub mod interactions_api_types {
 
         fn try_from(content: message::UserContent) -> Result<Self, Self::Error> {
             match content {
-                message::UserContent::Text(message::Text { text }) => Ok(Self::Text(TextContent {
-                    text,
-                    annotations: None,
-                })),
+                message::UserContent::Text(message::Text { text, .. }) => {
+                    Ok(Self::Text(TextContent {
+                        text,
+                        annotations: None,
+                    }))
+                }
                 message::UserContent::ToolResult(message::ToolResult {
                     id,
                     call_id,
@@ -1862,7 +1865,7 @@ pub mod interactions_api_types {
 
         fn try_from(content: message::AssistantContent) -> Result<Self, Self::Error> {
             match content {
-                message::AssistantContent::Text(message::Text { text }) => {
+                message::AssistantContent::Text(message::Text { text, .. }) => {
                     Ok(Self::Text(TextContent {
                         text,
                         annotations: None,

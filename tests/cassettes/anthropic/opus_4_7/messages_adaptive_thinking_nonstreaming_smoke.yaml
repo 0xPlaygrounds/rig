@@ -1,0 +1,37 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","type":"text"}],"role":"user"}],"model":"claude-opus-4-7","system":[{"text":"You are a helpful math tutor. Be concise.","type":"text"}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},{"text":"## Setting Up the Problem\n\n- **Train A:** leaves Station A at 60 km/h (call this time t = 0)\n- **Train B:** leaves Station B (300 km away) at 90 km/h, **30 min later**\n- They travel toward each other\n\n## Step 1: Position when Train B starts\n\nAt t = 0.5 h, Train A has already covered:\n$$60 \\times 0.5 = 30 \\text{ km}$$\n\nRemaining gap between trains: **300 − 30 = 270 km**\n\n## Step 2: Closing the gap\n\nCombined closing speed: 60 + 90 = **150 km/h**\n\nTime to meet after Train B departs:\n$$\\frac{270}{150} = 1.8 \\text{ h} = 1 \\text{ h } 48 \\text{ min}$$\n\n## Step 3: Total time and meeting time\n\nTotal time from Train A''s departure: 0.5 + 1.8 = **2.3 h (2 h 18 min)**\n\nIf Train A leaves at **12:00**, they meet at **2:18 PM**.\n\n## Step 4: Distance from Station A\n\n$$60 \\text{ km/h} \\times 2.3 \\text{ h} = \\boxed{138 \\text{ km from Station A}}$$\n\n**Check:** Train B travels 90 × 1.8 = 162 km. Total: 138 + 162 = 300 km ✓","type":"text"}],"id":"msg_REDACTED_1","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":102,"output_tokens":641,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","type":"text"}],"role":"user"},{"content":[{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},{"text":"## Setting Up the Problem\n\n- **Train A:** leaves Station A at 60 km/h (call this time t = 0)\n- **Train B:** leaves Station B (300 km away) at 90 km/h, **30 min later**\n- They travel toward each other\n\n## Step 1: Position when Train B starts\n\nAt t = 0.5 h, Train A has already covered:\n$$60 \\times 0.5 = 30 \\text{ km}$$\n\nRemaining gap between trains: **300 − 30 = 270 km**\n\n## Step 2: Closing the gap\n\nCombined closing speed: 60 + 90 = **150 km/h**\n\nTime to meet after Train B departs:\n$$\\frac{270}{150} = 1.8 \\text{ h} = 1 \\text{ h } 48 \\text{ min}$$\n\n## Step 3: Total time and meeting time\n\nTotal time from Train A''s departure: 0.5 + 1.8 = **2.3 h (2 h 18 min)**\n\nIf Train A leaves at **12:00**, they meet at **2:18 PM**.\n\n## Step 4: Distance from Station A\n\n$$60 \\text{ km/h} \\times 2.3 \\text{ h} = \\boxed{138 \\text{ km from Station A}}$$\n\n**Check:** Train B travels 90 × 1.8 = 162 km. Total: 138 + 162 = 300 km ✓","type":"text"}],"role":"assistant"},{"content":[{"text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?","type":"text"}],"role":"user"}],"model":"claude-opus-4-7","system":[{"text":"You are a helpful math tutor. Be concise.","type":"text"}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"signature":"signature_REDACTED_2","thinking":"","type":"thinking"},{"text":"## New Setup\n\nEach train slows by 10 km/h after covering **150 km** (half of 300 km):\n- Train A: 60 km/h → 50 km/h after 150 km\n- Train B: 90 km/h → 80 km/h after 150 km\n\n## Step 1: When does each train reach its 150 km mark?\n\n**Train A:** 150 ÷ 60 = 2.5 h (from its own start)\n\n**Train B:** 150 ÷ 90 = 1.667 h after *its* start\n→ At t = 0.5 + 1.667 = **2.167 h** (measured from Train A''s start)\n\n## Step 2: Have they met yet at t = 2.167 h?\n\n- Train A''s position: 60 × 2.167 = **130 km** from A\n- Train B''s position: 300 − 150 = **150 km** from A\n- Gap remaining: **20 km** — not yet met ✗\n\nSo **Train B slows first**, while Train A is still at 60 km/h.\n\n## Step 3: Close the remaining gap\n\nNew closing speed: 60 + 80 = **140 km/h**\n\n$$\\text{Time} = \\frac{20}{140} = \\frac{1}{7} \\text{ h} \\approx 8.57 \\text{ min}$$\n\n**Check Train A:** at meeting, it has traveled 60 × (2.167 + 0.143) ≈ 138.6 km — still under 150 km, so it never slows down before they meet ✓\n\n## Step 4: Results\n\n- **Total time from Train A''s departure:** 2.167 + 0.143 ≈ **2.310 h** (≈ 2 h 18.6 min)\n- **Meeting time** (if A left at 12:00): ≈ **2:18:34 PM**\n- **Distance from Station A:** 60 × 2.310 ≈ **138.6 km**\n\nThe meeting is only slightly delayed (~34 seconds) since Train A never had to slow down.","type":"text"}],"id":"msg_REDACTED_2","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":784,"output_tokens":1571,"service_tier":"standard"}}'

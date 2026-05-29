@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one short paragraph, explain what a solar eclipse is.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"medium"}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Defining the Phenomenon**\\n\\nI'm focusing on concisely defining a solar eclipse. The core concept: it's all about the Moon's positioning. Specifically, when the Moon lines up between Earth and the Sun. I'm aiming for brevity while capturing the essence of the event. My next step involves adding more details.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"totalTokenCount\":26}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"A solar eclipse occurs when the Moon passes directly between Earth and the\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":304,\"totalTokenCount\":343}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" Sun, casting a shadow on our planet and temporarily blocking the Sun's light. This alignment only happens during a new moon and\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":39,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":304,\"totalTokenCount\":369}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" can result in a total, partial, or annular eclipse depending on how much of the Sun is obscured. During a total\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":63,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":304,\"totalTokenCount\":393}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" solar eclipse, the Moon completely covers the solar disk, causing the sky to darken significantly for a few minutes in specific geographic areas.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":89,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":304,\"totalTokenCount\":419}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":89,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":304,\"totalTokenCount\":419}}\r\n\r\n"

@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Hello, my name is Ada Lovelace and I work as a mathematician.","type":"text"}],"role":"user"}],"model":"claude-opus-4-7","system":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Submit the structured data you extracted from the provided text.","input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"first_name":{"type":"string"},"job":{"type":"string"},"last_name":{"type":"string"}},"required":["first_name","last_name","job"],"title":"SmokePerson","type":"object"},"name":"submit"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"first_name":"Ada","job":"Mathematician","last_name":"Lovelace"},"name":"submit","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1105,"output_tokens":100,"service_tier":"standard"}}'

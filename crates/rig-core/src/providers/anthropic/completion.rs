@@ -34,6 +34,7 @@ pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
+pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
 pub trait AnthropicCompatibleProvider: Provider {
     const PROVIDER_NAME: &'static str;
@@ -85,13 +86,12 @@ impl ProviderResponseExt for CompletionResponse {
             .iter()
             .filter_map(|x| {
                 if let Content::Text { text, .. } = x {
-                    Some(text.to_owned())
+                    Some(text.as_str())
                 } else {
                     None
                 }
             })
-            .collect::<Vec<String>>()
-            .join("\n");
+            .collect::<String>();
 
         if res.is_empty() { None } else { Some(res) }
     }
@@ -150,20 +150,25 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
+    /// Cache breakpoint marker. Set on the last tool in the array to cache
+    /// the tools layer independently of the system prompt. Anthropic accepts
+    /// up to 4 `cache_control` markers per request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 /// TTL for a cache control breakpoint.
 ///
 /// The Anthropic API supports two TTL values:
 /// - `"5m"` — 5 minutes (default when `ttl` is omitted)
-/// - `"1h"` — 1 hour (requires the `extended-cache-ttl-2025-04-11` beta header)
+/// - `"1h"` — 1 hour
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
     #[default]
     #[serde(rename = "5m")]
     FiveMinutes,
-    /// 1-hour TTL. Requires the `extended-cache-ttl-2025-04-11` beta header.
+    /// 1-hour TTL.
     #[serde(rename = "1h")]
     OneHour,
 }
@@ -242,6 +247,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 + response.usage.output_tokens,
             cached_input_tokens: response.usage.cache_read_input_tokens.unwrap_or(0),
             cache_creation_input_tokens: response.usage.cache_creation_input_tokens.unwrap_or(0),
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
 
@@ -273,6 +279,10 @@ pub enum Role {
 pub enum Content {
     Text {
         text: String,
+        /// Citations returned by Claude pointing back into the source documents.
+        /// Empty (and skipped during serialization) on request-side blocks.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        citations: Vec<Citation>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -286,6 +296,16 @@ pub enum Content {
         name: String,
         input: serde_json::Value,
     },
+    ServerToolUse {
+        id: String,
+        name: String,
+        #[serde(default)]
+        input: serde_json::Value,
+    },
+    WebSearchToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+    },
     ToolResult {
         tool_use_id: String,
         #[serde(deserialize_with = "string_or_one_or_many")]
@@ -297,6 +317,19 @@ pub enum Content {
     },
     Document {
         source: DocumentSource,
+        /// Optional document title, passed to the model but not citable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        /// Optional document context (e.g. metadata), passed to the model but
+        /// not citable. Useful for storing additional information about the
+        /// document that should not appear in citation `cited_text`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        context: Option<String>,
+        /// Configuration for enabling citations on this document. When `enabled`
+        /// is true, Claude returns citation metadata on response text blocks
+        /// pointing back into this document's content.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        citations: Option<CitationsConfig>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
@@ -316,16 +349,524 @@ impl FromStr for Content {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Content::Text {
             text: s.to_owned(),
+            citations: Vec::new(),
             cache_control: None,
         })
     }
+}
+
+/// Configuration for enabling citations on a document content block.
+///
+/// When enabled, Claude returns citation metadata on response text blocks,
+/// allowing applications to track where each piece of information in the
+/// response came from. See the [Anthropic citations documentation][docs] for
+/// details on the request/response shapes.
+///
+/// Citations must be enabled on **all or none** of the documents in a request —
+/// the API returns an error if the setting is mixed.
+///
+/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CitationsConfig {
+    /// Whether citation tracking is enabled for this document.
+    pub enabled: bool,
+}
+
+/// A citation returned by Claude pointing back to source text.
+///
+/// The variant determines the locator shape, which depends on the source type:
+///
+/// - [`Citation::CharLocation`] — for plain text documents; character indices
+///   are 0-indexed with an exclusive end.
+/// - [`Citation::PageLocation`] — for PDF documents; page numbers are 1-indexed
+///   with an exclusive end.
+/// - [`Citation::ContentBlockLocation`] — for custom-content documents; block
+///   indices are 0-indexed with an exclusive end.
+/// - [`Citation::SearchResultLocation`] — for user-provided search-result
+///   content blocks.
+/// - [`Citation::WebSearchResultLocation`] — for Anthropic's server-side web
+///   search tool results.
+/// - [`Citation::Unknown`] — a forward-compatible fallback preserving raw
+///   citation JSON for citation types this crate does not yet model.
+///
+/// See the [Anthropic citations documentation][docs] for the exact wire format.
+///
+/// [docs]: https://docs.anthropic.com/en/docs/build-with-claude/citations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Citation {
+    /// A citation locating a character span in a plain text document.
+    CharLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        document_title: Option<String>,
+        /// 0-indexed character offset where the cited span begins.
+        start_char_index: usize,
+        /// Character offset where the cited span ends (exclusive).
+        end_char_index: usize,
+    },
+    /// A citation locating a page range in a PDF document.
+    PageLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        document_title: Option<String>,
+        /// 1-indexed page number where the cited span begins.
+        start_page_number: u32,
+        /// 1-indexed page number where the cited span ends (exclusive).
+        end_page_number: u32,
+    },
+    /// A citation locating a block range in a custom-content document.
+    ContentBlockLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// 0-indexed position of the source document in the request's document list.
+        document_index: usize,
+        /// Optional title of the source document, echoed back from the request.
+        document_title: Option<String>,
+        /// 0-indexed content block index where the cited span begins.
+        start_block_index: usize,
+        /// Content block index where the cited span ends (exclusive).
+        end_block_index: usize,
+    },
+    /// A citation locating a block range in a user-provided search result.
+    SearchResultLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// Source URL or identifier from the original search result.
+        source: String,
+        /// Title from the original search result.
+        title: Option<String>,
+        /// 0-indexed position of the cited search result across all search
+        /// result blocks in the request.
+        search_result_index: usize,
+        /// 0-indexed content block index where the cited span begins.
+        start_block_index: usize,
+        /// Content block index where the cited span ends (exclusive).
+        end_block_index: usize,
+    },
+    /// A citation emitted by Anthropic's server-side web search tool.
+    WebSearchResultLocation {
+        /// The exact text being cited. Not counted toward output tokens.
+        cited_text: String,
+        /// URL of the cited source.
+        url: String,
+        /// Title of the cited source.
+        title: Option<String>,
+        /// Encrypted reference that must be preserved for multi-turn
+        /// conversations.
+        encrypted_index: String,
+    },
+    /// A forward-compatible raw citation payload for citation types this crate
+    /// does not yet model.
+    Unknown(serde_json::Value),
+}
+
+#[derive(Deserialize)]
+struct CharLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_char_index: usize,
+    end_char_index: usize,
+}
+
+#[derive(Deserialize)]
+struct PageLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_page_number: u32,
+    end_page_number: u32,
+}
+
+#[derive(Deserialize)]
+struct ContentBlockLocationCitationFields {
+    cited_text: String,
+    document_index: usize,
+    #[serde(default)]
+    document_title: Option<String>,
+    start_block_index: usize,
+    end_block_index: usize,
+}
+
+#[derive(Deserialize)]
+struct SearchResultLocationCitationFields {
+    cited_text: String,
+    source: String,
+    #[serde(default)]
+    title: Option<String>,
+    search_result_index: usize,
+    start_block_index: usize,
+    end_block_index: usize,
+}
+
+#[derive(Deserialize)]
+struct WebSearchResultLocationCitationFields {
+    cited_text: String,
+    url: String,
+    title: Option<String>,
+    encrypted_index: String,
+}
+
+impl Serialize for Citation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut value = serde_json::Map::new();
+        match self {
+            Citation::CharLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_char_index,
+                end_char_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("char_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_char_index".into(),
+                    serde_json::json!(start_char_index),
+                );
+                value.insert("end_char_index".into(), serde_json::json!(end_char_index));
+            }
+            Citation::PageLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_page_number,
+                end_page_number,
+            } => {
+                value.insert("type".into(), serde_json::json!("page_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_page_number".into(),
+                    serde_json::json!(start_page_number),
+                );
+                value.insert("end_page_number".into(), serde_json::json!(end_page_number));
+            }
+            Citation::ContentBlockLocation {
+                cited_text,
+                document_index,
+                document_title,
+                start_block_index,
+                end_block_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("content_block_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("document_index".into(), serde_json::json!(document_index));
+                if let Some(document_title) = document_title {
+                    value.insert("document_title".into(), serde_json::json!(document_title));
+                }
+                value.insert(
+                    "start_block_index".into(),
+                    serde_json::json!(start_block_index),
+                );
+                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
+            }
+            Citation::SearchResultLocation {
+                cited_text,
+                source,
+                title,
+                search_result_index,
+                start_block_index,
+                end_block_index,
+            } => {
+                value.insert("type".into(), serde_json::json!("search_result_location"));
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("source".into(), serde_json::json!(source));
+                if let Some(title) = title {
+                    value.insert("title".into(), serde_json::json!(title));
+                }
+                value.insert(
+                    "search_result_index".into(),
+                    serde_json::json!(search_result_index),
+                );
+                value.insert(
+                    "start_block_index".into(),
+                    serde_json::json!(start_block_index),
+                );
+                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
+            }
+            Citation::WebSearchResultLocation {
+                cited_text,
+                url,
+                title,
+                encrypted_index,
+            } => {
+                value.insert(
+                    "type".into(),
+                    serde_json::json!("web_search_result_location"),
+                );
+                value.insert("cited_text".into(), serde_json::json!(cited_text));
+                value.insert("url".into(), serde_json::json!(url));
+                value.insert("title".into(), serde_json::json!(title));
+                value.insert("encrypted_index".into(), serde_json::json!(encrypted_index));
+            }
+            Citation::Unknown(raw) => return raw.serialize(serializer),
+        }
+
+        serde_json::Value::Object(value).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Citation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let Some(citation_type) = value.get("type").and_then(serde_json::Value::as_str) else {
+            return Ok(Citation::Unknown(value));
+        };
+
+        match citation_type {
+            "char_location" => {
+                let fields: CharLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::CharLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_char_index: fields.start_char_index,
+                    end_char_index: fields.end_char_index,
+                })
+            }
+            "page_location" => {
+                let fields: PageLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::PageLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_page_number: fields.start_page_number,
+                    end_page_number: fields.end_page_number,
+                })
+            }
+            "content_block_location" => {
+                let fields: ContentBlockLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::ContentBlockLocation {
+                    cited_text: fields.cited_text,
+                    document_index: fields.document_index,
+                    document_title: fields.document_title,
+                    start_block_index: fields.start_block_index,
+                    end_block_index: fields.end_block_index,
+                })
+            }
+            "search_result_location" => {
+                let fields: SearchResultLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::SearchResultLocation {
+                    cited_text: fields.cited_text,
+                    source: fields.source,
+                    title: fields.title,
+                    search_result_index: fields.search_result_index,
+                    start_block_index: fields.start_block_index,
+                    end_block_index: fields.end_block_index,
+                })
+            }
+            "web_search_result_location" => {
+                let fields: WebSearchResultLocationCitationFields =
+                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+                Ok(Citation::WebSearchResultLocation {
+                    cited_text: fields.cited_text,
+                    url: fields.url,
+                    title: fields.title,
+                    encrypted_index: fields.encrypted_index,
+                })
+            }
+            _ => Ok(Citation::Unknown(value)),
+        }
+    }
+}
+
+/// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:
+/// optional `title`, optional `context`, and optional [`CitationsConfig`].
+type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfig>);
+
+/// Extract Anthropic-specific document fields (`title`, `context`, `citations`)
+/// from the generic [`message::Document::additional_params`] JSON blob.
+///
+/// Returns `Ok((None, None, None))` if `additional_params` is empty. Returns
+/// an error only if the `citations` field is present but is not a valid
+/// [`CitationsConfig`] — invalid shapes are reported instead of being silently
+/// dropped, so users notice typos.
+fn extract_anthropic_doc_params(
+    additional_params: Option<serde_json::Value>,
+) -> Result<AnthropicDocParams, MessageError> {
+    let Some(value) = additional_params else {
+        return Ok((None, None, None));
+    };
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let context = value
+        .get("context")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let citations = value
+        .get("citations")
+        .cloned()
+        .map(serde_json::from_value::<CitationsConfig>)
+        .transpose()
+        .map_err(|e| {
+            MessageError::ConversionError(format!(
+                "Document `additional_params.citations` is not a valid CitationsConfig: {e}",
+            ))
+        })?;
+    Ok((title, context, citations))
+}
+
+/// Extract Anthropic citations attached to a generic [`message::Text`] block.
+///
+/// Citations are returned by Claude on assistant text blocks when the request
+/// enabled them via [`CitationsConfig`]. Internally they are stored as JSON in
+/// [`message::Text::additional_params`] so they survive conversion through the
+/// generic [`message::AssistantContent`] surface.
+///
+/// Returns `Ok(vec![])` when no citations are attached. Unknown citation types
+/// are preserved as [`Citation::Unknown`]. Returns an error if the `citations`
+/// field is malformed or if a known citation type has an invalid shape.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig_core::completion::message::{self, AssistantContent};
+/// use rig_core::providers::anthropic::completion::anthropic_citations;
+///
+/// fn print_citations(content: &AssistantContent) {
+///     if let AssistantContent::Text(text) = content
+///         && let Ok(citations) = anthropic_citations(text)
+///         && !citations.is_empty()
+///     {
+///         println!("{citations:?}");
+///     }
+/// }
+/// # let _ = message::Text::new("");
+/// ```
+pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_json::Error> {
+    match text
+        .additional_params
+        .as_ref()
+        .and_then(|v| v.get("citations"))
+    {
+        Some(c) => serde_json::from_value::<Vec<Citation>>(c.clone()),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn extract_anthropic_text_citations(text: &message::Text) -> Result<Vec<Citation>, MessageError> {
+    anthropic_citations(text).map_err(|err| {
+        MessageError::ConversionError(format!(
+            "Text `additional_params.citations` is not valid Anthropic citations: {err}"
+        ))
+    })
+}
+
+fn anthropic_text_content_from_message_text(text: message::Text) -> Result<Content, MessageError> {
+    if let Some(raw_content) = extract_anthropic_raw_content(&text)? {
+        if !text.text.is_empty() {
+            return Err(MessageError::ConversionError(format!(
+                "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata cannot be combined with non-empty text"
+            )));
+        }
+
+        return Ok(raw_content);
+    }
+
+    let citations = extract_anthropic_text_citations(&text)?;
+    Ok(Content::Text {
+        text: text.text,
+        citations,
+        cache_control: None,
+    })
+}
+
+fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>, MessageError> {
+    let Some(raw_content) = text
+        .additional_params
+        .as_ref()
+        .and_then(|value| value.get(ANTHROPIC_RAW_CONTENT_KEY))
+    else {
+        return Ok(None);
+    };
+
+    let content = serde_json::from_value::<Content>(raw_content.clone()).map_err(|err| {
+        MessageError::ConversionError(format!(
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
+        ))
+    })?;
+
+    match content {
+        Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. } => Ok(Some(content)),
+        _ => Err(MessageError::ConversionError(format!(
+            "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata only supports Anthropic server_tool_use and web_search_tool_result blocks"
+        ))),
+    }
+}
+
+fn anthropic_raw_content_to_message_text(content: Content) -> Result<message::Text, MessageError> {
+    let raw_content = serde_json::to_value(content).map_err(|err| {
+        MessageError::ConversionError(format!("Failed to preserve Anthropic content block: {err}"))
+    })?;
+
+    Ok(message::Text {
+        text: String::new(),
+        additional_params: Some(serde_json::json!({
+            ANTHROPIC_RAW_CONTENT_KEY: raw_content
+        })),
+    })
+}
+
+fn anthropic_document_additional_params(
+    title: Option<String>,
+    context: Option<String>,
+    citations: Option<CitationsConfig>,
+) -> Result<Option<serde_json::Value>, MessageError> {
+    let mut params = serde_json::Map::new();
+
+    if let Some(title) = title {
+        params.insert("title".to_string(), serde_json::Value::String(title));
+    }
+    if let Some(context) = context {
+        params.insert("context".to_string(), serde_json::Value::String(context));
+    }
+    if let Some(citations) = citations {
+        params.insert(
+            "citations".to_string(),
+            serde_json::to_value(citations).map_err(|err| {
+                MessageError::ConversionError(format!(
+                    "Failed to preserve Anthropic document citations metadata: {err}"
+                ))
+            })?,
+        );
+    }
+
+    Ok((!params.is_empty()).then_some(serde_json::Value::Object(params)))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
     Text { text: String },
-    Image(ImageSource),
+    Image { source: ImageSource },
 }
 
 impl FromStr for ToolResultContent {
@@ -430,6 +971,7 @@ impl From<String> for Content {
     fn from(text: String) -> Self {
         Content::Text {
             text,
+            citations: Vec::new(),
             cache_control: None,
         }
     }
@@ -509,10 +1051,7 @@ impl TryFrom<message::AssistantContent> for Content {
     type Error = MessageError;
     fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
         match text {
-            message::AssistantContent::Text(message::Text { text }) => Ok(Content::Text {
-                text,
-                cache_control: None,
-            }),
+            message::AssistantContent::Text(text) => anthropic_text_content_from_message_text(text),
             message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
                 "Anthropic currently doesn't support images.".to_string(),
             )),
@@ -535,10 +1074,9 @@ fn anthropic_content_from_assistant_content(
     content: message::AssistantContent,
 ) -> Result<Vec<Content>, MessageError> {
     match content {
-        message::AssistantContent::Text(message::Text { text }) => Ok(vec![Content::Text {
-            text,
-            cache_control: None,
-        }]),
+        message::AssistantContent::Text(text) => {
+            Ok(vec![anthropic_text_content_from_message_text(text)?])
+        }
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),
@@ -591,8 +1129,9 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.try_map(|content| match content {
-                    message::UserContent::Text(message::Text { text }) => Ok(Content::Text {
+                    message::UserContent::Text(message::Text { text, .. }) => Ok(Content::Text {
                         text,
+                        citations: Vec::new(),
                         cache_control: None,
                     }),
                     message::UserContent::ToolResult(message::ToolResult {
@@ -600,7 +1139,7 @@ impl TryFrom<message::Message> for Message {
                     }) => Ok(Content::ToolResult {
                         tool_use_id: id,
                         content: content.try_map(|content| match content {
-                            message::ToolResultContent::Text(message::Text { text }) => {
+                            message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
                             message::ToolResultContent::Image(image) => {
@@ -614,10 +1153,12 @@ impl TryFrom<message::Message> for Message {
                                     image.media_type.ok_or(MessageError::ConversionError(
                                         "Image media type is required".to_owned(),
                                     ))?;
-                                Ok(ToolResultContent::Image(ImageSource::Base64 {
-                                    data,
-                                    media_type: media_type.try_into()?,
-                                }))
+                                Ok(ToolResultContent::Image {
+                                    source: ImageSource::Base64 {
+                                        data,
+                                        media_type: media_type.try_into()?,
+                                    },
+                                })
                             }
                         })?,
                         is_error: None,
@@ -656,11 +1197,19 @@ impl TryFrom<message::Message> for Message {
                         })
                     }
                     message::UserContent::Document(message::Document {
-                        data, media_type, ..
+                        data,
+                        media_type,
+                        additional_params,
                     }) => {
+                        let (title, context, citations) =
+                            extract_anthropic_doc_params(additional_params)?;
+
                         if let DocumentSourceKind::FileId(file_id) = data {
                             return Ok(Content::Document {
                                 source: DocumentSource::File { file_id },
+                                title,
+                                context,
+                                citations,
                                 cache_control: None,
                             });
                         }
@@ -710,6 +1259,9 @@ impl TryFrom<message::Message> for Message {
 
                         Ok(Content::Document {
                             source,
+                            title,
+                            context,
+                            citations,
                             cache_control: None,
                         })
                     }
@@ -726,6 +1278,7 @@ impl TryFrom<message::Message> for Message {
                 role: Role::User,
                 content: OneOrMany::one(Content::Text {
                     text: content,
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -759,9 +1312,25 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
-            Content::Text { text, .. } => message::AssistantContent::text(text),
+            Content::Text {
+                text, citations, ..
+            } => {
+                // Preserve citation metadata on the generic text block via
+                // `additional_params` so callers going through the generic
+                // `AssistantContent` surface can still recover them (see
+                // [`anthropic_citations`]).
+                let additional_params =
+                    (!citations.is_empty()).then(|| serde_json::json!({ "citations": citations }));
+                message::AssistantContent::Text(message::Text {
+                    text,
+                    additional_params,
+                })
+            }
             Content::ToolUse { id, name, input } => {
                 message::AssistantContent::tool_call(id, name, input)
+            }
+            raw @ (Content::ServerToolUse { .. } | Content::WebSearchToolResult { .. }) => {
+                message::AssistantContent::Text(anthropic_raw_content_to_message_text(raw)?)
             }
             Content::Thinking {
                 thinking,
@@ -784,8 +1353,8 @@ impl TryFrom<Content> for message::AssistantContent {
 impl From<ToolResultContent> for message::ToolResultContent {
     fn from(content: ToolResultContent) -> Self {
         match content {
-            ToolResultContent::Text { text } => message::ToolResultContent::text(text),
-            ToolResultContent::Image(source) => match source {
+            ToolResultContent::Text { text, .. } => message::ToolResultContent::text(text),
+            ToolResultContent::Image { source } => match source {
                 ImageSource::Base64 { data, media_type } => {
                     message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
                 }
@@ -830,28 +1399,50 @@ impl TryFrom<Message> for message::Message {
                                 })
                             }
                         },
-                        Content::Document { source, .. } => match source {
-                            DocumentSource::Base64 { data, media_type } => {
-                                let rig_media_type = match media_type {
-                                    DocumentFormat::PDF => message::DocumentMediaType::PDF,
-                                };
-                                message::UserContent::document(data, Some(rig_media_type))
+                        Content::Document {
+                            source,
+                            title,
+                            context,
+                            citations,
+                            ..
+                        } => {
+                            let additional_params =
+                                anthropic_document_additional_params(title, context, citations)?;
+
+                            match source {
+                                DocumentSource::Base64 { data, media_type } => {
+                                    let rig_media_type = match media_type {
+                                        DocumentFormat::PDF => message::DocumentMediaType::PDF,
+                                    };
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::String(data),
+                                        media_type: Some(rig_media_type),
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::Text { data, .. } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::String(data),
+                                        media_type: Some(message::DocumentMediaType::TXT),
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::Url { url } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::Url(url),
+                                        media_type: None,
+                                        additional_params,
+                                    })
+                                }
+                                DocumentSource::File { file_id } => {
+                                    message::UserContent::Document(message::Document {
+                                        data: DocumentSourceKind::FileId(file_id),
+                                        media_type: None,
+                                        additional_params,
+                                    })
+                                }
                             }
-                            DocumentSource::Text { data, .. } => message::UserContent::document(
-                                data,
-                                Some(message::DocumentMediaType::TXT),
-                            ),
-                            DocumentSource::Url { url } => {
-                                message::UserContent::document_url(url, None)
-                            }
-                            DocumentSource::File { file_id } => {
-                                message::UserContent::Document(message::Document {
-                                    data: DocumentSourceKind::FileId(file_id),
-                                    media_type: None,
-                                    additional_params: None,
-                                })
-                            }
-                        },
+                        }
                         _ => {
                             return Err(MessageError::ConversionError(
                                 "Unsupported content type for User role".to_owned(),
@@ -874,15 +1465,15 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
     pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
-    /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
+    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
+    /// tools, and messages)
     pub prompt_caching: bool,
     /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
     /// request). The API automatically places the breakpoint on the last cacheable block and moves
     /// it forward as the conversation grows. No beta header is required.
     pub automatic_caching: bool,
     /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL (requires the
-    /// `extended-cache-ttl-2025-04-11` beta header).
+    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
@@ -924,13 +1515,23 @@ where
         }
     }
 
-    /// Enable automatic prompt caching.
+    /// Enable manual prompt caching.
     ///
     /// When enabled, cache_control breakpoints are automatically added to:
     /// - The system prompt (marked with ephemeral cache)
+    /// - The final tool definition, when tools are present (marked with ephemeral cache)
     /// - The last content block of the last message (marked with ephemeral cache)
     ///
-    /// This allows Anthropic to cache the conversation history for cost savings.
+    /// This allows Anthropic to cache the system prompt, tools layer, and conversation
+    /// history for cost savings. Use [`with_automatic_caching`] when you want Anthropic
+    /// to choose and advance a single top-level cache breakpoint automatically.
+    /// When combined with [`with_automatic_caching`], the top-level automatic breakpoint
+    /// owns the moving message cache point while Rig still marks tools and system prompt
+    /// blocks when budget permits.
+    /// Existing `cache_control` markers in provider-specific tool definitions are preserved
+    /// and count toward Anthropic's request limit of 4 cache breakpoints.
+    ///
+    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
@@ -946,9 +1547,10 @@ where
     /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
     /// instead when you need fine-grained, per-block control over what is cached.
     ///
-    /// To use a one-hour TTL instead of the default five minutes, pass `ttl: "1h"` via
-    /// `additional_params` or combine with an explicit block-level breakpoint that carries the
-    /// extended TTL.
+    /// To use a one-hour TTL instead of the default five minutes, use
+    /// [`with_automatic_caching_1h`] or pass top-level `cache_control` with
+    /// `ttl: "1h"` via `additional_params`. Rig normalizes raw top-level
+    /// `cache_control` before budgeting and ordering manual prompt cache markers.
     ///
     /// ```ignore
     /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
@@ -968,6 +1570,7 @@ where
     /// | `claude-haiku-4-5` | 4 096 |
     ///
     /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
+    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -976,14 +1579,9 @@ where
     /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
     ///
     /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
-    /// top-level `cache_control` field. Requires the
-    /// `extended-cache-ttl-2025-04-11` beta header to be sent with the client:
+    /// top-level `cache_control` field:
     ///
     /// ```ignore
-    /// let client = anthropic::Client::builder()
-    ///     .api_key(std::env::var("ANTHROPIC_API_KEY").unwrap())
-    ///     .anthropic_beta("extended-cache-ttl-2025-04-11")
-    ///     .build()?;
     /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching_1h();
     /// ```
@@ -1195,6 +1793,8 @@ fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>)
     }
 }
 
+const MAX_CACHE_CONTROL_MARKERS: usize = 4;
+
 /// Apply cache control breakpoints to system prompt and messages.
 /// Strategy: cache the system prompt, and mark the last content block of the last message
 /// for caching. This allows the conversation history to be cached while new messages
@@ -1215,6 +1815,338 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
     // Add cache_control to the last content block of the last message
     if let Some(last_msg) = messages.last_mut() {
         set_content_cache_control(last_msg.content.last_mut(), Some(CacheControl::ephemeral()));
+    }
+}
+
+fn final_cacheable_tool_idx(tools: &[serde_json::Value]) -> Option<usize> {
+    tools.iter().rposition(|tool| {
+        tool.as_object().is_some_and(|tool| {
+            !matches!(
+                tool.get("defer_loading"),
+                Some(serde_json::Value::Bool(true))
+            )
+        })
+    })
+}
+
+fn tool_cache_control_count(tools: &[serde_json::Value]) -> usize {
+    tools
+        .iter()
+        .filter(|tool| tool_cache_control_value(tool).is_some())
+        .count()
+}
+
+fn tool_cache_control_value(tool: &serde_json::Value) -> Option<&serde_json::Value> {
+    tool.get("cache_control")
+        .filter(|cache_control| !cache_control.is_null())
+}
+
+fn normalize_tool_cache_control(tools: &mut [serde_json::Value]) {
+    for tool in tools.iter_mut() {
+        if let Some(tool) = tool.as_object_mut()
+            && tool
+                .get("cache_control")
+                .is_some_and(serde_json::Value::is_null)
+        {
+            tool.remove("cache_control");
+        }
+    }
+}
+
+fn build_cache_control(ttl: Option<CacheTtl>) -> CacheControl {
+    CacheControl::Ephemeral { ttl }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CacheControlTtl {
+    FiveMinutes,
+    OneHour,
+}
+
+fn cache_control_ttl(cache_control: &CacheControl) -> CacheControlTtl {
+    match cache_control {
+        CacheControl::Ephemeral {
+            ttl: Some(CacheTtl::OneHour),
+        } => CacheControlTtl::OneHour,
+        CacheControl::Ephemeral { .. } => CacheControlTtl::FiveMinutes,
+    }
+}
+
+fn cache_control_ttl_from_json(cache_control: &serde_json::Value) -> CacheControlTtl {
+    match cache_control.get("ttl") {
+        Some(serde_json::Value::String(ttl)) if ttl == "1h" => CacheControlTtl::OneHour,
+        _ => CacheControlTtl::FiveMinutes,
+    }
+}
+
+fn content_cache_control(content: &Content) -> Option<&CacheControl> {
+    match content {
+        Content::Text { cache_control, .. }
+        | Content::Image { cache_control, .. }
+        | Content::ToolResult { cache_control, .. }
+        | Content::Document { cache_control, .. } => cache_control.as_ref(),
+        _ => None,
+    }
+}
+
+fn validate_cache_control_ttl(
+    ttl: CacheControlTtl,
+    shorter_ttl_seen: &mut bool,
+) -> Result<(), CompletionError> {
+    match ttl {
+        CacheControlTtl::OneHour if *shorter_ttl_seen => Err(CompletionError::RequestError(
+            "Anthropic cache_control markers with ttl `1h` must appear before markers with \
+                 the default 5-minute TTL"
+                .into(),
+        )),
+        CacheControlTtl::OneHour => Ok(()),
+        CacheControlTtl::FiveMinutes => {
+            *shorter_ttl_seen = true;
+            Ok(())
+        }
+    }
+}
+
+fn validate_cache_control_ttl_order(
+    system: &[SystemContent],
+    messages: &[Message],
+    tools: &[serde_json::Value],
+    top_level_cache_control: Option<&CacheControl>,
+) -> Result<(), CompletionError> {
+    let mut shorter_ttl_seen = false;
+
+    for tool in tools {
+        if let Some(cache_control) = tool_cache_control_value(tool) {
+            validate_cache_control_ttl(
+                cache_control_ttl_from_json(cache_control),
+                &mut shorter_ttl_seen,
+            )?;
+        }
+    }
+
+    for SystemContent::Text { cache_control, .. } in system {
+        if let Some(cache_control) = cache_control {
+            validate_cache_control_ttl(cache_control_ttl(cache_control), &mut shorter_ttl_seen)?;
+        }
+    }
+
+    for message in messages {
+        for content in message.content.iter() {
+            if let Some(cache_control) = content_cache_control(content) {
+                validate_cache_control_ttl(
+                    cache_control_ttl(cache_control),
+                    &mut shorter_ttl_seen,
+                )?;
+            }
+        }
+    }
+
+    if let Some(cache_control) = top_level_cache_control {
+        validate_cache_control_ttl(cache_control_ttl(cache_control), &mut shorter_ttl_seen)?;
+    }
+
+    Ok(())
+}
+
+fn top_level_cache_control_ttl(cache_control: Option<&CacheControl>) -> Option<CacheTtl> {
+    cache_control
+        .map(|cache_control| match cache_control {
+            CacheControl::Ephemeral { ttl } => ttl.clone(),
+        })
+        .unwrap_or_default()
+}
+
+/// Apply a cache-control breakpoint to the final cacheable tool definition in the request.
+fn apply_tool_cache_control(
+    tools: &mut [serde_json::Value],
+    remaining_cache_markers: &mut usize,
+    cache_control: &CacheControl,
+) -> Result<(), CompletionError> {
+    let Some(idx) = final_cacheable_tool_idx(tools) else {
+        return Ok(());
+    };
+
+    let Some(tool) = tools
+        .get_mut(idx)
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return Ok(());
+    };
+
+    if tool
+        .get("cache_control")
+        .is_some_and(|cache_control| !cache_control.is_null())
+    {
+        return Ok(());
+    }
+
+    if *remaining_cache_markers == 0 {
+        return Err(CompletionError::RequestError(
+            "Anthropic manual prompt caching requires a cache_control marker on the final \
+             non-deferred tool, but explicit tool markers exhaust the available cache point budget"
+                .into(),
+        ));
+    }
+
+    tool.insert(
+        "cache_control".to_string(),
+        serde_json::to_value(cache_control)?,
+    );
+    *remaining_cache_markers -= 1;
+
+    Ok(())
+}
+
+fn apply_system_cache_control(
+    system: &mut [SystemContent],
+    remaining_cache_markers: &mut usize,
+    cache_control_value: &CacheControl,
+) {
+    if *remaining_cache_markers == 0 {
+        return;
+    }
+
+    if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut()
+        && cache_control.is_none()
+    {
+        *cache_control = Some(cache_control_value.clone());
+        *remaining_cache_markers -= 1;
+    }
+}
+
+fn clear_message_cache_control(messages: &mut [Message]) {
+    for msg in messages.iter_mut() {
+        for content in msg.content.iter_mut() {
+            set_content_cache_control(content, None);
+        }
+    }
+}
+
+fn apply_message_cache_control(
+    messages: &mut [Message],
+    remaining_cache_markers: &mut usize,
+    cache_control: &CacheControl,
+) {
+    clear_message_cache_control(messages);
+
+    if *remaining_cache_markers == 0 {
+        return;
+    }
+
+    if let Some(last_msg) = messages.last_mut() {
+        set_content_cache_control(last_msg.content.last_mut(), Some(cache_control.clone()));
+        *remaining_cache_markers -= 1;
+    }
+}
+
+pub(super) fn apply_prompt_cache_control(
+    system: &mut [SystemContent],
+    messages: &mut [Message],
+    tools: &mut [serde_json::Value],
+    prompt_caching: bool,
+    top_level_cache_control: Option<&CacheControl>,
+) -> Result<(), CompletionError> {
+    normalize_tool_cache_control(tools);
+
+    let max_cache_markers = if top_level_cache_control.is_some() {
+        MAX_CACHE_CONTROL_MARKERS - 1
+    } else {
+        MAX_CACHE_CONTROL_MARKERS
+    };
+    let tool_cache_markers = tool_cache_control_count(tools);
+
+    if tool_cache_markers > max_cache_markers {
+        return Err(CompletionError::RequestError(
+            format!(
+                "Too many Anthropic tool `cache_control` markers: {tool_cache_markers} exceeds \
+                 the available prompt caching budget of {max_cache_markers}"
+            )
+            .into(),
+        ));
+    }
+
+    let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
+
+    if prompt_caching {
+        let generated_cache_control =
+            build_cache_control(top_level_cache_control_ttl(top_level_cache_control));
+
+        apply_tool_cache_control(
+            tools,
+            &mut remaining_cache_markers,
+            &generated_cache_control,
+        )?;
+        apply_system_cache_control(
+            system,
+            &mut remaining_cache_markers,
+            &generated_cache_control,
+        );
+
+        if top_level_cache_control.is_some() {
+            clear_message_cache_control(messages);
+        } else {
+            apply_message_cache_control(
+                messages,
+                &mut remaining_cache_markers,
+                &generated_cache_control,
+            );
+        }
+    }
+
+    validate_cache_control_ttl_order(system, messages, tools, top_level_cache_control)?;
+
+    Ok(())
+}
+
+pub(super) fn extract_top_level_cache_control(
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<CacheControl>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_cache_control) = map.remove("cache_control")
+    {
+        if raw_cache_control.is_null() {
+            return Ok(None);
+        }
+
+        return serde_json::from_value::<CacheControl>(raw_cache_control)
+            .map(Some)
+            .map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid Anthropic `additional_params.cache_control` payload: {err}")
+                        .into(),
+                )
+            });
+    }
+
+    Ok(None)
+}
+
+pub(super) fn resolve_top_level_cache_control(
+    automatic_caching: bool,
+    automatic_caching_ttl: Option<CacheTtl>,
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<CacheControl>, CompletionError> {
+    let raw_cache_control = extract_top_level_cache_control(additional_params)?;
+    let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
+        ttl: automatic_caching_ttl.clone(),
+    });
+
+    match (typed_cache_control, raw_cache_control) {
+        (Some(typed_cache_control), Some(raw_cache_control)) => {
+            if automatic_caching_ttl.is_some()
+                && cache_control_ttl(&typed_cache_control) != cache_control_ttl(&raw_cache_control)
+            {
+                return Err(CompletionError::RequestError(
+                    "Anthropic `additional_params.cache_control` conflicts with the typed \
+                     automatic caching TTL"
+                        .into(),
+                ));
+            }
+
+            Ok(Some(raw_cache_control))
+        }
+        (Some(typed_cache_control), None) => Ok(Some(typed_cache_control)),
+        (None, raw_cache_control) => Ok(raw_cache_control),
     }
 }
 
@@ -1287,20 +2219,12 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             .additional_params
             .take()
             .unwrap_or(serde_json::Value::Null);
-        let mut additional_tools =
-            extract_tools_from_additional_params(&mut additional_params_payload)?;
-
-        let mut tools = req
-            .tools
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: Some(tool.description),
-                input_schema: tool.parameters,
-            })
-            .map(serde_json::to_value)
-            .collect::<Result<Vec<_>, _>>()?;
-        tools.append(&mut additional_tools);
+        let top_level_cache_control = resolve_top_level_cache_control(
+            automatic_caching,
+            automatic_caching_ttl,
+            &mut additional_params_payload,
+        )?;
+        let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
 
         // Convert system prompt to array format for cache_control support
         let mut system = if let Some(preamble) = req.preamble {
@@ -1317,10 +2241,13 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
         };
         system.extend(history_system);
 
-        // Apply cache control breakpoints only if prompt_caching is enabled
-        if prompt_caching {
-            apply_cache_control(&mut system, &mut messages);
-        }
+        apply_prompt_cache_control(
+            &mut system,
+            &mut messages,
+            &mut tools,
+            prompt_caching,
+            top_level_cache_control.as_ref(),
+        )?;
 
         let output_config = if let Some(schema) = req.output_schema {
             let mut schema_value = schema.to_value();
@@ -1344,13 +2271,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             tools,
             output_config,
             // Automatic caching: one top-level field; the API moves the breakpoint automatically.
-            cache_control: if automatic_caching {
-                Some(CacheControl::Ephemeral {
-                    ttl: automatic_caching_ttl,
-                })
-            } else {
-                None
-            },
+            cache_control: top_level_cache_control,
             additional_params: if additional_params_payload.is_null() {
                 None
             } else {
@@ -1360,7 +2281,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     }
 }
 
-fn extract_tools_from_additional_params(
+pub(super) fn extract_tools_from_additional_params(
     additional_params: &mut serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, CompletionError> {
     if let Some(map) = additional_params.as_object_mut()
@@ -1374,6 +2295,27 @@ fn extract_tools_from_additional_params(
     }
 
     Ok(Vec::new())
+}
+
+pub(super) fn build_tool_definitions(
+    tools: Vec<completion::ToolDefinition>,
+    additional_params_payload: &mut serde_json::Value,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
+    let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
+
+    let mut tools = tools
+        .into_iter()
+        .map(|tool| ToolDefinition {
+            name: tool.name,
+            description: Some(tool.description),
+            input_schema: tool.parameters,
+            cache_control: None,
+        })
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    tools.append(&mut additional_tools);
+
+    Ok(tools)
 }
 
 impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
@@ -1624,6 +2566,7 @@ mod tests {
             content.first(),
             Content::Text {
                 text: "\n\nHello there, how may I assist you today?".to_owned(),
+                citations: Vec::new(),
                 cache_control: None,
             }
         );
@@ -1780,7 +2723,7 @@ mod tests {
                 }
 
                 match iter.next().unwrap() {
-                    message::UserContent::Text(message::Text { text }) => {
+                    message::UserContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "What is in this image?");
                     }
                     _ => panic!("Expected text content"),
@@ -1812,7 +2755,7 @@ mod tests {
                 };
                 assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                 match content.first() {
-                    message::ToolResultContent::Text(message::Text { text }) => {
+                    message::ToolResultContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "15 degrees");
                     }
                     _ => panic!("Expected text content"),
@@ -1893,6 +2836,7 @@ mod tests {
         // Test Content::Text with cache_control
         let content = Content::Text {
             text: "Test message".to_string(),
+            citations: Vec::new(),
             cache_control: Some(CacheControl::ephemeral()),
         };
         let json_content = serde_json::to_string(&content).unwrap();
@@ -1908,6 +2852,7 @@ mod tests {
                 role: Role::User,
                 content: OneOrMany::one(Content::Text {
                     text: "First message".to_string(),
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -1915,6 +2860,7 @@ mod tests {
                 role: Role::Assistant,
                 content: OneOrMany::one(Content::Text {
                     text: "Response".to_string(),
+                    citations: Vec::new(),
                     cache_control: None,
                 }),
             },
@@ -1945,6 +2891,1078 @@ mod tests {
         }
     }
 
+    fn generic_tool(name: &str) -> completion::ToolDefinition {
+        completion::ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            parameters: json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    fn completion_request_with_tools(
+        tools: Vec<completion::ToolDefinition>,
+        additional_params: Option<serde_json::Value>,
+    ) -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: Some("System prompt".to_string()),
+            chat_history: OneOrMany::one(message::Message::from("Hello")),
+            documents: Vec::new(),
+            tools,
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params,
+            output_schema: None,
+        }
+    }
+
+    fn system_has_cache_control(value: &serde_json::Value) -> bool {
+        value["system"]
+            .as_array()
+            .and_then(|blocks| blocks.last())
+            .and_then(|block| block.get("cache_control"))
+            .is_some()
+    }
+
+    fn last_message_has_cache_control(value: &serde_json::Value) -> bool {
+        value["messages"]
+            .as_array()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message["content"].as_array())
+            .and_then(|content| content.last())
+            .and_then(|content| content.get("cache_control"))
+            .is_some()
+    }
+
+    #[test]
+    fn test_tool_definition_cache_control_serialization() {
+        let tool = ToolDefinition {
+            name: "cached_tool".to_string(),
+            description: Some("Cached tool".to_string()),
+            input_schema: json!({"type": "object"}),
+            cache_control: Some(CacheControl::ephemeral()),
+        };
+
+        let value = serde_json::to_value(tool).unwrap();
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+
+        let tool_without_cache = ToolDefinition {
+            name: "uncached_tool".to_string(),
+            description: Some("Uncached tool".to_string()),
+            input_schema: json!({"type": "object"}),
+            cache_control: None,
+        };
+
+        let value = serde_json::to_value(tool_without_cache).unwrap();
+        assert!(value.get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_apply_tool_cache_control_marks_only_final_tool() {
+        let mut tools = vec![
+            json!({
+                "name": "first_tool",
+                "description": "First tool",
+                "input_schema": {"type": "object"}
+            }),
+            json!({
+                "name": "second_tool",
+                "description": "Second tool",
+                "input_schema": {"type": "object"}
+            }),
+        ];
+
+        let mut remaining_cache_markers = 4;
+        apply_tool_cache_control(
+            &mut tools,
+            &mut remaining_cache_markers,
+            &CacheControl::ephemeral(),
+        )
+        .unwrap();
+
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(remaining_cache_markers, 3);
+    }
+
+    #[test]
+    fn test_prompt_caching_skips_final_deferred_tool_in_request() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "regular_tool",
+                        "description": "Regular tool",
+                        "input_schema": {"type": "object"}
+                    },
+                    {
+                        "name": "deferred_tool",
+                        "description": "Deferred tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["name"], "regular_tool");
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["name"], "deferred_tool");
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_existing_final_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+    }
+
+    #[test]
+    fn test_prompt_caching_all_deferred_tools_do_not_receive_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_deferred_tool",
+                        "description": "First deferred tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true
+                    },
+                    {
+                        "name": "second_deferred_tool",
+                        "description": "Second deferred tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert!(tools[0].get("cache_control").is_none());
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_earlier_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "earlier_tool",
+                        "description": "Earlier tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    },
+                    {
+                        "name": "later_tool",
+                        "description": "Later tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_deferred_marker_does_not_suppress_loaded_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "regular_tool",
+                        "description": "Regular tool",
+                        "input_schema": {"type": "object"}
+                    },
+                    {
+                        "name": "deferred_cached_tool",
+                        "description": "Deferred cached tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_errors_when_tool_cache_control_ttl_order_is_invalid() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_valid_mixed_ttl_tool_cache_controls() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert!(tools[1]["cache_control"].get("ttl").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_deferred_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "deferred_cached_tool",
+                    "description": "Deferred cached tool",
+                    "input_schema": {"type": "object"},
+                    "defer_loading": true,
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_budget_preserves_three_tool_markers_and_skips_message() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[2]["cache_control"]["type"], "ephemeral");
+        assert!(system_has_cache_control(&value));
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_caching_errors_when_explicit_tool_markers_exceed_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fifth_cached_tool",
+                        "description": "Fifth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_prompt_caching_errors_when_final_tool_marker_has_no_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "final_uncached_tool",
+                        "description": "Final uncached tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("final non-deferred tool"));
+    }
+
+    #[test]
+    fn test_prompt_caching_replaces_null_final_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "final_tool",
+                    "description": "Final tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": null
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_ignores_null_tool_cache_control_when_budgeting() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_null_tool",
+                        "description": "First null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "second_null_tool",
+                        "description": "Second null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "third_null_tool",
+                        "description": "Third null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "fourth_null_tool",
+                        "description": "Fourth null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "final_uncached_tool",
+                        "description": "Final uncached tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert!(tools[0].get("cache_control").is_none());
+        assert!(tools[1].get("cache_control").is_none());
+        assert!(tools[2].get("cache_control").is_none());
+        assert!(tools[3].get("cache_control").is_none());
+        assert_eq!(tools[4]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_non_null_provider_tool_cache_control_escape_hatch() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "provider_tool",
+                    "description": "Provider tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "provider_specific"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "provider_specific");
+    }
+
+    #[test]
+    fn test_prompt_caching_automatic_mode_uses_reduced_marker_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[2]["cache_control"]["type"], "ephemeral");
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+        assert!(!system_has_cache_control(&value));
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_caching_automatic_mode_errors_when_final_tool_marker_has_no_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "final_uncached_tool",
+                        "description": "Final uncached tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("final non-deferred tool"));
+    }
+
+    #[test]
+    fn test_automatic_caching_errors_when_explicit_tool_markers_exhaust_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_automatic_caching_1h_errors_with_explicit_five_minute_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_prompt_and_automatic_caching_1h_uses_1h_generated_markers() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_and_raw_top_level_automatic_caching_1h_uses_1h_generated_markers() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "metadata": {"source": "test"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert_eq!(value["metadata"]["source"], "test");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_caching_uses_raw_top_level_cache_control_ttl() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "metadata": {"source": "raw-cache-control"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert_eq!(value["metadata"]["source"], "raw-cache-control");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_raw_top_level_automatic_caching_reduces_marker_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral"},
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_raw_top_level_automatic_caching_1h_errors_after_explicit_five_minute_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_typed_automatic_caching_ttl_errors_on_conflicting_raw_top_level_ttl() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral"}
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("conflicts with the typed automatic caching TTL")
+        );
+    }
+
+    #[test]
+    fn test_prompt_caching_marks_final_tool_in_request() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("first_tool"), generic_tool("second_tool")],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_marks_final_additional_tool_in_request() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("rig_tool")],
+            Some(json!({
+                "tools": [{
+                    "name": "provider_tool",
+                    "description": "Provider tool",
+                    "input_schema": {"type": "object"}
+                }],
+                "metadata": {"source": "test"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["name"], "provider_tool");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(value["metadata"]["source"], "test");
+    }
+
+    #[test]
+    fn test_prompt_caching_without_tools_omits_tools() {
+        let request = completion_request_with_tools(Vec::new(), None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value.get("tools").is_none());
+    }
+
     #[test]
     fn test_plaintext_document_serialization() {
         let content = Content::Document {
@@ -1952,6 +3970,9 @@ mod tests {
                 data: "Hello, world!".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -1980,6 +4001,7 @@ mod tests {
             Content::Document {
                 source,
                 cache_control,
+                ..
             } => {
                 assert_eq!(
                     source,
@@ -2001,6 +4023,9 @@ mod tests {
                 data: "base64data".to_string(),
                 media_type: DocumentFormat::PDF,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -2045,6 +4070,9 @@ mod tests {
             source: DocumentSource::File {
                 file_id: "file_abc".to_string(),
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: None,
         };
 
@@ -2119,6 +4147,9 @@ mod tests {
                 source: DocumentSource::File {
                     file_id: "file_abc".to_string(),
                 },
+                title: None,
+                context: None,
+                citations: None,
                 cache_control: None,
             }),
         };
@@ -2181,6 +4212,9 @@ mod tests {
                     data: "Some plain text content".to_string(),
                     media_type: PlainTextMediaType::Plain,
                 },
+                title: None,
+                context: None,
+                citations: None,
                 cache_control: None,
             }),
         };
@@ -2296,6 +4330,9 @@ mod tests {
                 data: "cached text".to_string(),
                 media_type: PlainTextMediaType::Plain,
             },
+            title: None,
+            context: None,
+            citations: None,
             cache_control: Some(CacheControl::ephemeral()),
         };
 
@@ -2496,5 +4533,750 @@ mod tests {
             err,
             CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
         ));
+    }
+
+    #[test]
+    fn test_tool_result_content_in_message_roundtrip() {
+        let message_json = r#"{
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01A09q90qw90lq917835lq9",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Here is the screenshot:"
+                        },
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": "iVBORw0KGgo..."
+                            }
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let message: Message = serde_json::from_str(message_json).unwrap();
+        let serialized = serde_json::to_value(&message).unwrap();
+
+        let tool_result = &serialized["content"][0];
+        assert_eq!(tool_result["type"], "tool_result");
+
+        let image_content = &tool_result["content"][1];
+        assert_eq!(image_content["type"], "image");
+        assert_eq!(image_content["source"]["type"], "base64");
+        assert_eq!(image_content["source"]["media_type"], "image/png");
+        assert_eq!(image_content["source"]["data"], "iVBORw0KGgo...");
+    }
+
+    // -------------------------------------------------------------------
+    // Citations (#1767)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn document_serializes_citations_and_metadata() {
+        let doc = Content::Document {
+            source: DocumentSource::Text {
+                data: "hello".into(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            title: Some("My Doc".into()),
+            context: None,
+            citations: Some(CitationsConfig { enabled: true }),
+            cache_control: None,
+        };
+        let value = serde_json::to_value(&doc).unwrap();
+        assert_eq!(value["citations"]["enabled"], true);
+        assert_eq!(value["title"], "My Doc");
+        assert!(
+            value.get("context").is_none(),
+            "context should be skipped when None"
+        );
+    }
+
+    #[test]
+    fn text_serializes_without_citations_when_empty() {
+        let content = Content::Text {
+            text: "hello".into(),
+            citations: Vec::new(),
+            cache_control: None,
+        };
+        let value = serde_json::to_value(&content).unwrap();
+        assert!(
+            value.get("citations").is_none(),
+            "empty citations vec must be skipped"
+        );
+    }
+
+    #[test]
+    fn text_deserializes_char_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "the grass is green",
+            "citations": [{
+                "type": "char_location",
+                "cited_text": "The grass is green.",
+                "document_index": 0,
+                "document_title": "Example",
+                "start_char_index": 0,
+                "end_char_index": 20
+            }]
+        });
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+        assert_eq!(citations.len(), 1);
+        let Citation::CharLocation {
+            start_char_index,
+            end_char_index,
+            ..
+        } = &citations[0]
+        else {
+            panic!("expected CharLocation");
+        };
+        assert_eq!(*start_char_index, 0);
+        assert_eq!(*end_char_index, 20);
+    }
+
+    #[test]
+    fn text_deserializes_search_result_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "API keys are required.",
+            "citations": [{
+                "type": "search_result_location",
+                "cited_text": "All API requests must include an API key.",
+                "source": "https://docs.example.com/api-reference",
+                "title": "API Reference",
+                "search_result_index": 0,
+                "start_block_index": 0,
+                "end_block_index": 1
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::SearchResultLocation {
+                source,
+                title: Some(title),
+                search_result_index: 0,
+                start_block_index: 0,
+                end_block_index: 1,
+                ..
+            } if source == "https://docs.example.com/api-reference" && title == "API Reference"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_web_search_result_location_citation() {
+        let value = json!({
+            "type": "text",
+            "text": "Claude Shannon worked at Bell Labs.",
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was a mathematician.",
+                "url": "https://example.com/shannon",
+                "title": "Claude Shannon",
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::WebSearchResultLocation {
+                url,
+                title,
+                encrypted_index,
+                ..
+            } if url == "https://example.com/shannon"
+                && title.as_deref() == Some("Claude Shannon")
+                && encrypted_index == "encrypted-reference"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_web_search_result_location_citation_with_null_title() {
+        let value = json!({
+            "type": "text",
+            "text": "Claude Shannon worked at Bell Labs.",
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was a mathematician.",
+                "url": "https://example.com/shannon",
+                "title": null,
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        let Citation::WebSearchResultLocation { title, .. } = &citations[0] else {
+            panic!("expected WebSearchResultLocation");
+        };
+        assert_eq!(title, &None);
+
+        let serialized = serde_json::to_value(&citations[0]).unwrap();
+        assert!(serialized.get("title").is_some());
+        assert!(serialized["title"].is_null());
+    }
+
+    #[test]
+    fn web_search_response_preserves_raw_blocks_and_citations() {
+        let value = json!({
+            "id": "msg_web_search",
+            "model": CLAUDE_SONNET_4_6,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20
+            },
+            "content": [
+                {
+                    "type": "server_tool_use",
+                    "id": "srvtoolu_01",
+                    "name": "web_search",
+                    "input": {
+                        "query": "claude shannon birth date"
+                    }
+                },
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": "srvtoolu_01",
+                    "content": [
+                        {
+                            "type": "web_search_result",
+                            "url": "https://example.com/shannon",
+                            "title": "Claude Shannon",
+                            "encrypted_content": "encrypted-content",
+                            "page_age": "April 30, 2025"
+                        }
+                    ]
+                },
+                {
+                    "type": "text",
+                    "text": "Claude Shannon was born on April 30, 1916.",
+                    "citations": [{
+                        "type": "web_search_result_location",
+                        "cited_text": "Claude Shannon was born on April 30, 1916.",
+                        "url": "https://example.com/shannon",
+                        "title": "Claude Shannon",
+                        "encrypted_index": "encrypted-index"
+                    }]
+                }
+            ]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        assert_eq!(converted.choice.len(), 3);
+        assert_eq!(
+            converted.raw_response.get_text_response().as_deref(),
+            Some("Claude Shannon was born on April 30, 1916.")
+        );
+
+        let items = converted.choice.iter().collect::<Vec<_>>();
+        let message::AssistantContent::Text(server_tool_use) = items[0] else {
+            panic!("expected raw server_tool_use metadata");
+        };
+        assert_eq!(server_tool_use.text, "");
+        assert_eq!(
+            server_tool_use.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["type"],
+            "server_tool_use"
+        );
+
+        let message::AssistantContent::Text(web_search_result) = items[1] else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+        assert_eq!(
+            web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY]["content"]
+                [0]["encrypted_content"],
+            "encrypted-content"
+        );
+
+        let message::AssistantContent::Text(answer) = items[2] else {
+            panic!("expected text answer");
+        };
+        let citations = anthropic_citations(answer).unwrap();
+        assert!(matches!(
+            citations.first(),
+            Some(Citation::WebSearchResultLocation {
+                encrypted_index,
+                ..
+            }) if encrypted_index == "encrypted-index"
+        ));
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id.clone(),
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+
+        let round_trip_items = round_trip.content.iter().collect::<Vec<_>>();
+        assert!(matches!(
+            round_trip_items.first(),
+            Some(Content::ServerToolUse { id, name, input })
+                if id == "srvtoolu_01"
+                    && name == "web_search"
+                    && input["query"] == "claude shannon birth date"
+        ));
+        assert!(matches!(
+            round_trip_items.get(1),
+            Some(Content::WebSearchToolResult {
+                tool_use_id,
+                content
+            }) if tool_use_id == "srvtoolu_01"
+                && content[0]["encrypted_content"] == "encrypted-content"
+        ));
+    }
+
+    #[test]
+    fn web_search_tool_result_error_object_is_preserved_raw() {
+        let value = json!({
+            "id": "msg_web_search_error",
+            "model": CLAUDE_SONNET_4_6,
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 2
+            },
+            "content": [{
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": {
+                    "type": "web_search_tool_result_error",
+                    "error_code": "max_uses_exceeded"
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(value).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+        let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
+            panic!("expected raw web_search_tool_result metadata");
+        };
+
+        let raw_content =
+            &web_search_result.additional_params.as_ref().unwrap()[ANTHROPIC_RAW_CONTENT_KEY];
+        assert_eq!(raw_content["type"], "web_search_tool_result");
+        assert_eq!(raw_content["content"]["error_code"], "max_uses_exceeded");
+        assert_eq!(
+            raw_content["content"]["type"],
+            "web_search_tool_result_error"
+        );
+
+        let round_trip: Message = message::Message::Assistant {
+            id: converted.message_id,
+            content: converted.choice,
+        }
+        .try_into()
+        .unwrap();
+
+        assert!(matches!(
+            round_trip.content.first(),
+            Content::WebSearchToolResult {
+                tool_use_id,
+                content
+            } if tool_use_id == "srvtoolu_01"
+                && content["error_code"] == "max_uses_exceeded"
+        ));
+    }
+
+    #[test]
+    fn text_deserializes_unknown_citation_without_failing() {
+        let value = json!({
+            "type": "text",
+            "text": "future citation",
+            "citations": [{
+                "type": "future_location",
+                "cited_text": "future text",
+                "new_field": "kept"
+            }]
+        });
+
+        let parsed: Content = serde_json::from_value(value).unwrap();
+        let Content::Text { citations, .. } = parsed else {
+            panic!("expected Content::Text");
+        };
+
+        assert!(matches!(
+            &citations[0],
+            Citation::Unknown(raw)
+                if raw["type"] == "future_location" && raw["new_field"] == "kept"
+        ));
+    }
+
+    #[test]
+    fn page_location_citation_roundtrips() {
+        let citation = Citation::PageLocation {
+            cited_text: "Water is essential for life.".into(),
+            document_index: 1,
+            document_title: Some("PDF Doc".into()),
+            start_page_number: 5,
+            end_page_number: 6,
+        };
+        let value = serde_json::to_value(&citation).unwrap();
+        assert_eq!(value["type"], "page_location");
+        assert_eq!(value["start_page_number"], 5);
+        let back: Citation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, citation);
+    }
+
+    #[test]
+    fn content_block_location_citation_roundtrips() {
+        let citation = Citation::ContentBlockLocation {
+            cited_text: "These are important findings.".into(),
+            document_index: 2,
+            document_title: None,
+            start_block_index: 0,
+            end_block_index: 1,
+        };
+        let value = serde_json::to_value(&citation).unwrap();
+        assert_eq!(value["type"], "content_block_location");
+        assert!(value.get("document_title").is_none());
+        let back: Citation = serde_json::from_value(value).unwrap();
+        assert_eq!(back, citation);
+    }
+
+    #[test]
+    fn anthropic_citations_extracts_from_additional_params() {
+        let text = message::Text {
+            text: "the grass is green".into(),
+            additional_params: Some(json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "The grass is green.",
+                    "document_index": 0,
+                    "start_char_index": 0,
+                    "end_char_index": 20
+                }]
+            })),
+        };
+        let citations = anthropic_citations(&text).unwrap();
+        assert_eq!(citations.len(), 1);
+    }
+
+    #[test]
+    fn anthropic_citations_returns_empty_when_absent() {
+        let text = message::Text::new("hello".to_string());
+        assert!(anthropic_citations(&text).unwrap().is_empty());
+    }
+
+    #[test]
+    fn content_text_with_citations_survives_assistant_conversion() {
+        let content = Content::Text {
+            text: "the grass is green".into(),
+            citations: vec![Citation::CharLocation {
+                cited_text: "The grass is green.".into(),
+                document_index: 0,
+                document_title: None,
+                start_char_index: 0,
+                end_char_index: 20,
+            }],
+            cache_control: None,
+        };
+        let assistant: message::AssistantContent = content.try_into().unwrap();
+        let message::AssistantContent::Text(text) = assistant else {
+            panic!("expected text variant");
+        };
+        let recovered = anthropic_citations(&text).unwrap();
+        assert_eq!(recovered.len(), 1);
+    }
+
+    #[test]
+    fn provider_text_response_concatenates_text_blocks_without_inserted_newlines() {
+        let response = CompletionResponse {
+            content: vec![
+                Content::Text {
+                    text: "According to the document, ".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+                Content::Text {
+                    text: "the grass is green".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+                Content::Text {
+                    text: " and the sky is blue.".into(),
+                    citations: Vec::new(),
+                    cache_control: None,
+                },
+            ],
+            id: "msg_1".into(),
+            model: "claude-test".into(),
+            role: "assistant".into(),
+            stop_reason: Some("end_turn".into()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 1,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                output_tokens: 1,
+            },
+        };
+
+        assert_eq!(
+            response.get_text_response().as_deref(),
+            Some("According to the document, the grass is green and the sky is blue.")
+        );
+    }
+
+    #[test]
+    fn assistant_text_citations_survive_anthropic_request_conversion() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+                text: "the grass is green".into(),
+                additional_params: Some(json!({
+                    "citations": [{
+                        "type": "char_location",
+                        "cited_text": "The grass is green.",
+                        "document_index": 0,
+                        "start_char_index": 0,
+                        "end_char_index": 20
+                    }]
+                })),
+            })),
+        };
+
+        let converted: Message = assistant.try_into().unwrap();
+        let Content::Text {
+            citations, text, ..
+        } = converted.content.first()
+        else {
+            panic!("expected assistant text content");
+        };
+
+        assert_eq!(text, "the grass is green");
+        assert_eq!(
+            citations,
+            vec![Citation::CharLocation {
+                cited_text: "The grass is green.".into(),
+                document_index: 0,
+                document_title: None,
+                start_char_index: 0,
+                end_char_index: 20,
+            }]
+        );
+    }
+
+    #[test]
+    fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
+        let text = message::AssistantContent::Text(message::Text {
+            text: "bad citation".into(),
+            additional_params: Some(json!({
+                "citations": [{
+                    "type": "char_location",
+                    "cited_text": "bad"
+                }]
+            })),
+        });
+
+        let result = Content::try_from(text);
+
+        assert!(
+            result.is_err(),
+            "invalid Anthropic citation metadata should not be silently dropped"
+        );
+    }
+
+    #[test]
+    fn document_additional_params_forward_to_anthropic_document() {
+        let doc = message::UserContent::Document(message::Document {
+            data: message::DocumentSourceKind::String("Hello world.".into()),
+            media_type: Some(message::DocumentMediaType::TXT),
+            additional_params: Some(json!({
+                "title": "Doc1",
+                "context": "ctx",
+                "citations": { "enabled": true }
+            })),
+        });
+        let msg = message::Message::User {
+            content: OneOrMany::one(doc),
+        };
+        let converted: Message = msg.try_into().unwrap();
+        let block = converted.content.first();
+        let Content::Document {
+            title,
+            context,
+            citations,
+            ..
+        } = block
+        else {
+            panic!("expected Content::Document");
+        };
+        assert_eq!(title.as_deref(), Some("Doc1"));
+        assert_eq!(context.as_deref(), Some("ctx"));
+        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    fn assert_reverse_document_metadata(
+        source: DocumentSource,
+        expected_data: DocumentSourceKind,
+        expected_media_type: Option<message::DocumentMediaType>,
+    ) -> message::Message {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source,
+                title: Some("Doc1".into()),
+                context: Some("ctx".into()),
+                citations: Some(CitationsConfig { enabled: true }),
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+
+        assert_eq!(document.data, expected_data);
+        assert_eq!(document.media_type, expected_media_type);
+        let additional_params = document
+            .additional_params
+            .as_ref()
+            .expect("expected Anthropic document metadata");
+        assert_eq!(additional_params["title"], "Doc1");
+        assert_eq!(additional_params["context"], "ctx");
+        assert_eq!(additional_params["citations"]["enabled"], true);
+
+        generic
+    }
+
+    #[test]
+    fn anthropic_document_metadata_survives_reverse_conversion_for_all_sources() {
+        assert_reverse_document_metadata(
+            DocumentSource::Text {
+                data: "Hello world.".into(),
+                media_type: PlainTextMediaType::Plain,
+            },
+            DocumentSourceKind::String("Hello world.".into()),
+            Some(message::DocumentMediaType::TXT),
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::Base64 {
+                data: "base64-pdf".into(),
+                media_type: DocumentFormat::PDF,
+            },
+            DocumentSourceKind::String("base64-pdf".into()),
+            Some(message::DocumentMediaType::PDF),
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::Url {
+                url: "https://example.com/doc.pdf".into(),
+            },
+            DocumentSourceKind::Url("https://example.com/doc.pdf".into()),
+            None,
+        );
+        assert_reverse_document_metadata(
+            DocumentSource::File {
+                file_id: "file_abc".into(),
+            },
+            DocumentSourceKind::FileId("file_abc".into()),
+            None,
+        );
+    }
+
+    #[test]
+    fn anthropic_document_metadata_survives_reverse_round_trip() {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Hello world.".into(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                title: Some("Doc1".into()),
+                context: Some("ctx".into()),
+                citations: Some(CitationsConfig { enabled: true }),
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+        let additional_params = document
+            .additional_params
+            .as_ref()
+            .expect("expected Anthropic document metadata");
+        assert_eq!(additional_params["title"], "Doc1");
+        assert_eq!(additional_params["context"], "ctx");
+        assert_eq!(additional_params["citations"]["enabled"], true);
+
+        let round_trip: Message = generic.try_into().unwrap();
+        let Content::Document {
+            title,
+            context,
+            citations,
+            ..
+        } = round_trip.content.first()
+        else {
+            panic!("expected Anthropic document");
+        };
+        assert_eq!(title.as_deref(), Some("Doc1"));
+        assert_eq!(context.as_deref(), Some("ctx"));
+        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    #[test]
+    fn anthropic_document_empty_metadata_stays_none_on_reverse_conversion() {
+        let provider_message = Message {
+            role: Role::User,
+            content: OneOrMany::one(Content::Document {
+                source: DocumentSource::Text {
+                    data: "Hello world.".into(),
+                    media_type: PlainTextMediaType::Plain,
+                },
+                title: None,
+                context: None,
+                citations: None,
+                cache_control: None,
+            }),
+        };
+
+        let generic: message::Message = provider_message.try_into().unwrap();
+        let message::Message::User { content } = &generic else {
+            panic!("expected generic user message");
+        };
+        let message::UserContent::Document(document) = content.first() else {
+            panic!("expected generic document");
+        };
+
+        assert_eq!(document.additional_params, None);
     }
 }

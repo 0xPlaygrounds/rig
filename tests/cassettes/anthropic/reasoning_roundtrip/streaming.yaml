@@ -1,0 +1,415 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a helpful math tutor. Be concise.","type":"text"}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":79,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"Let","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" me set up the problem. Train 1 leaves Station A at 60 km/h. Train 2 leaves Station B (","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"300 km away) 30 minutes (0.5 hours) later at 90 km/h heading toward Station A.\n\nLet t = time in hours after Train","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 2 departs.\n\nWhen Train 2 departs, Train 1 has already traveled: 60 × ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"0.5 = 30 km\n\nRemaining distance between them: 300 - 30 = 270 km\n\nThey approach","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" each other at combined speed: 60 + 90 = 150 km/h\n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nSo","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" they'll meet in 1.8 hours after Train 2 departs, which is 1 hour 48 minutes. Since Train 1 has been traveling for","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 2.3 hours total, it covers 138 km from Station A—and I","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" can verify this by checking that Train 2 travels 162 km from Station B, which also puts them 138 km from Station A.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"signature_REDACTED_2","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"## Setting Up the Problem\n\n**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"When Train 2 departs**, Train 1 has already been traveling for 0.5 hours:\n$$d_{\\","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"text{head start}} = 60 \\times 0.5 = 30 \\text{ km}$$\n\n**Gap remaining** between","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the two trains:\n$$300 - 30 = 270 \\text{ km}$$\n\n---\n\n## Finding Meeting Time\n\nThe","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" trains close the gap at their **combined speed**:\n$$60 + 90 = 150 \\text{ km/h}$$\n\n**Time after Train 2 departs:**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n$$t = \\frac{270}{150} = 1.8 \\text{ hours} = \\textbf{1 hour 48 minutes}$$\n\n---\n\n## Finding Distance from Station A\n\nTrain","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" 1's **total travel time** = 0.5 + 1.8 = **2.3 hours**\n\n$$\\text{Distance}","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" = 60 \\times 2.3 = \\boxed{138 \\text{ km from Station A}}$$\n\n**Verification:** Train 2 travels $90 \\times 1.8","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" = 162$ km from B → $300 - 162 = 138$ km ✓\n\n---\n\n## Summary\n\n| | Value","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" |\n|---|---|\n| Time after Train 2 departs | 1 hr 48 min |\n| Distance from Station A | **138 km** |","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":79,"output_tokens":639}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","type":"text"}],"role":"user"},{"content":[{"signature":"signature_REDACTED_2","thinking":"Let me set up the problem. Train 1 leaves Station A at 60 km/h. Train 2 leaves Station B (300 km away) 30 minutes (0.5 hours) later at 90 km/h heading toward Station A.\n\nLet t = time in hours after Train 2 departs.\n\nWhen Train 2 departs, Train 1 has already traveled: 60 × 0.5 = 30 km\n\nRemaining distance between them: 300 - 30 = 270 km\n\nThey approach each other at combined speed: 60 + 90 = 150 km/h\n\n\nSo they''ll meet in 1.8 hours after Train 2 departs, which is 1 hour 48 minutes. Since Train 1 has been traveling for 2.3 hours total, it covers 138 km from Station A—and I can verify this by checking that Train 2 travels 162 km from Station B, which also puts them 138 km from Station A.","type":"thinking"},{"text":"## Setting Up the Problem\n\n**When Train 2 departs**, Train 1 has already been traveling for 0.5 hours:\n$$d_{\\text{head start}} = 60 \\times 0.5 = 30 \\text{ km}$$\n\n**Gap remaining** between the two trains:\n$$300 - 30 = 270 \\text{ km}$$\n\n---\n\n## Finding Meeting Time\n\nThe trains close the gap at their **combined speed**:\n$$60 + 90 = 150 \\text{ km/h}$$\n\n**Time after Train 2 departs:**\n$$t = \\frac{270}{150} = 1.8 \\text{ hours} = \\textbf{1 hour 48 minutes}$$\n\n---\n\n## Finding Distance from Station A\n\nTrain 1''s **total travel time** = 0.5 + 1.8 = **2.3 hours**\n\n$$\\text{Distance} = 60 \\times 2.3 = \\boxed{138 \\text{ km from Station A}}$$\n\n**Verification:** Train 2 travels $90 \\times 1.8 = 162$ km from B → $300 - 162 = 138$ km ✓\n\n---\n\n## Summary\n\n| | Value |\n|---|---|\n| Time after Train 2 departs | 1 hr 48 min |\n| Distance from Station A | **138 km** |","type":"text"}],"role":"assistant"},{"content":[{"text":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a helpful math tutor. Be concise.","type":"text"}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":746,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"Let","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" me carefully re-read the problem. Both trains slow down by 10 km/h after traveling half the original distance.\n\nI need to clarify what \"half","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" the original distance\" means. I think it means half of the 300 km total distance, so 150 km. So each","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" train slows down after traveling 150 km.\n\nWait, let me reconsider. \"Half the original distance\" - this could mean:\n1. Half of 300 km = 150 km","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" (each train slows down after it has traveled 150 km)\n2. Half of their respective","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" journey distances\n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nI","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"'ll go with interpretation 1: each train slows down after traveling 150 km from its starting station.\n\nFor Train 1 starting at 60 km/h from","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Station A, it covers the first 150 km in 2.5 hours, then drops to 50 km/h.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Train 2 departs 0.5 hours later from Station B at 90 km/h, takes about 1","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":".67 hours to cover its first 150 km, then slows to 80 km/h.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nNow","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I'm setting up a coordinate system with distance measured from Station A and time from when Train 1 departs.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" For Train 1, it travels at 60 km/h until t =","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 2.5 hours, then continues at 50 km/h. Train 2 starts at t = 0.5 hours from the","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" opposite station, moving toward Station A at 90 km/h until it's traveled","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 150 km (which happens around t ≈ 2.17 hours), then slows to 80 km/h.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nAt","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" t = 13/6 hours, Train 1 is at 130 km while Train 2 is at 150 km, so they haven't met yet. I","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" need to find where their positions are equal by checking different time intervals.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" At","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" t = 2.5 hours, Train 1 has reached 150 km while Train 2 is at about 123 ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"km, so they must have crossed paths between t ≈ 2","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":".167 and t = 2.5. I need to reconsider the directions—Train 1 moves from A toward","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" B (increasing distance), while Train 2 moves from B toward A (decreasing distance), so they're actually moving toward each other.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Now","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I'm setting the position equations equal to find when they meet. Train 1 continues","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" at 60 km/h while Train 2 is already decelerating at 80 km/h from the 13/6 hour mark.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Solving this gives t = 97/42 hours, which I need to verify falls","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" within the valid interval.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Now","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I'm converting that time to a more readable format—about","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 2 hours and 18.6 minutes after Train 1 departs, or roughly 1 hour 48.6 minutes after Train 2 departs,","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" which matches the original estimate pretty closely.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Now","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I'm converting the time to a cleaner format: 97/42 hours works out to roughly 2 hours and","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 18 minutes 34 seconds. The meeting point is about 138.57 km from Station A.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" Let me verify this is correct by reconsidering what \"half the original distance\" means—it should","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" be 150 km from each train's starting point, which is what I calculated, so the answer holds.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nSetting","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" up the problem more systematically: Train 1 departs from A at time zero, traveling at 60 km/h until it covers","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 150 km (which takes 2.5 hours), then slows to 50 km/h. Train 2 leaves from B","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" at t = 0.5 hours, moving toward A at 90 km/h for the first 150 km of","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" its journey (slowing down at t = 13/6 hours), then continuing at 80 km/h.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I'm defining position functions for each train across these","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" different time intervals to find when they meet.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nNow","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" I'm checking whether they intersect before Train 2 slows down at t = 13/","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"6. At that moment, Train 1 is at 130 km from A while Train 2 is at 150","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" km from A, so they haven't met yet. For the interval between when Train","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" 2 slows down and when Train 1 slows down, I'm setting their position","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" equations equal to solve for the meeting time.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nSolving this","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" gives t = 97/42 hours, which is approximately 2.31 hours—this falls within the valid","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" interval, so they do meet. The meeting point is at 970/7 km from A, or about 138.6 km.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" This corresponds to roughly 2 hours 18.6 minutes after Train 1 departs and 1 hour 48.6","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" minutes after Train 2 departs.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nComparing to the original scenario","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":", the trains meet slightly later and a bit farther from A, though the difference is minimal since the deceleration happens","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" just before they meet. Let me verify the arithmetic once more to be sure—simplifying 1940/840 by","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" their GCD of 20 confirms t = 97/42 hours.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"\n\nConverting","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" that to a more readable format: 97/42 breaks down to 2 hours plus 13/42 of","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" an hour, which is roughly 18 minutes and 34 seconds after Train 1 departs. The meeting point","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" is approximately 138.6 km from A.","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"signature_REDACTED_3","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"## Setting","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Up the New Conditions\n\n**\"Half the original distance\" = 150 km** (half of 300 km)\n\nEach","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" train travels 150 km at original speed, then slows by 10 km/h.\n\n| Train | Original Speed","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" | Reduced Speed | Slows down at |\n|-------|---------------|---------------|---------------|\n| Train 1 (from","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" A) | 60 km/h | 50 km/h | t = 150/60 = **2.5 hrs** after T1","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" departs |\n| Train 2 (from B) | 90 km/h | 80 km/h | t = 0.5 + 150/90 = **13/6 hrs** after T1","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" departs |\n\n---\n\n## Position Equations\n*(t = hours after Train 1 departs)*\n\n$$","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"x_1 = 60t \\quad \\text{(Train 1, still under 150 km)}$$\n\n$$x_2 = 150","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" - 80\\!\\left(t - \\tfrac{13}{6}\\right) \\quad \\text{(Train 2, already slowed)}$$\n\n**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Check timing:** At t = 13/6 ≈ 2.167 hrs → x₁ = 130 km, x₂ = 150 km (haven","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"'t met yet ✓)\n\nThe meeting must occur between **t = 13/6 and t = 2.5** (before","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Train 1 slows).\n\n---\n\n## Solving for Meeting Point\n\n$$60t = 150 - 80\\!\\left(t - \\f","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"rac{13}{6}\\right)$$\n\n$$60t = 150 - 80t + \\frac{1040}{6}$$\n\n$$140t = \\frac{900}{6} + \\frac{1040}{6","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"} = \\frac{1940}{6}$$\n\n$$\\boxed{t = \\frac{97}{42} \\approx 2 \\text{ hrs } 18.","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"6 \\text{ min after Train 1 departs}}$$\n\n---\n\n## Distance from Station A\n\n$$x = 60 \\times \\frac{97}{42} = \\frac{970}{7} \\approx \\","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"boxed{138.6 \\text{ km from Station A}}$$\n\n**Verification:** Train 2 → $150 - 80\\","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"!\\left(\\frac{97}{42}-\\frac{91}{42}\\right) = 150 - \\frac{80}{7} = \\frac{970","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"}{7}$ ✓\n\n---\n\n## Comparison to Original\n\n| Scenario | Time after","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" T2 departs | Distance from A |\n|----------|-----------------------|-----------------|\n| Original | 1 hr 48.0","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" min | 138.0 km |\n| Slowed | 1 hr 48.6 min | 138.6 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"km |\n\nThe difference is tiny — the trains slow down **just before** meeting, barely","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" affecting the result.","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":746,"output_tokens":4196}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

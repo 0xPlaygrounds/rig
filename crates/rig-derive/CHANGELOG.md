@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.13...rig-derive-v0.1.14) - 2026-05-13
+
+### Other
+
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @gold-silver-copper
 ## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.12...rig-derive-v0.1.13) - 2026-04-28
 
 ### Added

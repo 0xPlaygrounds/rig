@@ -7,10 +7,13 @@ use rig_core::{
     providers::openai::Client,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_sqlite::{Column, ColumnValue, SqliteVectorStore, SqliteVectorStoreTable};
+use rig_sqlite::{
+    Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
+};
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use serde::{Deserialize, Serialize};
 use sqlite_vec::sqlite3_vec_init;
+use std::os::raw::c_char;
 use tokio_rusqlite::Connection;
 
 #[derive(Embed, Clone, Debug, Deserialize, Serialize)]
@@ -45,7 +48,7 @@ impl SqliteVectorStoreTable for Document {
 }
 
 type SqliteExtensionFn =
-    unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+    unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -94,7 +97,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Initialize SQLite vector store
-    let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::new(conn, &model).await?;
+    let vector_store: SqliteVectorStore<_, Document> =
+        SqliteVectorStore::with_distance_metric(conn, &model, SqliteDistanceMetric::Cosine).await?;
 
     // Add embeddings to vector store
     vector_store.insert_documents(embeddings).await?;

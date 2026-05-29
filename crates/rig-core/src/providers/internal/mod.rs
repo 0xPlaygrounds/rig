@@ -15,6 +15,7 @@ pub(crate) fn completion_usage(
         total_tokens,
         cached_input_tokens,
         cache_creation_input_tokens: 0,
+        tool_use_prompt_tokens: 0,
         reasoning_tokens: 0,
     }
 }

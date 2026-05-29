@@ -200,7 +200,18 @@ impl<T: Tool> ToolDyn for T {
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
-            match serde_json::from_str(&args) {
+            // LLMs frequently send `null` for tools whose arguments are all optional.
+            // `serde_json::from_str::<T>("null")` fails for struct types even when
+            // every field is `Option<_>`, because JSON null does not deserialize to an
+            // empty object. Preserve any args type that already accepts `null` (such as
+            // `()` or `Option<T>`) and fall back to `{}` only after the original parse
+            // fails.
+            let args = match serde_json::from_str(&args) {
+                Ok(args) => Ok(args),
+                Err(err) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| err),
+                Err(err) => Err(err),
+            };
+            match args {
                 Ok(args) => <Self as Tool>::call(self, args)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
@@ -461,7 +472,8 @@ impl ToolSetBuilder {
 mod tests {
     use crate::message::{DocumentSourceKind, ToolResultContent};
     use crate::test_utils::{
-        MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool, mock_math_toolset,
+        MockExampleTool, MockImageOutputTool, MockObjectOutputTool, MockStringOutputTool,
+        mock_math_toolset,
     };
     use serde_json::json;
 
@@ -539,5 +551,65 @@ mod tests {
                 "count": 42
             })
         );
+    }
+
+    #[tokio::test]
+    async fn null_args_are_preserved_for_unit_args() {
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(MockExampleTool);
+
+        let output = toolset
+            .call("example_tool", "null".to_string())
+            .await
+            .expect("unit args should accept null without object fallback");
+
+        assert_eq!(output, "Example answer");
+    }
+
+    // Struct-typed args with all-optional fields — serde rejects `null` for these
+    // even though the fields are optional. The normalization in `ToolDyn::call`
+    // falls back from `null` to `{}` so callers can omit the
+    // wrapping `Option<Args>` workaround.
+    #[tokio::test]
+    async fn null_args_are_normalized_to_empty_object() {
+        use crate::test_utils::MockToolError;
+
+        #[derive(serde::Deserialize, serde::Serialize)]
+        struct NoRequiredArgs {
+            label: Option<String>,
+        }
+
+        struct NoArgTool;
+
+        impl Tool for NoArgTool {
+            const NAME: &'static str = "no_arg_tool";
+            type Error = MockToolError;
+            type Args = NoRequiredArgs;
+            type Output = String;
+
+            async fn definition(&self, _prompt: String) -> ToolDefinition {
+                ToolDefinition {
+                    name: Self::NAME.to_string(),
+                    description: "Tool with no required arguments".to_string(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                }
+            }
+
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+                Ok(args.label.unwrap_or_else(|| "default".to_string()))
+            }
+        }
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(NoArgTool);
+
+        // `null` is what LLMs send when no arguments are provided; without the
+        // normalization this would return `ToolError::JsonError`.
+        let output = toolset
+            .call("no_arg_tool", "null".to_string())
+            .await
+            .expect("null args should succeed after normalisation");
+
+        assert_eq!(output, "default");
     }
 }

@@ -21,6 +21,7 @@ use rig::{
 };
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
+use std::os::raw::c_char;
 use tokio_rusqlite::Connection;
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
@@ -37,7 +38,7 @@ impl SqliteVectorStoreTable for Word {
 
     fn schema() -> Vec<Column> {
         vec![
-            Column::new("id", "TEXT PRIMARY KEY"),
+            Column::new("id", "TEXT PRIMARY KEY").indexed(),
             Column::new("definition", "TEXT"),
         ]
     }
@@ -55,7 +56,7 @@ impl SqliteVectorStoreTable for Word {
 }
 
 type SqliteExtensionFn =
-    unsafe extern "C" fn(*mut sqlite3, *mut *mut i8, *const sqlite3_api_routines) -> i32;
+    unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
 fn register_sqlite_vec_extension() {
     // Initialize the `sqlite-vec`extension
@@ -180,12 +181,13 @@ async fn vector_search_test() {
     let req = VectorSearchRequest::builder()
         .samples(samples)
         .query(query)
-        .filter(SqliteSearchFilter::eq("id", "doc1".into()).not())
+        .filter(SqliteSearchFilter::eq("id", "doc1".into()))
         .build();
 
     // Query the index
     let results = index.top_n::<serde_json::Value>(req).await.expect("");
-    assert!(results.is_empty());
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].1, "doc1");
 }
 
 #[tokio::test]

@@ -1,0 +1,104 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":10,\"y\":4},\"name\":\"subtract\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":244,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":244}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":140,\"totalTokenCount\":403}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":3,\"y\":5},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":416,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":416}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":31,\"totalTokenCount\":465}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":6,\"y\":8},\"name\":\"multiply\"},\"thoughtSignature\":\"signature_REDACTED_3\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_3\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":478,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":478}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":38,\"totalTokenCount\":534}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":6,"y":8},"name":"multiply"},"thought":false,"thoughtSignature":"signature_REDACTED_3"}],"role":"model"},{"parts":[{"functionResponse":{"name":"multiply","response":{"result":48}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":48,\"y\":3},\"name\":\"divide\"},\"thoughtSignature\":\"signature_REDACTED_4\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_4\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":547,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":547}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":47,\"totalTokenCount\":613}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Calculate ((10 - 4) * (3 + 5)) / 3 and describe the result in one short paragraph.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":6,"y":8},"name":"multiply"},"thought":false,"thoughtSignature":"signature_REDACTED_3"}],"role":"model"},{"parts":[{"functionResponse":{"name":"multiply","response":{"result":48}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":48,"y":3},"name":"divide"},"thought":false,"thoughtSignature":"signature_REDACTED_4"}],"role":"model"},{"parts":[{"functionResponse":{"name":"divide","response":{"result":16}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use tools to answer arithmetic prompts.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the product of x and y (i.e.: x * y)","name":"multiply","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}},{"description":"Compute the quotient of x and y.","name":"divide","parameters":{"properties":{"x":{"format":"int32","type":"integer"},"y":{"format":"int32","type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The calculation of ((10 - 4) * (3 + 5)) / 3 yields a final result of 16. This was determined by first subtracting \",\"thoughtSignature\":\"signature_REDACTED_5\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_5\",\"usageMetadata\":{\"candidatesTokenCount\":35,\"promptTokenCount\":627,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":627}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":28,\"totalTokenCount\":690}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"4 from 10 to get 6, then adding 3 and 5 to get 8, multiplying these two results (6 * 8) to get 48, and finally dividing 48 by 3.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_5\",\"usageMetadata\":{\"candidatesTokenCount\":83,\"promptTokenCount\":627,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":627}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":28,\"totalTokenCount\":738}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_5\",\"usageMetadata\":{\"candidatesTokenCount\":83,\"promptTokenCount\":627,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":627}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":28,\"totalTokenCount\":738}}\r\n\r\n"

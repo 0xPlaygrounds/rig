@@ -37,13 +37,13 @@ impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
             }
             aws_bedrock::ToolResultContentBlock::Json(document) => {
                 let json: Value = AwsDocument(document).into();
-                Ok(RigToolResultContent(ToolResultContent::Text(Text {
-                    text: json.to_string(),
-                })))
+                Ok(RigToolResultContent(ToolResultContent::Text(Text::new(
+                    json.to_string(),
+                ))))
             }
-            aws_bedrock::ToolResultContentBlock::Text(text) => {
-                Ok(RigToolResultContent(ToolResultContent::Text(Text { text })))
-            }
+            aws_bedrock::ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
+                ToolResultContent::Text(Text::new(text)),
+            )),
             _ => Err(CompletionError::ProviderError(
                 "ToolResultContentBlock contains unsupported variant".into(),
             )),
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn rig_tool_text_to_aws_tool() {
-        let tool = RigToolResultContent(ToolResultContent::Text(Text { text: "42".into() }));
+        let tool = RigToolResultContent(ToolResultContent::Text(Text::new("42")));
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
         assert!(aws_tool.is_ok());
         assert_eq!(

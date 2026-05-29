@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.0...rig-memory-v0.1.1) - 2026-05-13
+
+### Added
+
+- *(memory)* add Compactor trait, CompactingMemory adapter, and TemplateCompactor ([#1748](https://github.com/0xPlaygrounds/rig/pull/1748)) (by @ForeverAngry)
+- *(memory)* Rig-managed conversation memory + rig-memory companion crate ([#1702](https://github.com/0xPlaygrounds/rig/pull/1702)) (by @ForeverAngry)
+
+### Other
+
+- Memory adapter cancellation safety and trait-object forwarding ([#1756](https://github.com/0xPlaygrounds/rig/pull/1756)) (by @gold-silver-copper) - #1756
+- Add demotion hooks for bounded conversation memory ([#1737](https://github.com/0xPlaygrounds/rig/pull/1737)) (by @ForeverAngry) - #1737
+
+### Contributors
+
+* @gold-silver-copper
+* @ForeverAngry
 
 ### Added
 

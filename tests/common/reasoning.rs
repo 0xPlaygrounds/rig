@@ -660,7 +660,7 @@ pub(crate) fn assert_chat_history_preserves_reasoning_tool_roundtrip(
     let prompt_index = prompt_index.unwrap_or_else(|| {
         panic!("[{provider}] Chat history is missing the original user prompt: {chat_history:#?}")
     });
-    let _reasoning_index = reasoning_index.unwrap_or_else(|| {
+    reasoning_index.unwrap_or_else(|| {
         panic!(
             "[{provider}] Chat history is missing assistant reasoning content: {chat_history:#?}"
         )

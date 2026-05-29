@@ -3,7 +3,7 @@ pub mod streaming;
 
 use super::{
     Agent,
-    completion::{DynamicContextStore, build_completion_request},
+    completion::{DynamicContextStore, build_prepared_completion_request},
 };
 use crate::{
     OneOrMany,
@@ -18,6 +18,7 @@ use futures::{StreamExt, stream};
 use hooks::{HookAction, PromptHook, ToolCallHookAction};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeSet,
     future::IntoFuture,
     marker::PhantomData,
     sync::{
@@ -270,11 +271,48 @@ where
     }
 }
 
+/// Details for one successfully completed completion request made by an agent run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompletionCall {
+    /// Zero-based index of the completion request within this agent run.
+    pub call_index: usize,
+    /// Token usage reported for this completion request, when the provider supplied it.
+    ///
+    /// Rig normalizes zero-valued [`Usage`] to `None` because zero-valued usage
+    /// is the existing sentinel for missing provider usage metrics.
+    #[serde(default)]
+    pub usage: Option<Usage>,
+}
+
+impl CompletionCall {
+    /// Create details for one completion request in an agent run.
+    pub fn new(call_index: usize, usage: Option<Usage>) -> Self {
+        Self { call_index, usage }
+    }
+
+    pub(crate) fn from_reported_usage(call_index: usize, usage: Usage) -> Self {
+        Self::new(call_index, reported_usage(usage))
+    }
+}
+
+pub(crate) fn reported_usage(usage: Usage) -> Option<Usage> {
+    (usage != Usage::new()).then_some(usage)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
+    /// Successfully completed completion requests made by this agent run, with token usage when available.
+    ///
+    /// `usage` remains the aggregate across the whole run. Use the last entry's
+    /// usage, when present, to inspect the final completion request's
+    /// prompt/context length.
+    /// If a provider does not report token usage, its entry contains `None`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completion_calls: Vec<CompletionCall>,
     pub messages: Option<Vec<Message>>,
 }
 
@@ -289,6 +327,7 @@ impl PromptResponse {
         Self {
             output: output.into(),
             usage,
+            completion_calls: Vec::new(),
             messages: None,
         }
     }
@@ -297,17 +336,56 @@ impl PromptResponse {
         self.messages = Some(messages);
         self
     }
+
+    /// Attach completion call details to this response.
+    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
+        self.completion_calls = completion_calls;
+        self
+    }
+
+    /// Returns successfully completed completion requests made by this agent run, with token usage when available.
+    ///
+    /// If a provider does not report token usage, its entry contains `None`.
+    pub fn completion_calls(&self) -> &[CompletionCall] {
+        &self.completion_calls
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
+    /// Successfully completed completion requests made by this agent run, with token usage when available.
+    ///
+    /// `usage` remains the aggregate across the whole run. Use the last entry's
+    /// usage, when present, to inspect the final completion request's
+    /// prompt/context length.
+    /// If a provider does not report token usage, its entry contains `None`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub completion_calls: Vec<CompletionCall>,
 }
 
 impl<T> TypedPromptResponse<T> {
     pub fn new(output: T, usage: Usage) -> Self {
-        Self { output, usage }
+        Self {
+            output,
+            usage,
+            completion_calls: Vec::new(),
+        }
+    }
+
+    /// Attach completion call details to this response.
+    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
+        self.completion_calls = completion_calls;
+        self
+    }
+
+    /// Returns successfully completed completion requests made by this agent run, with token usage when available.
+    ///
+    /// If a provider does not report token usage, its entry contains `None`.
+    pub fn completion_calls(&self) -> &[CompletionCall] {
+        &self.completion_calls
     }
 }
 
@@ -331,12 +409,40 @@ fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
+pub(crate) fn validate_tool_call_name(
+    tool_name: &str,
+    executable_tool_names: &BTreeSet<String>,
+    allowed_tool_names: &BTreeSet<String>,
+    chat_history: Vec<Message>,
+) -> Result<(), PromptError> {
+    if allowed_tool_names.contains(tool_name) {
+        return Ok(());
+    }
+
+    Err(PromptError::UnknownToolCall {
+        tool_name: tool_name.to_owned(),
+        available_tools: executable_tool_names.iter().cloned().collect(),
+        allowed_tools: allowed_tool_names.iter().cloned().collect(),
+        chat_history: Box::new(chat_history),
+    })
+}
+
 fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
     choice.len() == 1
         && matches!(
             choice.first(),
-            AssistantContent::Text(text) if text.text.is_empty()
+            AssistantContent::Text(text) if text.text.is_empty() && text.additional_params.is_none()
         )
+}
+
+fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
 }
 
 impl<M, P> PromptRequest<Extended, M, P>
@@ -361,6 +467,7 @@ where
                 gen_ai.usage.output_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
             )
         } else {
@@ -390,6 +497,8 @@ where
 
         let mut current_max_turns = 0;
         let mut usage = Usage::new();
+        let mut completion_calls = Vec::new();
+        let mut completion_call_index = 0;
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
@@ -447,6 +556,7 @@ where
                 gen_ai.usage.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
                 gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
@@ -467,7 +577,7 @@ where
             let history_for_request =
                 build_history_for_request(chat_history.as_deref(), history_for_current_turn);
 
-            let resp = build_completion_request(
+            let prepared_request = build_prepared_completion_request(
                 &self.model,
                 prompt.clone(),
                 &history_for_request,
@@ -481,12 +591,58 @@ where
                 &self.dynamic_context,
                 self.output_schema.as_ref(),
             )
-            .await?
-            .send()
-            .instrument(chat_span.clone())
             .await?;
+            let executable_tool_names = prepared_request.executable_tool_names.clone();
+            let allowed_tool_names = prepared_request.allowed_tool_names.clone();
 
+            let resp = prepared_request
+                .builder
+                .send()
+                .instrument(chat_span.clone())
+                .await?;
+
+            completion_calls.push(CompletionCall::from_reported_usage(
+                completion_call_index,
+                resp.usage,
+            ));
+            completion_call_index += 1;
             usage += resp.usage;
+
+            let tool_calls = resp
+                .choice
+                .iter()
+                .filter(|choice| matches!(choice, AssistantContent::ToolCall(_)))
+                .collect::<Vec<_>>();
+
+            // Some providers normalize textless terminal turns into a single empty text item
+            // because the generic completion response cannot represent an empty choice. Treat
+            // that sentinel as "no assistant output" so it does not pollute returned history.
+            let assistant_response_message =
+                (!is_empty_assistant_turn(&resp.choice)).then(|| Message::Assistant {
+                    id: resp.message_id.clone(),
+                    content: resp.choice.clone(),
+                });
+
+            if !tool_calls.is_empty() {
+                let mut diagnostic_messages = new_messages.clone();
+                if let Some(message) = assistant_response_message.clone() {
+                    diagnostic_messages.push(message);
+                }
+
+                for choice in &tool_calls {
+                    if let AssistantContent::ToolCall(tool_call) = choice {
+                        validate_tool_call_name(
+                            &tool_call.function.name,
+                            &executable_tool_names,
+                            &allowed_tool_names,
+                            build_full_history(
+                                chat_history.as_deref(),
+                                diagnostic_messages.clone(),
+                            ),
+                        )?;
+                    }
+                }
+            }
 
             if let Some(ref hook) = self.hook
                 && let HookAction::Terminate { reason } =
@@ -498,33 +654,12 @@ where
                 ));
             }
 
-            let (tool_calls, texts): (Vec<_>, Vec<_>) = resp
-                .choice
-                .iter()
-                .partition(|choice| matches!(choice, AssistantContent::ToolCall(_)));
-
-            // Some providers normalize textless terminal turns into a single empty text item
-            // because the generic completion response cannot represent an empty choice. Treat
-            // that sentinel as "no assistant output" so it does not pollute returned history.
-            if !is_empty_assistant_turn(&resp.choice) {
-                new_messages.push(Message::Assistant {
-                    id: resp.message_id.clone(),
-                    content: resp.choice.clone(),
-                });
+            if let Some(message) = assistant_response_message {
+                new_messages.push(message);
             }
 
             if tool_calls.is_empty() {
-                let merged_texts = texts
-                    .into_iter()
-                    .filter_map(|content| {
-                        if let AssistantContent::Text(text) = content {
-                            Some(text.text.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                let merged_texts = assistant_text_from_choice(&resp.choice);
 
                 if self.max_turns > 1 {
                     tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
@@ -541,6 +676,10 @@ where
                     "gen_ai.usage.cache_creation.input_tokens",
                     usage.cache_creation_input_tokens,
                 );
+                agent_span.record(
+                    "gen_ai.usage.tool_use_prompt_tokens",
+                    usage.tool_use_prompt_tokens,
+                );
                 agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 
                 if let Some((memory, id)) = memory_handle.as_ref()
@@ -553,7 +692,9 @@ where
                     );
                 }
 
-                return Ok(PromptResponse::new(merged_texts, usage).with_messages(new_messages));
+                return Ok(PromptResponse::new(merged_texts, usage)
+                    .with_messages(new_messages)
+                    .with_completion_calls(completion_calls));
             }
 
             let hook = self.hook.clone();
@@ -884,7 +1025,8 @@ where
         }
 
         let parsed: T = serde_json::from_str(&response.output)?;
-        Ok(TypedPromptResponse::new(parsed, response.usage))
+        Ok(TypedPromptResponse::new(parsed, response.usage)
+            .with_completion_calls(response.completion_calls))
     }
 }
 
@@ -918,18 +1060,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::TypedPromptResponse;
+    use super::{CompletionCall, PromptResponse, TypedPromptResponse};
     use crate::{
-        agent::AgentBuilder,
-        completion::{
-            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            Usage,
+        agent::{
+            AgentBuilder,
+            prompt_request::hooks::{HookAction, PromptHook, ToolCallHookAction},
         },
-        message::UserContent,
+        completion::{
+            AssistantContent, CompletionError, CompletionModel, CompletionRequest, Message, Prompt,
+            PromptError, TypedPrompt, Usage,
+        },
+        message::{Text, ToolChoice, UserContent},
         test_utils::{
-            AppendFailingMemory, CountingMemory, FailingMemory, MockCompletionModel, MockTurn,
+            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
+            MockSubtractTool, MockTurn,
         },
     };
+    use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
 
@@ -943,6 +1090,48 @@ mod tests {
         value: String,
     }
 
+    #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
+    struct TypedAnswer {
+        value: String,
+    }
+
+    #[derive(Clone)]
+    struct PanicOnUnknownToolHook;
+
+    impl PromptHook<MockCompletionModel> for PanicOnUnknownToolHook {
+        fn on_completion_response(
+            &self,
+            _prompt: &Message,
+            _response: &crate::completion::CompletionResponse<
+                <MockCompletionModel as CompletionModel>::Response,
+            >,
+        ) -> impl std::future::Future<Output = HookAction> + Send {
+            async { panic!("unknown tool response should fail before response hooks run") }
+        }
+
+        fn on_tool_call(
+            &self,
+            _tool_name: &str,
+            _tool_call_id: Option<String>,
+            _internal_call_id: &str,
+            _args: &str,
+        ) -> impl std::future::Future<Output = ToolCallHookAction> + Send {
+            async { panic!("unknown tool call should fail before tool hooks run") }
+        }
+    }
+
+    fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+        Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: input_tokens + output_tokens,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        }
+    }
+
     #[test]
     fn typed_prompt_response_serializes_with_serialize_only_output() {
         let response = TypedPromptResponse::new(
@@ -953,6 +1142,7 @@ mod tests {
                 total_tokens: 3,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             },
         );
@@ -972,6 +1162,99 @@ mod tests {
         assert_eq!(response.usage.input_tokens, 1);
         assert_eq!(response.usage.output_tokens, 2);
         assert_eq!(response.usage.total_tokens, 3);
+    }
+
+    #[test]
+    fn prompt_response_serializes_completion_calls_with_missing_usage() {
+        let reported_usage = usage(3, 4);
+        let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
+            CompletionCall::new(0, None),
+            CompletionCall::new(1, Some(reported_usage)),
+        ]);
+
+        let value = serde_json::to_value(&response).expect("serialize prompt response");
+
+        assert_eq!(
+            value.get("completion_calls"),
+            Some(&json!([
+                {
+                    "call_index": 0,
+                    "usage": null,
+                },
+                {
+                    "call_index": 1,
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "total_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
+                }
+            ]))
+        );
+
+        let response: PromptResponse =
+            serde_json::from_value(value).expect("deserialize prompt response");
+        assert_eq!(
+            response.completion_calls(),
+            &[
+                CompletionCall::new(0, None),
+                CompletionCall::new(1, Some(reported_usage))
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn prompt_response_records_completion_call_without_reported_usage() {
+        let model = MockCompletionModel::new([MockTurn::text("ok")]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("say ok")
+            .extended_details()
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(response.output, "ok");
+        assert_eq!(response.usage, Usage::new());
+        assert_eq!(response.completion_calls(), &[CompletionCall::new(0, None)]);
+    }
+
+    #[tokio::test]
+    async fn typed_prompt_response_preserves_completion_calls() {
+        let call_usage = Usage {
+            input_tokens: 4,
+            output_tokens: 6,
+            total_tokens: 10,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        };
+        let model =
+            MockCompletionModel::new([MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage)]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt_typed::<TypedAnswer>("return typed json")
+            .extended_details()
+            .await
+            .expect("typed prompt should succeed");
+
+        assert_eq!(
+            response.output,
+            TypedAnswer {
+                value: "ok".to_string()
+            }
+        );
+        assert_eq!(response.usage, call_usage);
+        assert_eq!(
+            response.completion_calls(),
+            &[CompletionCall::new(0, Some(call_usage))]
+        );
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) {
@@ -1014,29 +1297,209 @@ mod tests {
         ));
     }
 
+    fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
+        history.iter().any(|message| {
+            matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.function.name == tool_name
+                    ))
+            )
+        })
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_call_fails_before_non_streaming_second_request() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let err = agent
+            .prompt("use the tool")
+            .with_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .await
+            .expect_err("unknown model-emitted tool should fail");
+
+        match err {
+            PromptError::UnknownToolCall {
+                tool_name,
+                available_tools,
+                allowed_tools,
+                chat_history,
+            } => {
+                assert_eq!(tool_name, "default_api");
+                assert_eq!(available_tools, vec!["add".to_string()]);
+                assert_eq!(allowed_tools, vec!["add".to_string()]);
+                assert!(history_contains_tool_call(&chat_history, "default_api"));
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn disallowed_specific_tool_call_fails_before_non_streaming_second_request() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "subtract", json!({"x": 3, "y": 1})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let err = agent
+            .prompt("use the allowed tool")
+            .with_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .await
+            .expect_err("disallowed model-emitted tool should fail");
+
+        match err {
+            PromptError::UnknownToolCall {
+                tool_name,
+                available_tools,
+                allowed_tools,
+                chat_history,
+            } => {
+                assert_eq!(tool_name, "subtract");
+                assert_eq!(
+                    available_tools,
+                    vec!["add".to_string(), "subtract".to_string()]
+                );
+                assert_eq!(allowed_tools, vec!["add".to_string()]);
+                assert!(history_contains_tool_call(&chat_history, "subtract"));
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_rejects_non_streaming_tool_call() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let err = agent
+            .prompt("do not use tools")
+            .with_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .await
+            .expect_err("ToolChoice::None should reject returned tool calls");
+
+        match err {
+            PromptError::UnknownToolCall {
+                tool_name,
+                available_tools,
+                allowed_tools,
+                chat_history,
+            } => {
+                assert_eq!(tool_name, "add");
+                assert_eq!(available_tools, vec!["add".to_string()]);
+                assert!(allowed_tools.is_empty());
+                assert!(history_contains_tool_call(&chat_history, "add"));
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_request() {
+        let model = MockCompletionModel::text("should not be requested");
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["missing".to_string()],
+            })
+            .build();
+
+        let err = agent
+            .prompt("use the missing tool")
+            .await
+            .expect_err("invalid ToolChoice::Specific should fail before provider request");
+
+        match err {
+            PromptError::CompletionError(CompletionError::RequestError(err)) => {
+                let msg = err.to_string();
+                assert!(msg.contains("missing"), "got: {msg}");
+                assert!(msg.contains("add"), "got: {msg}");
+            }
+            other => panic!("expected CompletionError::RequestError, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn allowed_specific_tool_call_executes_normally() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
+            MockTurn::text("done"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let response = agent
+            .prompt("use the allowed tool")
+            .max_turns(3)
+            .await
+            .expect("allowed specific tool should execute");
+
+        assert_eq!(response, "done");
+        assert_eq!(recorded.request_count(), 2);
+    }
+
     #[tokio::test]
     async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
+        let first_call_usage = Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        };
+        let second_call_usage = Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            total_tokens: 2,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        };
         let model = MockCompletionModel::new([
-            MockTurn::tool_call("tool_call_1", "missing_tool", json!({"input": "value"}))
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
                 .with_call_id("call_1")
-                .with_usage(Usage {
-                    input_tokens: 1,
-                    output_tokens: 1,
-                    total_tokens: 2,
-                    cached_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                    reasoning_tokens: 0,
-                }),
-            MockTurn::text("").with_usage(Usage {
-                input_tokens: 1,
-                output_tokens: 1,
-                total_tokens: 2,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                reasoning_tokens: 0,
-            }),
+                .with_usage(first_call_usage),
+            MockTurn::text("").with_usage(second_call_usage),
         ]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt("do tool work")
@@ -1054,8 +1517,16 @@ mod tests {
                 total_tokens: 4,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             }
+        );
+        assert_eq!(
+            response.completion_calls(),
+            &[
+                CompletionCall::new(0, Some(first_call_usage)),
+                CompletionCall::new(1, Some(second_call_usage))
+            ]
         );
 
         let history = response
@@ -1101,6 +1572,67 @@ mod tests {
         let requests = agent.model.requests();
         assert_eq!(requests.len(), 2);
         validate_follow_up_tool_history(&requests[1]);
+    }
+
+    #[tokio::test]
+    async fn prompt_request_concatenates_text_blocks_without_inserted_newlines() {
+        let model = MockCompletionModel::new([MockTurn::from_contents([
+            AssistantContent::Text(Text::new("According to the document, ")),
+            AssistantContent::Text(Text::new("the grass is green")),
+            AssistantContent::Text(Text::new(" and the sky is blue.")),
+        ])
+        .expect("mock response should contain text blocks")]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("answer with cited spans")
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(
+            response,
+            "According to the document, the grass is green and the sky is blue."
+        );
+    }
+
+    #[tokio::test]
+    async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
+        let metadata = json!({
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was born in 1916.",
+                "url": "https://example.com/shannon",
+                "title": null,
+                "encrypted_index": "encrypted-reference"
+            }]
+        });
+        let model =
+            MockCompletionModel::new([MockTurn::from_content(AssistantContent::Text(Text {
+                text: String::new(),
+                additional_params: Some(metadata.clone()),
+            }))]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("answer with cited metadata")
+            .extended_details()
+            .await
+            .expect("metadata-only text turn should succeed");
+
+        assert!(response.output.is_empty());
+        let history = response
+            .messages
+            .expect("extended response should include history");
+        assert!(history.iter().any(|message| matches!(
+            message,
+            Message::Assistant { content, .. }
+                if matches!(
+                    content.first(),
+                    AssistantContent::Text(text)
+                        if text.text.is_empty()
+                            && text.additional_params.as_ref() == Some(&metadata)
+                )
+        )));
     }
 
     // ----- Conversation memory integration tests -----
