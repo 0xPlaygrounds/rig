@@ -817,7 +817,7 @@ where
                     match resolve_invalid_tool_call::<M, I>(
                         self.invalid_tool_call_hook.as_ref(),
                         &emitted_tool_name,
-                        tool_call.call_id.clone(),
+                        Some(tool_call.id.clone()),
                         None,
                         Some(args),
                         &executable_tool_names,
@@ -1367,7 +1367,7 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use serde_json::json;
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     };
 
@@ -1465,6 +1465,33 @@ mod tests {
             _context: &InvalidToolCallContext,
         ) -> InvalidToolCallHookAction {
             InvalidToolCallHookAction::skip("default_api is not available")
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingInvalidToolCallHook {
+        contexts: Arc<Mutex<Vec<InvalidToolCallContext>>>,
+    }
+
+    impl RecordingInvalidToolCallHook {
+        fn observed(&self) -> Vec<InvalidToolCallContext> {
+            self.contexts
+                .lock()
+                .expect("invalid tool context records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl InvalidToolCallHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+        async fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> InvalidToolCallHookAction {
+            self.contexts
+                .lock()
+                .expect("invalid tool context records mutex was poisoned")
+                .push(context.clone());
+            InvalidToolCallHookAction::fail()
         }
     }
 
@@ -1711,6 +1738,35 @@ mod tests {
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
+        let invalid_hook = RecordingInvalidToolCallHook::default();
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 1, "y": 2}))
+                .with_call_id("provider_call_1"),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let err = agent
+            .prompt("use the tool")
+            .with_invalid_tool_call_hook(invalid_hook.clone())
+            .max_turns(3)
+            .await
+            .expect_err("invalid tool should fail");
+
+        assert!(matches!(err, PromptError::UnknownToolCall { .. }));
+        assert_eq!(recorded.request_count(), 1);
+        let contexts = invalid_hook.observed();
+        assert_eq!(contexts.len(), 1);
+        let context = &contexts[0];
+        assert_eq!(context.tool_name, "default_api");
+        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        assert_eq!(context.internal_call_id, None);
+        assert!(!context.is_streaming);
     }
 
     #[tokio::test]

@@ -925,7 +925,7 @@ where
                                 match resolve_invalid_tool_call::<M, I>(
                                     self.invalid_tool_call_hook.as_ref(),
                                     &emitted_tool_name,
-                                    tool_call.call_id.clone(),
+                                    Some(tool_call.id.clone()),
                                     Some(internal_call_id.clone()),
                                     Some(args),
                                     &executable_tool_names,
@@ -2499,6 +2499,52 @@ mod tests {
         assert!(saw_tool_result);
         assert_eq!(final_response_text.as_deref(), Some("done"));
         assert_eq!(recorded.request_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_id() {
+        let invalid_hook = RecordingInvalidToolCallHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "default_api",
+                    serde_json::json!({"x": 2, "y": 3}),
+                )
+                .with_call_id("provider_call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(invalid_hook.clone())
+            .multi_turn(3)
+            .await;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                error = Some(err);
+                break;
+            }
+        }
+
+        assert!(error.is_some(), "invalid tool should fail");
+        assert_eq!(recorded.request_count(), 1);
+        let contexts = invalid_hook.observed();
+        assert_eq!(contexts.len(), 1);
+        let context = &contexts[0];
+        assert_eq!(context.tool_name, "default_api");
+        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        assert!(context.internal_call_id.is_some());
+        assert!(context.is_streaming);
     }
 
     #[tokio::test]
