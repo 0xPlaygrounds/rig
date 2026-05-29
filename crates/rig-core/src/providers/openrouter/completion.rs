@@ -701,27 +701,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     }
                 }
 
-                // Generated images arrive out-of-band from `content`.
-                // Base64 data URIs become inline image blocks; plain
-                // URLs are carried through as URL-sourced images.
-                for img in images {
-                    let url = &img.image_url.url;
-                    let block = if let Some((mime, b64)) = parse_data_uri(url) {
-                        completion::AssistantContent::image_base64(
-                            b64.to_string(),
-                            message::ImageMediaType::from_mime_type(mime),
-                            None,
-                        )
-                    } else {
-                        completion::AssistantContent::Image(message::Image {
-                            data: message::DocumentSourceKind::Url(url.clone()),
-                            media_type: None,
-                            detail: None,
-                            additional_params: None,
-                        })
-                    };
-                    content.push(block);
-                }
+                content.extend(images.iter().map(response_image_to_assistant_content));
 
                 Ok(content)
             }
@@ -996,10 +976,59 @@ pub struct ResponseImage {
     pub image_url: ImageUrl,
 }
 
+const OPENROUTER_RESPONSE_ONLY_KEY: &str = "response_only";
+const OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY: &str = "source";
+const OPENROUTER_ASSISTANT_IMAGES_SOURCE: &str = "assistant.images";
+
 /// Split a `data:<mime>;base64,<payload>` URI into `(mime, payload)`.
 /// Returns `None` for plain URLs or non-base64 data URIs.
 fn parse_data_uri(url: &str) -> Option<(&str, &str)> {
     url.strip_prefix("data:")?.split_once(";base64,")
+}
+
+fn openrouter_response_image_params() -> serde_json::Value {
+    serde_json::json!({
+        "openrouter": {
+            OPENROUTER_RESPONSE_ONLY_KEY: true,
+            OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY: OPENROUTER_ASSISTANT_IMAGES_SOURCE,
+        }
+    })
+}
+
+fn response_image_to_assistant_content(image: &ResponseImage) -> completion::AssistantContent {
+    let url = &image.image_url.url;
+    if let Some((mime, b64)) = parse_data_uri(url) {
+        completion::AssistantContent::Image(message::Image {
+            data: message::DocumentSourceKind::Base64(b64.to_string()),
+            media_type: message::ImageMediaType::from_mime_type(mime),
+            detail: None,
+            additional_params: Some(openrouter_response_image_params()),
+        })
+    } else {
+        completion::AssistantContent::Image(message::Image {
+            data: message::DocumentSourceKind::Url(url.clone()),
+            media_type: None,
+            detail: None,
+            additional_params: Some(openrouter_response_image_params()),
+        })
+    }
+}
+
+fn is_openrouter_response_image(image: &message::Image) -> bool {
+    image
+        .additional_params
+        .as_ref()
+        .and_then(|params| params.get("openrouter"))
+        .is_some_and(|params| {
+            params
+                .get(OPENROUTER_RESPONSE_ONLY_KEY)
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+                && params
+                    .get(OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY)
+                    .and_then(|value| value.as_str())
+                    == Some(OPENROUTER_ASSISTANT_IMAGES_SOURCE)
+        })
 }
 
 /// Video URL content structure for OpenRouter video support
@@ -1571,16 +1600,27 @@ impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
                         }
                     }
                 }
+                message::AssistantContent::Image(image) if is_openrouter_response_image(&image) => {
+                    // OpenRouter generated images are response artifacts. They remain
+                    // visible in Rig history, but OpenRouter does not define them as
+                    // replayable assistant request content.
+                }
                 message::AssistantContent::Image(_) => {
                     return Err(Self::Error::ConversionError(
-                        "OpenRouter currently doesn't support images.".into(),
+                        "OpenRouter does not support assistant image content in request history; pass images as user image inputs instead".into(),
                     ));
                 }
             }
         }
 
-        // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-        //  so either `content` or `tool_calls` will have some content.
+        if text_content.is_empty()
+            && tool_calls.is_empty()
+            && reasoning.is_none()
+            && reasoning_details.is_empty()
+        {
+            return Ok(vec![]);
+        }
+
         Ok(vec![Message::Assistant {
             content: text_content
                 .into_iter()
@@ -3925,10 +3965,18 @@ mod tests {
             completion::AssistantContent::Image(message::Image {
                 data: message::DocumentSourceKind::Base64(b64),
                 media_type: Some(message::ImageMediaType::PNG),
-                additional_params: None,
+                additional_params: Some(_),
                 ..
             }) if b64 == "iVBORw0KGgo="
         )));
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                completion::AssistantContent::Image(image)
+                    if is_openrouter_response_image(image)
+            )),
+            "generated images should be marked as OpenRouter response-only artifacts"
+        );
     }
 
     #[test]
@@ -3962,10 +4010,107 @@ mod tests {
             completion::AssistantContent::Image(message::Image {
                 data: message::DocumentSourceKind::Url(url),
                 media_type: None,
-                additional_params: None,
+                additional_params: Some(_),
                 ..
             }) if url == "https://example.com/generated.png"
         )));
+        assert!(
+            items.iter().any(|item| matches!(
+                item,
+                completion::AssistantContent::Image(image)
+                    if is_openrouter_response_image(image)
+            )),
+            "generated URL images should be marked as OpenRouter response-only artifacts"
+        );
+    }
+
+    #[test]
+    fn test_generated_images_do_not_break_assistant_history_conversion() {
+        let generated_image = response_image_to_assistant_content(&ResponseImage {
+            image_url: ImageUrl {
+                url: "data:image/png;base64,abc".to_string(),
+                detail: None,
+            },
+        });
+
+        let content = OneOrMany::many(vec![
+            completion::AssistantContent::text("Here is your image."),
+            generated_image,
+        ])
+        .unwrap();
+        let messages = Vec::<Message>::try_from(content).unwrap();
+
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(
+            &messages[0],
+            Message::Assistant { content, .. }
+                if content == &vec![openai::AssistantContent::Text {
+                    text: "Here is your image.".to_string()
+                }]
+        ));
+    }
+
+    #[test]
+    fn test_image_only_assistant_history_is_omitted_for_openrouter() {
+        let generated_image = response_image_to_assistant_content(&ResponseImage {
+            image_url: ImageUrl {
+                url: "data:image/png;base64,abc".to_string(),
+                detail: None,
+            },
+        });
+
+        let messages = Vec::<Message>::try_from(OneOrMany::one(generated_image)).unwrap();
+
+        assert!(
+            messages.is_empty(),
+            "response-only generated image turns should not be replayed as assistant content"
+        );
+    }
+
+    #[test]
+    fn test_unmarked_assistant_image_history_errors_for_openrouter() {
+        let image = completion::AssistantContent::image_base64(
+            "abc",
+            Some(message::ImageMediaType::PNG),
+            None,
+        );
+
+        let err = Vec::<Message>::try_from(OneOrMany::one(image)).unwrap_err();
+
+        match err {
+            message::MessageError::ConversionError(message) => assert!(
+                message.contains("OpenRouter does not support assistant image content"),
+                "unexpected error: {message}"
+            ),
+        }
+    }
+
+    #[test]
+    fn test_mixed_text_and_generated_image_replays_text_only_for_openrouter() {
+        let generated_image = response_image_to_assistant_content(&ResponseImage {
+            image_url: ImageUrl {
+                url: "https://example.com/generated.png".to_string(),
+                detail: None,
+            },
+        });
+
+        let messages = Vec::<Message>::try_from(
+            OneOrMany::many(vec![
+                completion::AssistantContent::text("Keep this text."),
+                generated_image,
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+
+        let serialized = serde_json::to_value(&messages).unwrap();
+        assert_eq!(
+            serialized,
+            json!([{
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Keep this text."}]
+            }])
+        );
     }
 
     #[test]
