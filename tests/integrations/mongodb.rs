@@ -42,6 +42,14 @@ const COLLECTION_NAME: &str = "words";
 const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
+const EMBEDDING_DIMENSIONS: usize = 1536;
+const VECTOR_SEARCH_MAX_ATTEMPTS: usize = 5;
+
+fn axis_embedding(axis: usize) -> Vec<f64> {
+    let mut embedding = vec![0.0; EMBEDDING_DIMENSIONS];
+    embedding[axis] = 1.0;
+    embedding
+}
 
 fn skip_if_docker_unavailable(test_name: &str) -> bool {
     let docker_socket = std::path::Path::new("/var/run/docker.sock");
@@ -81,17 +89,17 @@ async fn vector_search_test() {
                 "data": [
                   {
                     "object": "embedding",
-                    "embedding": vec![0.1; 1536],
+                    "embedding": axis_embedding(0),
                     "index": 0
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.2; 1536],
+                    "embedding": axis_embedding(1),
                     "index": 1
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.0023064255; 1536],
+                    "embedding": axis_embedding(2),
                     "index": 2
                   }
                 ],
@@ -120,7 +128,7 @@ async fn vector_search_test() {
                     "data": [
                       {
                         "object": "embedding",
-                        "embedding": vec![0.0023064254; 1536],
+                        "embedding": axis_embedding(2),
                         "index": 0
                       }
                     ],
@@ -164,9 +172,6 @@ async fn vector_search_test() {
 
     collection.insert_many(embeddings).await.unwrap();
 
-    // Wait for the new documents to be indexed
-    sleep(Duration::from_secs(5)).await;
-
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
@@ -185,7 +190,38 @@ async fn vector_search_test() {
         .samples(1)
         .build();
 
-    let results = index.top_n::<serde_json::Value>(req).await.unwrap();
+    let mut observed_results = Vec::new();
+    let mut results = Vec::new();
+    for attempt in 1..=VECTOR_SEARCH_MAX_ATTEMPTS {
+        match index.top_n::<serde_json::Value>(req.clone()).await {
+            Ok(search_results) => {
+                observed_results = search_results
+                    .iter()
+                    .map(|(_, _, value)| value.clone())
+                    .collect();
+
+                if search_results
+                    .first()
+                    .and_then(|(_, _, value)| value.get("_id"))
+                    == Some(&json!("doc2"))
+                {
+                    results = search_results;
+                    break;
+                }
+            }
+            Err(error) if attempt < VECTOR_SEARCH_MAX_ATTEMPTS => {
+                eprintln!("Waiting for MongoDB vector search results: {error}");
+            }
+            Err(error) => panic!("MongoDB vector search failed after {attempt} attempts: {error}"),
+        }
+
+        sleep(Duration::from_secs(2)).await;
+    }
+
+    assert!(
+        !results.is_empty(),
+        "expected doc2 to be the top vector search result after {VECTOR_SEARCH_MAX_ATTEMPTS} attempts; observed results: {observed_results:?}"
+    );
 
     let (score, _, value) = &results.first().unwrap();
 
