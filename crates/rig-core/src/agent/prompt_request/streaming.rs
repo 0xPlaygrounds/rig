@@ -948,8 +948,23 @@ where
                                     }
                                     InvalidToolCallResolution::Skip(reason) => {
                                         tool_calls.push(AssistantContent::ToolCall(tool_call.clone()));
-                                        tool_results.push((tool_call.id.clone(), tool_call.call_id.clone(), reason));
+                                        tool_results.push((
+                                            tool_call.id.clone(),
+                                            tool_call.call_id.clone(),
+                                            reason.clone(),
+                                        ));
+                                        let tool_result = ToolResult {
+                                            id: tool_call.id,
+                                            call_id: tool_call.call_id,
+                                            content: ToolResultContent::from_tool_output(reason),
+                                        };
                                         saw_tool_call_this_turn = true;
+                                        yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                            StreamedUserContent::ToolResult {
+                                                tool_result,
+                                                internal_call_id,
+                                            },
+                                        ));
                                         continue;
                                     }
                                 }
@@ -2017,6 +2032,22 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct SkipDefaultApiHook;
+
+    impl InvalidToolCallHook<MockCompletionModel> for SkipDefaultApiHook {
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            let tool_name = context.tool_name.clone();
+            async move {
+                assert_eq!(tool_name, "default_api");
+                InvalidToolCallHookAction::skip("default_api was skipped")
+            }
+        }
+    }
+
     #[derive(Clone, Default)]
     struct RecordingToolCallDeltaHook {
         deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
@@ -2296,6 +2327,88 @@ mod tests {
         assert!(saw_tool_result);
         assert_eq!(final_response_text.as_deref(), Some("done"));
         assert_eq!(recorded.request_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "default_api",
+                    serde_json::json!({"x": 2, "y": 3}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("continued"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .await;
+        let mut skipped_tool_result = None;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    tool_result,
+                    internal_call_id,
+                })) => {
+                    assert!(!internal_call_id.is_empty());
+                    skipped_tool_result = Some(tool_result);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response_text = Some(response.response().to_string());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let skipped_tool_result =
+            skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
+        assert_eq!(skipped_tool_result.id, "tool_call_1");
+        assert_eq!(skipped_tool_result.call_id.as_deref(), Some("call_1"));
+        assert!(skipped_tool_result.content.iter().any(|content| matches!(
+            content,
+            ToolResultContent::Text(text) if text.text == "default_api was skipped"
+        )));
+        assert_eq!(final_response_text.as_deref(), Some("continued"));
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        assert!(matches!(
+            follow_up_history.get(2),
+            Some(Message::User { content })
+                if content.iter().any(|item| matches!(
+                    item,
+                    UserContent::ToolResult(result)
+                        if result.id == "tool_call_1"
+                            && result.content.iter().any(|content| matches!(
+                                content,
+                                ToolResultContent::Text(text)
+                                    if text.text == "default_api was skipped"
+                            ))
+                ))
+        ));
     }
 
     #[tokio::test]
