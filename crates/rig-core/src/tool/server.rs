@@ -297,6 +297,36 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_toolserver_append_toolset_matches_add_tool() {
+        let mut via_add_tool = {
+            let handle = ToolServer::new().run();
+            handle.add_tool(MockAddTool).await.unwrap();
+            handle.add_tool(MockSubtractTool).await.unwrap();
+            handle.get_tool_defs(None).await.unwrap()
+        };
+        via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let mut via_append_toolset = {
+            let handle = ToolServer::new().run();
+            let mut toolset = ToolSet::default();
+            toolset.add_tool(MockAddTool);
+            toolset.add_tool(MockSubtractTool);
+            handle.append_toolset(toolset).await.unwrap();
+            handle.get_tool_defs(None).await.unwrap()
+        };
+        via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
+
+        assert_eq!(via_add_tool.len(), via_append_toolset.len());
+        assert!(
+            via_add_tool
+                .iter()
+                .zip(via_append_toolset.iter())
+                .all(|(a, b)| a.name == b.name),
+            "append_toolset must surface the same LLM-visible tools as add_tool",
+        );
+    }
+
+    #[tokio::test]
     pub async fn test_toolserver_dynamic_tools() {
         // Create a toolset with both tools
         let mut toolset = ToolSet::default();
