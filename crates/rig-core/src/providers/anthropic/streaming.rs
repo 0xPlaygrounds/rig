@@ -6,9 +6,9 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    AnthropicCompatibleProvider, CacheControl, Content, GenericCompletionModel, Message,
-    SystemContent, ToolChoice, ToolDefinition, Usage, apply_cache_control,
-    split_system_messages_from_history,
+    AnthropicCompatibleProvider, Content, GenericCompletionModel, Message, SystemContent,
+    ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
+    resolve_top_level_cache_control, split_system_messages_from_history,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -232,10 +232,25 @@ where
             };
         system.extend(history_system);
 
-        // Apply cache control breakpoints only if prompt_caching is enabled
-        if self.prompt_caching {
-            apply_cache_control(&mut system, &mut messages);
-        }
+        let mut additional_params_payload = completion_request
+            .additional_params
+            .take()
+            .unwrap_or(Value::Null);
+        let top_level_cache_control = resolve_top_level_cache_control(
+            self.automatic_caching,
+            self.automatic_caching_ttl.clone(),
+            &mut additional_params_payload,
+        )?;
+        let mut tools =
+            build_tool_definitions(completion_request.tools, &mut additional_params_payload)?;
+
+        apply_prompt_cache_control(
+            &mut system,
+            &mut messages,
+            &mut tools,
+            self.prompt_caching,
+            top_level_cache_control.as_ref(),
+        )?;
 
         let mut body = json!({
             "model": request_model,
@@ -246,13 +261,10 @@ where
 
         // Automatic caching: one top-level field; the API moves the breakpoint automatically.
         // No beta header is required.
-        if self.automatic_caching {
-            let cc = CacheControl::Ephemeral {
-                ttl: self.automatic_caching_ttl.clone(),
-            };
+        if let Some(cache_control) = top_level_cache_control {
             merge_inplace(
                 &mut body,
-                json!({ "cache_control": serde_json::to_value(&cc)? }),
+                json!({ "cache_control": serde_json::to_value(&cache_control)? }),
             );
         }
 
@@ -264,25 +276,6 @@ where
         if let Some(temperature) = completion_request.temperature {
             merge_inplace(&mut body, json!({ "temperature": temperature }));
         }
-
-        let mut additional_params_payload = completion_request
-            .additional_params
-            .take()
-            .unwrap_or(Value::Null);
-        let mut additional_tools =
-            extract_tools_from_additional_params(&mut additional_params_payload)?;
-
-        let mut tools = completion_request
-            .tools
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: Some(tool.description),
-                input_schema: tool.parameters,
-            })
-            .map(serde_json::to_value)
-            .collect::<Result<Vec<_>, _>>()?;
-        tools.append(&mut additional_tools);
 
         if !tools.is_empty() {
             merge_inplace(
@@ -401,22 +394,6 @@ where
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
-}
-
-fn extract_tools_from_additional_params(
-    additional_params: &mut Value,
-) -> Result<Vec<Value>, CompletionError> {
-    if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.remove("tools")
-    {
-        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
-                format!("Invalid Anthropic `additional_params.tools` payload: {err}").into(),
-            )
-        });
-    }
-
-    Ok(Vec::new())
 }
 
 fn handle_event(
@@ -605,6 +582,7 @@ fn handle_event(
 
 #[cfg(test)]
 mod tests {
+    use super::super::completion::{CacheControl, CacheTtl};
     use super::*;
     use async_stream::stream;
     use futures::StreamExt;
@@ -626,6 +604,78 @@ mod tests {
         > + 'static,
     ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
         Box::pin(stream)
+    }
+
+    #[test]
+    fn test_streaming_tool_build_marks_final_combined_tool() {
+        let mut additional_params = json!({
+            "tools": [{
+                "name": "provider_tool",
+                "description": "Provider tool",
+                "input_schema": {"type": "object"}
+            }]
+        });
+
+        let mut tools = build_tool_definitions(
+            vec![crate::completion::ToolDefinition {
+                name: "rig_tool".to_string(),
+                description: "Rig tool".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }],
+            &mut additional_params,
+        )
+        .unwrap();
+        let mut system: Vec<SystemContent> = Vec::new();
+        let mut messages: Vec<Message> = Vec::new();
+        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None).unwrap();
+
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["name"], "provider_tool");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
+        let mut additional_params = json!({
+            "cache_control": {"type": "ephemeral", "ttl": "1h"}
+        });
+        let top_level_cache_control =
+            resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
+        let mut tools = build_tool_definitions(
+            vec![crate::completion::ToolDefinition {
+                name: "rig_tool".to_string(),
+                description: "Rig tool".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }],
+            &mut additional_params,
+        )
+        .unwrap();
+        let mut system = vec![SystemContent::Text {
+            text: "System prompt".to_string(),
+            cache_control: None,
+        }];
+        let mut messages: Vec<Message> = Vec::new();
+
+        apply_prompt_cache_control(
+            &mut system,
+            &mut messages,
+            &mut tools,
+            true,
+            top_level_cache_control.as_ref(),
+        )
+        .unwrap();
+
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        match &system[0] {
+            SystemContent::Text {
+                cache_control: Some(CacheControl::Ephemeral { ttl }),
+                ..
+            } => assert_eq!(ttl.as_ref(), Some(&CacheTtl::OneHour)),
+            other => panic!("expected system cache_control, got {other:?}"),
+        }
+        assert!(additional_params.get("cache_control").is_none());
     }
 
     fn handle_event(

@@ -116,6 +116,18 @@ pub enum PromptError {
         chat_history: Vec<Message>,
         reason: String,
     },
+
+    /// The model emitted a structured tool call for a tool Rig did not allow
+    /// for the current turn.
+    #[error(
+        "UnknownToolCall: model attempted to call unknown or disallowed tool `{tool_name}`. Available tools: {available_tools:?}. Allowed tools for this turn: {allowed_tools:?}"
+    )]
+    UnknownToolCall {
+        tool_name: String,
+        available_tools: Vec<String>,
+        allowed_tools: Vec<String>,
+        chat_history: Box<Vec<Message>>,
+    },
 }
 
 /// Surface [`crate::memory::ConversationMemory`] failures through the existing

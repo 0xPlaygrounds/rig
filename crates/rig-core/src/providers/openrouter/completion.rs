@@ -739,14 +739,21 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+            .map(|usage| {
+                let (cached_input, cache_creation) = usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
+                    .unwrap_or((0, 0));
+                completion::Usage {
+                    input_tokens: usage.prompt_tokens as u64,
+                    output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
+                    total_tokens: usage.total_tokens as u64,
+                    cached_input_tokens: cached_input,
+                    cache_creation_input_tokens: cache_creation,
+                    tool_use_prompt_tokens: 0,
+                    reasoning_tokens: 0,
+                }
             })
             .unwrap_or_default();
 
@@ -1317,6 +1324,7 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
+    #[serde(alias = "model")]
     Assistant {
         #[serde(
             default,
@@ -1647,6 +1655,75 @@ pub enum ToolChoiceFunctionKind {
     Function { name: String },
 }
 
+/// Apply explicit prompt-caching markers to an already-serialized OpenRouter
+/// request body.
+///
+/// Finds the first system message in `messages` and converts its `content`
+/// to a structured text block with `cache_control: {"type": "ephemeral"}`.
+/// This tells OpenRouter providers that support explicit `cache_control`
+/// breakpoints to cache the system prompt so subsequent turns that share the
+/// same prefix can be billed at the cache-hit rate.
+///
+/// This is intended for models and providers that support explicit
+/// `cache_control` breakpoints.
+pub(super) fn apply_prompt_caching(body: &mut serde_json::Value) {
+    let Some(obj) = body.as_object_mut() else {
+        return;
+    };
+    let Some(messages) = obj.get_mut("messages").and_then(|v| v.as_array_mut()) else {
+        return;
+    };
+
+    let Some(system_msg) = messages
+        .iter_mut()
+        .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("system"))
+    else {
+        return;
+    };
+
+    match system_msg.get("content").cloned() {
+        Some(serde_json::Value::String(s)) => {
+            if let Some(obj) = system_msg.as_object_mut() {
+                obj.insert(
+                    "content".to_string(),
+                    serde_json::json!([{
+                        "type": "text",
+                        "text": s,
+                        "cache_control": { "type": "ephemeral" }
+                    }]),
+                );
+            }
+        }
+        Some(serde_json::Value::Array(mut arr)) => {
+            // Mark the last block as the cache boundary; all other blocks (including
+            // non-text blocks such as images) are preserved unchanged.
+            if let Some(last) = arr.last_mut()
+                && let Some(obj) = last.as_object_mut()
+            {
+                obj.insert(
+                    "cache_control".to_string(),
+                    serde_json::json!({ "type": "ephemeral" }),
+                );
+            }
+            if let Some(obj) = system_msg.as_object_mut() {
+                obj.insert("content".to_string(), serde_json::Value::Array(arr));
+            }
+        }
+        _ => {}
+    }
+}
+
+pub(super) fn final_request_body(
+    request: &OpenrouterCompletionRequest,
+    prompt_caching: bool,
+) -> Result<serde_json::Value, CompletionError> {
+    let mut body = serde_json::to_value(request)?;
+    if prompt_caching {
+        apply_prompt_caching(&mut body);
+    }
+    Ok(body)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct OpenrouterCompletionRequest {
     model: String,
@@ -1774,6 +1851,13 @@ pub struct CompletionModel<T = reqwest::Client> {
     /// Enable strict mode for tool schemas.
     /// When enabled, tool schemas are sanitized to meet OpenAI's strict mode requirements.
     pub strict_tools: bool,
+    /// Enable explicit prompt caching via OpenRouter.
+    ///
+    /// When true, the outgoing JSON body is post-processed to attach
+    /// `cache_control: {"type": "ephemeral"}` to the system prompt. This is
+    /// intended for models and providers that support explicit cache
+    /// breakpoints.
+    pub prompt_caching: bool,
 }
 
 impl<T> CompletionModel<T> {
@@ -1782,7 +1866,19 @@ impl<T> CompletionModel<T> {
             client,
             model: model.into(),
             strict_tools: false,
+            prompt_caching: false,
         }
+    }
+
+    /// Enable explicit prompt caching for supported OpenRouter models.
+    ///
+    /// Adds `cache_control: {"type": "ephemeral"}` to the system-prompt
+    /// block so subsequent turns that share the same system prefix can be
+    /// billed at the cache-hit rate when the selected model/provider supports
+    /// explicit cache breakpoints.
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
     }
 
     /// Enable strict mode for tool schemas.
@@ -1827,11 +1923,13 @@ where
             strict_tools: self.strict_tools,
         })?;
 
+        let body = final_request_body(&request, self.prompt_caching)?;
+
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
                 "OpenRouter completion request: {}",
-                serde_json::to_string_pretty(&request)?
+                serde_json::to_string_pretty(&body)?
             );
         }
 
@@ -1853,7 +1951,7 @@ where
             tracing::Span::current()
         };
 
-        let body = serde_json::to_vec(&request)?;
+        let body = serde_json::to_vec(&body)?;
 
         let req = self
             .client
@@ -2093,6 +2191,113 @@ mod tests {
         assert_eq!(response.model, "google/gemini-2.5-flash");
         assert_eq!(response.choices.len(), 1);
         assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
+    }
+
+    #[test]
+    fn test_completion_response_maps_cache_token_accounting() {
+        let json = json!({
+            "id": "gen-cache-test",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-3.5-sonnet",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Hi"
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 10,
+                "total_tokens": 510,
+                "prompt_tokens_details": {
+                    "cached_tokens": 400,
+                    "cache_write_tokens": 50
+                }
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(converted.usage.input_tokens, 500);
+        assert_eq!(converted.usage.output_tokens, 10);
+        assert_eq!(converted.usage.cached_input_tokens, 400);
+        assert_eq!(converted.usage.cache_creation_input_tokens, 50);
+    }
+
+    #[test]
+    fn test_completion_response_cache_tokens_absent_defaults_to_zero() {
+        let json = json!({
+            "id": "gen-no-cache",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4o",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "Hi"
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 10,
+                "total_tokens": 110
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(converted.usage.cached_input_tokens, 0);
+        assert_eq!(converted.usage.cache_creation_input_tokens, 0);
+    }
+
+    #[test]
+    fn test_completion_response_deserialization_gemini_model_role() {
+        let json = json!({
+            "id": "gen-BBBBBBBBBB-BBBBBBBBBBBBBBBBBBBB",
+            "provider": "Google",
+            "model": "google/gemini-2.5-pro-exp-03-25:free",
+            "object": "chat.completion",
+            "created": 1743780565u64,
+            "choices": [{
+                "logprobs": null,
+                "finish_reason": "stop",
+                "native_finish_reason": "STOP",
+                "index": 0,
+                "message": {
+                    "role": "model",
+                    "content": "CONTENT",
+                    "refusal": null,
+                    "reasoning": null
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 669,
+                "completion_tokens": 5,
+                "total_tokens": 674
+            }
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().unwrap();
+
+        assert_eq!(
+            converted.raw_response.model,
+            "google/gemini-2.5-pro-exp-03-25:free"
+        );
+        assert!(matches!(
+            converted.choice.first(),
+            completion::AssistantContent::Text(text) if text.text == "CONTENT"
+        ));
     }
 
     #[test]
@@ -3529,6 +3734,162 @@ mod tests {
         }
     }
 
+    fn prompt_caching_completion_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: Some("You are a helpful assistant.".to_string()),
+            chat_history: crate::OneOrMany::one(crate::message::Message::user("Hello")),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn test_final_request_body_applies_prompt_caching_to_converted_completion_request() {
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "anthropic/claude-3.5-sonnet",
+            request: prompt_caching_completion_request(),
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+
+        let body = final_request_body(&request, true).expect("request body should serialize");
+        let system_block = &body["messages"][0]["content"][0];
+
+        assert_eq!(system_block["type"], "text");
+        assert_eq!(system_block["text"], "You are a helpful assistant.");
+        assert_eq!(system_block["cache_control"]["type"], "ephemeral");
+
+        let body = final_request_body(&request, false).expect("request body should serialize");
+        assert!(
+            body["messages"][0]["content"][0]
+                .get("cache_control")
+                .is_none(),
+            "prompt caching should be opt-in"
+        );
+    }
+
+    #[test]
+    fn test_final_request_body_preserves_stream_flag_when_prompt_caching_enabled() {
+        let mut request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "anthropic/claude-3.5-sonnet",
+            request: prompt_caching_completion_request(),
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        request.additional_params = Some(json!({ "stream": true }));
+
+        let body = final_request_body(&request, true).expect("request body should serialize");
+
+        assert_eq!(body["stream"], true);
+        assert_eq!(
+            body["messages"][0]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
+    }
+
+    #[test]
+    fn test_apply_prompt_caching_string_system_message() {
+        let mut body = json!({
+            "model": "anthropic/claude-3.5-sonnet",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello"}
+            ]
+        });
+
+        apply_prompt_caching(&mut body);
+
+        let system_content = &body["messages"][0]["content"];
+        assert!(
+            system_content.is_array(),
+            "system content should be an array after caching"
+        );
+        let block = &system_content[0];
+        assert_eq!(block["type"], "text");
+        assert_eq!(block["text"], "You are a helpful assistant.");
+        assert_eq!(block["cache_control"]["type"], "ephemeral");
+
+        // User message should be unchanged.
+        assert_eq!(body["messages"][1]["content"], "Hello");
+    }
+
+    #[test]
+    fn test_apply_prompt_caching_array_system_message_marks_last_block() {
+        let mut body = json!({
+            "model": "anthropic/claude-3.5-sonnet",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {"type": "text", "text": "Part 1. "},
+                        {"type": "text", "text": "Part 2."}
+                    ]
+                }
+            ]
+        });
+
+        apply_prompt_caching(&mut body);
+
+        let system_content = &body["messages"][0]["content"];
+        assert!(system_content.is_array());
+        // Both blocks are preserved; only the last one gets cache_control.
+        assert_eq!(system_content.as_array().unwrap().len(), 2);
+        assert_eq!(system_content[0]["text"], "Part 1. ");
+        assert!(system_content[0].get("cache_control").is_none());
+        assert_eq!(system_content[1]["text"], "Part 2.");
+        assert_eq!(system_content[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_apply_prompt_caching_preserves_non_text_blocks() {
+        let mut body = json!({
+            "model": "anthropic/claude-3.5-sonnet",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {"type": "image", "source": {"type": "url", "url": "https://example.com/img.png"}},
+                        {"type": "text", "text": "Describe the image."}
+                    ]
+                }
+            ]
+        });
+
+        apply_prompt_caching(&mut body);
+
+        let system_content = &body["messages"][0]["content"];
+        assert_eq!(system_content.as_array().unwrap().len(), 2);
+        // Non-text block is preserved unchanged.
+        assert_eq!(system_content[0]["type"], "image");
+        assert!(system_content[0].get("cache_control").is_none());
+        // Text block (last) receives the cache boundary.
+        assert_eq!(system_content[1]["type"], "text");
+        assert_eq!(system_content[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_apply_prompt_caching_no_system_message_is_noop() {
+        let mut body = json!({
+            "model": "openai/gpt-4o",
+            "messages": [
+                {"role": "user", "content": "Hello"}
+            ]
+        });
+
+        let body_before = body.clone();
+        apply_prompt_caching(&mut body);
+        assert_eq!(
+            body, body_before,
+            "body should be unchanged when no system message exists"
+        );
+    }
+
     #[test]
     fn test_completion_response_extracts_generated_images() {
         let json = json!({
@@ -3564,6 +3925,7 @@ mod tests {
             completion::AssistantContent::Image(message::Image {
                 data: message::DocumentSourceKind::Base64(b64),
                 media_type: Some(message::ImageMediaType::PNG),
+                additional_params: None,
                 ..
             }) if b64 == "iVBORw0KGgo="
         )));
@@ -3600,6 +3962,7 @@ mod tests {
             completion::AssistantContent::Image(message::Image {
                 data: message::DocumentSourceKind::Url(url),
                 media_type: None,
+                additional_params: None,
                 ..
             }) if url == "https://example.com/generated.png"
         )));
