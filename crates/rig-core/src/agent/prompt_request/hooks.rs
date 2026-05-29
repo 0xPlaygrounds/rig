@@ -60,9 +60,11 @@ pub enum InvalidToolCallHookAction {
     Fail,
     /// Retry the model turn with corrective feedback.
     Retry { feedback: String },
-    /// Rewrite the emitted tool name. The repaired name is revalidated before use.
+    /// Rewrite only the emitted tool name. The repaired name is revalidated
+    /// against registered tools and the current `ToolChoice` before use.
     Repair { tool_name: String },
-    /// Return a synthetic tool result for this invalid structured tool call.
+    /// Treat an invalid structured tool call as skipped by returning synthetic
+    /// feedback as its tool result. This does not execute the invalid tool.
     Skip { reason: String },
 }
 

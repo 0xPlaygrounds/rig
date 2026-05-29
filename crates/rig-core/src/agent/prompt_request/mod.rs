@@ -547,7 +547,13 @@ where
                 })
             }
         }
-        InvalidToolCallHookAction::Skip { reason } => InvalidToolCallResolution::Skip(reason),
+        InvalidToolCallHookAction::Skip { reason } => {
+            if matches!(tool_choice, Some(ToolChoice::None)) {
+                InvalidToolCallResolution::Fail(err)
+            } else {
+                InvalidToolCallResolution::Skip(reason)
+            }
+        }
     }
 }
 
@@ -773,7 +779,7 @@ where
                         &executable_tool_names,
                         &allowed_tool_names,
                         self.tool_choice.as_ref(),
-                        diagnostic_history,
+                        diagnostic_history.clone(),
                         false,
                     )
                     .await
@@ -788,10 +794,7 @@ where
                                         .cloned()
                                         .collect(),
                                     allowed_tools: allowed_tool_names.iter().cloned().collect(),
-                                    chat_history: Box::new(build_full_history(
-                                        chat_history.as_deref(),
-                                        new_messages.clone(),
-                                    )),
+                                    chat_history: Box::new(diagnostic_history.clone()),
                                 });
                             }
 
@@ -1380,6 +1383,18 @@ mod tests {
     }
 
     #[derive(Clone)]
+    struct RepairToSubtractHook;
+
+    impl InvalidToolCallHook<MockCompletionModel> for RepairToSubtractHook {
+        async fn on_invalid_tool_call(
+            &self,
+            _context: &InvalidToolCallContext,
+        ) -> InvalidToolCallHookAction {
+            InvalidToolCallHookAction::repair("subtract")
+        }
+    }
+
+    #[derive(Clone)]
     struct RetryDefaultApiHook;
 
     impl InvalidToolCallHook<MockCompletionModel> for RetryDefaultApiHook {
@@ -1811,8 +1826,13 @@ mod tests {
             .expect_err("retry without budget should fail");
 
         match err {
-            PromptError::UnknownToolCall { tool_name, .. } => {
+            PromptError::UnknownToolCall {
+                tool_name,
+                chat_history,
+                ..
+            } => {
                 assert_eq!(tool_name, "default_api");
+                assert!(history_contains_tool_call(&chat_history, "default_api"));
             }
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
@@ -1857,6 +1877,139 @@ mod tests {
                     })
             )
         }));
+    }
+
+    #[tokio::test]
+    async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("skipped"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let response = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("skip should produce synthetic feedback under Specific");
+
+        assert_eq!(response.output, "skipped");
+        let messages = response.messages.expect("messages should be present");
+        assert!(history_contains_tool_call(&messages, "default_api"));
+        assert!(messages.iter().any(|message| {
+            matches!(
+                message,
+                Message::User { content }
+                    if content.iter().any(|content| {
+                        matches!(
+                            content,
+                            UserContent::ToolResult(result)
+                                if result.id == "tool_call_1"
+                                    && result.content.iter().any(|content| {
+                                        matches!(
+                                            content,
+                                            crate::message::ToolResultContent::Text(text)
+                                                if text.text == "default_api is not available"
+                                        )
+                                    })
+                        )
+                    })
+            )
+        }));
+    }
+
+    #[tokio::test]
+    async fn repair_to_disallowed_specific_tool_fails() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let err = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(RepairToSubtractHook)
+            .max_turns(3)
+            .await
+            .expect_err("repair to a disallowed tool should fail");
+
+        match err {
+            PromptError::UnknownToolCall { tool_name, .. } => {
+                assert_eq!(tool_name, "subtract");
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn repair_under_tool_choice_none_fails() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let err = agent
+            .prompt("do not use tools")
+            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .max_turns(3)
+            .await
+            .expect_err("ToolChoice::None should reject repaired tool calls");
+
+        match err {
+            PromptError::UnknownToolCall { tool_name, .. } => {
+                assert_eq!(tool_name, "add");
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn skip_under_tool_choice_none_fails() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            MockTurn::text("should not be requested"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let err = agent
+            .prompt("do not use tools")
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .max_turns(3)
+            .await
+            .expect_err("ToolChoice::None should reject skipped tool calls");
+
+        match err {
+            PromptError::UnknownToolCall { tool_name, .. } => {
+                assert_eq!(tool_name, "default_api");
+            }
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
     }
 
     #[tokio::test]
