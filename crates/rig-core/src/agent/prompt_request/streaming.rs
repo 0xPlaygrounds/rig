@@ -284,6 +284,38 @@ fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> V
     build_full_history(input.chat_history, messages)
 }
 
+async fn drain_recovered_stream_usage<R>(
+    stream: &mut crate::streaming::StreamingCompletionResponse<R>,
+    tool_call_delta_states: &HashMap<(String, String), ToolCallDeltaState>,
+    current_call_usage: &mut Option<crate::completion::Usage>,
+    aggregated_usage: &mut crate::completion::Usage,
+) -> Result<(), StreamingError>
+where
+    R: Clone + Unpin + GetTokenUsage,
+{
+    if let Some(err) = pending_tool_call_delta_error(tool_call_delta_states) {
+        return Err(err.into());
+    }
+
+    while let Some(content) = stream.next().await {
+        match content {
+            Ok(StreamedAssistantContent::Final(final_resp)) => {
+                if let Some(usage) = final_resp.token_usage() {
+                    *current_call_usage = reported_usage(usage);
+                }
+                if let Some(usage) = *current_call_usage {
+                    *aggregated_usage += usage;
+                }
+                return Ok(());
+            }
+            Ok(_) => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    Ok(())
+}
+
 fn record_completion_call_if_needed(
     completion_calls: &mut Vec<CompletionCall>,
     completion_call_emitted: &mut bool,
@@ -1035,6 +1067,17 @@ where
                                         };
                                         new_messages.push(assistant_message);
                                         new_messages.push(user_message);
+                                        if let Err(err) = drain_recovered_stream_usage(
+                                            &mut stream,
+                                            &tool_call_delta_states,
+                                            &mut current_call_usage,
+                                            &mut aggregated_usage,
+                                        )
+                                        .await
+                                        {
+                                            yield Err(err);
+                                            break 'outer;
+                                        }
                                         if let Some(completion_call) = record_completion_call_if_needed(
                                             &mut completion_calls,
                                             &mut completion_call_emitted,
@@ -1090,6 +1133,17 @@ where
                                             call_id: skipped_tool_result.call_id,
                                             content: skipped_tool_result.content,
                                         };
+                                        if let Err(err) = drain_recovered_stream_usage(
+                                            &mut stream,
+                                            &tool_call_delta_states,
+                                            &mut current_call_usage,
+                                            &mut aggregated_usage,
+                                        )
+                                        .await
+                                        {
+                                            yield Err(err);
+                                            break 'outer;
+                                        }
                                         if let Some(completion_call) = record_completion_call_if_needed(
                                             &mut completion_calls,
                                             &mut completion_call_emitted,
@@ -1206,6 +1260,17 @@ where
                                                         reason,
                                                     ),
                                                 };
+                                                if let Err(err) = drain_recovered_stream_usage(
+                                                    &mut stream,
+                                                    &tool_call_delta_states,
+                                                    &mut current_call_usage,
+                                                    &mut aggregated_usage,
+                                                )
+                                                .await
+                                                {
+                                                    yield Err(err);
+                                                    break 'outer;
+                                                }
                                                 if let Some(completion_call) = record_completion_call_if_needed(
                                                     &mut completion_calls,
                                                     &mut completion_call_emitted,
@@ -1227,6 +1292,7 @@ where
                                                 continue 'outer;
                                             }
                                             InvalidToolCallResolution::Retry(feedback) => {
+                                                tool_call_delta_states.remove(&key);
                                                 if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
                                                     yield Err(Box::new(PromptError::UnknownToolCall {
                                                         tool_name: emitted_tool_name,
@@ -1263,6 +1329,17 @@ where
                                                 };
                                                 new_messages.push(assistant_message);
                                                 new_messages.push(user_message);
+                                                if let Err(err) = drain_recovered_stream_usage(
+                                                    &mut stream,
+                                                    &tool_call_delta_states,
+                                                    &mut current_call_usage,
+                                                    &mut aggregated_usage,
+                                                )
+                                                .await
+                                                {
+                                                    yield Err(err);
+                                                    break 'outer;
+                                                }
                                                 if let Some(completion_call) = record_completion_call_if_needed(
                                                     &mut completion_calls,
                                                     &mut completion_call_emitted,
@@ -2831,6 +2908,7 @@ mod tests {
             .await;
         let mut completion_call_events = Vec::new();
         let mut final_response_text = None;
+        let mut final_response_usage = Usage::new();
         let mut final_completion_calls = Vec::new();
 
         while let Some(item) = stream.next().await {
@@ -2840,6 +2918,7 @@ mod tests {
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response_text = Some(response.response().to_string());
+                    final_response_usage = response.usage();
                     final_completion_calls = response.completion_calls().to_vec();
                     break;
                 }
@@ -2850,14 +2929,17 @@ mod tests {
 
         assert_eq!(final_response_text.as_deref(), Some("retried"));
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let mut first_usage = Usage::new();
+        first_usage.total_tokens = 4;
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, None),
+            CompletionCall::new(0, Some(first_usage)),
             CompletionCall::new(1, Some(second_usage)),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
+        assert_eq!(final_response_usage.total_tokens, 10);
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
@@ -3209,15 +3291,23 @@ mod tests {
             .with_history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
+        let mut completion_call_events = Vec::new();
         let mut final_response_text = None;
+        let mut final_response_usage = Usage::new();
+        let mut final_completion_calls = Vec::new();
 
         while let Some(item) = stream.next().await {
             match item {
+                Ok(MultiTurnStreamItem::CompletionCall(completion_call)) => {
+                    completion_call_events.push(completion_call);
+                }
                 Ok(MultiTurnStreamItem::StreamAssistantItem(
                     StreamedAssistantContent::ToolCallDelta { .. },
                 )) => panic!("invalid tool-call delta should not be emitted"),
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response_text = Some(response.response().to_string());
+                    final_response_usage = response.usage();
+                    final_completion_calls = response.completion_calls().to_vec();
                     break;
                 }
                 Ok(_) => {}
@@ -3228,6 +3318,17 @@ mod tests {
         assert_eq!(final_response_text.as_deref(), Some("retried"));
         assert!(delta_hook.observed().is_empty());
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let mut first_usage = Usage::new();
+        first_usage.total_tokens = 4;
+        let mut second_usage = Usage::new();
+        second_usage.total_tokens = 6;
+        let expected_completion_calls = vec![
+            CompletionCall::new(0, Some(first_usage)),
+            CompletionCall::new(1, Some(second_usage)),
+        ];
+        assert_eq!(completion_call_events, expected_completion_calls);
+        assert_eq!(final_completion_calls, expected_completion_calls);
+        assert_eq!(final_response_usage.total_tokens, 10);
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
