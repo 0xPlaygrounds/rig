@@ -8,8 +8,10 @@ use futures::{StreamExt, stream};
 
 use crate::{
     OneOrMany,
+    completion::Usage,
     embeddings::{
-        Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, embed::TextEmbedder,
+        Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
+        embed::TextEmbedder,
     },
 };
 
@@ -101,6 +103,18 @@ where
     /// Returns `(document, embeddings)` pairs. A document may produce one or many
     /// embeddings depending on how its [`Embed`] implementation uses [`TextEmbedder`].
     pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
+        let (result, _usage) = self.build_with_usage().await?;
+        Ok(result)
+    }
+
+    /// Generate embeddings for all documents in the builder and return accumulated token usage.
+    ///
+    /// Returns `(document, embeddings)` pairs and the total token usage across all
+    /// batches. A document may produce one or many embeddings depending on how its
+    /// [`Embed`] implementation uses [`TextEmbedder`].
+    pub async fn build_with_usage(
+        self,
+    ) -> Result<(Vec<(T, OneOrMany<Embedding>)>, Usage), EmbeddingError> {
         use stream::TryStreamExt;
 
         // Store the documents and their texts in a HashMap for easy access.
@@ -114,37 +128,44 @@ where
         }
 
         // Compute the embeddings.
-        let mut embeddings = stream::iter(texts.into_iter())
+        let (mut embeddings, usage) = stream::iter(texts.into_iter())
             // Merge the texts of each document into a single list of texts.
             .flat_map(|(i, texts)| stream::iter(texts.into_iter().map(move |text| (i, text))))
             // Chunk them into batches. Each batch size is at most the embedding API limit per request.
             .chunks(M::MAX_DOCUMENTS)
-            // Generate the embeddings for each batch.
+            // Generate the embeddings for each batch with usage tracking.
             .map(|text| async {
                 let (ids, docs): (Vec<_>, Vec<_>) = text.into_iter().unzip();
 
-                let embeddings = self.model.embed_texts(docs).await?;
-                Ok::<_, EmbeddingError>(ids.into_iter().zip(embeddings).collect::<Vec<_>>())
+                let response: EmbeddingResponse = self.model.embed_texts_with_usage(docs).await?;
+                Ok::<_, EmbeddingError>((
+                    ids.into_iter().zip(response.embeddings).collect::<Vec<_>>(),
+                    response.usage,
+                ))
             })
             // Parallelize the embeddings generation over 10 concurrent requests
             .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
-            // Collect the embeddings into a HashMap.
+            // Collect the embeddings into a HashMap and accumulate usage.
             .try_fold(
-                HashMap::new(),
-                |mut acc: HashMap<_, OneOrMany<Embedding>>, embeddings| async move {
-                    embeddings.into_iter().for_each(|(i, embedding)| {
+                (
+                    HashMap::<usize, OneOrMany<Embedding>>::new(),
+                    Usage::default(),
+                ),
+                |(mut acc, mut usage_acc), (chunk_embeddings, chunk_usage)| async move {
+                    chunk_embeddings.into_iter().for_each(|(i, embedding)| {
                         acc.entry(i)
                             .and_modify(|embeddings| embeddings.push(embedding.clone()))
                             .or_insert(OneOrMany::one(embedding.clone()));
                     });
-
-                    Ok(acc)
+                    usage_acc += chunk_usage;
+                    Ok((acc, usage_acc))
                 },
             )
             .await?;
 
         // Merge the embeddings with their respective documents
-        docs.into_iter()
+        let result = docs
+            .into_iter()
             .map(|(i, doc)| {
                 let embedding = embeddings.remove(&i).ok_or_else(|| {
                     crate::embeddings::EmbeddingError::ResponseError(
@@ -153,7 +174,9 @@ where
                 })?;
                 Ok::<_, crate::embeddings::EmbeddingError>((doc, embedding))
             })
-            .collect::<Result<Vec<_>, crate::embeddings::EmbeddingError>>()
+            .collect::<Result<Vec<_>, crate::embeddings::EmbeddingError>>()?;
+
+        Ok((result, usage))
     }
 }
 
