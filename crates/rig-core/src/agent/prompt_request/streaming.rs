@@ -2,7 +2,7 @@ use crate::{
     OneOrMany,
     agent::completion::{DynamicContextStore, build_prepared_completion_request},
     agent::prompt_request::{
-        HookAction, InvalidToolCallResolution,
+        HookAction, InvalidToolCallResolution, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         hooks::{InvalidToolCallHook, PromptHook},
         resolve_invalid_tool_call, validate_tool_call_name,
     },
@@ -284,9 +284,6 @@ fn tool_result_to_user_message(
         content: OneOrMany::one(user_content),
     }
 }
-
-const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-    "Tool not executed because another tool call in the same assistant turn was invalid.";
 
 fn tool_result_user_content(
     id: String,
@@ -1024,14 +1021,32 @@ where
                                                 yield Err(Box::new(err).into());
                                                 break 'outer;
                                             }
-                                            InvalidToolCallResolution::Skip(_) => {
-                                                yield Err(Box::new(PromptError::UnknownToolCall {
-                                                    tool_name: emitted_tool_name,
-                                                    available_tools: executable_tool_names.iter().cloned().collect(),
-                                                    allowed_tools: allowed_tool_names.iter().cloned().collect(),
-                                                    chat_history: Box::new(diagnostic_history),
-                                                }).into());
-                                                break 'outer;
+                                            InvalidToolCallResolution::Skip(reason) => {
+                                                tool_call_delta_states.remove(&key);
+                                                let (assistant_message, user_message) =
+                                                    invalid_streaming_name_delta_retry_messages(
+                                                        &stream.message_id,
+                                                        id.clone(),
+                                                        emitted_tool_name,
+                                                        buffered_args,
+                                                        reason.clone(),
+                                                    );
+                                                new_messages.push(assistant_message);
+                                                new_messages.push(user_message);
+                                                let tool_result = ToolResult {
+                                                    id,
+                                                    call_id: None,
+                                                    content: ToolResultContent::from_tool_output(
+                                                        reason,
+                                                    ),
+                                                };
+                                                yield Ok(MultiTurnStreamItem::StreamUserItem(
+                                                    StreamedUserContent::ToolResult {
+                                                        tool_result,
+                                                        internal_call_id,
+                                                    },
+                                                ));
+                                                continue 'outer;
                                             }
                                             InvalidToolCallResolution::Retry(feedback) => {
                                                 if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
@@ -2590,6 +2605,105 @@ mod tests {
                                 content,
                                 ToolResultContent::Text(text)
                                     if text.text == "Use the add tool instead"
+                            ))
+                ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
+        let delta_hook = RecordingToolCallDeltaHook::default();
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_arguments_delta(
+                    "tool_call_1",
+                    "internal_1",
+                    r#"{"x":2,"y":3}"#,
+                ),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("continued"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_hook(delta_hook.clone())
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .await;
+        let mut skipped_tool_result = None;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta { .. },
+                )) => panic!("invalid tool-call delta should not be emitted"),
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    tool_result,
+                    internal_call_id,
+                })) => {
+                    assert_eq!(internal_call_id, "internal_1");
+                    skipped_tool_result = Some(tool_result);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response_text = Some(response.response().to_string());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let skipped_tool_result =
+            skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
+        assert_eq!(skipped_tool_result.id, "tool_call_1");
+        assert!(skipped_tool_result.call_id.is_none());
+        assert!(skipped_tool_result.content.iter().any(|content| matches!(
+            content,
+            ToolResultContent::Text(text) if text.text == "default_api was skipped"
+        )));
+        assert_eq!(final_response_text.as_deref(), Some("continued"));
+        assert!(delta_hook.observed().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        assert!(matches!(
+            follow_up_history.get(1),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.id == "tool_call_1"
+                            && tool_call.function.name == "default_api"
+                            && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
+                ))
+        ));
+        assert!(matches!(
+            follow_up_history.get(2),
+            Some(Message::User { content })
+                if content.iter().any(|item| matches!(
+                    item,
+                    UserContent::ToolResult(result)
+                        if result.id == "tool_call_1"
+                            && result.content.iter().any(|content| matches!(
+                                content,
+                                ToolResultContent::Text(text)
+                                    if text.text == "default_api was skipped"
                             ))
                 ))
         ));

@@ -449,6 +449,9 @@ impl<T> TypedPromptResponse<T> {
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
+pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
+    "Tool not executed because another tool call in the same assistant turn was invalid.";
+
 /// Combine input history with new messages for building completion requests.
 fn build_history_for_request(
     chat_history: Option<&[Message]>,
@@ -465,6 +468,47 @@ fn build_full_history(
 ) -> Vec<Message> {
     let input = chat_history.unwrap_or(&[]);
     input.iter().cloned().chain(new_messages).collect()
+}
+
+fn tool_result_user_content(
+    id: String,
+    call_id: Option<String>,
+    tool_result: String,
+) -> UserContent {
+    let content = ToolResultContent::from_tool_output(tool_result);
+    match call_id {
+        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
+        None => UserContent::tool_result(id, content),
+    }
+}
+
+fn invalid_tool_retry_user_message(
+    assistant_content: &OneOrMany<AssistantContent>,
+    invalid_tool_call_id: &str,
+    feedback: String,
+) -> Option<Message> {
+    let retry_results = assistant_content
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::ToolCall(tool_call) if tool_call.id == invalid_tool_call_id => {
+                Some(tool_result_user_content(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    feedback.clone(),
+                ))
+            }
+            AssistantContent::ToolCall(tool_call) => Some(tool_result_user_content(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
+            )),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    Some(Message::User {
+        content: OneOrMany::from_iter_optional(retry_results)?,
+    })
 }
 
 pub(crate) fn validate_tool_call_name(
@@ -803,21 +847,17 @@ where
                                 id: resp.message_id.clone(),
                                 content: resp.choice.clone(),
                             });
-                            let user_content = if let Some(call_id) = tool_call.call_id.clone() {
-                                UserContent::tool_result_with_call_id(
-                                    tool_call.id.clone(),
-                                    call_id,
-                                    OneOrMany::one(feedback.into()),
-                                )
-                            } else {
-                                UserContent::tool_result(
-                                    tool_call.id.clone(),
-                                    OneOrMany::one(feedback.into()),
-                                )
+                            let Some(user_message) = invalid_tool_retry_user_message(
+                                &resp.choice,
+                                &tool_call.id,
+                                feedback,
+                            ) else {
+                                return Err(PromptError::prompt_cancelled(
+                                    diagnostic_history,
+                                    "invalid tool call retry produced no retry messages",
+                                ));
                             };
-                            new_messages.push(Message::User {
-                                content: OneOrMany::one(user_content),
-                            });
+                            new_messages.push(user_message);
                             continue 'prompt_loop;
                         }
                         InvalidToolCallResolution::Repair(repaired_name) => {
@@ -1314,17 +1354,22 @@ mod tests {
         },
         completion::{
             AssistantContent, CompletionError, CompletionModel, CompletionRequest, Message, Prompt,
-            PromptError, StructuredOutputError, TypedPrompt, Usage,
+            PromptError, StructuredOutputError, ToolDefinition, TypedPrompt, Usage,
         },
-        message::{Text, ToolChoice, UserContent},
+        message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent},
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockSubtractTool, MockTurn,
+            MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
         },
+        tool::Tool,
     };
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    };
 
     #[derive(Serialize)]
     struct SerializeOnly {
@@ -1420,6 +1465,27 @@ mod tests {
             _context: &InvalidToolCallContext,
         ) -> InvalidToolCallHookAction {
             InvalidToolCallHookAction::skip("default_api is not available")
+        }
+    }
+
+    #[derive(Clone)]
+    struct CountingAddTool {
+        calls: Arc<AtomicU32>,
+    }
+
+    impl Tool for CountingAddTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = MockOperationArgs;
+        type Output = i32;
+
+        async fn definition(&self, _prompt: String) -> ToolDefinition {
+            MockAddTool.definition(String::new()).await
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(0)
         }
     }
 
@@ -1806,6 +1872,95 @@ mod tests {
                     })
             )
         }));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executing_valid_call()
+    {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let mut valid_tool_call = ToolCall::new(
+            "tool_call_1".to_string(),
+            ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
+        );
+        valid_tool_call.call_id = Some("call_1".to_string());
+        let mut invalid_tool_call = ToolCall::new(
+            "tool_call_2".to_string(),
+            ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
+        );
+        invalid_tool_call.call_id = Some("call_2".to_string());
+        let model = MockCompletionModel::new([
+            MockTurn::from_contents([
+                AssistantContent::ToolCall(valid_tool_call),
+                AssistantContent::ToolCall(invalid_tool_call),
+            ])
+            .expect("tool-call response should be non-empty"),
+            MockTurn::text("retried"),
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let response = agent
+            .prompt("add")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .max_invalid_tool_call_retries(1)
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("retry should recover");
+
+        assert_eq!(response.output, "retried");
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        assert_eq!(retry_history.len(), 3);
+        assert!(matches!(
+            retry_history.get(1),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.id == "tool_call_1"
+                            && tool_call.function.name == "add"
+                ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.id == "tool_call_2"
+                                && tool_call.function.name == "default_api"
+                    ))
+        ));
+        assert!(matches!(
+            retry_history.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.call_id.as_deref() == Some("call_1")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    crate::message::ToolResultContent::Text(text)
+                                        if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_2"
+                                && result.call_id.as_deref() == Some("call_2")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    crate::message::ToolResultContent::Text(text)
+                                        if text.text.contains("Use one of these tools instead")
+                                ))
+                    ))
+        ));
     }
 
     #[tokio::test]
