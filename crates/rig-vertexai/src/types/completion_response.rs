@@ -69,6 +69,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
 
         Ok(CompletionResponse {
             choice,
+            artifacts: Vec::new(),
             usage,
             raw_response: value,
             message_id: None,

@@ -587,7 +587,7 @@ impl CompatibleStreamProfile for LlamafileCompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
-                    images: Vec::new(),
+                    artifacts: Vec::new(),
                 },
             ),
         ))

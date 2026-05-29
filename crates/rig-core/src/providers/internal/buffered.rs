@@ -19,6 +19,7 @@ where
 {
     let completion::CompletionResponse {
         choice,
+        artifacts,
         raw_response,
         ..
     } = response;
@@ -36,6 +37,10 @@ where
             for choice in mapped {
                 yield Ok(choice);
             }
+        }
+
+        for artifact in artifacts {
+            yield Ok(RawStreamingChoice::Artifact(artifact));
         }
 
         yield Ok(RawStreamingChoice::FinalResponse(raw_response));

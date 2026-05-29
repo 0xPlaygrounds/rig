@@ -112,6 +112,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
 
         Ok(completion::CompletionResponse {
             choice,
+            artifacts: Vec::new(),
             usage,
             raw_response: value,
             message_id: None,

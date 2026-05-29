@@ -8,8 +8,8 @@ use std::{
 use crate::{
     OneOrMany,
     completion::{
-        AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-        Usage,
+        AssistantArtifact, AssistantContent, CompletionError, CompletionModel, CompletionRequest,
+        CompletionResponse, Usage,
     },
     message::{ToolCall, ToolFunction},
     streaming::{StreamingCompletionResponse, StreamingResult},
@@ -54,6 +54,7 @@ pub struct MockTurn {
 #[derive(Clone, Debug)]
 struct MockTurnResponse {
     choice: OneOrMany<AssistantContent>,
+    artifacts: Vec<AssistantArtifact>,
     usage: Usage,
     message_id: Option<String>,
 }
@@ -95,6 +96,7 @@ impl MockTurn {
         Self {
             response: Ok(MockTurnResponse {
                 choice: OneOrMany::one(content),
+                artifacts: Vec::new(),
                 usage: Usage::new(),
                 message_id: None,
             }),
@@ -108,6 +110,7 @@ impl MockTurn {
         Ok(Self {
             response: Ok(MockTurnResponse {
                 choice: OneOrMany::many(content)?,
+                artifacts: Vec::new(),
                 usage: Usage::new(),
                 message_id: None,
             }),
@@ -148,6 +151,7 @@ impl MockTurn {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(CompletionResponse {
             choice: response.choice,
+            artifacts: response.artifacts,
             usage: response.usage,
             raw_response: MockResponse::with_usage(response.usage),
             message_id: response.message_id,

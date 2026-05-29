@@ -400,6 +400,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
                 Ok(completion::CompletionResponse {
                     choice,
+                    artifacts: Vec::new(),
                     usage: Usage {
                         input_tokens: prompt_tokens,
                         output_tokens: completion_tokens,

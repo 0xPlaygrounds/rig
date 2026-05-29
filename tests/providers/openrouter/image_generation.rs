@@ -4,7 +4,7 @@ use base64::Engine;
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::{AssistantContent, CompletionModel, Message};
+use rig::completion::{AssistantArtifact, AssistantContent, CompletionModel, Message};
 use rig::message::{Image, ImageMediaType, UserContent};
 use rig::providers::openrouter;
 use rig::streaming::StreamedAssistantContent;
@@ -21,12 +21,11 @@ fn generated_image_params() -> serde_json::Value {
     })
 }
 
-fn generated_images(choice: &OneOrMany<AssistantContent>) -> Vec<&Image> {
-    choice
+fn generated_images(artifacts: &[AssistantArtifact]) -> Vec<&Image> {
+    artifacts
         .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Image(image) => Some(image),
-            _ => None,
+        .map(|artifact| match artifact {
+            AssistantArtifact::Image(image) => image,
         })
         .collect()
 }
@@ -46,7 +45,7 @@ async fn generated_image_response_surfaces_image_artifact() {
         .await
         .expect("image-generation completion should succeed");
 
-    let images = generated_images(&response.choice);
+    let images = generated_images(&response.artifacts);
     assert!(
         !images.is_empty(),
         "expected generated images in normalized assistant content, saw {:?}",
@@ -70,7 +69,7 @@ async fn generated_image_history_can_be_replayed_on_followup() {
         .expect("image-generation completion should succeed");
 
     assert!(
-        !generated_images(&first.choice).is_empty(),
+        !generated_images(&first.artifacts).is_empty(),
         "test requires an image-generation response, saw {:?}",
         first.choice
     );
@@ -117,7 +116,9 @@ async fn streaming_generated_image_history_can_be_replayed_on_followup() {
 
     while let Some(item) = stream.next().await {
         match item.expect("image-generation stream should not error") {
-            StreamedAssistantContent::Image(image) => streamed_images.push(image),
+            StreamedAssistantContent::Artifact(AssistantArtifact::Image(image)) => {
+                streamed_images.push(image)
+            }
             StreamedAssistantContent::Final(_) => {}
             _ => {}
         }
@@ -128,7 +129,7 @@ async fn streaming_generated_image_history_can_be_replayed_on_followup() {
         "expected generated image events in streaming response"
     );
     assert!(
-        !generated_images(&stream.choice).is_empty(),
+        !generated_images(&stream.artifacts).is_empty(),
         "expected generated images in final aggregated streaming choice, saw {:?}",
         stream.choice
     );

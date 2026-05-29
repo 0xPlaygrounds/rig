@@ -616,6 +616,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
         Ok(completion::CompletionResponse {
             choice,
+            artifacts: Vec::new(),
             usage,
             raw_response: response,
             message_id: None,

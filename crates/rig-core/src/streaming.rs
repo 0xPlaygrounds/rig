@@ -13,11 +13,11 @@ use crate::agent::Agent;
 use crate::agent::prompt_request::hooks::PromptHook;
 use crate::agent::prompt_request::streaming::StreamingPromptRequest;
 use crate::completion::{
-    CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse, GetTokenUsage,
-    Message, Usage,
+    AssistantArtifact, CompletionError, CompletionModel, CompletionRequestBuilder,
+    CompletionResponse, GetTokenUsage, Message, Usage,
 };
 use crate::message::{
-    AssistantContent, Image, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
+    AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::stream::{AbortHandle, Abortable};
@@ -126,8 +126,8 @@ where
         reasoning: String,
     },
 
-    /// A complete image emitted by the assistant.
-    Image(Image),
+    /// A complete response-side artifact emitted by the assistant.
+    Artifact(AssistantArtifact),
 
     /// The final response object, must be yielded if you want the
     /// `response` field to be populated on the `StreamingCompletionResponse`
@@ -245,11 +245,14 @@ where
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
     assistant_items: Vec<AssistantContent>,
+    assistant_artifacts: Vec<AssistantArtifact>,
     text_item_index: Option<usize>,
     reasoning_item_index: Option<usize>,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
     pub choice: OneOrMany<AssistantContent>,
+    /// The final aggregated response-side artifacts from the stream.
+    pub artifacts: Vec<AssistantArtifact>,
     /// The final response from the stream, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<R>,
@@ -272,9 +275,11 @@ where
             abort_handle,
             pause_control,
             assistant_items: vec![],
+            assistant_artifacts: vec![],
             text_item_index: None,
             reasoning_item_index: None,
             choice: OneOrMany::one(AssistantContent::text("")),
+            artifacts: Vec::new(),
             response: None,
             final_response_yielded: AtomicBool::new(false),
             message_id: None,
@@ -402,6 +407,7 @@ where
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
         CompletionResponse {
             choice: value.choice,
+            artifacts: value.artifacts,
             usage: Usage::new(), // Usage is not tracked in streaming responses
             raw_response: value.response,
             message_id: value.message_id,
@@ -437,6 +443,7 @@ where
                 {
                     stream.choice = choice;
                 }
+                stream.artifacts = std::mem::take(&mut stream.assistant_artifacts);
 
                 Poll::Ready(None)
             }
@@ -495,13 +502,11 @@ where
                         reasoning,
                     })))
                 }
-                RawStreamingChoice::Image(image) => {
+                RawStreamingChoice::Artifact(artifact) => {
                     stream.text_item_index = None;
                     stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::Image(image.clone()));
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Image(image))))
+                    stream.assistant_artifacts.push(artifact.clone());
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::Artifact(artifact))))
                 }
                 RawStreamingChoice::ToolCall(raw_tool_call) => {
                     let internal_call_id = raw_tool_call.internal_call_id.clone();
@@ -915,8 +920,8 @@ mod tests {
                     println!("Reasoning delta: {reasoning}");
                     chunk_count += 1;
                 }
-                Ok(StreamedAssistantContent::Image(image)) => {
-                    println!("Image: {image:?}");
+                Ok(StreamedAssistantContent::Artifact(artifact)) => {
+                    println!("Artifact: {artifact:?}");
                     chunk_count += 1;
                 }
                 Err(e) => {
@@ -1097,8 +1102,8 @@ pub enum StreamedAssistantContent<R> {
         /// Partial reasoning text.
         reasoning: String,
     },
-    /// Complete image emitted by the assistant.
-    Image(Image),
+    /// Complete response-side artifact emitted by the assistant.
+    Artifact(AssistantArtifact),
     /// Final provider response object, if yielded by the provider stream.
     Final(R),
 }

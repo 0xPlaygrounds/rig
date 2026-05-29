@@ -79,6 +79,19 @@ pub enum AssistantContent {
     Image(Image),
 }
 
+/// Response-side artifact emitted by an assistant.
+///
+/// Artifacts are returned to callers as part of a provider response, but they
+/// are not replayable assistant message content. If a model should see an
+/// artifact again on a later turn, callers should pass it explicitly as user
+/// input using the appropriate user content type.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum AssistantArtifact {
+    /// Image artifact emitted by the assistant.
+    Image(Image),
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", content = "content", rename_all = "snake_case")]
 #[non_exhaustive]

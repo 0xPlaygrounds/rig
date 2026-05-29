@@ -865,8 +865,8 @@ where
                             }
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::ReasoningDelta { reasoning, id }));
                         },
-                        Ok(StreamedAssistantContent::Image(image)) => {
-                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Image(image)));
+                        Ok(StreamedAssistantContent::Artifact(artifact)) => {
+                            yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Artifact(artifact)));
                         },
                         Ok(StreamedAssistantContent::Final(final_resp)) => {
                             if let Some(err) =

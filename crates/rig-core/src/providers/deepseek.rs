@@ -451,6 +451,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
 
         Ok(completion::CompletionResponse {
             choice,
+            artifacts: Vec::new(),
             usage,
             raw_response: response,
             message_id: None,
@@ -763,7 +764,7 @@ impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
-                    images: Vec::new(),
+                    artifacts: Vec::new(),
                 },
             ),
         ))

@@ -593,6 +593,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
 
         Ok(completion::CompletionResponse {
             choice,
+            artifacts: Vec::new(),
             usage,
             raw_response: response,
             message_id: None,
@@ -752,6 +753,7 @@ where
 
                         Ok(completion::CompletionResponse {
                             choice: core.choice,
+                            artifacts: core.artifacts,
                             usage: core.usage,
                             raw_response: CopilotCompletionResponse::Chat(response),
                             message_id: core.message_id,
@@ -829,6 +831,7 @@ where
 
                 Ok(completion::CompletionResponse {
                     choice: core.choice,
+                    artifacts: core.artifacts,
                     usage: core.usage,
                     raw_response: CopilotCompletionResponse::Responses(Box::new(response)),
                     message_id: core.message_id,
@@ -1475,7 +1478,7 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
-                    images: Vec::new(),
+                    artifacts: Vec::new(),
                 },
             ),
         ))

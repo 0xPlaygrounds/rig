@@ -10,7 +10,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
-use crate::providers::openrouter::completion::response_image_to_image;
+use crate::providers::openrouter::completion::response_image_to_artifact;
 use crate::providers::openrouter::{
     OpenRouterRequestParams, OpenrouterCompletionRequest, ReasoningDetails, ResponseImage,
 };
@@ -252,11 +252,11 @@ impl CompatibleStreamProfile for OpenRouterCompatibleProfile {
                         &choice.delta.tool_calls,
                     ),
                     details: choice.delta.reasoning_details.clone(),
-                    images: choice
+                    artifacts: choice
                         .delta
                         .images
                         .iter()
-                        .map(response_image_to_image)
+                        .map(response_image_to_artifact)
                         .collect(),
                 },
             ),
@@ -653,7 +653,9 @@ mod tests {
         let mut saw_image_event = false;
         while let Some(item) = stream.next().await {
             match item.expect("stream should not error") {
-                StreamedAssistantContent::Image(image) => {
+                StreamedAssistantContent::Artifact(crate::message::AssistantArtifact::Image(
+                    image,
+                )) => {
                     saw_image_event = true;
                     assert!(matches!(
                         image.data,
@@ -673,14 +675,11 @@ mod tests {
             item,
             crate::message::AssistantContent::Text(text) if text.text == "Here is an image."
         )));
-        assert!(items.iter().any(|item| matches!(
-            item,
-            crate::message::AssistantContent::Image(image)
-                if image.additional_params.as_ref()
-                    .and_then(|params| params.get("openrouter"))
-                    .and_then(|openrouter| openrouter.get("source"))
-                    .and_then(serde_json::Value::as_str)
-                    == Some("assistant.images")
-        )));
+        assert_eq!(stream.artifacts.len(), 1);
+        assert!(matches!(
+            &stream.artifacts[0],
+            crate::message::AssistantArtifact::Image(image)
+                if image.media_type == Some(crate::message::ImageMediaType::PNG)
+        ));
     }
 }

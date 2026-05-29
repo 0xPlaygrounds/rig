@@ -34,7 +34,7 @@
 //! # }
 //! ```
 
-use super::message::{AssistantContent, DocumentMediaType};
+use super::message::{AssistantArtifact, AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
 use crate::streaming::StreamingCompletionResponse;
 use crate::tool::server::ToolServerError;
@@ -365,6 +365,11 @@ pub struct CompletionResponse<T> {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
+    /// Response-side artifacts returned by the completion model provider.
+    ///
+    /// Artifacts are preserved for callers, but are not replayable assistant
+    /// message content and are not sent back to providers as chat history.
+    pub artifacts: Vec<AssistantArtifact>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
     /// The raw response returned by the completion model provider

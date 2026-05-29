@@ -189,6 +189,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 content,
             } => Ok(completion::CompletionResponse {
                 choice: OneOrMany::one(content.clone().into()),
+                artifacts: Vec::new(),
                 usage: completion::Usage {
                     input_tokens: response.usage.prompt_tokens as u64,
                     output_tokens: response.usage.completion_tokens as u64,

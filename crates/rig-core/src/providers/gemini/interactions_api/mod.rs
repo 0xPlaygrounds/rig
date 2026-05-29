@@ -508,6 +508,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
 
         Ok(completion::CompletionResponse {
             choice,
+            artifacts: Vec::new(),
             usage,
             raw_response: response,
             message_id: None,

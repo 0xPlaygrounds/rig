@@ -581,6 +581,7 @@ pub(crate) async fn completion_response_from_sse_body(
             .clone()
             .or_else(|| message_id_from_response(&raw_response)),
         choice: stream.choice,
+        artifacts: stream.artifacts,
         raw_response,
     })
 }

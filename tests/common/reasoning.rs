@@ -444,8 +444,8 @@ pub(crate) async fn collect_stream_stats<R>(
                         stats.events.push("tool_call_delta");
                     }
                 }
-                StreamedAssistantContent::Image(_) => {
-                    stats.events.push("image");
+                StreamedAssistantContent::Artifact(_) => {
+                    stats.events.push("artifact");
                 }
                 StreamedAssistantContent::Final(_) => {
                     stats.events.push("final");
