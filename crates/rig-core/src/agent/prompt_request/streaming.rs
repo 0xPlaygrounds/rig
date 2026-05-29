@@ -348,25 +348,57 @@ fn invalid_streaming_tool_retry_messages(
 
 fn invalid_streaming_name_delta_retry_messages(
     assistant_message_id: &Option<String>,
+    text_delta_response: Option<&str>,
+    pending_tool_calls: &[(ToolCall, String)],
     id: String,
     name: String,
     buffered_args: String,
     feedback: String,
-) -> (Message, Message) {
+) -> Option<(Message, Message)> {
     let args = if buffered_args.trim().is_empty() {
         serde_json::Value::Null
     } else {
         serde_json::from_str(&buffered_args).unwrap_or(serde_json::Value::Null)
     };
 
-    let tool_call = ToolCall::new(id, ToolFunction::new(name, args));
+    let invalid_tool_call = ToolCall::new(id, ToolFunction::new(name, args));
+    let mut assistant_content = Vec::new();
+    if let Some(text) = text_delta_response
+        && !text.is_empty()
+    {
+        assistant_content.push(AssistantContent::text(text.to_string()));
+    }
+    assistant_content.extend(
+        pending_tool_calls
+            .iter()
+            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
+    );
+    assistant_content.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
+
     let assistant_message = Message::Assistant {
         id: assistant_message_id.clone(),
-        content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+        content: OneOrMany::from_iter_optional(assistant_content)?,
     };
-    let user_message = tool_result_to_user_message(tool_call.id, tool_call.call_id, feedback);
+    let mut retry_results = pending_tool_calls
+        .iter()
+        .map(|(tool_call, _)| {
+            tool_result_user_content(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    retry_results.push(tool_result_user_content(
+        invalid_tool_call.id,
+        invalid_tool_call.call_id,
+        feedback,
+    ));
+    let user_message = Message::User {
+        content: OneOrMany::from_iter_optional(retry_results)?,
+    };
 
-    (assistant_message, user_message)
+    Some((assistant_message, user_message))
 }
 
 fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
@@ -1023,14 +1055,25 @@ where
                                             }
                                             InvalidToolCallResolution::Skip(reason) => {
                                                 tool_call_delta_states.remove(&key);
-                                                let (assistant_message, user_message) =
+                                                let Some((assistant_message, user_message)) =
                                                     invalid_streaming_name_delta_retry_messages(
                                                         &stream.message_id,
+                                                        saw_text_this_turn
+                                                            .then_some(text_delta_response.as_str()),
+                                                        &pending_tool_calls,
                                                         id.clone(),
                                                         emitted_tool_name,
                                                         buffered_args,
                                                         reason.clone(),
-                                                    );
+                                                    )
+                                                else {
+                                                    yield Err(cancelled_prompt_error(
+                                                        chat_history.as_deref(),
+                                                        new_messages.clone(),
+                                                        "invalid tool call skip produced no recovery messages".to_string(),
+                                                    ).await);
+                                                    break 'outer;
+                                                };
                                                 new_messages.push(assistant_message);
                                                 new_messages.push(user_message);
                                                 let tool_result = ToolResult {
@@ -1060,14 +1103,25 @@ where
                                                 }
 
                                                 invalid_tool_call_retries += 1;
-                                                let (assistant_message, user_message) =
+                                                let Some((assistant_message, user_message)) =
                                                     invalid_streaming_name_delta_retry_messages(
                                                         &stream.message_id,
+                                                        saw_text_this_turn
+                                                            .then_some(text_delta_response.as_str()),
+                                                        &pending_tool_calls,
                                                         id.clone(),
                                                         emitted_tool_name,
                                                         buffered_args,
                                                         feedback,
-                                                    );
+                                                    )
+                                                else {
+                                                    yield Err(cancelled_prompt_error(
+                                                        chat_history.as_deref(),
+                                                        new_messages.clone(),
+                                                        "invalid tool call retry produced no retry messages".to_string(),
+                                                    ).await);
+                                                    break 'outer;
+                                                };
                                                 new_messages.push(assistant_message);
                                                 new_messages.push(user_message);
                                                 continue 'outer;
@@ -2535,8 +2589,16 @@ mod tests {
     #[tokio::test]
     async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         let delta_hook = RecordingToolCallDeltaHook::default();
+        let add_calls = Arc::new(AtomicU32::new(0));
         let model = MockCompletionModel::from_stream_turns([
             vec![
+                MockStreamEvent::text("checking "),
+                MockStreamEvent::tool_call(
+                    "tool_call_0",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_0"),
                 MockStreamEvent::tool_call_arguments_delta(
                     "tool_call_1",
                     "internal_1",
@@ -2551,7 +2613,11 @@ mod tests {
             ],
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
 
         let mut stream = agent
             .stream_prompt("use the tool")
@@ -2579,6 +2645,7 @@ mod tests {
 
         assert_eq!(final_response_text.as_deref(), Some("retried"));
         assert!(delta_hook.observed().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
@@ -2587,6 +2654,16 @@ mod tests {
             retry_history.get(1),
             Some(Message::Assistant { content, .. })
                 if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == "checking "
+                ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.id == "tool_call_0"
+                                && tool_call.function.name == "add"
+                    ))
+                    && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
@@ -2597,7 +2674,19 @@ mod tests {
         assert!(matches!(
             retry_history.get(2),
             Some(Message::User { content })
-                if content.iter().any(|item| matches!(
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_0"
+                                && result.call_id.as_deref() == Some("call_0")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
                         if result.id == "tool_call_1"
@@ -2616,6 +2705,13 @@ mod tests {
         let add_calls = Arc::new(AtomicU32::new(0));
         let model = MockCompletionModel::from_stream_turns([
             vec![
+                MockStreamEvent::text("checking "),
+                MockStreamEvent::tool_call(
+                    "tool_call_0",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_0"),
                 MockStreamEvent::tool_call_arguments_delta(
                     "tool_call_1",
                     "internal_1",
@@ -2687,6 +2783,16 @@ mod tests {
             Some(Message::Assistant { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
+                    AssistantContent::Text(text) if text.text == "checking "
+                ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.id == "tool_call_0"
+                                && tool_call.function.name == "add"
+                    ))
+                    && content.iter().any(|item| matches!(
+                    item,
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
                             && tool_call.function.name == "default_api"
@@ -2696,7 +2802,19 @@ mod tests {
         assert!(matches!(
             follow_up_history.get(2),
             Some(Message::User { content })
-                if content.iter().any(|item| matches!(
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_0"
+                                && result.call_id.as_deref() == Some("call_0")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
                         if result.id == "tool_call_1"
