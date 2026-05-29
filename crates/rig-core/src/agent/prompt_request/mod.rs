@@ -794,6 +794,7 @@ where
             // that sentinel as "no assistant output" so it does not pollute returned history.
             let mut skipped_tool_results = BTreeMap::new();
             let mut invalid_tool_call_recovered = false;
+            let mut invalid_tool_call_skipped = false;
             if has_tool_calls {
                 for choice in response_choice.iter_mut() {
                     let AssistantContent::ToolCall(tool_call) = choice else {
@@ -879,8 +880,27 @@ where
                             };
                             skipped_tool_results.insert(tool_call.id.clone(), user_content);
                             invalid_tool_call_recovered = true;
+                            invalid_tool_call_skipped = true;
                         }
                     }
+                }
+            }
+
+            if invalid_tool_call_skipped {
+                for choice in response_choice.iter() {
+                    let AssistantContent::ToolCall(tool_call) = choice else {
+                        continue;
+                    };
+
+                    skipped_tool_results
+                        .entry(tool_call.id.clone())
+                        .or_insert_with(|| {
+                            tool_result_user_content(
+                                tool_call.id.clone(),
+                                tool_call.call_id.clone(),
+                                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
+                            )
+                        });
                 }
             }
 
@@ -1408,6 +1428,21 @@ mod tests {
             _args: &str,
         ) -> ToolCallHookAction {
             panic!("unknown tool call should fail before tool hooks run")
+        }
+    }
+
+    #[derive(Clone)]
+    struct PanicOnToolCallHook;
+
+    impl PromptHook<MockCompletionModel> for PanicOnToolCallHook {
+        async fn on_tool_call(
+            &self,
+            _tool_name: &str,
+            _tool_call_id: Option<String>,
+            _internal_call_id: &str,
+            _args: &str,
+        ) -> ToolCallHookAction {
+            panic!("recovered invalid turn should not invoke normal tool hooks")
         }
     }
 
@@ -2014,6 +2049,76 @@ mod tests {
                                     content,
                                     crate::message::ToolResultContent::Text(text)
                                         if text.text.contains("Use one of these tools instead")
+                                ))
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing_valid_call() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let mut valid_tool_call = ToolCall::new(
+            "tool_call_1".to_string(),
+            ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
+        );
+        valid_tool_call.call_id = Some("call_1".to_string());
+        let mut invalid_tool_call = ToolCall::new(
+            "tool_call_2".to_string(),
+            ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
+        );
+        invalid_tool_call.call_id = Some("call_2".to_string());
+        let model = MockCompletionModel::new([
+            MockTurn::from_contents([
+                AssistantContent::ToolCall(valid_tool_call),
+                AssistantContent::ToolCall(invalid_tool_call),
+            ])
+            .expect("tool-call response should be non-empty"),
+            MockTurn::text("skipped"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let response = agent
+            .prompt("add")
+            .with_hook(PanicOnToolCallHook)
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("skip should recover without executing peer tools");
+
+        assert_eq!(response.output, "skipped");
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let messages = response.messages.expect("messages should be present");
+        assert!(history_contains_tool_call(&messages, "add"));
+        assert!(history_contains_tool_call(&messages, "default_api"));
+        assert!(matches!(
+            messages.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.call_id.as_deref() == Some("call_1")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    crate::message::ToolResultContent::Text(text)
+                                        if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_2"
+                                && result.call_id.as_deref() == Some("call_2")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    crate::message::ToolResultContent::Text(text)
+                                        if text.text == "default_api is not available"
                                 ))
                     ))
         ));

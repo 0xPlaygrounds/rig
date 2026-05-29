@@ -194,6 +194,21 @@ fn merge_reasoning_blocks(
     }
 }
 
+fn flush_pending_reasoning_delta(
+    accumulated_reasoning: &mut Vec<crate::message::Reasoning>,
+    pending_reasoning_delta_text: &mut String,
+    pending_reasoning_delta_id: &mut Option<String>,
+) {
+    if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
+        let mut assembled = crate::message::Reasoning::new(&*pending_reasoning_delta_text);
+        if let Some(id) = pending_reasoning_delta_id.take() {
+            assembled = assembled.with_id(id);
+        }
+        accumulated_reasoning.push(assembled);
+        pending_reasoning_delta_text.clear();
+    }
+}
+
 /// Build full history for error reporting (input + new messages).
 fn build_full_history(
     chat_history: Option<&[Message]>,
@@ -300,6 +315,7 @@ fn tool_result_user_content(
 fn invalid_streaming_tool_retry_messages(
     assistant_message_id: &Option<String>,
     text_delta_response: Option<&str>,
+    accumulated_reasoning: &[crate::message::Reasoning],
     pending_tool_calls: &[(ToolCall, String)],
     invalid_tool_call: ToolCall,
     feedback: String,
@@ -310,6 +326,12 @@ fn invalid_streaming_tool_retry_messages(
     {
         assistant_content.push(AssistantContent::text(text.to_string()));
     }
+    assistant_content.extend(
+        accumulated_reasoning
+            .iter()
+            .cloned()
+            .map(AssistantContent::Reasoning),
+    );
     assistant_content.extend(
         pending_tool_calls
             .iter()
@@ -349,25 +371,23 @@ fn invalid_streaming_tool_retry_messages(
 fn invalid_streaming_name_delta_retry_messages(
     assistant_message_id: &Option<String>,
     text_delta_response: Option<&str>,
+    accumulated_reasoning: &[crate::message::Reasoning],
     pending_tool_calls: &[(ToolCall, String)],
-    id: String,
-    name: String,
-    buffered_args: String,
+    invalid_tool_call: ToolCall,
     feedback: String,
 ) -> Option<(Message, Message)> {
-    let args = if buffered_args.trim().is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::from_str(&buffered_args).unwrap_or(serde_json::Value::Null)
-    };
-
-    let invalid_tool_call = ToolCall::new(id, ToolFunction::new(name, args));
     let mut assistant_content = Vec::new();
     if let Some(text) = text_delta_response
         && !text.is_empty()
     {
         assistant_content.push(AssistantContent::text(text.to_string()));
     }
+    assistant_content.extend(
+        accumulated_reasoning
+            .iter()
+            .cloned()
+            .map(AssistantContent::Reasoning),
+    );
     assistant_content.extend(
         pending_tool_calls
             .iter()
@@ -950,10 +970,16 @@ where
                                         }
 
                                         invalid_tool_call_retries += 1;
+                                        flush_pending_reasoning_delta(
+                                            &mut accumulated_reasoning,
+                                            &mut pending_reasoning_delta_text,
+                                            &mut pending_reasoning_delta_id,
+                                        );
                                         let Some((assistant_message, user_message)) =
                                             invalid_streaming_tool_retry_messages(
                                                 &stream.message_id,
                                                 saw_text_this_turn.then_some(text_delta_response.as_str()),
+                                                &accumulated_reasoning,
                                                 &pending_tool_calls,
                                                 tool_call,
                                                 feedback,
@@ -983,11 +1009,17 @@ where
                                                 reason.clone(),
                                             ),
                                         };
+                                        flush_pending_reasoning_delta(
+                                            &mut accumulated_reasoning,
+                                            &mut pending_reasoning_delta_text,
+                                            &mut pending_reasoning_delta_id,
+                                        );
                                         let Some((assistant_message, user_message)) =
                                             invalid_streaming_tool_retry_messages(
                                                 &stream.message_id,
                                                 saw_text_this_turn
                                                     .then_some(text_delta_response.as_str()),
+                                                &accumulated_reasoning,
                                                 &pending_tool_calls,
                                                 tool_call,
                                                 reason,
@@ -1053,7 +1085,7 @@ where
                                         None,
                                         saw_text_this_turn.then_some(text_delta_response.as_str()),
                                         &pending_tool_calls,
-                                        Some(diagnostic_tool_call),
+                                        Some(diagnostic_tool_call.clone()),
                                     );
 
                                     if !allowed_tool_names.contains(&name) {
@@ -1076,15 +1108,19 @@ where
                                             }
                                             InvalidToolCallResolution::Skip(reason) => {
                                                 tool_call_delta_states.remove(&key);
+                                                flush_pending_reasoning_delta(
+                                                    &mut accumulated_reasoning,
+                                                    &mut pending_reasoning_delta_text,
+                                                    &mut pending_reasoning_delta_id,
+                                                );
                                                 let Some((assistant_message, user_message)) =
                                                     invalid_streaming_name_delta_retry_messages(
                                                         &stream.message_id,
                                                         saw_text_this_turn
                                                             .then_some(text_delta_response.as_str()),
+                                                        &accumulated_reasoning,
                                                         &pending_tool_calls,
-                                                        id.clone(),
-                                                        emitted_tool_name,
-                                                        buffered_args,
+                                                        diagnostic_tool_call.clone(),
                                                         reason.clone(),
                                                     )
                                                 else {
@@ -1126,15 +1162,19 @@ where
                                                 }
 
                                                 invalid_tool_call_retries += 1;
+                                                flush_pending_reasoning_delta(
+                                                    &mut accumulated_reasoning,
+                                                    &mut pending_reasoning_delta_text,
+                                                    &mut pending_reasoning_delta_id,
+                                                );
                                                 let Some((assistant_message, user_message)) =
                                                     invalid_streaming_name_delta_retry_messages(
                                                         &stream.message_id,
                                                         saw_text_this_turn
                                                             .then_some(text_delta_response.as_str()),
+                                                        &accumulated_reasoning,
                                                         &pending_tool_calls,
-                                                        id.clone(),
-                                                        emitted_tool_name,
-                                                        buffered_args,
+                                                        diagnostic_tool_call.clone(),
                                                         feedback,
                                                     )
                                                 else {
@@ -1279,13 +1319,11 @@ where
                 // Providers like Gemini emit thinking as incremental deltas
                 // without signatures; assemble into a single block so
                 // reasoning survives into the next turn's chat history.
-                if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
-                    let mut assembled = crate::message::Reasoning::new(&pending_reasoning_delta_text);
-                    if let Some(id) = pending_reasoning_delta_id.take() {
-                        assembled = assembled.with_id(id);
-                    }
-                    accumulated_reasoning.push(assembled);
-                }
+                flush_pending_reasoning_delta(
+                    &mut accumulated_reasoning,
+                    &mut pending_reasoning_delta_text,
+                    &mut pending_reasoning_delta_id,
+                );
 
                 let final_turn_content = stream.choice.clone();
                 let turn_text_response = assistant_text_from_choice(&final_turn_content);
@@ -1812,6 +1850,39 @@ mod tests {
                         AssistantContent::Text(text) if text.text == expected
                     ))
             )
+        })
+    }
+
+    fn assistant_reasoning_precedes_tool_call(
+        history: &[Message],
+        expected_reasoning: &str,
+        tool_name: &str,
+    ) -> bool {
+        history.iter().any(|message| {
+            let Message::Assistant { content, .. } = message else {
+                return false;
+            };
+
+            let reasoning_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Reasoning(reasoning)
+                        if reasoning.content.iter().any(|content| matches!(
+                            content,
+                            ReasoningContent::Text { text, .. }
+                                if text == expected_reasoning
+                        ))
+                )
+            });
+            let tool_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.function.name == tool_name
+                )
+            });
+
+            matches!((reasoning_index, tool_index), (Some(reasoning), Some(tool)) if reasoning < tool)
         })
     }
 
@@ -2849,7 +2920,101 @@ mod tests {
                                     ToolResultContent::Text(text)
                                         if text.text == "default_api was skipped"
                                 ))
-                    ))
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("checking "),
+                MockStreamEvent::reasoning("reasoned step").with_reasoning_id("rs_1"),
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "default_api",
+                    serde_json::json!({"x": 2, "y": 3}),
+                ),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("continued"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        assert!(history_contains_text(&follow_up_history, "checking "));
+        assert!(assistant_reasoning_precedes_tool_call(
+            &follow_up_history,
+            "reasoned step",
+            "default_api"
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::reasoning_delta(Some("rs_1"), "delta reason"),
+                MockStreamEvent::tool_call_arguments_delta(
+                    "tool_call_1",
+                    "internal_1",
+                    r#"{"x":2,"y":3}"#,
+                ),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("retried"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .max_invalid_tool_call_retries(1)
+            .await;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        assert!(assistant_reasoning_precedes_tool_call(
+            &retry_history,
+            "delta reason",
+            "default_api"
         ));
     }
 
