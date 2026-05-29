@@ -218,50 +218,86 @@ fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
-fn build_tool_call_validation_history(
-    chat_history: Option<&[Message]>,
-    new_messages: &[Message],
-    assistant_message_id: &Option<String>,
-    final_turn_content: Option<&OneOrMany<AssistantContent>>,
-    text_delta_response: Option<&str>,
-    pending_tool_calls: &[(ToolCall, String)],
+struct ToolCallValidationHistory<'a> {
+    chat_history: Option<&'a [Message]>,
+    new_messages: &'a [Message],
+    assistant_message_id: &'a Option<String>,
+    final_turn_content: Option<&'a OneOrMany<AssistantContent>>,
+    text_delta_response: Option<&'a str>,
+    accumulated_reasoning: &'a [crate::message::Reasoning],
+    pending_reasoning_delta_text: &'a str,
+    pending_reasoning_delta_id: &'a Option<String>,
+    pending_tool_calls: &'a [(ToolCall, String)],
     current_tool_call: Option<ToolCall>,
-) -> Vec<Message> {
-    let mut messages = new_messages.to_vec();
+}
 
-    if let Some(final_turn_content) = final_turn_content
+fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> Vec<Message> {
+    let mut messages = input.new_messages.to_vec();
+
+    if let Some(final_turn_content) = input.final_turn_content
         && !is_empty_assistant_choice(final_turn_content)
     {
         messages.push(Message::Assistant {
-            id: assistant_message_id.clone(),
+            id: input.assistant_message_id.clone(),
             content: final_turn_content.clone(),
         });
-        return build_full_history(chat_history, messages);
+        return build_full_history(input.chat_history, messages);
     }
 
     let mut content_items = Vec::new();
-    if let Some(text) = text_delta_response
+    if let Some(text) = input.text_delta_response
         && !text.is_empty()
     {
         content_items.push(AssistantContent::text(text.to_string()));
     }
     content_items.extend(
-        pending_tool_calls
+        input
+            .accumulated_reasoning
+            .iter()
+            .cloned()
+            .map(AssistantContent::Reasoning),
+    );
+    if input.accumulated_reasoning.is_empty() && !input.pending_reasoning_delta_text.is_empty() {
+        let mut reasoning = crate::message::Reasoning::new(input.pending_reasoning_delta_text);
+        if let Some(id) = input.pending_reasoning_delta_id.clone() {
+            reasoning = reasoning.with_id(id);
+        }
+        content_items.push(AssistantContent::Reasoning(reasoning));
+    }
+    content_items.extend(
+        input
+            .pending_tool_calls
             .iter()
             .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
     );
-    if let Some(tool_call) = current_tool_call {
+    if let Some(tool_call) = input.current_tool_call {
         content_items.push(AssistantContent::ToolCall(tool_call));
     }
 
     if let Some(content) = OneOrMany::from_iter_optional(content_items) {
         messages.push(Message::Assistant {
-            id: assistant_message_id.clone(),
+            id: input.assistant_message_id.clone(),
             content,
         });
     }
 
-    build_full_history(chat_history, messages)
+    build_full_history(input.chat_history, messages)
+}
+
+fn record_completion_call_if_needed(
+    completion_calls: &mut Vec<CompletionCall>,
+    completion_call_emitted: &mut bool,
+    call_index: usize,
+    current_call_usage: Option<crate::completion::Usage>,
+) -> Option<CompletionCall> {
+    if *completion_call_emitted {
+        return None;
+    }
+
+    let completion_call = CompletionCall::new(call_index, current_call_usage);
+    completion_calls.push(completion_call);
+    *completion_call_emitted = true;
+    Some(completion_call)
 }
 
 /// Combine input history with new messages for building completion requests.
@@ -929,15 +965,20 @@ where
                             yield Ok(MultiTurnStreamItem::stream_item(StreamedAssistantContent::Text(text)));
                         },
                         Ok(StreamedAssistantContent::ToolCall { mut tool_call, internal_call_id }) => {
-                            let diagnostic_history = build_tool_call_validation_history(
-                                chat_history.as_deref(),
-                                &new_messages,
-                                &stream.message_id,
-                                None,
-                                saw_text_this_turn.then_some(text_delta_response.as_str()),
-                                &pending_tool_calls,
-                                Some(tool_call.clone()),
-                            );
+                            let diagnostic_history =
+                                build_tool_call_validation_history(ToolCallValidationHistory {
+                                    chat_history: chat_history.as_deref(),
+                                    new_messages: &new_messages,
+                                    assistant_message_id: &stream.message_id,
+                                    final_turn_content: None,
+                                    text_delta_response: saw_text_this_turn
+                                        .then_some(text_delta_response.as_str()),
+                                    accumulated_reasoning: &accumulated_reasoning,
+                                    pending_reasoning_delta_text: &pending_reasoning_delta_text,
+                                    pending_reasoning_delta_id: &pending_reasoning_delta_id,
+                                    pending_tool_calls: &pending_tool_calls,
+                                    current_tool_call: Some(tool_call.clone()),
+                                });
 
                             if !allowed_tool_names.contains(&tool_call.function.name) {
                                 let args = json_utils::value_to_json_string(&tool_call.function.arguments);
@@ -994,6 +1035,16 @@ where
                                         };
                                         new_messages.push(assistant_message);
                                         new_messages.push(user_message);
+                                        if let Some(completion_call) = record_completion_call_if_needed(
+                                            &mut completion_calls,
+                                            &mut completion_call_emitted,
+                                            call_index,
+                                            current_call_usage,
+                                        ) {
+                                            yield Ok(MultiTurnStreamItem::CompletionCall(
+                                                completion_call,
+                                            ));
+                                        }
                                         text_delta_response.clear();
                                         saw_text_this_turn = false;
                                         continue 'outer;
@@ -1039,6 +1090,16 @@ where
                                             call_id: skipped_tool_result.call_id,
                                             content: skipped_tool_result.content,
                                         };
+                                        if let Some(completion_call) = record_completion_call_if_needed(
+                                            &mut completion_calls,
+                                            &mut completion_call_emitted,
+                                            call_index,
+                                            current_call_usage,
+                                        ) {
+                                            yield Ok(MultiTurnStreamItem::CompletionCall(
+                                                completion_call,
+                                            ));
+                                        }
                                         yield Ok(MultiTurnStreamItem::StreamUserItem(
                                             StreamedUserContent::ToolResult {
                                                 tool_result,
@@ -1078,15 +1139,20 @@ where
                                         id.clone(),
                                         ToolFunction::new(name.clone(), diagnostic_args),
                                     );
-                                    let diagnostic_history = build_tool_call_validation_history(
-                                        chat_history.as_deref(),
-                                        &new_messages,
-                                        &stream.message_id,
-                                        None,
-                                        saw_text_this_turn.then_some(text_delta_response.as_str()),
-                                        &pending_tool_calls,
-                                        Some(diagnostic_tool_call.clone()),
-                                    );
+                                    let diagnostic_history =
+                                        build_tool_call_validation_history(ToolCallValidationHistory {
+                                            chat_history: chat_history.as_deref(),
+                                            new_messages: &new_messages,
+                                            assistant_message_id: &stream.message_id,
+                                            final_turn_content: None,
+                                            text_delta_response: saw_text_this_turn
+                                                .then_some(text_delta_response.as_str()),
+                                            accumulated_reasoning: &accumulated_reasoning,
+                                            pending_reasoning_delta_text: &pending_reasoning_delta_text,
+                                            pending_reasoning_delta_id: &pending_reasoning_delta_id,
+                                            pending_tool_calls: &pending_tool_calls,
+                                            current_tool_call: Some(diagnostic_tool_call.clone()),
+                                        });
 
                                     if !allowed_tool_names.contains(&name) {
                                         let emitted_tool_name = name.clone();
@@ -1140,6 +1206,16 @@ where
                                                         reason,
                                                     ),
                                                 };
+                                                if let Some(completion_call) = record_completion_call_if_needed(
+                                                    &mut completion_calls,
+                                                    &mut completion_call_emitted,
+                                                    call_index,
+                                                    current_call_usage,
+                                                ) {
+                                                    yield Ok(MultiTurnStreamItem::CompletionCall(
+                                                        completion_call,
+                                                    ));
+                                                }
                                                 yield Ok(MultiTurnStreamItem::StreamUserItem(
                                                     StreamedUserContent::ToolResult {
                                                         tool_result,
@@ -1187,6 +1263,16 @@ where
                                                 };
                                                 new_messages.push(assistant_message);
                                                 new_messages.push(user_message);
+                                                if let Some(completion_call) = record_completion_call_if_needed(
+                                                    &mut completion_calls,
+                                                    &mut completion_call_emitted,
+                                                    call_index,
+                                                    current_call_usage,
+                                                ) {
+                                                    yield Ok(MultiTurnStreamItem::CompletionCall(
+                                                        completion_call,
+                                                    ));
+                                                }
                                                 text_delta_response.clear();
                                                 saw_text_this_turn = false;
                                                 continue 'outer;
@@ -1330,15 +1416,19 @@ where
                 tracing::Span::current().record("gen_ai.completion", &turn_text_response);
 
                 if !pending_tool_calls.is_empty() {
-                    let diagnostic_history = build_tool_call_validation_history(
-                        chat_history.as_deref(),
-                        &new_messages,
-                        &stream.message_id,
-                        Some(&final_turn_content),
-                        None,
-                        &pending_tool_calls,
-                        None,
-                    );
+                    let diagnostic_history =
+                        build_tool_call_validation_history(ToolCallValidationHistory {
+                            chat_history: chat_history.as_deref(),
+                            new_messages: &new_messages,
+                            assistant_message_id: &stream.message_id,
+                            final_turn_content: Some(&final_turn_content),
+                            text_delta_response: None,
+                            accumulated_reasoning: &accumulated_reasoning,
+                            pending_reasoning_delta_text: "",
+                            pending_reasoning_delta_id: &None,
+                            pending_tool_calls: &pending_tool_calls,
+                            current_tool_call: None,
+                        });
 
                     for (tool_call, _) in &pending_tool_calls {
                         if let Err(err) = validate_tool_call_name(
@@ -2739,12 +2829,18 @@ mod tests {
             .with_history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
             .await;
+        let mut completion_call_events = Vec::new();
         let mut final_response_text = None;
+        let mut final_completion_calls = Vec::new();
 
         while let Some(item) = stream.next().await {
             match item {
+                Ok(MultiTurnStreamItem::CompletionCall(completion_call)) => {
+                    completion_call_events.push(completion_call);
+                }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response_text = Some(response.response().to_string());
+                    final_completion_calls = response.completion_calls().to_vec();
                     break;
                 }
                 Ok(_) => {}
@@ -2754,6 +2850,14 @@ mod tests {
 
         assert_eq!(final_response_text.as_deref(), Some("retried"));
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let mut second_usage = Usage::new();
+        second_usage.total_tokens = 6;
+        let expected_completion_calls = vec![
+            CompletionCall::new(0, None),
+            CompletionCall::new(1, Some(second_usage)),
+        ];
+        assert_eq!(completion_call_events, expected_completion_calls);
+        assert_eq!(final_completion_calls, expected_completion_calls);
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
@@ -3070,6 +3174,7 @@ mod tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
+                MockStreamEvent::reasoning_delta(Some("rs_1"), "diagnostic reason"),
                 MockStreamEvent::tool_call(
                     "tool_call_0",
                     "add",
@@ -3182,6 +3287,7 @@ mod tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
+                MockStreamEvent::reasoning_delta(Some("rs_1"), "diagnostic reason"),
                 MockStreamEvent::tool_call(
                     "tool_call_0",
                     "add",
@@ -3228,6 +3334,15 @@ mod tests {
         assert_eq!(context.internal_call_id.as_deref(), Some("internal_1"));
         assert!(context.is_streaming);
         assert!(history_contains_text(&context.chat_history, "checking "));
+        assert!(
+            assistant_reasoning_precedes_tool_call(
+                &context.chat_history,
+                "diagnostic reason",
+                "add"
+            ),
+            "{:?}",
+            context.chat_history
+        );
         assert!(history_contains_tool_call(&context.chat_history, "add"));
         assert!(history_contains_tool_call(
             &context.chat_history,
