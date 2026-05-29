@@ -1051,8 +1051,8 @@ where
                                         &new_messages,
                                         &stream.message_id,
                                         None,
-                                        None,
-                                        &[],
+                                        saw_text_this_turn.then_some(text_delta_response.as_str()),
+                                        &pending_tool_calls,
                                         Some(diagnostic_tool_call),
                                     );
 
@@ -1061,7 +1061,7 @@ where
                                         match resolve_invalid_tool_call::<M, I>(
                                             self.invalid_tool_call_hook.as_ref(),
                                             &emitted_tool_name,
-                                            None,
+                                            Some(id.clone()),
                                             Some(internal_call_id.clone()),
                                             Some(buffered_args.clone()),
                                             &executable_tool_names,
@@ -1802,6 +1802,19 @@ mod tests {
         })
     }
 
+    fn history_contains_text(history: &[Message], expected: &str) -> bool {
+        history.iter().any(|message| {
+            matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::Text(text) if text.text == expected
+                    ))
+            )
+        })
+    }
+
     #[derive(Clone)]
     struct PanicOnUnknownToolHook;
 
@@ -2138,6 +2151,38 @@ mod tests {
             async move {
                 assert_eq!(tool_name, "default_api");
                 InvalidToolCallHookAction::skip("default_api was skipped")
+            }
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingInvalidToolCallHook {
+        contexts: Arc<Mutex<Vec<InvalidToolCallContext>>>,
+    }
+
+    impl RecordingInvalidToolCallHook {
+        fn observed(&self) -> Vec<InvalidToolCallContext> {
+            self.contexts
+                .lock()
+                .expect("invalid tool context records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl InvalidToolCallHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            let contexts = self.contexts.clone();
+            let context = context.clone();
+
+            async move {
+                contexts
+                    .lock()
+                    .expect("invalid tool context records mutex was poisoned")
+                    .push(context);
+                InvalidToolCallHookAction::fail()
             }
         }
     }
@@ -2921,6 +2966,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_call_id() {
+        let invalid_hook = RecordingInvalidToolCallHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("checking "),
+                MockStreamEvent::tool_call(
+                    "tool_call_0",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_0"),
+                MockStreamEvent::tool_call_arguments_delta(
+                    "tool_call_1",
+                    "internal_1",
+                    r#"{"x":2,"y":3}"#,
+                ),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(invalid_hook.clone())
+            .multi_turn(3)
+            .await;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                error = Some(err);
+                break;
+            }
+        }
+
+        assert!(error.is_some(), "invalid name delta should fail");
+        assert_eq!(recorded.request_count(), 1);
+        let contexts = invalid_hook.observed();
+        assert_eq!(contexts.len(), 1);
+        let context = &contexts[0];
+        assert_eq!(context.tool_name, "default_api");
+        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        assert_eq!(context.internal_call_id.as_deref(), Some("internal_1"));
+        assert!(context.is_streaming);
+        assert!(history_contains_text(&context.chat_history, "checking "));
+        assert!(history_contains_tool_call(&context.chat_history, "add"));
+        assert!(history_contains_tool_call(
+            &context.chat_history,
+            "default_api"
+        ));
+    }
+
+    #[tokio::test]
     async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
         let text_hook = RecordingTextDeltaHook::default();
         let model = MockCompletionModel::from_stream_turns([
@@ -3138,6 +3242,68 @@ mod tests {
                     ..
                 } => {
                     assert_eq!(tool_name, "default_api");
+                    assert!(history_contains_tool_call(&chat_history, "default_api"));
+                }
+                other => panic!("expected UnknownToolCall, got {other:?}"),
+            },
+            other => panic!("expected prompt streaming error, got {other:?}"),
+        }
+        assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn streaming_name_delta_retry_budget_exhaustion_history_includes_same_turn_context() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("checking "),
+                MockStreamEvent::tool_call(
+                    "tool_call_0",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_0"),
+                MockStreamEvent::tool_call_arguments_delta(
+                    "tool_call_1",
+                    "internal_1",
+                    r#"{"x":2,"y":3}"#,
+                ),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("should not be requested"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .multi_turn(3)
+            .max_invalid_tool_call_retries(0)
+            .await;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                error = Some(err);
+                break;
+            }
+        }
+
+        let error = error.expect("retry budget exhaustion should fail");
+        match error {
+            StreamingError::Prompt(err) => match *err {
+                PromptError::UnknownToolCall {
+                    tool_name,
+                    chat_history,
+                    ..
+                } => {
+                    assert_eq!(tool_name, "default_api");
+                    assert!(history_contains_text(&chat_history, "checking "));
+                    assert!(history_contains_tool_call(&chat_history, "add"));
                     assert!(history_contains_tool_call(&chat_history, "default_api"));
                 }
                 other => panic!("expected UnknownToolCall, got {other:?}"),
