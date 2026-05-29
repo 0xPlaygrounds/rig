@@ -976,25 +976,44 @@ where
                                         tool_call.function.name = repaired_name;
                                     }
                                     InvalidToolCallResolution::Skip(reason) => {
-                                        tool_calls.push(AssistantContent::ToolCall(tool_call.clone()));
-                                        tool_results.push((
-                                            tool_call.id.clone(),
-                                            tool_call.call_id.clone(),
-                                            reason.clone(),
-                                        ));
-                                        let tool_result = ToolResult {
-                                            id: tool_call.id,
-                                            call_id: tool_call.call_id,
-                                            content: ToolResultContent::from_tool_output(reason),
+                                        let skipped_tool_result = ToolResult {
+                                            id: tool_call.id.clone(),
+                                            call_id: tool_call.call_id.clone(),
+                                            content: ToolResultContent::from_tool_output(
+                                                reason.clone(),
+                                            ),
                                         };
-                                        saw_tool_call_this_turn = true;
+                                        let Some((assistant_message, user_message)) =
+                                            invalid_streaming_tool_retry_messages(
+                                                &stream.message_id,
+                                                saw_text_this_turn
+                                                    .then_some(text_delta_response.as_str()),
+                                                &pending_tool_calls,
+                                                tool_call,
+                                                reason,
+                                            )
+                                        else {
+                                            yield Err(cancelled_prompt_error(
+                                                chat_history.as_deref(),
+                                                new_messages.clone(),
+                                                "invalid tool call skip produced no recovery messages".to_string(),
+                                            ).await);
+                                            break 'outer;
+                                        };
+                                        new_messages.push(assistant_message);
+                                        new_messages.push(user_message);
+                                        let tool_result = ToolResult {
+                                            id: skipped_tool_result.id,
+                                            call_id: skipped_tool_result.call_id,
+                                            content: skipped_tool_result.content,
+                                        };
                                         yield Ok(MultiTurnStreamItem::StreamUserItem(
                                             StreamedUserContent::ToolResult {
                                                 tool_result,
                                                 internal_call_id,
                                             },
                                         ));
-                                        continue;
+                                        continue 'outer;
                                     }
                                 }
                             }
@@ -2581,6 +2600,124 @@ mod tests {
                                     content,
                                     ToolResultContent::Text(text)
                                         if text.text == "Use the add tool instead"
+                                ))
+                    ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_valid_call() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("checking "),
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 2, "y": 3}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::tool_call(
+                    "tool_call_2",
+                    "default_api",
+                    serde_json::json!({"x": 4, "y": 5}),
+                )
+                .with_call_id("call_2"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("continued"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let mut stream = agent
+            .stream_prompt("use the tool")
+            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .multi_turn(3)
+            .with_history(Vec::<Message>::new())
+            .await;
+        let mut skipped_tool_result = None;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    tool_result,
+                    ..
+                })) => {
+                    skipped_tool_result = Some(tool_result);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    final_response_text = Some(response.response().to_string());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let skipped_tool_result =
+            skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
+        assert_eq!(skipped_tool_result.id, "tool_call_2");
+        assert_eq!(skipped_tool_result.call_id.as_deref(), Some("call_2"));
+        assert_eq!(final_response_text.as_deref(), Some("continued"));
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+
+        let requests = recorded.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        assert_eq!(follow_up_history.len(), 3);
+        assert!(matches!(
+            follow_up_history.get(1),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == "checking "
+                ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.id == "tool_call_1"
+                                && tool_call.function.name == "add"
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.id == "tool_call_2"
+                                && tool_call.function.name == "default_api"
+                    ))
+        ));
+        assert!(matches!(
+            follow_up_history.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.call_id.as_deref() == Some("call_1")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_2"
+                                && result.call_id.as_deref() == Some("call_2")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == "default_api was skipped"
                                 ))
                     ))
         ));
