@@ -13,6 +13,9 @@ use base64::Engine as _;
 use rig_core::OneOrMany;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::providers::gemini::completion::gemini_api_types::{
+    Schema as GeminiSchema, tool_parameters_to_schema,
+};
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
 
@@ -665,319 +668,26 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
 fn tool_parameters_to_proto_schema(
     value: &serde_json::Value,
 ) -> Result<Option<proto::Schema>, CompletionError> {
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    let flattened = flatten_json_schema(value.clone())?;
-    if flattened == serde_json::json!({"type": "object", "properties": {}}) {
-        return Ok(None);
-    }
-
-    json_value_to_proto_schema(&flattened).map(Some)
+    tool_parameters_to_schema(value.clone()).map(|schema| schema.map(gemini_schema_to_proto_schema))
 }
 
-fn json_value_to_proto_schema(value: &serde_json::Value) -> Result<proto::Schema, CompletionError> {
-    let obj = value.as_object().ok_or_else(|| {
-        CompletionError::RequestError("Expected a JSON object for Gemini tool schema".into())
-    })?;
-
-    if obj.contains_key("$ref") {
-        return Err(CompletionError::RequestError(
-            "Unresolved JSON Schema $ref in Gemini tool schema".into(),
-        ));
-    }
-
-    let composition_source = extract_schema_from_composition_obj(obj);
-    let schema_source = composition_source.as_ref().unwrap_or(obj);
-    let schema_type = infer_schema_type(obj);
-
-    let r#type = json_type_to_proto_type(&schema_type) as i32;
-
-    let format = obj
-        .get("format")
-        .or_else(|| schema_source.get("format"))
-        .and_then(|v| v.as_str())
-        .map(str::to_owned)
-        .unwrap_or_default();
-
-    let description = obj
-        .get("description")
-        .or_else(|| schema_source.get("description"))
-        .and_then(|v| v.as_str())
-        .map(str::to_owned)
-        .unwrap_or_default();
-
-    let nullable =
-        schema_is_nullable(obj) || composition_source.as_ref().is_some_and(schema_is_nullable);
-
-    let r#enum = obj
-        .get("enum")
-        .or_else(|| schema_source.get("enum"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_owned))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let items = obj
-        .get("items")
-        .or_else(|| schema_source.get("items"))
-        .map(json_value_to_proto_schema)
-        .transpose()?
-        .map(Box::new);
-
-    let items = if schema_type == "array" && items.is_none() {
-        Some(Box::new(default_string_schema()))
-    } else {
-        items
-    };
-
-    let properties = schema_source
-        .get("properties")
-        .and_then(|v| v.as_object())
-        .map(|map| {
-            map.iter()
-                .map(|(k, v)| json_value_to_proto_schema(v).map(|s| (k.clone(), s)))
-                .collect::<Result<std::collections::HashMap<_, _>, CompletionError>>()
-        })
-        .transpose()?
-        .unwrap_or_default();
-
-    let required = schema_source
-        .get("required")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_owned))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    Ok(proto::Schema {
-        r#type,
-        format,
-        description,
-        nullable,
-        r#enum,
-        items,
-        properties,
-        required,
-    })
-}
-
-fn flatten_json_schema(
-    mut schema: serde_json::Value,
-) -> Result<serde_json::Value, CompletionError> {
-    let defs = schema
-        .as_object()
-        .and_then(|obj| obj.get("$defs").or_else(|| obj.get("definitions")))
-        .cloned();
-
-    let Some(defs) = defs else {
-        return Ok(schema);
-    };
-
-    let Some(defs_obj) = defs.as_object() else {
-        return Err(CompletionError::RequestError(
-            "$defs must be an object in Gemini tool schema".into(),
-        ));
-    };
-
-    resolve_schema_refs(&mut schema, defs_obj)?;
-
-    if let Some(obj) = schema.as_object_mut() {
-        obj.remove("$defs");
-        obj.remove("definitions");
-    }
-
-    Ok(schema)
-}
-
-fn resolve_schema_refs(
-    value: &mut serde_json::Value,
-    defs: &serde_json::Map<String, serde_json::Value>,
-) -> Result<(), CompletionError> {
-    match value {
-        serde_json::Value::Object(obj) => {
-            if let Some(ref_value) = obj.get("$ref")
-                && let Some(ref_str) = ref_value.as_str()
-            {
-                let def_name = parse_ref_path(ref_str)?;
-                let def = defs.get(&def_name).ok_or_else(|| {
-                    CompletionError::RequestError(
-                        format!("JSON Schema reference not found: {ref_str}").into(),
-                    )
-                })?;
-
-                let mut resolved = def.clone();
-                resolve_schema_refs(&mut resolved, defs)?;
-                *value = resolved;
-                return Ok(());
-            }
-
-            for v in obj.values_mut() {
-                resolve_schema_refs(v, defs)?;
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            for item in arr {
-                resolve_schema_refs(item, defs)?;
-            }
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
-
-fn parse_ref_path(ref_str: &str) -> Result<String, CompletionError> {
-    if let Some(fragment) = ref_str.strip_prefix('#') {
-        if let Some(name) = fragment.strip_prefix("/$defs/") {
-            Ok(name.to_string())
-        } else if let Some(name) = fragment.strip_prefix("/definitions/") {
-            Ok(name.to_string())
-        } else {
-            Err(CompletionError::RequestError(
-                format!("Unsupported JSON Schema reference format: {ref_str}").into(),
-            ))
-        }
-    } else {
-        Err(CompletionError::RequestError(
-            format!("Only local JSON Schema references are supported: {ref_str}").into(),
-        ))
-    }
-}
-
-fn extract_type(type_value: &serde_json::Value) -> Option<String> {
-    if let Some(t) = type_value.as_str() {
-        return Some(t.to_string());
-    }
-
-    type_value.as_array().and_then(|arr| {
-        arr.iter()
-            .filter_map(|v| v.as_str())
-            .find(|t| *t != "null")
-            .or_else(|| arr.iter().find_map(|v| v.as_str()))
-            .map(str::to_owned)
-    })
-}
-
-fn schema_is_null(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
-    obj.get("type")
-        .and_then(extract_type)
-        .as_deref()
-        .is_some_and(|t| t == "null")
-}
-
-fn schema_is_nullable(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
-    obj.get("nullable")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-        || obj
-            .get("type")
-            .and_then(|v| v.as_array())
-            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("null")))
-        || ["anyOf", "oneOf", "allOf"].iter().any(|key| {
-            obj.get(*key).and_then(|v| v.as_array()).is_some_and(|arr| {
-                arr.iter()
-                    .filter_map(|schema| schema.as_object())
-                    .any(schema_is_null)
-            })
-        })
-}
-
-fn extract_type_from_composition(composition: &serde_json::Value) -> Option<String> {
-    composition.as_array().and_then(|arr| {
-        arr.iter().find_map(|schema| {
-            let obj = schema.as_object()?;
-            if schema_is_null(obj) {
-                return None;
-            }
-
-            obj.get("type").and_then(extract_type).or_else(|| {
-                if obj.contains_key("properties") {
-                    Some("object".to_string())
-                } else if obj.contains_key("enum") {
-                    Some("string".to_string())
-                } else {
-                    None
-                }
-            })
-        })
-    })
-}
-
-fn extract_schema_from_composition(
-    composition: &serde_json::Value,
-) -> Option<serde_json::Map<String, serde_json::Value>> {
-    composition.as_array().and_then(|arr| {
-        arr.iter().find_map(|schema| {
-            let obj = schema.as_object()?;
-            if schema_is_null(obj) {
-                None
-            } else {
-                Some(obj.clone())
-            }
-        })
-    })
-}
-
-fn extract_schema_from_composition_obj(
-    obj: &serde_json::Map<String, serde_json::Value>,
-) -> Option<serde_json::Map<String, serde_json::Value>> {
-    obj.get("anyOf")
-        .and_then(extract_schema_from_composition)
-        .or_else(|| obj.get("oneOf").and_then(extract_schema_from_composition))
-        .or_else(|| obj.get("allOf").and_then(extract_schema_from_composition))
-}
-
-fn infer_schema_type(obj: &serde_json::Map<String, serde_json::Value>) -> String {
-    if let Some(type_val) = obj.get("type")
-        && let Some(type_str) = extract_type(type_val)
-    {
-        return type_str;
-    }
-
-    if let Some(any_of) = obj.get("anyOf")
-        && let Some(type_str) = extract_type_from_composition(any_of)
-    {
-        return type_str;
-    }
-
-    if let Some(one_of) = obj.get("oneOf")
-        && let Some(type_str) = extract_type_from_composition(one_of)
-    {
-        return type_str;
-    }
-
-    if let Some(all_of) = obj.get("allOf")
-        && let Some(type_str) = extract_type_from_composition(all_of)
-    {
-        return type_str;
-    }
-
-    if obj.contains_key("properties") {
-        "object".to_string()
-    } else if obj.contains_key("enum") {
-        "string".to_string()
-    } else {
-        String::new()
-    }
-}
-
-fn default_string_schema() -> proto::Schema {
+fn gemini_schema_to_proto_schema(schema: GeminiSchema) -> proto::Schema {
     proto::Schema {
-        r#type: proto::Type::String as i32,
-        format: String::new(),
-        description: String::new(),
-        nullable: false,
-        r#enum: Vec::new(),
-        items: None,
-        properties: std::collections::HashMap::new(),
-        required: Vec::new(),
+        r#type: json_type_to_proto_type(&schema.r#type) as i32,
+        format: schema.format.unwrap_or_default(),
+        description: schema.description.unwrap_or_default(),
+        nullable: schema.nullable.unwrap_or(false),
+        r#enum: schema.r#enum.unwrap_or_default(),
+        items: schema
+            .items
+            .map(|items| Box::new(gemini_schema_to_proto_schema(*items))),
+        properties: schema
+            .properties
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(name, schema)| (name, gemini_schema_to_proto_schema(schema)))
+            .collect(),
+        required: schema.required.unwrap_or_default(),
     }
 }
 
