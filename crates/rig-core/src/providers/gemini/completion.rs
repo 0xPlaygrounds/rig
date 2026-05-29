@@ -23,7 +23,7 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
-use self::gemini_api_types::Schema;
+use self::gemini_api_types::tool_parameters_to_schema;
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 
@@ -354,12 +354,7 @@ impl TryFrom<completion::ToolDefinition> for Tool {
     type Error = CompletionError;
 
     fn try_from(tool: completion::ToolDefinition) -> Result<Self, Self::Error> {
-        let parameters: Option<Schema> =
-            if tool.parameters == serde_json::json!({"type": "object", "properties": {}}) {
-                None
-            } else {
-                Some(tool.parameters.try_into()?)
-            };
+        let parameters = tool_parameters_to_schema(tool.parameters)?;
 
         Ok(Self {
             function_declarations: vec![FunctionDeclaration {
@@ -379,21 +374,12 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
         let mut function_declarations = Vec::new();
 
         for tool in tools {
-            let parameters =
-                if tool.parameters == serde_json::json!({"type": "object", "properties": {}}) {
-                    None
-                } else {
-                    match tool.parameters.try_into() {
-                        Ok(schema) => Some(schema),
-                        Err(e) => {
-                            let emsg = format!(
-                                "Tool '{}' could not be converted to a schema: {:?}",
-                                tool.name, e,
-                            );
-                            return Err(CompletionError::ProviderError(emsg));
-                        }
-                    }
-                };
+            let parameters = tool_parameters_to_schema(tool.parameters).map_err(|e| {
+                CompletionError::ProviderError(format!(
+                    "Tool '{}' could not be converted to a schema: {:?}",
+                    tool.name, e,
+                ))
+            })?;
 
             function_declarations.push(FunctionDeclaration {
                 name: tool.name,
@@ -1709,6 +1695,19 @@ pub mod gemini_api_types {
         pub items: Option<Box<Schema>>,
     }
 
+    /// Converts Rig tool parameters into Gemini's schema representation.
+    ///
+    /// Gemini does not need a `parameters` object for no-argument tools, and it
+    /// does not support JSON Schema references, so this helper keeps those
+    /// conventions centralized for all Gemini transports.
+    pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Schema>, CompletionError> {
+        if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
+            Ok(None)
+        } else {
+            parameters.try_into().map(Some)
+        }
+    }
+
     /// Flattens a JSON schema by resolving all `$ref` references inline.
     /// It takes a JSON schema that may contain `$ref` references to definitions
     /// in `$defs` or `definitions` sections and returns a new schema with all references
@@ -1808,18 +1807,43 @@ pub mod gemini_api_types {
     }
 
     /// Helper function to extract the type string from a JSON value.
-    /// Handles both direct string types and array types (returns the first element).
+    /// Handles both direct string types and array types.
     fn extract_type(type_value: &Value) -> Option<String> {
-        if type_value.is_string() {
-            type_value.as_str().map(String::from)
-        } else if type_value.is_array() {
-            type_value
-                .as_array()
-                .and_then(|arr| arr.first())
-                .and_then(|v| v.as_str().map(String::from))
-        } else {
-            None
+        if let Some(t) = type_value.as_str() {
+            return Some(t.to_string());
         }
+
+        type_value.as_array().and_then(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .find(|t| *t != "null")
+                .or_else(|| arr.iter().find_map(|v| v.as_str()))
+                .map(str::to_owned)
+        })
+    }
+
+    fn schema_is_null(obj: &serde_json::Map<String, Value>) -> bool {
+        obj.get("type")
+            .and_then(extract_type)
+            .as_deref()
+            .is_some_and(|t| t == "null")
+    }
+
+    fn schema_is_nullable(obj: &serde_json::Map<String, Value>) -> bool {
+        obj.get("nullable")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            || obj
+                .get("type")
+                .and_then(|v| v.as_array())
+                .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("null")))
+            || ["anyOf", "oneOf", "allOf"].iter().any(|key| {
+                obj.get(*key).and_then(|v| v.as_array()).is_some_and(|arr| {
+                    arr.iter()
+                        .filter_map(|schema| schema.as_object())
+                        .any(schema_is_null)
+                })
+            })
     }
 
     /// Helper function to extract type from anyOf, oneOf, or allOf schemas.
@@ -1827,28 +1851,21 @@ pub mod gemini_api_types {
     fn extract_type_from_composition(composition: &Value) -> Option<String> {
         composition.as_array().and_then(|arr| {
             arr.iter().find_map(|schema| {
-                if let Some(obj) = schema.as_object() {
-                    // Skip null types
-                    if let Some(type_val) = obj.get("type")
-                        && let Some(type_str) = type_val.as_str()
-                        && type_str == "null"
-                    {
-                        return None;
-                    }
-                    // Extract type from this schema
-                    obj.get("type").and_then(extract_type).or_else(|| {
-                        if obj.contains_key("properties") {
-                            Some("object".to_string())
-                        } else if obj.contains_key("enum") {
-                            // Enum schemas without explicit type are string-backed
-                            Some("string".to_string())
-                        } else {
-                            None
-                        }
-                    })
-                } else {
-                    None
+                let obj = schema.as_object()?;
+                if schema_is_null(obj) {
+                    return None;
                 }
+
+                obj.get("type").and_then(extract_type).or_else(|| {
+                    if obj.contains_key("properties") {
+                        Some("object".to_string())
+                    } else if obj.contains_key("enum") {
+                        // Enum schemas without explicit type are string-backed
+                        Some("string".to_string())
+                    } else {
+                        None
+                    }
+                })
             })
         })
     }
@@ -1860,19 +1877,23 @@ pub mod gemini_api_types {
     ) -> Option<serde_json::Map<String, Value>> {
         composition.as_array().and_then(|arr| {
             arr.iter().find_map(|schema| {
-                if let Some(obj) = schema.as_object()
-                    && let Some(type_val) = obj.get("type")
-                    && let Some(type_str) = type_val.as_str()
-                {
-                    if type_str == "null" {
-                        return None;
-                    }
-                    Some(obj.clone())
-                } else {
+                let obj = schema.as_object()?;
+                if schema_is_null(obj) {
                     None
+                } else {
+                    Some(obj.clone())
                 }
             })
         })
+    }
+
+    fn extract_schema_from_composition_obj(
+        obj: &serde_json::Map<String, Value>,
+    ) -> Option<serde_json::Map<String, Value>> {
+        obj.get("anyOf")
+            .and_then(extract_schema_from_composition)
+            .or_else(|| obj.get("oneOf").and_then(extract_schema_from_composition))
+            .or_else(|| obj.get("allOf").and_then(extract_schema_from_composition))
     }
 
     /// Helper function to infer the type of a schema object.
@@ -1907,6 +1928,8 @@ pub mod gemini_api_types {
         // Finally, infer object type if properties are present
         if obj.contains_key("properties") {
             "object".to_string()
+        } else if obj.contains_key("enum") {
+            "string".to_string()
         } else {
             String::new()
         }
@@ -1920,17 +1943,9 @@ pub mod gemini_api_types {
             if let Some(obj) = flattened_val.as_object() {
                 // Determine which object to use for extracting properties and required fields.
                 // If this object has anyOf/oneOf/allOf, we need to extract properties from the composition.
+                let composition_source = extract_schema_from_composition_obj(obj);
                 let props_source = if obj.get("properties").is_none() {
-                    if let Some(any_of) = obj.get("anyOf") {
-                        extract_schema_from_composition(any_of)
-                    } else if let Some(one_of) = obj.get("oneOf") {
-                        extract_schema_from_composition(one_of)
-                    } else if let Some(all_of) = obj.get("allOf") {
-                        extract_schema_from_composition(all_of)
-                    } else {
-                        None
-                    }
-                    .unwrap_or(obj.clone())
+                    composition_source.clone().unwrap_or(obj.clone())
                 } else {
                     obj.clone()
                 };
@@ -1938,6 +1953,7 @@ pub mod gemini_api_types {
                 let schema_type = infer_type(obj);
                 let items = obj
                     .get("items")
+                    .or_else(|| props_source.get("items"))
                     .and_then(|v| v.clone().try_into().ok())
                     .map(Box::new);
 
@@ -1962,17 +1978,32 @@ pub mod gemini_api_types {
 
                 Ok(Schema {
                     r#type: schema_type,
-                    format: obj.get("format").and_then(|v| v.as_str()).map(String::from),
-                    description: obj
-                        .get("description")
+                    format: obj
+                        .get("format")
+                        .or_else(|| props_source.get("format"))
                         .and_then(|v| v.as_str())
                         .map(String::from),
-                    nullable: obj.get("nullable").and_then(|v| v.as_bool()),
-                    r#enum: obj.get("enum").and_then(|v| v.as_array()).map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    }),
+                    description: obj
+                        .get("description")
+                        .or_else(|| props_source.get("description"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    nullable: if schema_is_nullable(obj)
+                        || composition_source.as_ref().is_some_and(schema_is_nullable)
+                    {
+                        Some(true)
+                    } else {
+                        None
+                    },
+                    r#enum: obj
+                        .get("enum")
+                        .or_else(|| props_source.get("enum"))
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect()
+                        }),
                     max_items: obj
                         .get("maxItems")
                         .and_then(|v| v.as_i64())
@@ -2120,7 +2151,8 @@ mod tests {
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{
-            ContentCandidate, FinishReason, FunctionCall, UsageMetadata, flatten_schema,
+            ContentCandidate, FinishReason, FunctionCall, Schema, UsageMetadata, flatten_schema,
+            tool_parameters_to_schema,
         },
     };
 
@@ -2706,6 +2738,62 @@ mod tests {
             .as_ref()
             .expect("array schema missing items should get a default");
         assert_eq!(items.r#type, "string");
+    }
+
+    #[test]
+    fn test_tool_parameters_to_schema_maps_no_arg_tool_to_none() {
+        let schema = tool_parameters_to_schema(json!({"type": "object", "properties": {}}))
+            .expect("schema conversion");
+
+        assert!(schema.is_none());
+    }
+
+    #[test]
+    fn test_tool_parameters_to_schema_resolves_defs_ref() {
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "destination": { "$ref": "#/$defs/Destination" }
+            },
+            "required": ["destination"],
+            "$defs": {
+                "Destination": {
+                    "type": "object",
+                    "properties": {
+                        "city": { "type": "string" }
+                    },
+                    "required": ["city"]
+                }
+            }
+        });
+
+        let schema = tool_parameters_to_schema(schema_json)
+            .expect("schema conversion")
+            .expect("schema");
+        let props = schema.properties.expect("properties");
+        let destination = props.get("destination").expect("destination prop");
+
+        assert_eq!(destination.r#type, "object");
+        assert_eq!(destination.required, Some(vec!["city".to_string()]));
+    }
+
+    #[test]
+    fn test_tool_parameters_to_schema_handles_nullable_type_arrays() {
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "nickname": { "type": ["null", "string"] }
+            }
+        });
+
+        let schema = tool_parameters_to_schema(schema_json)
+            .expect("schema conversion")
+            .expect("schema");
+        let props = schema.properties.expect("properties");
+        let nickname = props.get("nickname").expect("nickname prop");
+
+        assert_eq!(nickname.r#type, "string");
+        assert_eq!(nickname.nullable, Some(true));
     }
 
     #[test]
