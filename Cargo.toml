@@ -68,7 +68,7 @@ futures = "0.3.32"
 futures-timer = "3.0.3"
 getrandom = "0.2"
 glob = "0.3.2"
-google-cloud-auth = "1.0"
+google-cloud-auth = "1.10"
 google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
     "prediction-service",
 ] }
