@@ -31,6 +31,12 @@ fn add_explicit(a: i32, b: i32) -> Result<i32, rig_core::tool::ToolError> {
     Ok(a + b)
 }
 
+// Explicit `required()` means all params are optional.
+#[rig_tool(description = "Search optionally", required())]
+fn search_optional(limit: Option<i32>) -> Result<String, rig_core::tool::ToolError> {
+    Ok(format!("{limit:?}"))
+}
+
 // No params at all — required should be empty
 #[rig_tool(description = "Returns a constant")]
 fn constant() -> Result<i32, rig_core::tool::ToolError> {
@@ -64,6 +70,17 @@ async fn test_explicit_required_overrides_default() {
         names,
         vec!["a"],
         "expected only 'a' in required, got {names:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_explicit_empty_required_overrides_default() {
+    let def = SearchOptional.definition(String::default()).await;
+    let required = def.parameters["required"].as_array().unwrap();
+
+    assert!(
+        required.is_empty(),
+        "expected explicit required() to make all params optional, got {required:?}"
     );
 }
 

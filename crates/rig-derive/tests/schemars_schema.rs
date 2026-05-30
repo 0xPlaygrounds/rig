@@ -228,7 +228,7 @@ async fn test_required_all_by_default() {
 
 // --- Enum param ---
 
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, serde::Deserialize, rig_core::schemars::JsonSchema)]
 pub enum SortOrder {
     #[serde(rename = "asc")]
     Ascending,
@@ -279,7 +279,7 @@ async fn test_hashmap_param() {
 
 // --- Nested struct param ---
 
-#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[derive(serde::Deserialize, rig_core::schemars::JsonSchema)]
 pub struct Coordinates {
     /// Latitude
     pub lat: f64,

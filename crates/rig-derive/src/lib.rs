@@ -72,7 +72,7 @@ struct MacroArgs {
     name: Option<String>,
     description: Option<String>,
     param_descriptions: HashMap<String, String>,
-    required: Vec<String>,
+    required: Option<Vec<String>>,
 }
 
 fn parse_string_literal(expr: &Expr, field_name: &str) -> syn::Result<String> {
@@ -126,7 +126,7 @@ impl Parse for MacroArgs {
         let mut name = None;
         let mut description = None;
         let mut param_descriptions = HashMap::new();
-        let mut required = Vec::new();
+        let mut required = None;
 
         // If the input is empty, return default values
         if input.is_empty() {
@@ -202,9 +202,12 @@ impl Parse for MacroArgs {
                             let required_variables: Punctuated<Ident, Token![,]> =
                                 list.parse_args_with(Punctuated::parse_terminated)?;
 
-                            required_variables.into_iter().for_each(|x| {
-                                required.push(x.to_string());
-                            });
+                            required = Some(
+                                required_variables
+                                    .into_iter()
+                                    .map(|x| x.to_string())
+                                    .collect(),
+                            );
                         }
                         _ => {
                             return Err(syn::Error::new_spanned(
@@ -492,12 +495,10 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    // Default required to all parameters when not explicitly specified
-    let required_args: Vec<String> = if args.required.is_empty() {
-        param_names.iter().map(|n| n.to_string()).collect()
-    } else {
-        args.required
-    };
+    // Default required to all parameters only when required(...) was omitted.
+    let required_args: Vec<String> = args
+        .required
+        .unwrap_or_else(|| param_names.iter().map(|n| n.to_string()).collect());
 
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
