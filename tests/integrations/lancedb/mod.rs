@@ -8,8 +8,7 @@
 
 use serde_json::json;
 
-use arrow_array::RecordBatchIterator;
-use fixture::{Word, as_record_batch, schema, words};
+use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
@@ -20,7 +19,6 @@ use rig::{
     providers::openai,
     vector_store::{VectorStoreIndex, request::VectorSearchRequest},
 };
-use std::sync::Arc;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -156,10 +154,7 @@ async fn vector_search_test() {
     } else {
         db.create_table(
             table_name,
-            RecordBatchIterator::new(
-                vec![as_record_batch(embeddings, model.ndims())],
-                Arc::new(schema(model.ndims())),
-            ),
+            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
         )
         .execute()
         .await
@@ -373,10 +368,7 @@ async fn agent_with_dynamic_context_test() {
     } else {
         db.create_table(
             table_name,
-            RecordBatchIterator::new(
-                vec![as_record_batch(embeddings, model.ndims())],
-                Arc::new(schema(model.ndims())),
-            ),
+            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
         )
         .execute()
         .await

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
-use lancedb::arrow::arrow_schema::{DataType, Field, Fields, Schema};
 use rig_core::embeddings::Embedding;
 use rig_core::{Embed, OneOrMany};
 use serde::Deserialize;
@@ -28,22 +27,6 @@ pub fn words() -> Vec<Word> {
             definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string()
         }
     ]
-}
-
-// Schema of table in LanceDB.
-pub fn schema(dims: usize) -> Schema {
-    Schema::new(Fields::from(vec![
-        Field::new("id", DataType::Utf8, false),
-        Field::new("definition", DataType::Utf8, false),
-        Field::new(
-            "embedding",
-            DataType::FixedSizeList(
-                Arc::new(Field::new("item", DataType::Float64, true)),
-                dims as i32,
-            ),
-            false,
-        ),
-    ]))
 }
 
 // Convert Word objects and their embedding to a RecordBatch.
