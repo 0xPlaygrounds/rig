@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use arrow_array::RecordBatchIterator;
-use fixture::{as_record_batch, schema, words};
+use fixture::{as_record_batch, words};
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -45,10 +42,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            RecordBatchIterator::new(
-                vec![as_record_batch(embeddings, model.ndims())],
-                Arc::new(schema(model.ndims())),
-            ),
+            vec![as_record_batch(embeddings, model.ndims())?],
         )
         .execute()
         .await?
