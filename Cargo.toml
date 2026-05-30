@@ -76,7 +76,7 @@ http = "1.3.1"
 httpmock = "0.8.3"
 hyper-util = "0.1.14"
 indoc = "2.0.6"
-lancedb = { version = "0.23", default-features = false }
+lancedb = { version = "0.30", default-features = false }
 log = "0.4.27"
 lopdf = "0.40.0"
 mime = "0.3.17"
