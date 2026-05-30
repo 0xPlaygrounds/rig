@@ -1,6 +1,14 @@
 //! Test that `#[rig_tool]` defaults `required` to all parameters when not
 //! explicitly specified, matching OpenAI's strict function calling expectations.
 
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 

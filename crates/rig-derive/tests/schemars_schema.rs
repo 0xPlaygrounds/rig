@@ -1,5 +1,13 @@
 //! Tests for schemars-based schema generation in `#[rig_tool]`.
 
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
 use std::collections::HashMap;
 
 use rig_core::tool::Tool;
