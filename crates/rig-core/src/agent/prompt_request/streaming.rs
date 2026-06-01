@@ -1611,6 +1611,7 @@ where
 
                 // Add text, reasoning, and tool calls to chat history.
                 // OpenAI Responses API requires reasoning items to precede function_call items.
+                let mut assistant_turn_added_to_history = false;
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     // Text before tool calls so the model sees its own prior output.
                     let mut content_items = assistant_text_items_from_choice(&final_turn_content);
@@ -1627,6 +1628,7 @@ where
                             id: stream.message_id.clone(),
                             content,
                         });
+                        assistant_turn_added_to_history = true;
                     }
                 }
 
@@ -1636,12 +1638,14 @@ where
 
                 if !saw_tool_call_this_turn {
                     // Add user message and assistant response to history before finishing
-                    if !is_empty_assistant_choice(&final_turn_content) {
+                    let should_add_final_assistant = !assistant_turn_added_to_history
+                        && !is_empty_assistant_choice(&final_turn_content);
+                    if should_add_final_assistant {
                         new_messages.push(Message::Assistant {
                             id: stream.message_id.clone(),
                             content: final_turn_content.clone(),
                         });
-                    } else {
+                    } else if !assistant_turn_added_to_history {
                         tracing::warn!(
                             agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
                             message_id = ?stream.message_id,
@@ -5340,6 +5344,79 @@ mod tests {
 
         let stored = memory.load("stream-thread").await.unwrap();
         assert_eq!(stored.len(), 2, "memory should contain user + assistant");
+    }
+
+    #[tokio::test]
+    async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("final answer"),
+            MockStreamEvent::reasoning("reasoned step").with_reasoning_id("rs_1"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]))
+        .build();
+
+        let mut stream = agent
+            .stream_prompt("think before answering")
+            .with_history(Vec::<Message>::new())
+            .await;
+
+        let mut history_in_final = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    history_in_final = res.history().map(|h| h.to_vec());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let final_history = history_in_final
+            .expect("FinalResponse.history should be populated when with_history is used");
+        assert_eq!(
+            final_history.len(),
+            2,
+            "user prompt + one assistant response in final history: {final_history:?}"
+        );
+
+        assert!(matches!(
+            final_history.first(),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::Text(text) if text.text == "think before answering"
+                )
+        ));
+
+        let assistant_messages = final_history
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            assistant_messages.len(),
+            1,
+            "reasoning turn should produce exactly one assistant history message: {final_history:?}"
+        );
+        let assistant_content = assistant_messages
+            .first()
+            .expect("expected assistant history message");
+        assert!(assistant_content.iter().any(|item| matches!(
+            item,
+            AssistantContent::Text(text) if text.text == "final answer"
+        )));
+        assert!(assistant_content.iter().any(|item| matches!(
+            item,
+            AssistantContent::Reasoning(reasoning)
+                if reasoning.id.as_deref() == Some("rs_1")
+                    && reasoning.content.iter().any(|content| matches!(
+                        content,
+                        ReasoningContent::Text { text, .. } if text == "reasoned step"
+                    ))
+        )));
     }
 
     #[tokio::test]
