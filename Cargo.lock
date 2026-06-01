@@ -4107,9 +4107,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-aiplatform-v1"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9eb264973fa09916e3d15f5806538af220e06fe1852b79ed2d32c667694d606"
+checksum = "a41a475929b4e4b31297ab55068359202abaca26fe81dc561c201f17aa876878"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4131,9 +4131,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-api"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f5db8944d332e7e3b73277606abea11fc0b020109aa2ddeb7b7fc6d656492d2"
+checksum = "3c61af87418a72938df35c626f9de0c47942c279d41f10c5485315ddbaef4f95"
 dependencies = [
  "bytes",
  "google-cloud-wkt",
@@ -4193,9 +4193,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-gax-internal"
-version = "0.7.12"
+version = "0.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9529b797c68dc5c9d37effe7faa5d96d683a00e728287a9934bf6d3a86b58706"
+checksum = "6e3e4d09e162fb71314e2c91879bdd495c1f8a1f69e71ccbae5767b8b6c833d6"
 dependencies = [
  "bytes",
  "futures",
@@ -4223,9 +4223,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-iam-v1"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "103d11cc828e7f33759c4dc6618a98415786fabba268147028e607c4fe1199aa"
+checksum = "eab83affdded409153d2e616174054a780705016c288e43221a0d6a22dd78671"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4241,9 +4241,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-location"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af1ca672fa851a3bec54829f10ff86bec33250ed606e3729e57c260431e5c530"
+checksum = "2dd181e470051464f49e47f00010e08f586ee2def8ade486352978b1312d4b58"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4258,9 +4258,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-longrunning"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa340b46d452fcd5e701b21dab6ed187454b6f1e4300e0bdb928fceefac847fa"
+checksum = "df86ec067f13d858caf1a7fd9ed9315132aa0b0da2c1f0ba9b4357f2422d4bf9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4276,9 +4276,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-lro"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bfd3fa41649a3cd53675a94988b7d3789f2d8f2eb1b24af237450fe08ae9643"
+checksum = "a4b3f2591e45a469e8ada961e92a62448b2b0522d8809554ad365cb964cb94d9"
 dependencies = [
  "google-cloud-gax",
  "google-cloud-longrunning",
@@ -4303,9 +4303,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-type"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbcae00eb50388f5127e65cf2d45679fc4ec0e3596975bb6ec41aec6319a51c9"
+checksum = "d3658f2192252ba301a9d0a26e298bd56b55f0edb32de499a2f41ff244c09cf8"
 dependencies = [
  "bytes",
  "google-cloud-wkt",
