@@ -135,7 +135,7 @@ tracing-opentelemetry = "0.33.0"
 tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
 wasm-bindgen-futures = "0.4.54"
-zerocopy = "0.8.26"
+zerocopy = "0.8.50"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
