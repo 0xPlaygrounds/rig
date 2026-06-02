@@ -1,6 +1,6 @@
 [package]
 name = "rig"
-version = "0.38.0"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -40,6 +40,7 @@ opt-level = "s"
 
 
 [workspace.package]
+version = "0.38.0"
 edition = "2024"
 
 [workspace.dependencies]

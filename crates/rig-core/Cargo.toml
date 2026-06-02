@@ -1,6 +1,6 @@
 [package]
 name = "rig-core"
-version = "0.38.0"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
