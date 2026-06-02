@@ -2,6 +2,7 @@
 git_release_body = """{{ changelog }}"""
 git_release_enable = false
 git_tag_enable = false
+release_always = true
 
 [[package]]
 name = "rig"
