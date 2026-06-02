@@ -1,5 +1,90 @@
 [workspace]
 git_release_body = """{{ changelog }}"""
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "rig"
+version_group = "rig"
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+
+[[package]]
+name = "rig-core"
+version_group = "rig"
+
+[[package]]
+name = "rig-derive"
+version_group = "rig"
+
+[[package]]
+name = "rig-bedrock"
+version_group = "rig"
+
+[[package]]
+name = "rig-fastembed"
+version_group = "rig"
+
+[[package]]
+name = "rig-gemini-grpc"
+version_group = "rig"
+
+[[package]]
+name = "rig-helixdb"
+version_group = "rig"
+
+[[package]]
+name = "rig-lancedb"
+version_group = "rig"
+
+[[package]]
+name = "rig-memory"
+version_group = "rig"
+
+[[package]]
+name = "rig-milvus"
+version_group = "rig"
+
+[[package]]
+name = "rig-mongodb"
+version_group = "rig"
+
+[[package]]
+name = "rig-neo4j"
+version_group = "rig"
+
+[[package]]
+name = "rig-postgres"
+version_group = "rig"
+
+[[package]]
+name = "rig-qdrant"
+version_group = "rig"
+
+[[package]]
+name = "rig-s3vectors"
+version_group = "rig"
+
+[[package]]
+name = "rig-scylladb"
+version_group = "rig"
+
+[[package]]
+name = "rig-sqlite"
+version_group = "rig"
+
+[[package]]
+name = "rig-surrealdb"
+version_group = "rig"
+
+[[package]]
+name = "rig-vectorize"
+version_group = "rig"
+
+[[package]]
+name = "rig-vertexai"
+version_group = "rig"
 
 [changelog]
 body = """

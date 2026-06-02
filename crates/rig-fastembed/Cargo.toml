@@ -1,6 +1,6 @@
 [package]
 name = "rig-fastembed"
-version = "0.4.2"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"

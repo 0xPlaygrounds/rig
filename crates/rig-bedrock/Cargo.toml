@@ -1,6 +1,6 @@
 [package]
 name = "rig-bedrock"
-version = "0.4.7"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -22,7 +22,7 @@ rig-core = { path = "../rig-core", version = "0.38.0", default-features = false,
     "image",
 ] }
 nanoid = { workspace = true }
-rig-derive = { path = "../rig-derive", version = "0.1.15" }
+rig-derive = { path = "../rig-derive", version = "0.38.0" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
