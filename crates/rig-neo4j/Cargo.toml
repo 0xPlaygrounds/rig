@@ -1,6 +1,6 @@
 [package]
 name = "rig-neo4j"
-version.workspace = true
+version = "0.38.0"
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
