@@ -105,6 +105,7 @@ impl CassettePolicy {
     fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
         let required_request_headers = match provider {
             "openai" => OPENAI_REQUIRED_REQUEST_HEADERS,
+            "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
             "gemini" if scenario.starts_with("interactions_api/") => {
                 GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
@@ -1348,6 +1349,7 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
 
 const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
 const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
+const CHATGPT_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
 const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
 const GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
 
@@ -1388,6 +1390,8 @@ const SENSITIVE_STRING_KEYS: &[&str] = &[
     "encrypted_content",
     "encryptedcontent",
     "obfuscation",
+    "prompt_cache_key",
+    "safety_identifier",
     "signature",
     "thoughtsignature",
 ];
