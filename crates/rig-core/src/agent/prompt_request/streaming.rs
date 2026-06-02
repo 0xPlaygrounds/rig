@@ -3,8 +3,7 @@ use crate::{
     agent::completion::{DynamicContextStore, build_prepared_completion_request},
     agent::prompt_request::{
         HookAction, InvalidToolCallResolution, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
-        hooks::{InvalidToolCallHook, PromptHook},
-        resolve_invalid_tool_call, validate_tool_call_name,
+        hooks::PromptHook, resolve_invalid_tool_call, validate_tool_call_name,
     },
     completion::{Document, GetTokenUsage},
     json_utils,
@@ -569,11 +568,10 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct StreamingPromptRequest<M, P, I = ()>
+pub struct StreamingPromptRequest<M, P>
 where
     M: CompletionModel,
     P: PromptHook<M> + 'static,
-    I: InvalidToolCallHook<M> + 'static,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -607,8 +605,6 @@ where
     output_schema: Option<schemars::Schema>,
     /// Optional per-request hook for events
     hook: Option<P>,
-    /// Optional per-request hook for invalid model-emitted tool calls.
-    invalid_tool_call_hook: Option<I>,
     /// Maximum number of invalid tool-call retries for this request.
     max_invalid_tool_call_retries: usize,
     /// Optional conversation memory backend cloned from the agent.
@@ -617,12 +613,11 @@ where
     conversation_id: Option<String>,
 }
 
-impl<M, P, I> StreamingPromptRequest<M, P, I>
+impl<M, P> StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     /// Create a new StreamingPromptRequest with the given prompt and model.
     /// Note: This creates a request without an agent hook. Use `from_agent` to include the agent's hook.
@@ -643,7 +638,6 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: None,
-            invalid_tool_call_hook: None,
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
@@ -674,7 +668,6 @@ where
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             hook: agent.hook.clone(),
-            invalid_tool_call_hook: None,
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
@@ -715,7 +708,7 @@ where
 
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2, I>
+    pub fn with_hook<P2>(self, hook: P2) -> StreamingPromptRequest<M, P2>
     where
         P2: PromptHook<M>,
     {
@@ -735,37 +728,6 @@ where
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
             hook: Some(hook),
-            invalid_tool_call_hook: self.invalid_tool_call_hook,
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            memory: self.memory,
-            conversation_id: self.conversation_id,
-        }
-    }
-
-    /// Attach a per-request hook for invalid model-emitted tool calls.
-    ///
-    /// Without this hook, Rig preserves fail-fast validation.
-    pub fn with_invalid_tool_call_hook<I2>(self, hook: I2) -> StreamingPromptRequest<M, P, I2>
-    where
-        I2: InvalidToolCallHook<M>,
-    {
-        StreamingPromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: self.max_turns,
-            model: self.model,
-            agent_name: self.agent_name,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            tool_server_handle: self.tool_server_handle,
-            dynamic_context: self.dynamic_context,
-            tool_choice: self.tool_choice,
-            output_schema: self.output_schema,
-            hook: self.hook,
-            invalid_tool_call_hook: Some(hook),
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             memory: self.memory,
             conversation_id: self.conversation_id,
@@ -1015,8 +977,8 @@ where
                             if !allowed_tool_names.contains(&tool_call.function.name) {
                                 let args = json_utils::value_to_json_string(&tool_call.function.arguments);
                                 let emitted_tool_name = tool_call.function.name.clone();
-                                match resolve_invalid_tool_call::<M, I>(
-                                    self.invalid_tool_call_hook.as_ref(),
+                                match resolve_invalid_tool_call::<M, P>(
+                                    self.hook.as_ref(),
                                     &emitted_tool_name,
                                     Some(tool_call.id.clone()),
                                     Some(internal_call_id.clone()),
@@ -1210,8 +1172,8 @@ where
 
                                     if !allowed_tool_names.contains(&name) {
                                         let emitted_tool_name = name.clone();
-                                        match resolve_invalid_tool_call::<M, I>(
-                                            self.invalid_tool_call_hook.as_ref(),
+                                        match resolve_invalid_tool_call::<M, P>(
+                                            self.hook.as_ref(),
                                             &emitted_tool_name,
                                             Some(id.clone()),
                                             Some(internal_call_id.clone()),
@@ -1698,12 +1660,11 @@ where
     }
 }
 
-impl<M, P, I> IntoFuture for StreamingPromptRequest<M, P, I>
+impl<M, P> IntoFuture for StreamingPromptRequest<M, P>
 where
     M: CompletionModel + 'static,
     <M as CompletionModel>::StreamingResponse: WasmCompatSend,
     P: PromptHook<M> + 'static,
-    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1758,8 +1719,7 @@ mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
     use crate::agent::prompt_request::hooks::{
-        InvalidToolCallContext, InvalidToolCallHook, InvalidToolCallHookAction, PromptHook,
-        ToolCallHookAction,
+        InvalidToolCallContext, InvalidToolCallHookAction, PromptHook, ToolCallHookAction,
     };
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
@@ -2348,7 +2308,7 @@ mod tests {
     #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for RepairDefaultApiHook {
+    impl PromptHook<MockCompletionModel> for RepairDefaultApiHook {
         fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -2364,7 +2324,7 @@ mod tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for RetryDefaultApiHook {
+    impl PromptHook<MockCompletionModel> for RetryDefaultApiHook {
         fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -2384,7 +2344,7 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for SkipDefaultApiHook {
+    impl PromptHook<MockCompletionModel> for SkipDefaultApiHook {
         fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -2411,7 +2371,7 @@ mod tests {
         }
     }
 
-    impl InvalidToolCallHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+    impl PromptHook<MockCompletionModel> for RecordingInvalidToolCallHook {
         fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -2499,6 +2459,108 @@ mod tests {
                     .push(event);
                 HookAction::cont()
             }
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingTextAndSkipInvalidToolHook {
+        text: RecordingTextDeltaHook,
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingTextAndSkipInvalidToolHook {
+        fn on_text_delta(
+            &self,
+            text_delta: &str,
+            full_text: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            self.text.on_text_delta(text_delta, full_text)
+        }
+
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            SkipDefaultApiHook.on_invalid_tool_call(context)
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingTextAndRetryInvalidToolHook {
+        text: RecordingTextDeltaHook,
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingTextAndRetryInvalidToolHook {
+        fn on_text_delta(
+            &self,
+            text_delta: &str,
+            full_text: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            self.text.on_text_delta(text_delta, full_text)
+        }
+
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            RetryDefaultApiHook.on_invalid_tool_call(context)
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingDeltaAndRetryInvalidToolHook {
+        delta: RecordingToolCallDeltaHook,
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingDeltaAndRetryInvalidToolHook {
+        fn on_tool_call_delta(
+            &self,
+            tool_call_id: &str,
+            internal_call_id: &str,
+            tool_name: Option<&str>,
+            tool_call_delta: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            self.delta.on_tool_call_delta(
+                tool_call_id,
+                internal_call_id,
+                tool_name,
+                tool_call_delta,
+            )
+        }
+
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            RetryDefaultApiHook.on_invalid_tool_call(context)
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingDeltaAndSkipInvalidToolHook {
+        delta: RecordingToolCallDeltaHook,
+    }
+
+    impl PromptHook<MockCompletionModel> for RecordingDeltaAndSkipInvalidToolHook {
+        fn on_tool_call_delta(
+            &self,
+            tool_call_id: &str,
+            internal_call_id: &str,
+            tool_name: Option<&str>,
+            tool_call_delta: &str,
+        ) -> impl Future<Output = HookAction> + Send {
+            self.delta.on_tool_call_delta(
+                tool_call_id,
+                internal_call_id,
+                tool_name,
+                tool_call_delta,
+            )
+        }
+
+        fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> impl Future<Output = InvalidToolCallHookAction> + Send {
+            SkipDefaultApiHook.on_invalid_tool_call(context)
         }
     }
 
@@ -2700,7 +2762,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .with_hook(RepairDefaultApiHook)
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .await;
@@ -2766,7 +2828,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(invalid_hook.clone())
+            .with_hook(invalid_hook.clone())
             .multi_turn(3)
             .await;
         let mut error = None;
@@ -2816,7 +2878,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiHook)
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .await;
@@ -2905,7 +2967,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
@@ -3030,7 +3092,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiHook)
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .await;
@@ -3137,7 +3199,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiHook)
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .await;
@@ -3184,7 +3246,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
@@ -3230,8 +3292,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(text_hook.clone())
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(RecordingTextAndSkipInvalidToolHook {
+                text: text_hook.clone(),
+            })
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .await;
@@ -3289,8 +3352,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(delta_hook.clone())
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RecordingDeltaAndRetryInvalidToolHook {
+                delta: delta_hook.clone(),
+            })
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
@@ -3417,7 +3481,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(invalid_hook.clone())
+            .with_hook(invalid_hook.clone())
             .multi_turn(3)
             .await;
         let mut error = None;
@@ -3478,8 +3542,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(text_hook.clone())
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RecordingTextAndRetryInvalidToolHook {
+                text: text_hook.clone(),
+            })
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .max_invalid_tool_call_retries(1)
@@ -3537,8 +3602,9 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_hook(delta_hook.clone())
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(RecordingDeltaAndSkipInvalidToolHook {
+                delta: delta_hook.clone(),
+            })
             .multi_turn(3)
             .with_history(Vec::<Message>::new())
             .await;
@@ -3651,7 +3717,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .max_invalid_tool_call_retries(0)
             .await;
@@ -3711,7 +3777,7 @@ mod tests {
 
         let mut stream = agent
             .stream_prompt("use the tool")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .multi_turn(3)
             .max_invalid_tool_call_retries(0)
             .await;

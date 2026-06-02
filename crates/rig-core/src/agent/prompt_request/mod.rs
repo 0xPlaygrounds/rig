@@ -16,8 +16,7 @@ use crate::{
 };
 use futures::{StreamExt, stream};
 use hooks::{
-    HookAction, InvalidToolCallContext, InvalidToolCallHook, InvalidToolCallHookAction, PromptHook,
-    ToolCallHookAction,
+    HookAction, InvalidToolCallContext, InvalidToolCallHookAction, PromptHook, ToolCallHookAction,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -47,12 +46,11 @@ impl PromptType for Extended {}
 /// attempting to await (which will send the prompt request) can potentially return
 /// [`crate::completion::request::PromptError::MaxTurnsError`] if the agent decides to call tools
 /// back to back.
-pub struct PromptRequest<S, M, P, I = ()>
+pub struct PromptRequest<S, M, P>
 where
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     /// The prompt message to send to the model
     prompt: Message,
@@ -87,8 +85,6 @@ where
     state: PhantomData<S>,
     /// Optional per-request hook for events
     hook: Option<P>,
-    /// Optional per-request hook for invalid model-emitted tool calls.
-    invalid_tool_call_hook: Option<I>,
     /// Maximum number of invalid tool-call retries for this request.
     max_invalid_tool_call_retries: usize,
     /// How many tools should be executed at the same time (1 by default).
@@ -101,7 +97,7 @@ where
     conversation_id: Option<String>,
 }
 
-impl<M, P> PromptRequest<Standard, M, P, ()>
+impl<M, P> PromptRequest<Standard, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
@@ -124,7 +120,6 @@ where
             tool_choice: agent.tool_choice.clone(),
             state: PhantomData,
             hook: agent.hook.clone(),
-            invalid_tool_call_hook: None,
             max_invalid_tool_call_retries: 0,
             concurrency: 1,
             output_schema: agent.output_schema.clone(),
@@ -134,12 +129,11 @@ where
     }
 }
 
-impl<S, M, P, I> PromptRequest<S, M, P, I>
+impl<S, M, P> PromptRequest<S, M, P>
 where
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
@@ -147,7 +141,7 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended, M, P, I> {
+    pub fn extended_details(self) -> PromptRequest<Extended, M, P> {
         PromptRequest {
             prompt: self.prompt,
             chat_history: self.chat_history,
@@ -164,7 +158,6 @@ where
             tool_choice: self.tool_choice,
             state: PhantomData,
             hook: self.hook,
-            invalid_tool_call_hook: self.invalid_tool_call_hook,
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
@@ -217,7 +210,7 @@ where
 
     /// Attach a per-request hook for tool call events.
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2, I>
+    pub fn with_hook<P2>(self, hook: P2) -> PromptRequest<S, M, P2>
     where
         P2: PromptHook<M>,
     {
@@ -237,39 +230,6 @@ where
             tool_choice: self.tool_choice,
             state: PhantomData,
             hook: Some(hook),
-            invalid_tool_call_hook: self.invalid_tool_call_hook,
-            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            concurrency: self.concurrency,
-            output_schema: self.output_schema,
-            memory: self.memory,
-            conversation_id: self.conversation_id,
-        }
-    }
-
-    /// Attach a per-request hook for invalid model-emitted tool calls.
-    ///
-    /// Without this hook, Rig preserves fail-fast validation.
-    pub fn with_invalid_tool_call_hook<I2>(self, hook: I2) -> PromptRequest<S, M, P, I2>
-    where
-        I2: InvalidToolCallHook<M>,
-    {
-        PromptRequest {
-            prompt: self.prompt,
-            chat_history: self.chat_history,
-            max_turns: self.max_turns,
-            model: self.model,
-            agent_name: self.agent_name,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            tool_server_handle: self.tool_server_handle,
-            dynamic_context: self.dynamic_context,
-            tool_choice: self.tool_choice,
-            state: PhantomData,
-            hook: self.hook,
-            invalid_tool_call_hook: Some(hook),
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
@@ -290,11 +250,10 @@ where
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<M, P, I> IntoFuture for PromptRequest<Standard, M, P, I>
+impl<M, P> IntoFuture for PromptRequest<Standard, M, P>
 where
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
-    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -304,11 +263,10 @@ where
     }
 }
 
-impl<M, P, I> IntoFuture for PromptRequest<Extended, M, P, I>
+impl<M, P> IntoFuture for PromptRequest<Extended, M, P>
 where
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
-    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -318,11 +276,10 @@ where
     }
 }
 
-impl<M, P, I> PromptRequest<Standard, M, P, I>
+impl<M, P> PromptRequest<Standard, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
@@ -537,8 +494,8 @@ enum InvalidToolCallResolution {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn resolve_invalid_tool_call<M, I>(
-    hook: Option<&I>,
+async fn resolve_invalid_tool_call<M, P>(
+    hook: Option<&P>,
     tool_name: &str,
     tool_call_id: Option<String>,
     internal_call_id: Option<String>,
@@ -551,7 +508,7 @@ async fn resolve_invalid_tool_call<M, I>(
 ) -> InvalidToolCallResolution
 where
     M: CompletionModel,
-    I: InvalidToolCallHook<M>,
+    P: PromptHook<M>,
 {
     let err = PromptError::UnknownToolCall {
         tool_name: tool_name.to_owned(),
@@ -619,11 +576,10 @@ fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
         .collect()
 }
 
-impl<M, P, I> PromptRequest<Extended, M, P, I>
+impl<M, P> PromptRequest<Extended, M, P>
 where
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     fn agent_name(&self) -> &str {
         self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
@@ -815,8 +771,8 @@ where
                     let args = json_utils::value_to_json_string(&tool_call.function.arguments);
                     let emitted_tool_name = tool_call.function.name.clone();
 
-                    match resolve_invalid_tool_call::<M, I>(
-                        self.invalid_tool_call_hook.as_ref(),
+                    match resolve_invalid_tool_call::<M, P>(
+                        self.hook.as_ref(),
                         &emitted_tool_name,
                         Some(tool_call.id.clone()),
                         None,
@@ -1158,19 +1114,18 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<T, S, M, P, I = ()>
+pub struct TypedPromptRequest<T, S, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
-    inner: PromptRequest<S, M, P, I>,
+    inner: PromptRequest<S, M, P>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, M, P> TypedPromptRequest<T, Standard, M, P, ()>
+impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
@@ -1190,20 +1145,19 @@ where
     }
 }
 
-impl<T, S, M, P, I> TypedPromptRequest<T, S, M, P, I>
+impl<T, S, M, P> TypedPromptRequest<T, S, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     /// Enable returning extended details for responses (includes aggregated token usage).
     ///
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M, P, I> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M, P> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -1266,7 +1220,7 @@ where
     /// Attach a per-request hook for tool call events.
     ///
     /// This overrides any default hook set on the agent.
-    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<T, S, M, P2, I>
+    pub fn with_hook<P2>(self, hook: P2) -> TypedPromptRequest<T, S, M, P2>
     where
         P2: PromptHook<M>,
     {
@@ -1275,27 +1229,13 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
-
-    /// Attach a per-request hook for invalid model-emitted tool calls.
-    ///
-    /// Without this hook, Rig preserves fail-fast validation.
-    pub fn with_invalid_tool_call_hook<I2>(self, hook: I2) -> TypedPromptRequest<T, S, M, P, I2>
-    where
-        I2: InvalidToolCallHook<M>,
-    {
-        TypedPromptRequest {
-            inner: self.inner.with_invalid_tool_call_hook(hook),
-            _phantom: std::marker::PhantomData,
-        }
-    }
 }
 
-impl<T, M, P, I> TypedPromptRequest<T, Standard, M, P, I>
+impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -1310,12 +1250,11 @@ where
     }
 }
 
-impl<T, M, P, I> TypedPromptRequest<T, Extended, M, P, I>
+impl<T, M, P> TypedPromptRequest<T, Extended, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     M: CompletionModel,
     P: PromptHook<M>,
-    I: InvalidToolCallHook<M>,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -1331,12 +1270,11 @@ where
     }
 }
 
-impl<T, M, P, I> IntoFuture for TypedPromptRequest<T, Standard, M, P, I>
+impl<T, M, P> IntoFuture for TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
-    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1346,12 +1284,11 @@ where
     }
 }
 
-impl<T, M, P, I> IntoFuture for TypedPromptRequest<T, Extended, M, P, I>
+impl<T, M, P> IntoFuture for TypedPromptRequest<T, Extended, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
     M: CompletionModel + 'static,
     P: PromptHook<M> + 'static,
-    I: InvalidToolCallHook<M> + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -1368,8 +1305,8 @@ mod tests {
         agent::{
             AgentBuilder,
             prompt_request::hooks::{
-                HookAction, InvalidToolCallContext, InvalidToolCallHook, InvalidToolCallHookAction,
-                PromptHook, ToolCallHookAction,
+                HookAction, InvalidToolCallContext, InvalidToolCallHookAction, PromptHook,
+                ToolCallHookAction,
             },
         },
         completion::{
@@ -1447,9 +1384,33 @@ mod tests {
     }
 
     #[derive(Clone)]
+    struct SkipDefaultApiAndPanicOnToolCallHook;
+
+    impl PromptHook<MockCompletionModel> for SkipDefaultApiAndPanicOnToolCallHook {
+        async fn on_invalid_tool_call(
+            &self,
+            context: &InvalidToolCallContext,
+        ) -> InvalidToolCallHookAction {
+            SkipDefaultApiHook.on_invalid_tool_call(context).await
+        }
+
+        async fn on_tool_call(
+            &self,
+            tool_name: &str,
+            tool_call_id: Option<String>,
+            internal_call_id: &str,
+            args: &str,
+        ) -> ToolCallHookAction {
+            PanicOnToolCallHook
+                .on_tool_call(tool_name, tool_call_id, internal_call_id, args)
+                .await
+        }
+    }
+
+    #[derive(Clone)]
     struct RepairDefaultApiHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for RepairDefaultApiHook {
+    impl PromptHook<MockCompletionModel> for RepairDefaultApiHook {
         fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -1465,7 +1426,7 @@ mod tests {
     #[derive(Clone)]
     struct RepairToSubtractHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for RepairToSubtractHook {
+    impl PromptHook<MockCompletionModel> for RepairToSubtractHook {
         async fn on_invalid_tool_call(
             &self,
             _context: &InvalidToolCallContext,
@@ -1477,7 +1438,7 @@ mod tests {
     #[derive(Clone)]
     struct RetryDefaultApiHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for RetryDefaultApiHook {
+    impl PromptHook<MockCompletionModel> for RetryDefaultApiHook {
         fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -1494,7 +1455,7 @@ mod tests {
     #[derive(Clone)]
     struct SkipDefaultApiHook;
 
-    impl InvalidToolCallHook<MockCompletionModel> for SkipDefaultApiHook {
+    impl PromptHook<MockCompletionModel> for SkipDefaultApiHook {
         async fn on_invalid_tool_call(
             &self,
             _context: &InvalidToolCallContext,
@@ -1517,7 +1478,7 @@ mod tests {
         }
     }
 
-    impl InvalidToolCallHook<MockCompletionModel> for RecordingInvalidToolCallHook {
+    impl PromptHook<MockCompletionModel> for RecordingInvalidToolCallHook {
         async fn on_invalid_tool_call(
             &self,
             context: &InvalidToolCallContext,
@@ -1788,7 +1749,7 @@ mod tests {
 
         let err = agent
             .prompt("use the tool")
-            .with_invalid_tool_call_hook(invalid_hook.clone())
+            .with_hook(invalid_hook.clone())
             .max_turns(3)
             .await
             .expect_err("invalid tool should fail");
@@ -1892,7 +1853,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .with_hook(RepairDefaultApiHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -1934,7 +1895,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .extended_details()
@@ -1996,7 +1957,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .extended_details()
@@ -2083,8 +2044,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_hook(PanicOnToolCallHook)
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiAndPanicOnToolCallHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -2135,7 +2095,7 @@ mod tests {
 
         let err = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
             .await
@@ -2165,7 +2125,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -2210,7 +2170,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiHook)
             .max_turns(3)
             .extended_details()
             .await
@@ -2258,7 +2218,7 @@ mod tests {
 
         let err = agent
             .prompt("add")
-            .with_invalid_tool_call_hook(RepairToSubtractHook)
+            .with_hook(RepairToSubtractHook)
             .max_turns(3)
             .await
             .expect_err("repair to a disallowed tool should fail");
@@ -2286,7 +2246,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .with_hook(RepairDefaultApiHook)
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject repaired tool calls");
@@ -2314,7 +2274,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .with_invalid_tool_call_hook(SkipDefaultApiHook)
+            .with_hook(SkipDefaultApiHook)
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject skipped tool calls");
@@ -2366,7 +2326,7 @@ mod tests {
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_invalid_tool_call_hook(RepairDefaultApiHook)
+            .with_hook(RepairDefaultApiHook)
             .max_turns(3)
             .await
             .expect("typed prompt should repair invalid tool call");
@@ -2390,7 +2350,7 @@ mod tests {
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .await
@@ -2416,7 +2376,7 @@ mod tests {
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .with_invalid_tool_call_hook(RetryDefaultApiHook)
+            .with_hook(RetryDefaultApiHook)
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
             .await
