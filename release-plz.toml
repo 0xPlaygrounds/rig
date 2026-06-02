@@ -1,5 +1,14 @@
 [workspace]
 git_release_body = """{{ changelog }}"""
+git_release_enable = false
+git_tag_enable = false
+release_always = false
+
+[[package]]
+name = "rig"
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
 
 [changelog]
 body = """
