@@ -19,6 +19,10 @@ use crate::streaming;
 #[derive(Default, Deserialize, Debug)]
 pub(crate) struct StreamingFunction {
     pub(crate) name: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::json_utils::deserialize_json_string_or_value"
+    )]
     pub(crate) arguments: Option<String>,
 }
 
@@ -235,6 +239,32 @@ mod tests {
             function.arguments.as_ref().unwrap(),
             r#"{"location":"Paris"}"#
         );
+    }
+
+    #[test]
+    fn test_streaming_function_object_arguments() {
+        // Some OpenAI-compatible gateways send `arguments` as a JSON object
+        // instead of the spec-mandated JSON-encoded string. Accept it by
+        // re-serializing to the string form rather than dropping the chunk.
+        let json = r#"{"name": "list_dir", "arguments": {}}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert_eq!(function.name, Some("list_dir".to_string()));
+        assert_eq!(function.arguments.as_ref().unwrap(), "{}");
+
+        let json = r#"{"name": "get_weather", "arguments": {"city": "London"}}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert_eq!(function.arguments.as_ref().unwrap(), r#"{"city":"London"}"#);
+    }
+
+    #[test]
+    fn test_streaming_function_null_arguments() {
+        let json = r#"{"name": "list_dir", "arguments": null}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert!(function.arguments.is_none());
+
+        let json = r#"{"name": "list_dir"}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert!(function.arguments.is_none());
     }
 
     #[test]
