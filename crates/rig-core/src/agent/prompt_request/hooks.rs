@@ -8,7 +8,7 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-/// Context passed to [`InvalidToolCallHook`] when the model emits a tool call
+/// Context passed to [`PromptHook::on_invalid_tool_call`] when the model emits a tool call
 /// that Rig would reject before normal tool-call hooks or execution.
 #[derive(Debug, Clone)]
 pub struct InvalidToolCallContext {
@@ -31,27 +31,6 @@ pub struct InvalidToolCallContext {
     /// Whether the rejected call came from the streaming path.
     pub is_streaming: bool,
 }
-
-/// Trait for recovering from model-emitted tool calls that Rig rejects during
-/// validation.
-///
-/// The default behavior remains fail-fast. Attach an implementation with
-/// `.with_invalid_tool_call_hook(...)` to opt into recovery.
-pub trait InvalidToolCallHook<M>: Clone + WasmCompatSend + WasmCompatSync
-where
-    M: CompletionModel,
-{
-    /// Called when a model-emitted tool call is unknown or disallowed by the
-    /// current request's tool choice.
-    fn on_invalid_tool_call(
-        &self,
-        _context: &InvalidToolCallContext,
-    ) -> impl Future<Output = InvalidToolCallHookAction> + WasmCompatSend {
-        async { InvalidToolCallHookAction::fail() }
-    }
-}
-
-impl<M> InvalidToolCallHook<M> for () where M: CompletionModel {}
 
 /// Recovery action for invalid tool-call hooks.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +96,18 @@ where
         _response: &crate::completion::CompletionResponse<M::Response>,
     ) -> impl Future<Output = HookAction> + WasmCompatSend {
         async { HookAction::cont() }
+    }
+
+    /// Called when a model-emitted tool call is unknown or disallowed by the
+    /// current request's tool choice.
+    ///
+    /// The default behavior remains fail-fast. Override this method to opt into
+    /// retry, repair, or skip recovery for invalid tool calls.
+    fn on_invalid_tool_call(
+        &self,
+        _context: &InvalidToolCallContext,
+    ) -> impl Future<Output = InvalidToolCallHookAction> + WasmCompatSend {
+        async { InvalidToolCallHookAction::fail() }
     }
 
     /// Called before a tool is invoked.

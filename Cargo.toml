@@ -327,5 +327,9 @@ name = "gemini_extractor_with_rag"
 required-features = ["derive"]
 
 [[example]]
+name = "gemini_default_api_recovery"
+required-features = ["derive"]
+
+[[example]]
 name = "vector_search_ollama"
 required-features = ["derive"]
