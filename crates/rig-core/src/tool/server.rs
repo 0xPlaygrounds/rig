@@ -121,9 +121,14 @@ impl ToolServerHandle {
         Ok(())
     }
 
-    /// Merge an entire toolset into the server.
+    /// Merge an entire toolset into the server. Tool names from `toolset`
+    /// are appended to the static-tool list, so the tools become visible
+    /// to the LLM via [`Self::get_tool_defs`].
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
+        state
+            .static_tool_names
+            .extend(toolset.tools.keys().cloned());
         state.toolset.add_tools(toolset);
         Ok(())
     }
@@ -294,6 +299,36 @@ mod tests {
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
+    }
+
+    #[tokio::test]
+    pub async fn test_toolserver_append_toolset_matches_add_tool() {
+        let mut via_add_tool = {
+            let handle = ToolServer::new().run();
+            handle.add_tool(MockAddTool).await.unwrap();
+            handle.add_tool(MockSubtractTool).await.unwrap();
+            handle.get_tool_defs(None).await.unwrap()
+        };
+        via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
+
+        let mut via_append_toolset = {
+            let handle = ToolServer::new().run();
+            let mut toolset = ToolSet::default();
+            toolset.add_tool(MockAddTool);
+            toolset.add_tool(MockSubtractTool);
+            handle.append_toolset(toolset).await.unwrap();
+            handle.get_tool_defs(None).await.unwrap()
+        };
+        via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
+
+        assert_eq!(via_add_tool.len(), via_append_toolset.len());
+        assert!(
+            via_add_tool
+                .iter()
+                .zip(via_append_toolset.iter())
+                .all(|(a, b)| a.name == b.name),
+            "append_toolset must surface the same LLM-visible tools as add_tool",
+        );
     }
 
     #[tokio::test]
