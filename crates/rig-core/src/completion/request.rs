@@ -85,6 +85,41 @@ pub enum CompletionError {
     ProviderError(String),
 }
 
+impl CompletionError {
+    /// Returns the raw provider response body when available.
+    ///
+    /// This is available for:
+    /// - [`CompletionError::ProviderError`] using its stored string.
+    /// - [`CompletionError::HttpError`] when it wraps an HTTP non-success response that carries a body.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::ProviderError(body) => Some(body.as_str()),
+            Self::HttpError(error) => error.non_success_body(),
+            _ => None,
+        }
+    }
+
+    /// Parses the provider response body as JSON.
+    ///
+    /// Returns:
+    /// - `Ok(Some(value))` when a body is present and valid JSON.
+    /// - `Ok(None)` when no provider response body is available.
+    /// - `Err(error)` when a body is present but isn't valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        self.provider_response_body()
+            .map(serde_json::from_str)
+            .transpose()
+    }
+
+    /// Returns the HTTP status code when this error comes from a non-success HTTP response.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::HttpError(error) => error.non_success_status(),
+            _ => None,
+        }
+    }
+}
+
 /// Prompt errors
 #[derive(Debug, Error)]
 pub enum PromptError {
@@ -140,6 +175,36 @@ impl From<crate::memory::MemoryError> for PromptError {
 }
 
 impl PromptError {
+    /// Returns the provider response body when this wraps a completion error that exposes one.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_body(),
+            _ => None,
+        }
+    }
+
+    /// Parses the provider response body as JSON when available through a wrapped completion error.
+    ///
+    /// Returns:
+    /// - `Ok(Some(value))` when a body is present and valid JSON.
+    /// - `Ok(None)` when no provider response body is available.
+    /// - `Err(error)` when a body is present but isn't valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_json(),
+            _ => Ok(None),
+        }
+    }
+
+    /// Returns the HTTP status when this wraps a completion error
+    /// originating from a non-success HTTP response.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_status(),
+            _ => None,
+        }
+    }
+
     pub(crate) fn prompt_cancelled(
         chat_history: impl IntoIterator<Item = Message>,
         reason: impl Into<String>,
@@ -1264,5 +1329,130 @@ mod tests {
             .filter(|message| is_document_message(message, "doc1"))
             .count();
         assert_eq!(document_messages, 1);
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_provider_json_body() {
+        let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
+        let error = CompletionError::ProviderError(body.to_string());
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("fixture body should parse as valid JSON"),
+            Some(serde_json::json!({
+                "error": {
+                    "code": "rate_limit",
+                    "message": "slow down"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_provider_plain_text_body() {
+        let error = CompletionError::ProviderError("provider exploded".to_string());
+
+        assert_eq!(error.provider_response_body(), Some("provider exploded"));
+        assert_eq!(error.provider_response_status(), None);
+        assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
+        let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
+        let error = CompletionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+            http::StatusCode::BAD_REQUEST,
+            body.to_string(),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "type": "invalid_request",
+                    "message": "bad request"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_unrelated_variant() {
+        let error = CompletionError::ResponseError("failed to parse provider response".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
+        let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
+        let error = PromptError::CompletionError(CompletionError::ProviderError(body.to_string()));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "code": "invalid_request",
+                    "message": "bad input"
+                }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
+        let body = r#"{"error":{"message":"unauthorized"}}"#;
+        let error = PromptError::CompletionError(CompletionError::HttpError(
+            http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::UNAUTHORIZED,
+                body.to_string(),
+            ),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": { "message": "unauthorized" }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
+        let error = PromptError::PromptCancelled {
+            chat_history: vec![Message::user("hi")],
+            reason: "cancelled".to_string(),
+        };
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
     }
 }
