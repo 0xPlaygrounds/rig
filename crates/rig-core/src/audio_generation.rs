@@ -2,7 +2,7 @@
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
 use crate::markers::{Missing, Provided};
 use crate::{
-    http_client,
+    http_client, provider_response,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde_json::Value;
@@ -18,18 +18,52 @@ pub enum AudioGenerationError {
     #[error("JsonError: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    /// Error building the transcription request
+    /// Error building the audio generation request
     #[error("RequestError: {0}")]
     RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    /// Error parsing the transcription response
+    /// Error parsing the audio generation response
     #[error("ResponseError: {0}")]
     ResponseError(String),
 
-    /// Error returned by the transcription model provider
+    /// Error returned by the audio generation model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
 }
+
+impl AudioGenerationError {
+    /// Returns the raw provider response body when available.
+    ///
+    /// This is available for:
+    /// - [`AudioGenerationError::ProviderError`] using its stored string.
+    /// - [`AudioGenerationError::HttpError`] when it wraps an HTTP non-success response that carries a body.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::ProviderError(body) => provider_response::body(Some(body.as_str()), None),
+            Self::HttpError(error) => provider_response::body(None, Some(error)),
+            _ => None,
+        }
+    }
+
+    /// Parses the provider response body as JSON.
+    ///
+    /// Returns:
+    /// - `Ok(Some(value))` when a body is present and valid JSON.
+    /// - `Ok(None)` when no provider response body is available.
+    /// - `Err(error)` when a body is present but isn't valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        provider_response::json(self.provider_response_body())
+    }
+
+    /// Returns the HTTP status code when this error comes from a non-success HTTP response.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::HttpError(error) => provider_response::status(Some(error)),
+            _ => None,
+        }
+    }
+}
+
 pub trait AudioGeneration<M>
 where
     M: AudioGenerationModel,
@@ -168,5 +202,53 @@ where
         let model = self.model.clone();
 
         model.audio_generation(self.build()).await
+    }
+}
+
+#[cfg(test)]
+mod provider_response_tests {
+    use super::*;
+    use http::StatusCode;
+
+    #[test]
+    fn audio_generation_error_provider_response_helpers_with_provider_json_body() {
+        let body = r#"{"error":{"message":"invalid voice"}}"#;
+        let error = AudioGenerationError::ProviderError(body.to_string());
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON"),
+            Some(serde_json::json!({ "error": { "message": "invalid voice" } }))
+        );
+    }
+
+    #[test]
+    fn audio_generation_error_provider_response_helpers_with_http_non_success() {
+        let body = r#"{"error":{"message":"bad request"}}"#;
+        let error =
+            AudioGenerationError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+                StatusCode::BAD_REQUEST,
+                body.to_string(),
+            ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON"),
+            Some(serde_json::json!({ "error": { "message": "bad request" } }))
+        );
+    }
+
+    #[test]
+    fn audio_generation_error_provider_response_helpers_with_unrelated_variant() {
+        let error = AudioGenerationError::ResponseError("parse failed".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
     }
 }

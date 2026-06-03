@@ -168,6 +168,7 @@ pub mod model;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
+pub(crate) mod provider_response;
 pub mod providers;
 
 pub mod streaming;

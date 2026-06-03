@@ -36,6 +36,7 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
+use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
 use crate::tool::server::ToolServerError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -45,6 +46,7 @@ use crate::{
     message::{Message, UserContent},
     tool::ToolSetError,
 };
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -93,8 +95,8 @@ impl CompletionError {
     /// - [`CompletionError::HttpError`] when it wraps an HTTP non-success response that carries a body.
     pub fn provider_response_body(&self) -> Option<&str> {
         match self {
-            Self::ProviderError(body) => Some(body.as_str()),
-            Self::HttpError(error) => error.non_success_body(),
+            Self::ProviderError(body) => provider_response::body(Some(body.as_str()), None),
+            Self::HttpError(error) => provider_response::body(None, Some(error)),
             _ => None,
         }
     }
@@ -106,15 +108,13 @@ impl CompletionError {
     /// - `Ok(None)` when no provider response body is available.
     /// - `Err(error)` when a body is present but isn't valid JSON.
     pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
-        self.provider_response_body()
-            .map(serde_json::from_str)
-            .transpose()
+        provider_response::json(self.provider_response_body())
     }
 
     /// Returns the HTTP status code when this error comes from a non-success HTTP response.
     pub fn provider_response_status(&self) -> Option<http::StatusCode> {
         match self {
-            Self::HttpError(error) => error.non_success_status(),
+            Self::HttpError(error) => provider_response::status(Some(error)),
             _ => None,
         }
     }
