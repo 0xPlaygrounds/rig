@@ -8982,6 +8982,7 @@ dependencies = [
  "rig-milvus",
  "rig-mongodb",
  "rig-neo4j",
+ "rig-pinecone",
  "rig-postgres",
  "rig-qdrant",
  "rig-s3vectors",
@@ -9234,6 +9235,21 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "rig-pinecone"
+version = "0.38.1"
+dependencies = [
+ "anyhow",
+ "httpmock",
+ "reqwest 0.13.3",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

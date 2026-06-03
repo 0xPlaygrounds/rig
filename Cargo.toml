@@ -154,6 +154,7 @@ rig-helixdb = { path = "crates/rig-helixdb", version = "0.38.1", optional = true
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.38.1", optional = true, default-features = false }
 rig-memory = { path = "crates/rig-memory", version = "0.38.1", optional = true, default-features = false }
 rig-milvus = { path = "crates/rig-milvus", version = "0.38.1", optional = true, default-features = false }
+rig-pinecone = { path = "crates/rig-pinecone", version = "0.38.1", optional = true, default-features = false }
 rig-mongodb = { path = "crates/rig-mongodb", version = "0.38.1", optional = true, default-features = false }
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.38.1", optional = true, default-features = false }
 rig-postgres = { path = "crates/rig-postgres", version = "0.38.1", optional = true, default-features = false }
@@ -242,6 +243,7 @@ memory = ["dep:rig-memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]
+pinecone = ["dep:rig-pinecone"]
 postgres = ["dep:rig-postgres"]
 qdrant = ["dep:rig-qdrant"]
 s3vectors = ["dep:rig-s3vectors"]
@@ -272,6 +274,7 @@ rustls = [
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
   "rig-milvus?/rustls",
+  "rig-pinecone?/rustls",
 ]
 native-tls = [
   "rig-core/native-tls",
@@ -279,6 +282,7 @@ native-tls = [
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",
   "rig-milvus?/native-tls",
+  "rig-pinecone?/native-tls",
 ]
 reqwest-middleware = ["rig-core/reqwest-middleware"]
 reqwest-middleware-rustls = ["rig-core/reqwest-middleware-rustls"]

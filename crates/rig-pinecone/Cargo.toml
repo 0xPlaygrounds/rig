@@ -1,0 +1,30 @@
+[package]
+name = "rig-pinecone"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Rig vector store index integration for Pinecone. https://www.pinecone.io/"
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+rig-core = { path = "../rig-core", version = "0.38.1", default-features = false }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+httpmock = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.38.1", default-features = false, features = ["derive"] }
+
+[features]
+default = ["rustls"]
+rustls = ["reqwest/rustls", "rig-core/rustls"]
+native-tls = ["reqwest/native-tls", "rig-core/native-tls"]

@@ -102,6 +102,12 @@ pub mod neo4j {
     pub use rig_neo4j::*;
 }
 
+#[cfg(feature = "pinecone")]
+#[cfg_attr(docsrs, doc(cfg(feature = "pinecone")))]
+pub mod pinecone {
+    pub use rig_pinecone::*;
+}
+
 #[cfg(feature = "postgres")]
 #[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
 pub mod postgres {
