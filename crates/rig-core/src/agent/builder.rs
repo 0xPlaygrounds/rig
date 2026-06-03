@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use schemars::{JsonSchema, Schema, schema_for};
 
@@ -533,6 +536,7 @@ where
             output_schema: self.output_schema,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            pending_notifications: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -561,6 +565,7 @@ where
             output_schema: self.output_schema,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            pending_notifications: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -648,6 +653,7 @@ where
             output_schema: self.output_schema,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
+            pending_notifications: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

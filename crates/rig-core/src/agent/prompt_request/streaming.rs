@@ -18,7 +18,11 @@ use crate::{
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -611,6 +615,8 @@ where
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional conversation id used for loading and saving memory.
     conversation_id: Option<String>,
+    /// Notification messages, indexed by conversation ID, that will be consumed during multi-turn prompt requests.
+    pending_notifications: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 impl<M, P> StreamingPromptRequest<M, P>
@@ -641,6 +647,7 @@ where
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
+            pending_notifications: agent.pending_notifications.clone(),
         }
     }
 
@@ -671,6 +678,7 @@ where
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
+            pending_notifications: agent.pending_notifications.clone(),
         }
     }
 
@@ -731,6 +739,7 @@ where
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             memory: self.memory,
             conversation_id: self.conversation_id,
+            pending_notifications: self.pending_notifications,
         }
     }
 
@@ -796,6 +805,8 @@ where
         let dynamic_context = self.dynamic_context.clone();
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
+        let conversation_id = self.conversation_id.clone();
+        let pending_notifications = self.pending_notifications.clone();
         // When the caller passes explicit history, memory is fully bypassed for
         // this request (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history; if either is
@@ -839,6 +850,22 @@ where
         // See also: https://github.com/rust-lang/rust-clippy/issues/8722
         let stream = async_stream::stream! {
             'outer: loop {
+                // Retrieve and inject pending notifications, if any.
+                let notifications = match pending_notifications.lock() {
+                    Ok(mut guard) => conversation_id
+                        .as_deref()
+                        .and_then(|conv_id| guard.remove(conv_id)),
+                    Err(poisoned) => conversation_id
+                        .as_deref()
+                        .and_then(|conv_id| poisoned.into_inner().remove(conv_id)),
+                };
+                if let Some(notifications) = notifications {
+                    for msg in notifications {
+                        new_messages.push(Message::user(msg));
+                    }
+                }
+
+            // Get the last message (the current prompt)
                 let Some((current_prompt_ref, previous_messages)) = new_messages.split_last() else {
                     yield Err(cancelled_prompt_error(
                         chat_history.as_deref(),
@@ -5625,6 +5652,87 @@ mod tests {
         assert!(
             saw_final,
             "FinalResponse must be yielded even when memory.append fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_injects_pending_notification_during_multi_turn() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response_with_total_tokens(4),
+            ],
+            vec![
+                MockStreamEvent::text("final streaming result"),
+                MockStreamEvent::final_response_with_total_tokens(6),
+            ],
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .conversation_id("test-conv")
+            .build();
+
+        agent.push_notification("test-conv", "injected user message".to_string());
+
+        let mut stream = agent
+            .stream_prompt("do tool work")
+            .with_history(Vec::<Message>::new())
+            .multi_turn(3)
+            .await;
+
+        let mut saw_tool_call = false;
+        let mut saw_tool_result = false;
+        let mut final_history = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCall { .. },
+                )) => {
+                    saw_tool_call = true;
+                }
+                Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    ..
+                })) => {
+                    saw_tool_result = true;
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    assert_eq!(res.response(), "final streaming result");
+                    final_history = res.history().map(|h| h.to_vec());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert!(saw_tool_call, "should have seen tool call");
+        assert!(saw_tool_result, "should have seen tool result");
+
+        let history = final_history.expect("final response should include history");
+
+        let notification_count = history
+            .iter()
+            .filter(|msg| {
+                matches!(
+                    msg,
+                    Message::User { content } if content.iter().any(|c| matches!(
+                        c,
+                        UserContent::Text(t) if t.text == "injected user message"
+                    ))
+                )
+            })
+            .count();
+
+        assert_eq!(
+            notification_count, 1,
+            "notification should appear exactly once in history"
         );
     }
 }

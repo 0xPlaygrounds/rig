@@ -20,11 +20,11 @@ use hooks::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     future::IntoFuture,
     marker::PhantomData,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -80,6 +80,8 @@ where
     dynamic_context: DynamicContextStore,
     /// Tool choice setting
     tool_choice: Option<ToolChoice>,
+    /// Notification messages, indexed by conversation ID, that will be consumed during multi-turn prompt requests.
+    pending_notifications: Arc<Mutex<HashMap<String, Vec<String>>>>,
 
     /// Phantom data to track the type of the request
     state: PhantomData<S>,
@@ -125,6 +127,7 @@ where
             output_schema: agent.output_schema.clone(),
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
+            pending_notifications: agent.pending_notifications.clone(),
         }
     }
 }
@@ -163,6 +166,7 @@ where
             output_schema: self.output_schema,
             memory: self.memory,
             conversation_id: self.conversation_id,
+            pending_notifications: self.pending_notifications,
         }
     }
 
@@ -235,6 +239,7 @@ where
             output_schema: self.output_schema,
             memory: self.memory,
             conversation_id: self.conversation_id,
+            pending_notifications: self.pending_notifications,
         }
     }
 
@@ -616,9 +621,9 @@ where
         // missing, behave as if no memory is configured.
         let (chat_history, memory_handle) = match self.chat_history {
             Some(history) => (Some(history), None),
-            None => match (self.memory, self.conversation_id) {
+            None => match (self.memory, self.conversation_id.as_deref()) {
                 (Some(memory), Some(id)) => {
-                    let loaded = memory.load(&id).await?;
+                    let loaded = memory.load(id).await?;
                     (Some(loaded), Some((memory, id)))
                 }
                 _ => (None, None),
@@ -635,6 +640,23 @@ where
 
         // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
         let last_prompt = 'prompt_loop: loop {
+            // Retrieve and inject pending notifications, if any.
+            let notifications = match self.pending_notifications.lock() {
+                Ok(mut guard) => self
+                    .conversation_id
+                    .as_deref()
+                    .and_then(|conv_id| guard.remove(conv_id)),
+                Err(poisoned) => self
+                    .conversation_id
+                    .as_deref()
+                    .and_then(|conv_id| poisoned.into_inner().remove(conv_id)),
+            };
+            if let Some(notifications) = notifications {
+                for msg in notifications {
+                    new_messages.push(Message::user(msg));
+                }
+            }
+
             // Get the last message (the current prompt)
             let Some((prompt_ref, history_for_current_turn)) = new_messages.split_last() else {
                 return Err(PromptError::prompt_cancelled(
@@ -2824,5 +2846,52 @@ mod tests {
             .expect("append failure must not block successful completion");
 
         assert!(!response.is_empty());
+    }
+
+    #[tokio::test]
+    async fn prompt_request_injects_pending_notification_during_multi_turn() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
+                .with_call_id("call_1"),
+            MockTurn::text("final result"),
+        ]);
+
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .conversation_id("test-conv")
+            .build();
+
+        agent.push_notification("test-conv", "injected user message".to_string());
+
+        let response = agent
+            .prompt("do tool work")
+            .max_turns(3)
+            .extended_details()
+            .await
+            .expect("multi-turn prompt with tool call should succeed");
+
+        assert_eq!(response.output, "final result");
+
+        let history = response
+            .messages
+            .expect("extended response should include history");
+
+        let notification_count = history
+            .iter()
+            .filter(|msg| {
+                matches!(
+                    msg,
+                    Message::User { content } if content.iter().any(|c| matches!(
+                        c,
+                        UserContent::Text(t) if t.text == "injected user message"
+                    ))
+                )
+            })
+            .count();
+
+        assert_eq!(
+            notification_count, 1,
+            "notification should appear exactly once in history"
+        );
     }
 }
