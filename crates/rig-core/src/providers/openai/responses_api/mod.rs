@@ -663,7 +663,8 @@ pub struct ResponsesUsage {
     /// Output tokens
     pub output_tokens: u64,
     /// In-depth detail on output tokens (reasoning tokens)
-    pub output_tokens_details: OutputTokensDetails,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<OutputTokensDetails>,
     /// Total tokens used (for a given prompt)
     pub total_tokens: u64,
 }
@@ -675,7 +676,7 @@ impl ResponsesUsage {
             input_tokens: 0,
             input_tokens_details: Some(InputTokensDetails::new()),
             output_tokens: 0,
-            output_tokens_details: OutputTokensDetails::new(),
+            output_tokens_details: Some(OutputTokensDetails::new()),
             total_tokens: 0,
         }
     }
@@ -694,7 +695,11 @@ impl GetTokenUsage for ResponsesUsage {
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
-            reasoning_tokens: self.output_tokens_details.reasoning_tokens,
+            reasoning_tokens: self
+                .output_tokens_details
+                .as_ref()
+                .map(|details| details.reasoning_tokens)
+                .unwrap_or(0),
         })
     }
 }
@@ -712,7 +717,13 @@ impl Add for ResponsesUsage {
             }
         });
         let output_tokens = self.output_tokens + rhs.output_tokens;
-        let output_tokens_details = self.output_tokens_details + rhs.output_tokens_details;
+        let output_tokens_details = self.output_tokens_details.map(|lhs| {
+            if let Some(tokens) = rhs.output_tokens_details {
+                lhs + tokens
+            } else {
+                lhs
+            }
+        });
         let total_tokens = self.total_tokens + rhs.total_tokens;
         Self {
             input_tokens,
@@ -2017,9 +2028,9 @@ mod tests {
             input_tokens: 100,
             input_tokens_details: Some(InputTokensDetails { cached_tokens: 25 }),
             output_tokens: 50,
-            output_tokens_details: OutputTokensDetails {
+            output_tokens_details: Some(OutputTokensDetails {
                 reasoning_tokens: 15,
-            },
+            }),
             total_tokens: 150,
         };
 

@@ -837,9 +837,9 @@ mod tests {
                 input_tokens_details: None,
                 output_tokens: 2,
                 output_tokens_details:
-                    crate::providers::openai::responses_api::OutputTokensDetails {
+                    Some(crate::providers::openai::responses_api::OutputTokensDetails {
                         reasoning_tokens: 0,
-                    },
+                    }),
                 total_tokens: 3,
             }),
             output: Vec::new(),
