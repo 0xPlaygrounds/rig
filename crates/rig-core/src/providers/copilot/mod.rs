@@ -853,9 +853,10 @@ where
                             message_id: core.message_id,
                         })
                     }
-                    ChatApiResponse::Err(err) => Err(CompletionError::ProviderError(
-                        err.error_message().to_string(),
-                    )),
+                    ChatApiResponse::Err(err) => {
+                        let _ = err.error_message();
+                        Err(CompletionError::ProviderError(body))
+                    }
                 }
             } else {
                 let body = http_client::text(response).await?;
@@ -1345,7 +1346,10 @@ where
                 Ok(parsed) => parsed,
                 Err(parse_error) => {
                     if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {
-                        return Err(EmbeddingError::ProviderError(err.error.message));
+                        let _ = err.error.message;
+                        return Err(EmbeddingError::ProviderError(
+                            String::from_utf8_lossy(&body).into_owned(),
+                        ));
                     }
 
                     let preview = String::from_utf8_lossy(&body);

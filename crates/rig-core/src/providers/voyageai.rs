@@ -269,7 +269,12 @@ where
 
                     Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    let _ = err.message;
+                    Err(EmbeddingError::ProviderError(
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             Err(EmbeddingError::ProviderError(

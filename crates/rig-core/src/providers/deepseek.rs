@@ -616,7 +616,12 @@ where
                         }
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        let _ = err.message;
+                        Err(CompletionError::ProviderError(
+                            String::from_utf8_lossy(&response_body).into_owned(),
+                        ))
+                    }
                 }
             } else {
                 Err(CompletionError::ProviderError(

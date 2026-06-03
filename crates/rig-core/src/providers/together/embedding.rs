@@ -107,10 +107,10 @@ where
         let response = self.client.send(req).await?;
 
         if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     if response.data.len() != documents.len() {
                         return Err(EmbeddingError::ResponseError(
@@ -132,7 +132,12 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Error(err) => Err(EmbeddingError::ProviderError(err.message())),
+                ApiResponse::Error(err) => {
+                    let _ = (&err.error, &err.code);
+                    Err(EmbeddingError::ProviderError(
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;

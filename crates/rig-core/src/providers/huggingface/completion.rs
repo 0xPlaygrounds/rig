@@ -796,7 +796,12 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.to_string())),
+                    ApiResponse::Err(err) => {
+                        let _ = err;
+                        Err(CompletionError::ProviderError(
+                            String::from_utf8_lossy(&bytes).into_owned(),
+                        ))
+                    }
                 }
             } else {
                 let status = response.status();

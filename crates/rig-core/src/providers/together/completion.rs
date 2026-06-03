@@ -300,7 +300,12 @@ where
                         }
                         response.try_into()
                     }
-                    ApiResponse::Error(err) => Err(CompletionError::ProviderError(err.error)),
+                    ApiResponse::Error(err) => {
+                        let _ = (&err.error, &err.code);
+                        Err(CompletionError::ProviderError(
+                            String::from_utf8_lossy(&response_body).into_owned(),
+                        ))
+                    }
                 }
             } else {
                 Err(CompletionError::ProviderError(

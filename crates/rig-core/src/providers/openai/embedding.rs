@@ -149,10 +149,10 @@ where
         let response = self.client.send(req).await?;
 
         if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI embedding token usage: {:?}",
@@ -195,7 +195,12 @@ where
 
                     Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    let _ = err.message;
+                    Err(EmbeddingError::ProviderError(
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;
@@ -255,5 +260,44 @@ where
     pub fn user(mut self, user: impl Into<String>) -> Self {
         self.user = Some(user.into());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::EmbeddingsClient;
+    use crate::embeddings::EmbeddingModel as _;
+    use crate::providers::openai::CompletionsClient;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {
+        let body = r#"{"message":"embedding quota exceeded","type":"insufficient_quota"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("text-embedding-3-small");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with provider error envelope");
+
+        match &error {
+            EmbeddingError::ProviderError(stored) => {
+                assert_eq!(stored, body);
+                assert_eq!(error.provider_response_body(), Some(body));
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["type"], "insufficient_quota");
+            }
+            other => panic!("expected ProviderError, got {other:?}"),
+        }
     }
 }

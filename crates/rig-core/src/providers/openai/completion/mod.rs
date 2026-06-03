@@ -1471,7 +1471,10 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        let _ = err.message;
+                        Err(CompletionError::ProviderError(text))
+                    }
                 }
             } else {
                 let text = http_client::text(response).await?;
@@ -2354,5 +2357,42 @@ mod tests {
         assert_eq!(parts.len(), 2);
         assert!(matches!(parts[0], UserContent::Text { .. }));
         assert!(matches!(parts[1], UserContent::File { .. }));
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::providers::openai::CompletionsClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o-mini");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderError(stored) => {
+                assert_eq!(stored, body);
+                assert_eq!(error.provider_response_body(), Some(body));
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["code"], "rate_limit_exceeded");
+                assert_eq!(json["type"], "rate_limit");
+            }
+            other => panic!("expected ProviderError, got {other:?}"),
+        }
     }
 }

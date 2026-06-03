@@ -612,7 +612,10 @@ where
                         }
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        let _ = err.message;
+                        Err(CompletionError::ProviderError(t))
+                    }
                 }
             } else {
                 let text = http_client::text(response).await?;
