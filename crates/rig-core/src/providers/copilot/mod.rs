@@ -1158,7 +1158,7 @@ where
                         }
                         Err(error) => {
                             terminated_with_error = true;
-                            yield Err(CompletionError::ProviderError(error.to_string()));
+                            yield Err(CompletionError::from_stream_transport(error));
                             break;
                         }
                     }
@@ -2129,8 +2129,13 @@ mod tests {
                 Err(err) => {
                     assert_eq!(
                         err.to_string(),
-                        "ProviderError: Invalid status code: 502 Bad Gateway"
+                        "HttpError: Invalid status code: 502 Bad Gateway"
                     );
+                    assert_eq!(
+                        err.provider_response_status(),
+                        Some(http::StatusCode::BAD_GATEWAY)
+                    );
+                    assert_eq!(err.provider_response_body(), None);
                     saw_error = true;
                     break;
                 }

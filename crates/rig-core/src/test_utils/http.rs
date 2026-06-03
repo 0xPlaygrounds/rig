@@ -224,6 +224,67 @@ impl HttpClientExt for MockStreamingClient {
     }
 }
 
+/// An [`HttpClientExt`] implementation whose `send_streaming` fails immediately
+/// with a non-success HTTP status and response body.
+#[derive(Debug, Clone)]
+pub struct HttpErrorStreamingClient {
+    pub status: http::StatusCode,
+    pub body: String,
+}
+
+impl HttpErrorStreamingClient {
+    /// Create a streaming client that fails `send_streaming` with the given status and body.
+    pub fn new(status: http::StatusCode, body: impl Into<String>) -> Self {
+        Self {
+            status,
+            body: body.into(),
+        }
+    }
+}
+
+impl HttpClientExt for HttpErrorStreamingClient {
+    fn send<T, U>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        _req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let status = self.status;
+        let body = self.body.clone();
+        async move {
+            Err(http_client::Error::InvalidStatusCodeWithMessage(
+                status, body,
+            ))
+        }
+    }
+}
+
 /// An [`HttpClientExt`] implementation that returns one scripted stream of byte
 /// chunks from `send_streaming`.
 #[derive(Debug, Clone, Default)]

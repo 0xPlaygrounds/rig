@@ -118,6 +118,19 @@ impl CompletionError {
             _ => None,
         }
     }
+
+    /// Maps an SSE transport error into a completion error without flattening HTTP failures.
+    ///
+    /// Non-success HTTP responses remain [`CompletionError::HttpError`] so provider response
+    /// helpers can read status and body. Other transport failures keep the existing
+    /// [`CompletionError::ProviderError`] display string behavior.
+    pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
+        if error.non_success_status().is_some() {
+            Self::HttpError(error)
+        } else {
+            Self::ProviderError(error.to_string())
+        }
+    }
 }
 
 /// Prompt errors

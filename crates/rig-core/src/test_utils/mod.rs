@@ -14,8 +14,8 @@ mod tools;
 pub use completion::{MockCompletionModel, MockError, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 pub use http::{
-    CapturedHttpRequest, MockHttpResponse, MockStreamingClient, RecordingHttpClient,
-    SequencedStreamingHttpClient,
+    CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
+    RecordingHttpClient, SequencedStreamingHttpClient,
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use model_listing::MockModelLister;

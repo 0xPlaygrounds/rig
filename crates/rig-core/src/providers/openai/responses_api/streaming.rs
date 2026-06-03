@@ -702,7 +702,7 @@ where
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
                     terminated_with_error = true;
-                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
@@ -1272,6 +1272,80 @@ mod tests {
             stream.next().await.is_none(),
             "stream should terminate immediately after the first terminal error"
         );
+    }
+
+    #[tokio::test]
+    async fn streaming_http_non_success_preserves_status_and_body() {
+        use crate::http_client::sse::GenericEventSource;
+        use crate::test_utils::HttpErrorStreamingClient;
+
+        let body = r#"{"error":{"message":"quota exceeded"}}"#;
+        let client = HttpErrorStreamingClient::new(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+        let event_source = GenericEventSource::new(client, req);
+        let span = tracing::Span::none();
+        let mut stream = super::stream_from_event_source(event_source, span, "OpenAI");
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield transport error")
+            .expect_err("HTTP non-success should surface as a stream error");
+        assert_eq!(
+            err.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert_eq!(
+            err.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({"error": {"message": "quota exceeded"}}))
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after HTTP non-success"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_non_http_transport_error_stays_provider_error() {
+        use crate::http_client::sse::GenericEventSource;
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        let chunks = vec![Err(crate::http_client::Error::InvalidContentType(
+            http::HeaderValue::from_static("application/json"),
+        ))];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+        let event_source = GenericEventSource::new(client, req);
+        let span = tracing::Span::none();
+        let mut stream = super::stream_from_event_source(event_source, span, "OpenAI");
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield transport error")
+            .expect_err("non-HTTP transport failure should surface as provider error");
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: Invalid content type was returned: \"application/json\""
+        );
+        assert!(matches!(
+            err,
+            crate::completion::CompletionError::ProviderError(_)
+        ));
+        assert_eq!(
+            err.provider_response_body(),
+            Some("Invalid content type was returned: \"application/json\"")
+        );
+        assert_eq!(err.provider_response_status(), None);
     }
 
     #[tokio::test]
