@@ -1,6 +1,10 @@
 use crate::{http_client, provider_response, wasm_compat::WasmCompatSend};
 use thiserror::Error;
 
+/// Errors from provider client verification.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
 pub enum VerifyError {
     #[error("invalid authentication")]

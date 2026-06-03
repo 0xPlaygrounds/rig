@@ -54,6 +54,10 @@ use std::ops::{Add, AddAssign};
 use thiserror::Error;
 
 // Errors
+/// Errors returned by completion models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
@@ -133,7 +137,11 @@ impl CompletionError {
     }
 }
 
-/// Prompt errors
+/// Errors from agent prompting.
+///
+/// When the failure wraps [`CompletionError`], [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`] forward
+/// to the inner completion error's helpers.
 #[derive(Debug, Error)]
 pub enum PromptError {
     /// Something went wrong with the completion

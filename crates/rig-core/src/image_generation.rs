@@ -5,6 +5,10 @@ use crate::{http_client, provider_response};
 use serde_json::Value;
 use thiserror::Error;
 
+/// Errors returned by image generation models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
 pub enum ImageGenerationError {
     /// Http error (e.g.: connection error, timeout, etc.)

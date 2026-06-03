@@ -9,6 +9,10 @@ use std::{fs, path::Path};
 use thiserror::Error;
 
 // Errors
+/// Errors returned by transcription models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TranscriptionError {

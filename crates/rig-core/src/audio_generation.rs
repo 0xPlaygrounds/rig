@@ -8,6 +8,10 @@ use crate::{
 use serde_json::Value;
 use thiserror::Error;
 
+/// Errors returned by audio generation models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
 pub enum AudioGenerationError {
     /// Http error (e.g.: connection error, timeout, etc.)

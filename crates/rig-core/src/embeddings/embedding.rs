@@ -13,6 +13,10 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Errors returned by embedding models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddingError {
     /// Http error (e.g.: connection error, timeout, etc.)
