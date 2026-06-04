@@ -9,6 +9,7 @@ use super::completion::{
     AnthropicCompatibleProvider, Content, GenericCompletionModel, Message, SystemContent,
     ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
     resolve_top_level_cache_control, split_system_messages_from_history,
+    supports_mid_conversation_system_messages,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -209,7 +210,10 @@ where
             full_history.push(docs);
         }
         full_history.extend(completion_request.chat_history);
-        let (history_system, full_history) = split_system_messages_from_history(full_history);
+        let (history_system, full_history) = split_system_messages_from_history(
+            full_history,
+            supports_mid_conversation_system_messages(&request_model),
+        );
 
         let mut messages = full_history
             .into_iter()
