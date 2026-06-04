@@ -1346,14 +1346,16 @@ pub enum Output {
     Unknown(Value),
 }
 
-/// Serde mirror of the modeled [`Output`] variants.
+/// Serde deserialize mirror of the modeled [`Output`] variants.
 ///
 /// `Output`'s (de)serialization is hand-written so [`Output::Unknown`] can
 /// carry a raw [`Value`]; `#[serde(other)]` only applies to a unit variant and
-/// would otherwise force the payload to be dropped. Both impls dispatch through
-/// this helper so the internally tagged (`type`) wire shape of the known
-/// variants stays byte-for-byte identical to the previous derived behavior.
-#[derive(Deserialize, Serialize)]
+/// would otherwise force the payload to be dropped. Deserialization dispatches
+/// through this owned helper, while serialization uses the borrowed
+/// [`KnownOutputRef`]; both carry the internally tagged (`type`) wire shape so
+/// the known variants stay byte-for-byte identical to the previous derived
+/// behavior.
+#[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum KnownOutput {
     Message(OutputMessage),
@@ -1389,24 +1391,42 @@ impl From<KnownOutput> for Output {
     }
 }
 
+/// Borrowed serialize mirror of the modeled [`Output`] variants.
+///
+/// Holds references to the live `Output` fields so serialization does not clone
+/// the payload. Like [`KnownOutput`], it carries the internally tagged (`type`)
+/// wire shape so known variants round-trip byte-for-byte.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum KnownOutputRef<'a> {
+    Message(&'a OutputMessage),
+    FunctionCall(&'a OutputFunctionCall),
+    Reasoning {
+        id: &'a str,
+        summary: &'a [ReasoningSummary],
+        encrypted_content: &'a Option<String>,
+        status: &'a Option<ToolStatus>,
+    },
+}
+
 impl Serialize for Output {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         let known = match self {
-            Output::Message(message) => KnownOutput::Message(message.clone()),
-            Output::FunctionCall(call) => KnownOutput::FunctionCall(call.clone()),
+            Output::Message(message) => KnownOutputRef::Message(message),
+            Output::FunctionCall(call) => KnownOutputRef::FunctionCall(call),
             Output::Reasoning {
                 id,
                 summary,
                 encrypted_content,
                 status,
-            } => KnownOutput::Reasoning {
-                id: id.clone(),
-                summary: summary.clone(),
-                encrypted_content: encrypted_content.clone(),
-                status: status.clone(),
+            } => KnownOutputRef::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                status,
             },
             Output::Unknown(value) => return value.serialize(serializer),
         };
@@ -2962,7 +2982,7 @@ mod tests {
     }
 
     #[test]
-    fn output_unknown_round_trips_byte_stable() {
+    fn output_unknown_round_trips_value_equal() {
         let item = json!({
             "type": "file_search_call",
             "id": "fs_007",
