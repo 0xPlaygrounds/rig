@@ -592,7 +592,11 @@ impl CompatibleStreamProfile for LlamafileCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         StreamingCompletionResponse { usage }
     }
 

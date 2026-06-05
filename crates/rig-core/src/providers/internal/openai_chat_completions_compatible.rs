@@ -141,7 +141,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -210,6 +214,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut final_response_model = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -238,6 +243,14 @@ where
                         chunk.response_id.as_deref(),
                         chunk.response_model.as_deref(),
                     );
+
+                    if chunk
+                        .response_model
+                        .as_ref()
+                        .is_some_and(|model| !model.is_empty())
+                    {
+                        final_response_model = chunk.response_model.clone();
+                    }
 
                     if let Some(usage) = chunk.usage {
                         final_usage = Some(usage);
@@ -360,7 +373,7 @@ where
         let final_usage = final_usage.unwrap_or_default();
         record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(final_usage, final_response_model),
         ));
     }
     .instrument(instrument_span);

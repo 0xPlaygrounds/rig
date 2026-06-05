@@ -200,6 +200,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id: None,
+            response_model: None,
         })
     }
 }

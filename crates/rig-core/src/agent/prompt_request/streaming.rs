@@ -74,6 +74,9 @@ pub struct FinalResponse {
     /// This is empty only when the turn completed without emitting any text.
     response: String,
     aggregated_usage: crate::completion::Usage,
+    /// Model the provider actually routed to on the final completion request, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    response_model: Option<String>,
     /// Successfully completed completion requests made by this agent stream.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     completion_calls: Vec<CompletionCall>,
@@ -100,9 +103,15 @@ impl FinalResponse {
             content,
             response,
             aggregated_usage,
+            response_model: None,
             completion_calls: Vec::new(),
             history,
         }
+    }
+
+    /// Returns the model the provider actually routed to, when reported.
+    pub fn response_model(&self) -> Option<&str> {
+        self.response_model.as_deref()
     }
 
     /// Returns the concatenated assistant text for the final turn.
@@ -167,6 +176,10 @@ impl<R> MultiTurnStreamItem<R> {
     ) -> Self {
         let mut response = FinalResponse::new(content, aggregated_usage, history);
         response.completion_calls = completion_calls;
+        response.response_model = response
+            .completion_calls
+            .last()
+            .and_then(|call| call.response_model.clone());
         Self::FinalResponse(response)
     }
 }
@@ -320,13 +333,15 @@ fn record_completion_call_if_needed(
     completion_call_emitted: &mut bool,
     call_index: usize,
     current_call_usage: Option<crate::completion::Usage>,
+    response_model: Option<String>,
 ) -> Option<CompletionCall> {
     if *completion_call_emitted {
         return None;
     }
 
-    let completion_call = CompletionCall::new(call_index, current_call_usage);
-    completion_calls.push(completion_call);
+    let mut completion_call = CompletionCall::new(call_index, current_call_usage);
+    completion_call.response_model = response_model;
+    completion_calls.push(completion_call.clone());
     *completion_call_emitted = true;
     Some(completion_call)
 }
@@ -913,6 +928,7 @@ where
                 let call_index = completion_call_index;
                 completion_call_index += 1;
                 let mut current_call_usage = None;
+                let mut current_response_model = None;
                 let mut completion_call_emitted = false;
                 let mut pending_tool_calls: Vec<(ToolCall, String)> = vec![];
                 let mut tool_calls = vec![];
@@ -1029,6 +1045,7 @@ where
                                             &mut completion_call_emitted,
                                             call_index,
                                             current_call_usage,
+                                            current_response_model.clone(),
                                         ) {
                                             yield Ok(MultiTurnStreamItem::CompletionCall(
                                                 completion_call,
@@ -1095,6 +1112,7 @@ where
                                             &mut completion_call_emitted,
                                             call_index,
                                             current_call_usage,
+                                            current_response_model.clone(),
                                         ) {
                                             yield Ok(MultiTurnStreamItem::CompletionCall(
                                                 completion_call,
@@ -1222,6 +1240,7 @@ where
                                                     &mut completion_call_emitted,
                                                     call_index,
                                                     current_call_usage,
+                                                    current_response_model.clone(),
                                                 ) {
                                                     yield Ok(MultiTurnStreamItem::CompletionCall(
                                                         completion_call,
@@ -1291,6 +1310,7 @@ where
                                                     &mut completion_call_emitted,
                                                     call_index,
                                                     current_call_usage,
+                                                    current_response_model.clone(),
                                                 ) {
                                                     yield Ok(MultiTurnStreamItem::CompletionCall(
                                                         completion_call,
@@ -1391,8 +1411,12 @@ where
                             if let Some(usage) = current_call_usage {
                                 aggregated_usage += usage;
                             }
-                            let completion_call = CompletionCall::new(call_index, current_call_usage);
-                            completion_calls.push(completion_call);
+                            current_response_model =
+                                GetTokenUsage::routed_model(&final_resp).map(str::to_owned);
+                            let mut completion_call =
+                                CompletionCall::new(call_index, current_call_usage);
+                            completion_call.response_model = current_response_model.clone();
+                            completion_calls.push(completion_call.clone());
                             completion_call_emitted = true;
                             yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
 
@@ -1420,8 +1444,9 @@ where
                 }
 
                 if !completion_call_emitted {
-                    let completion_call = CompletionCall::new(call_index, current_call_usage);
-                    completion_calls.push(completion_call);
+                    let mut completion_call = CompletionCall::new(call_index, current_call_usage);
+                    completion_call.response_model = current_response_model.clone();
+                    completion_calls.push(completion_call.clone());
                     yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
                 }
 

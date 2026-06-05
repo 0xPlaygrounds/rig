@@ -397,11 +397,17 @@ where
     R: Clone + Unpin + GetTokenUsage,
 {
     fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
+        let response_model = value
+            .response
+            .as_ref()
+            .and_then(GetTokenUsage::routed_model)
+            .map(str::to_owned);
         CompletionResponse {
             choice: value.choice,
             usage: Usage::new(), // Usage is not tracked in streaming responses
             raw_response: value.response,
             message_id: value.message_id,
+            response_model,
         }
     }
 }

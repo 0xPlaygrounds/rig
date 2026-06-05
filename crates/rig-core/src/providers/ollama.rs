@@ -411,6 +411,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     },
                     raw_response,
                     message_id: None,
+                    response_model: None,
                 })
             }
             _ => Err(CompletionError::ResponseError(

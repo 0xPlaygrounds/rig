@@ -511,6 +511,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             usage,
             raw_response: response,
             message_id: None,
+            response_model: None,
         })
     }
 }

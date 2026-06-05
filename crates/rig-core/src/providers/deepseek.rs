@@ -454,6 +454,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             usage,
             raw_response: response,
             message_id: None,
+            response_model: None,
         })
     }
 }
@@ -768,7 +769,11 @@ impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         StreamingCompletionResponse { usage }
     }
 

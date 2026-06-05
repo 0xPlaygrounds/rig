@@ -56,6 +56,7 @@ struct MockTurnResponse {
     choice: OneOrMany<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
+    response_model: Option<String>,
 }
 
 impl MockTurn {
@@ -97,6 +98,7 @@ impl MockTurn {
                 choice: OneOrMany::one(content),
                 usage: Usage::new(),
                 message_id: None,
+                response_model: None,
             }),
         }
     }
@@ -110,6 +112,7 @@ impl MockTurn {
                 choice: OneOrMany::many(content)?,
                 usage: Usage::new(),
                 message_id: None,
+                response_model: None,
             }),
         })
     }
@@ -144,6 +147,14 @@ impl MockTurn {
         self
     }
 
+    /// Set the provider-reported model for this turn.
+    pub fn with_response_model(mut self, response_model: impl Into<String>) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.response_model = Some(response_model.into());
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse<MockResponse>, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(CompletionResponse {
@@ -151,6 +162,7 @@ impl MockTurn {
             usage: response.usage,
             raw_response: MockResponse::with_usage(response.usage),
             message_id: response.message_id,
+            response_model: response.response_model,
         })
     }
 }

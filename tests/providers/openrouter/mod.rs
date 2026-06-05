@@ -5,6 +5,7 @@ mod document_file_data;
 mod extractor;
 mod extractor_usage;
 mod file_id;
+mod model_fallbacks;
 mod models;
 mod multi_extract;
 mod multimodal;

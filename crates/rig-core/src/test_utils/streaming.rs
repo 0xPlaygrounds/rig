@@ -11,17 +11,32 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MockResponse {
     usage: Option<Usage>,
+    model: Option<String>,
 }
 
 impl MockResponse {
     /// Create a mock raw response without token usage.
     pub fn new() -> Self {
-        Self { usage: None }
+        Self {
+            usage: None,
+            model: None,
+        }
+    }
+
+    /// Create a mock raw response carrying token usage and routed model.
+    pub fn with_usage_and_model(usage: Usage, model: impl Into<String>) -> Self {
+        Self {
+            usage: Some(usage),
+            model: Some(model.into()),
+        }
     }
 
     /// Create a mock raw response carrying token usage.
     pub fn with_usage(usage: Usage) -> Self {
-        Self { usage: Some(usage) }
+        Self {
+            usage: Some(usage),
+            model: None,
+        }
     }
 
     /// Create a mock raw response whose usage has only `total_tokens` set.
@@ -35,6 +50,10 @@ impl MockResponse {
 impl GetTokenUsage for MockResponse {
     fn token_usage(&self) -> Option<Usage> {
         self.usage
+    }
+
+    fn routed_model(&self) -> Option<&str> {
+        self.model.as_deref()
     }
 }
 

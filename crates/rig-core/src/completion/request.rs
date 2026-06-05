@@ -372,6 +372,25 @@ pub struct CompletionResponse<T> {
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Model the provider actually routed to, when reported.
+    ///
+    /// May differ from the requested model when fallbacks are configured.
+    pub response_model: Option<String>,
+}
+
+/// Returns the model a provider actually used for a completion, when reported.
+pub trait GetResponseModel {
+    /// Model the provider actually used for this completion, when reported.
+    fn response_model(&self) -> Option<&str>;
+}
+
+impl<T> GetResponseModel for T
+where
+    T: GetTokenUsage,
+{
+    fn response_model(&self) -> Option<&str> {
+        GetTokenUsage::routed_model(self)
+    }
 }
 
 /// A trait for grabbing the token usage of a completion response.
@@ -380,6 +399,11 @@ pub struct CompletionResponse<T> {
 pub trait GetTokenUsage {
     /// Returns token usage when the response type carries it.
     fn token_usage(&self) -> Option<crate::completion::Usage>;
+
+    /// Returns the model the provider actually routed to, when reported.
+    fn routed_model(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl GetTokenUsage for () {
