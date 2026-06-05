@@ -1,16 +1,20 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
 use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::message::Text;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;
 use serde_json::Value;
+use serde_json::json;
 
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
 
 const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
 const DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION: &str = "Answer in Spanish only. Use one short sentence.";
+const SERVER_TOOL_USE_SYSTEM_INSTRUCTION: &str =
+    "For the rest of this conversation, answer in Spanish only.";
 
 #[tokio::test]
 async fn messages_preserve_mid_conversation_system_role() {
@@ -43,6 +47,42 @@ async fn messages_preserve_mid_conversation_system_role() {
     assert_cassette_preserves_system_role_message(
         "opus_4_8/messages_preserve_mid_conversation_system_role",
         SYSTEM_ROLE_INSTRUCTION,
+    );
+}
+
+#[tokio::test]
+async fn messages_preserve_system_role_after_server_tool_result() {
+    super::super::support::with_anthropic_cassette(
+        "opus_4_8/messages_preserve_system_role_after_server_tool_result",
+        |client| async move {
+            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let response = model
+                .completion_request(
+                    "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
+                )
+                .messages([
+                    assistant_server_tool_use_message(),
+                    Message::system(SERVER_TOOL_USE_SYSTEM_INSTRUCTION),
+                    Message::assistant("Entendido."),
+                ])
+                .max_tokens(64)
+                .send()
+                .await
+                .expect(
+                    "Opus 4.8 request with system role after server tool result should succeed",
+                );
+
+            let text = assistant_text_response(&response.choice)
+                .or_else(|| response.raw_response.get_text_response())
+                .expect("response should contain assistant text");
+            assert_contains_any_case_insensitive(&text, &["azul"]);
+        },
+    )
+    .await;
+
+    assert_cassette_preserves_system_role_message(
+        "opus_4_8/messages_preserve_system_role_after_server_tool_result",
+        SERVER_TOOL_USE_SYSTEM_INSTRUCTION,
     );
 }
 
@@ -84,6 +124,41 @@ async fn documents_keep_leading_system_message_top_level() {
         "opus_4_8/documents_keep_leading_system_message_top_level",
         DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION,
     );
+}
+
+fn assistant_server_tool_use_message() -> Message {
+    Message::Assistant {
+        id: None,
+        content: rig::OneOrMany::many([
+            AssistantContent::Text(Text {
+                text: String::new(),
+                additional_params: Some(json!({
+                    "anthropic_content": {
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_REDACTED_1",
+                        "name": "web_search",
+                        "input": {
+                            "query": "clear daytime sky color"
+                        }
+                    }
+                })),
+            }),
+            AssistantContent::Text(Text {
+                text: String::new(),
+                additional_params: Some(json!({
+                    "anthropic_content": {
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_REDACTED_1",
+                        "content": {
+                            "type": "web_search_tool_result_error",
+                            "error_code": "unavailable"
+                        }
+                    }
+                })),
+            }),
+        ])
+        .expect("server tool assistant message should be non-empty"),
+    }
 }
 
 #[derive(Deserialize)]
