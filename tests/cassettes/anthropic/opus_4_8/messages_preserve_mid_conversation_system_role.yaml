@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Start a short language compliance check.","type":"text"}],"role":"user"},{"content":[{"text":"For the rest of this conversation, answer in Spanish only.","type":"text"}],"role":"system"},{"content":[{"text":"Entendido.","type":"text"}],"role":"assistant"},{"content":[{"text":"What color is a clear daytime sky? Reply with one lowercase Spanish word.","type":"text"}],"role":"user"}],"model":"claude-opus-4-8"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"azul","type":"text"}],"id":"msg_REDACTED_1","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":73,"output_tokens":4,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
