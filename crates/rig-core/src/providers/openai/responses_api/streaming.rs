@@ -1280,9 +1280,9 @@ mod tests {
             input_tokens: 10,
             input_tokens_details: None,
             output_tokens: 5,
-            output_tokens_details: OutputTokensDetails {
+            output_tokens_details: Some(OutputTokensDetails {
                 reasoning_tokens: 0,
-            },
+            }),
             total_tokens: 15,
         });
 
@@ -1325,9 +1325,9 @@ mod tests {
             input_tokens: 4,
             input_tokens_details: None,
             output_tokens: 2,
-            output_tokens_details: OutputTokensDetails {
+            output_tokens_details: Some(OutputTokensDetails {
                 reasoning_tokens: 0,
-            },
+            }),
             total_tokens: 6,
         });
 
