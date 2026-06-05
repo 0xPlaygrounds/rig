@@ -449,6 +449,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             if reasoning.id.is_none()
                     )
                 });
+                let cannot_replay_as_provider_output = id.is_none() || has_unreplayable_reasoning;
 
                 for assistant_content in content {
                     match assistant_content {
@@ -456,7 +457,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             if text.is_empty() {
                                 continue;
                             }
-                            let text = if has_unreplayable_reasoning {
+                            let text = if cannot_replay_as_provider_output {
                                 AssistantContent::InputText { text }
                             } else {
                                 AssistantContent::OutputText(Text::new(text))
@@ -1913,6 +1914,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                 }
             }
             message::Message::Assistant { content, id } => {
+                let cannot_replay_without_provider_id = id.is_none();
                 let assistant_message_id = id.unwrap_or_default();
                 let mut messages = Vec::new();
                 let content = content.into_iter().collect::<Vec<_>>();
@@ -1923,6 +1925,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                             if reasoning.id.is_none()
                     )
                 });
+                let cannot_replay_as_provider_output =
+                    cannot_replay_without_provider_id || has_unreplayable_reasoning;
 
                 for assistant_content in content {
                     match assistant_content {
@@ -1930,7 +1934,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             if text.is_empty() {
                                 continue;
                             }
-                            let text = if has_unreplayable_reasoning {
+                            let text = if cannot_replay_as_provider_output {
                                 AssistantContent::InputText { text }
                             } else {
                                 AssistantContent::OutputText(Text::new(text))
@@ -2404,6 +2408,60 @@ mod tests {
             content.first_ref(),
             AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
         ));
+    }
+
+    #[test]
+    fn idless_completion_assistant_text_replays_as_input_text() {
+        let assistant = completion::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
+        };
+
+        let converted =
+            Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+
+        assert_eq!(converted.len(), 1);
+        assert!(matches!(converted[0].role, Some(Role::Assistant)));
+        let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[0].input
+        else {
+            panic!("expected assistant message input item");
+        };
+        assert!(id.is_empty());
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+        ));
+
+        let serialized =
+            serde_json::to_value(&converted[0]).expect("input item should serialize to JSON");
+        assert_eq!(serialized["content"][0]["type"], json!("input_text"));
+        assert!(serialized.get("id").is_none());
+    }
+
+    #[test]
+    fn idless_message_assistant_text_replays_as_input_text() {
+        let assistant = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
+        };
+
+        let converted =
+            Vec::<Message>::try_from(assistant).expect("assistant history should convert");
+
+        assert_eq!(converted.len(), 1);
+        let Message::Assistant { content, id, .. } = &converted[0] else {
+            panic!("expected assistant message");
+        };
+        assert!(id.is_empty());
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+        ));
+
+        let serialized = serde_json::to_value(&converted[0])
+            .expect("assistant message should serialize to JSON");
+        assert_eq!(serialized["content"][0]["type"], json!("input_text"));
+        assert!(serialized.get("id").is_none());
     }
 
     #[test]
