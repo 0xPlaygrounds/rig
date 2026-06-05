@@ -1,0 +1,37 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128,"messages":[{"content":[{"text":"Use web search to check the color of a clear daytime sky. Keep the final answer under five words.","type":"text"}],"role":"user"}],"model":"claude-opus-4-8","tools":[{"name":"web_search","type":"web_search_20250305"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"id":"srvtoolu_01KsBc5ByGXaB3mv6NotjFWG","input":{"query":"why is the sky blue color clear day"},"name":"web_search","type":"server_tool_use"},{"caller":{"type":"direct"},"content":[{"encrypted_content":"encrypted_content_REDACTED_1","page_age":"July 1, 2024","title":"Why does the sky appear blue on a clear day?","type":"web_search_result","url":"https://www.vedantu.com/question-answer/does-the-sky-appear-blue-on-a-clear-day-class-12-physics-cbse-5fc91c3c592a523706051307"},{"encrypted_content":"encrypted_content_REDACTED_2","page_age":"July 26, 2018","title":"Why Does the Sky Appear Blue on a Clear Day? - Science | Shaalaa.com","type":"web_search_result","url":"https://www.shaalaa.com/question-bank-solutions/why-does-sky-appear-blue-clear-day_28628"},{"encrypted_content":"encrypted_content_REDACTED_3","page_age":null,"title":"Why is the sky blue?","type":"web_search_result","url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"},{"encrypted_content":"encrypted_content_REDACTED_4","page_age":null,"title":"Why Is The Sky Blue?","type":"web_search_result","url":"https://www.weather.gov/fgz/SkyBlue"},{"encrypted_content":"encrypted_content_REDACTED_5","page_age":"May 9, 2018","title":"Why is the sky blue? | Royal Observatory","type":"web_search_result","url":"https://www.rmg.co.uk/stories/topics/why-sky-blue"},{"encrypted_content":"encrypted_content_REDACTED_6","page_age":"March 30, 2026","title":"Why Is the Sky Blue? - GeeksforGeeks","type":"web_search_result","url":"https://www.geeksforgeeks.org/physics/why-is-the-sky-blue/"},{"encrypted_content":"encrypted_content_REDACTED_7","page_age":"March 8, 2023","title":"The Sky is NOT Blue. How Understanding This Can Drastically… | by Tyler Boufford | Medium","type":"web_search_result","url":"https://tylerboufford.medium.com/the-sky-is-not-blue-1e2613c2e701"},{"encrypted_content":"encrypted_content_REDACTED_8","page_age":null,"title":"Why Is the Sky Blue? | NASA Space Place – NASA Science for Kids","type":"web_search_result","url":"https://spaceplace.nasa.gov/blue-sky/en/"}],"tool_use_id":"toolu_REDACTED_1","type":"web_search_tool_result"},{"citations":[{"cited_text":"On a clear sunny day, the sky above us looks bright blue. ","encrypted_index":"Eo8BCioIEBgCIiQ3MmFmNTZiNy00NzU2LTQ2MTItODExNy1hYmYzYzY3Y2U2MzUSDD2lLV9II6jl8xbKdBoM1LY/Szev/XrEql2UIjBsKBYtIq+HdzeJme55uzWItnmkoZa7OceqsQXpJ47OJ+GDC9M4+nsk3r/106hSmHUqE7WhQAktMHnIF4jnprkw3THapRcYBA==","title":"Why Is The Sky Blue?","type":"web_search_result_location","url":"https://www.weather.gov/fgz/SkyBlue"}],"text":"A clear sunny day''s sky is bright blue.","type":"text"}],"id":"msg_REDACTED_1","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":12766,"output_tokens":94,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_fetch_requests":0,"web_search_requests":1},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"id":"srvtoolu_01KsBc5ByGXaB3mv6NotjFWG","input":{"query":"why is the sky blue color clear day"},"name":"web_search","type":"server_tool_use"},{"content":[{"encrypted_content":"encrypted_content_REDACTED_1","page_age":"July 1, 2024","title":"Why does the sky appear blue on a clear day?","type":"web_search_result","url":"https://www.vedantu.com/question-answer/does-the-sky-appear-blue-on-a-clear-day-class-12-physics-cbse-5fc91c3c592a523706051307"},{"encrypted_content":"encrypted_content_REDACTED_2","page_age":"July 26, 2018","title":"Why Does the Sky Appear Blue on a Clear Day? - Science | Shaalaa.com","type":"web_search_result","url":"https://www.shaalaa.com/question-bank-solutions/why-does-sky-appear-blue-clear-day_28628"},{"encrypted_content":"encrypted_content_REDACTED_3","page_age":null,"title":"Why is the sky blue?","type":"web_search_result","url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"},{"encrypted_content":"encrypted_content_REDACTED_4","page_age":null,"title":"Why Is The Sky Blue?","type":"web_search_result","url":"https://www.weather.gov/fgz/SkyBlue"},{"encrypted_content":"encrypted_content_REDACTED_5","page_age":"May 9, 2018","title":"Why is the sky blue? | Royal Observatory","type":"web_search_result","url":"https://www.rmg.co.uk/stories/topics/why-sky-blue"},{"encrypted_content":"encrypted_content_REDACTED_6","page_age":"March 30, 2026","title":"Why Is the Sky Blue? - GeeksforGeeks","type":"web_search_result","url":"https://www.geeksforgeeks.org/physics/why-is-the-sky-blue/"},{"encrypted_content":"encrypted_content_REDACTED_7","page_age":"March 8, 2023","title":"The Sky is NOT Blue. How Understanding This Can Drastically… | by Tyler Boufford | Medium","type":"web_search_result","url":"https://tylerboufford.medium.com/the-sky-is-not-blue-1e2613c2e701"},{"encrypted_content":"encrypted_content_REDACTED_8","page_age":null,"title":"Why Is the Sky Blue? | NASA Space Place – NASA Science for Kids","type":"web_search_result","url":"https://spaceplace.nasa.gov/blue-sky/en/"}],"tool_use_id":"toolu_REDACTED_1","type":"web_search_tool_result"}],"role":"assistant"},{"content":[{"text":"For the rest of this conversation, answer in Spanish only.","type":"text"}],"role":"system"},{"content":[{"text":"Entendido.","type":"text"}],"role":"assistant"},{"content":[{"text":"What color is a clear daytime sky? Reply with one lowercase Spanish word.","type":"text"}],"role":"user"}],"model":"claude-opus-4-8"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"azul","type":"text"}],"id":"msg_REDACTED_2","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":7348,"output_tokens":4,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'
