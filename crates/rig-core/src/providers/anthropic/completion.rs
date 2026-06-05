@@ -2212,7 +2212,7 @@ fn is_valid_mid_conversation_system_message(history: &[message::Message], index:
     let follows_valid_turn = index > 0
         && history.get(index - 1).is_some_and(|message| {
             matches!(message, message::Message::User { .. })
-                || assistant_ends_in_server_tool_result(message)
+                || assistant_ends_in_server_tool_block(message)
         });
     let is_last_or_precedes_assistant = history
         .get(index + 1)
@@ -2221,7 +2221,7 @@ fn is_valid_mid_conversation_system_message(history: &[message::Message], index:
     follows_valid_turn && is_last_or_precedes_assistant
 }
 
-fn assistant_ends_in_server_tool_result(message: &message::Message) -> bool {
+fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
     let message::Message::Assistant { content, .. } = message else {
         return false;
     };
@@ -2240,7 +2240,7 @@ fn assistant_ends_in_server_tool_result(message: &message::Message) -> bool {
         return false;
     };
 
-    raw_type == "web_search_tool_result"
+    matches!(raw_type, "server_tool_use" | "web_search_tool_result")
 }
 
 /// Parameters for building an AnthropicCompletionRequest
@@ -3229,6 +3229,58 @@ mod tests {
         assert_eq!(messages[0]["role"], "assistant");
         assert_eq!(messages[0]["content"][0]["type"], "server_tool_use");
         assert_eq!(messages[0]["content"][1]["type"], "web_search_tool_result");
+        assert_eq!(messages[1]["role"], "system");
+        assert_eq!(
+            messages[1]["content"][0]["text"],
+            "For the rest of this conversation, answer in Spanish."
+        );
+        assert_eq!(messages[2]["role"], "assistant");
+    }
+
+    #[test]
+    fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+                        text: String::new(),
+                        additional_params: Some(json!({
+                            ANTHROPIC_RAW_CONTENT_KEY: {
+                                "type": "server_tool_use",
+                                "id": "srvtoolu_01",
+                                "name": "web_search",
+                                "input": {
+                                    "query": "clear daytime sky color"
+                                }
+                            }
+                        })),
+                    })),
+                },
+                message::Message::System {
+                    content: "For the rest of this conversation, answer in Spanish.".to_string(),
+                },
+                message::Message::assistant("Entendido."),
+            ],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value.get("system").is_none());
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "assistant");
+        assert_eq!(messages[0]["content"][0]["type"], "server_tool_use");
         assert_eq!(messages[1]["role"], "system");
         assert_eq!(
             messages[1]["content"][0]["text"],
