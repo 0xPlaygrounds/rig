@@ -709,21 +709,19 @@ impl Add for ResponsesUsage {
 
     fn add(self, rhs: Self) -> Self::Output {
         let input_tokens = self.input_tokens + rhs.input_tokens;
-        let input_tokens_details = self.input_tokens_details.map(|lhs| {
-            if let Some(tokens) = rhs.input_tokens_details {
-                lhs + tokens
-            } else {
-                lhs
-            }
-        });
+        let input_tokens_details = match (self.input_tokens_details, rhs.input_tokens_details) {
+            (Some(lhs), Some(rhs)) => Some(lhs + rhs),
+            (Some(lhs), None) => Some(lhs),
+            (None, Some(rhs)) => Some(rhs),
+            (None, None) => None,
+        };
         let output_tokens = self.output_tokens + rhs.output_tokens;
-        let output_tokens_details = self.output_tokens_details.map(|lhs| {
-            if let Some(tokens) = rhs.output_tokens_details {
-                lhs + tokens
-            } else {
-                lhs
-            }
-        });
+        let output_tokens_details = match (self.output_tokens_details, rhs.output_tokens_details) {
+            (Some(lhs), Some(rhs)) => Some(lhs + rhs),
+            (Some(lhs), None) => Some(lhs),
+            (None, Some(rhs)) => Some(rhs),
+            (None, None) => None,
+        };
         let total_tokens = self.total_tokens + rhs.total_tokens;
         Self {
             input_tokens,
@@ -2041,6 +2039,58 @@ mod tests {
         assert_eq!(token_usage.output_tokens, 50);
         assert_eq!(token_usage.reasoning_tokens, 15);
         assert_eq!(token_usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn responses_usage_deserializes_without_output_token_details() {
+        let usage: ResponsesUsage = serde_json::from_value(json!({
+            "input_tokens": 100,
+            "input_tokens_details": {
+                "cached_tokens": 25
+            },
+            "output_tokens": 50,
+            "total_tokens": 150
+        }))
+        .expect("usage should deserialize when output token details are omitted");
+
+        assert!(usage.output_tokens_details.is_none());
+
+        let token_usage = usage.token_usage().expect("usage should be present");
+
+        assert_eq!(token_usage.input_tokens, 100);
+        assert_eq!(token_usage.cached_input_tokens, 25);
+        assert_eq!(token_usage.output_tokens, 50);
+        assert_eq!(token_usage.reasoning_tokens, 0);
+        assert_eq!(token_usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
+        let lhs = ResponsesUsage {
+            input_tokens: 10,
+            input_tokens_details: None,
+            output_tokens: 20,
+            output_tokens_details: None,
+            total_tokens: 30,
+        };
+        let rhs = ResponsesUsage {
+            input_tokens: 3,
+            input_tokens_details: Some(InputTokensDetails { cached_tokens: 2 }),
+            output_tokens: 5,
+            output_tokens_details: Some(OutputTokensDetails {
+                reasoning_tokens: 4,
+            }),
+            total_tokens: 8,
+        };
+
+        let usage = lhs + rhs;
+        let token_usage = usage.token_usage().expect("usage should be present");
+
+        assert_eq!(token_usage.input_tokens, 13);
+        assert_eq!(token_usage.cached_input_tokens, 2);
+        assert_eq!(token_usage.output_tokens, 25);
+        assert_eq!(token_usage.reasoning_tokens, 4);
+        assert_eq!(token_usage.total_tokens, 38);
     }
 
     #[test]
