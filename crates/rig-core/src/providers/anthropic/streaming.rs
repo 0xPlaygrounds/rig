@@ -205,15 +205,16 @@ where
             ));
         };
 
-        let mut full_history = vec![];
-        if let Some(docs) = completion_request.normalized_documents() {
-            full_history.push(docs);
-        }
-        full_history.extend(completion_request.chat_history);
-        let (history_system, full_history) = split_system_messages_from_history(
-            full_history,
+        let docs = completion_request.normalized_documents();
+        let (history_system, chat_history) = split_system_messages_from_history(
+            completion_request.chat_history.into_iter().collect(),
             supports_mid_conversation_system_messages(&request_model),
         );
+        let mut full_history = vec![];
+        if let Some(docs) = docs {
+            full_history.push(docs);
+        }
+        full_history.extend(chat_history);
 
         let mut messages = full_history
             .into_iter()

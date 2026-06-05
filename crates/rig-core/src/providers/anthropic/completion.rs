@@ -2248,15 +2248,16 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             ));
         };
 
-        let mut full_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            full_history.push(docs);
-        }
-        full_history.extend(req.chat_history);
-        let (history_system, full_history) = split_system_messages_from_history(
-            full_history,
+        let docs = req.normalized_documents();
+        let (history_system, chat_history) = split_system_messages_from_history(
+            req.chat_history.into_iter().collect(),
             supports_mid_conversation_system_messages(model),
         );
+        let mut full_history = vec![];
+        if let Some(docs) = docs {
+            full_history.push(docs);
+        }
+        full_history.extend(chat_history);
 
         let mut messages = full_history
             .into_iter()
@@ -3098,6 +3099,48 @@ mod tests {
         assert_eq!(messages[1]["role"], "system");
         assert_eq!(messages[2]["role"], "assistant");
         assert!(value.get("system").is_none());
+    }
+
+    #[test]
+    fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
+        let mut request = completion_request_with_history(
+            vec![
+                message::Message::System {
+                    content: "Global history instruction.".to_string(),
+                },
+                message::Message::assistant("Acknowledged."),
+                message::Message::user("Answer from the document."),
+            ],
+            None,
+        );
+        request.documents = vec![completion::Document {
+            id: "doc".to_string(),
+            text: "Document context.".to_string(),
+            additional_props: Default::default(),
+        }];
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["system"][0]["text"], "Global history instruction.");
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "assistant");
+        assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["role"].as_str() != Some("system"))
+        );
     }
 
     #[test]
