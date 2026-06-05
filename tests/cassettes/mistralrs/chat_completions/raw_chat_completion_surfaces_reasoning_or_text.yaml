@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"text"}],"role":"system"},{"content":"Think briefly, then answer in one sentence why token usage should be reported.","role":"user"}],"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":null,"reasoning_content":"\nOkay, the user is asking why token usage should be reported, and they want a brief, concise answer in one sentence. Let me break this down.\n\nFirst, token usage refers to the number of tokens (like words or characters) a model uses during processing. Reporting this is important for several reasons. One key reason is cost management. Many services charge based on token usage, so tracking it helps in budgeting. Also, it''s crucial for optimizing performance. If you know how many tokens you''re using, you can adjust your prompts or models to be more efficient, reducing costs and improving response times. \n\nAnother angle is transparency. Reporting token usage can help in understanding how resources are being utilized, which is important for scalability and planning. Maybe the user is a developer or a business professional looking to manage costs. They might not want to overspend, so tracking token usage is essential. Also, they might need this data for performance analysis or to demonstrate efficiency to stakeholders. \n\nI should make sure the answer is concise but covers these points. The user wants a single sentence, so I need to combine these ideas without being too verbose. Maybe start with the main reason (cost management) and then mention optimization and resource efficiency. Let me check if that''s accurate","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3-4B","object":"chat.completion","system_fingerprint":"local","usage":{"avg_compl_tok_per_sec":15.591692,"avg_prompt_tok_per_sec":27.315123,"avg_tok_per_sec":16.57181,"completion_tokens":256,"prompt_tokens":41,"total_completion_time_sec":16.419,"total_prompt_time_sec":1.501,"total_time_sec":17.922,"total_tokens":297}}'

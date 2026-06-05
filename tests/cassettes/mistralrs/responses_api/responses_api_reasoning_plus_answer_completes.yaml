@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":512,"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"completed_at":0,"created_at":0,"id":"resp_REDACTED_1","max_output_tokens":512,"model":"Qwen/Qwen3-4B","object":"response","output":[{"content":[{"text":"\n\nLocal OpenAI-compatible servers should report token usage to track costs, optimize resources, and ensure budget compliance for efficient model operation.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"output_text":"\n\nLocal OpenAI-compatible servers should report token usage to track costs, optimize resources, and ensure budget compliance for efficient model operation.","reasoning":"\nOkay, the user is asking why local OpenAI-compatible servers should report token usage, and they want a brief, one-sentence answer. Let me start by recalling what token usage reporting entails. It''s about tracking the number of tokens used in model interactions, which is crucial for billing and cost management.\n\nHmm, the user mentioned \"local servers,\" so maybe they''re concerned about cost control. If they''re running their own models, they need to know how much they''re using to avoid unexpected expenses. Also, reporting token usage can help in optimizing model usage, like adjusting the prompt length or model size to stay within budget.\n\nWait, the answer needs to be concise. So the main points are cost tracking, budgeting, and optimization. Maybe also mention resource allocation. But it has to be one sentence. So combining these elements: \"Local OpenAI-compatible servers should report token usage to track costs, optimize resource allocation, and ensure budget compliance for efficient model operation.\" That''s a bit long, but it hits the key points. Let me check if it''s concise enough. Maybe trim some words. \"Local OpenAI-compatible servers should report token usage to track costs, optimize resources, and ensure budget compliance.\" That''s better. Yeah, that covers the main reasons without being too verbose.\n","status":"completed","usage":{"input_tokens":45,"output_tokens":290,"total_tokens":335}}'

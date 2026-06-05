@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"You are concise. Include a few details so streaming is visible.","role":"system"},{"content":"/no_think Call the report_usage tool with reason set to cost_tracking.","role":"user"}],"model":"Qwen/Qwen3-4B","temperature":0.2,"tool_choice":{"function":{"name":"report_usage"},"type":"function"},"tools":[{"function":{"description":"Report why token usage is needed.","name":"report_usage","parameters":{"properties":{"reason":{"type":"string"}},"required":["reason"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>","reasoning_content":"\n\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"reason\":\"cost_tracking\"}","name":"report_usage"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3-4B","object":"chat.completion","system_fingerprint":"local","usage":{"avg_compl_tok_per_sec":16.759777,"avg_prompt_tok_per_sec":29.803186,"avg_tok_per_sec":27.015059,"completion_tokens":24,"prompt_tokens":159,"total_completion_time_sec":1.432,"total_prompt_time_sec":5.335,"total_time_sec":6.774,"total_tokens":183}}'
