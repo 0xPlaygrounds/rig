@@ -351,22 +351,6 @@ async fn cancelled_prompt_error(
     )
 }
 
-fn tool_result_to_user_message(
-    id: String,
-    call_id: Option<String>,
-    tool_result: String,
-) -> Message {
-    let content = ToolResultContent::from_tool_output(tool_result);
-    let user_content = match call_id {
-        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-        None => UserContent::tool_result(id, content),
-    };
-
-    Message::User {
-        content: OneOrMany::one(user_content),
-    }
-}
-
 fn tool_result_user_content(
     id: String,
     call_id: Option<String>,
@@ -1594,8 +1578,20 @@ where
                     }
                 }
 
-                for (id, call_id, tool_result) in tool_results {
-                    new_messages.push(tool_result_to_user_message(id, call_id, tool_result));
+                // Combine all tool results into a single User message (required by Anthropic)
+                let tool_result_contents: Vec<UserContent> = tool_results
+                    .into_iter()
+                    .map(|(id, call_id, tool_result)| {
+                        let content = ToolResultContent::from_tool_output(tool_result);
+                        match call_id {
+                            Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
+                            None => UserContent::tool_result(id, content),
+                        }
+                    })
+                    .collect();
+
+                if let Some(content) = OneOrMany::from_iter_optional(tool_result_contents) {
+                    new_messages.push(Message::User { content });
                 }
 
                 if !saw_tool_call_this_turn {
@@ -1852,8 +1848,8 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_to_user_message_preserves_multimodal_tool_output() {
-        let message = tool_result_to_user_message(
+    fn tool_result_user_content_preserves_multimodal_tool_output() {
+        let user_content = tool_result_user_content(
             "tool_call_1".to_string(),
             Some("call_1".to_string()),
             serde_json::json!({
@@ -1871,12 +1867,9 @@ mod tests {
             .to_string(),
         );
 
-        let tool_result = match message {
-            Message::User { content } => match content.first() {
-                UserContent::ToolResult(tool_result) => tool_result,
-                other => panic!("expected tool result content, got {other:?}"),
-            },
-            other => panic!("expected user message, got {other:?}"),
+        let tool_result = match user_content {
+            UserContent::ToolResult(tool_result) => tool_result,
+            other => panic!("expected tool result content, got {other:?}"),
         };
 
         assert_eq!(tool_result.id, "tool_call_1");
