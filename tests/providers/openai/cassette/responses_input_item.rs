@@ -25,18 +25,16 @@ fn test_input_item_serialization_avoids_duplicate_role() {
 }
 
 #[test]
-fn assistant_reasoning_without_id_returns_error() {
+fn assistant_reasoning_without_id_is_omitted() {
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
         content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thought"))),
     };
 
-    let items: Result<Vec<InputItem>, CompletionError> = message.try_into();
-    assert!(matches!(
-        items,
-        Err(CompletionError::ProviderError(message))
-            if message.contains("OpenAI-generated ID is required")
-    ));
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("idless reasoning should be omitted without an error");
+    assert!(items.is_empty());
 }
 
 #[test]
@@ -268,7 +266,7 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
 }
 
 #[test]
-fn openai_responses_request_reasoning_without_id_returns_error_without_panicking() {
+fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
             preamble: None,
@@ -291,8 +289,10 @@ fn openai_responses_request_reasoning_without_id_returns_error_without_panicking
     let conversion = panic_result.expect("request conversion should not panic");
     assert!(matches!(
         conversion,
-        Err(CompletionError::ProviderError(message))
-            if message.contains("OpenAI-generated ID is required")
+        Err(CompletionError::RequestError(error))
+            if error
+                .to_string()
+                .contains("OpenAI Responses request input must contain at least one item")
     ));
 }
 

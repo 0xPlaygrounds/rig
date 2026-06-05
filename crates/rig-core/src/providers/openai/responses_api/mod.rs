@@ -441,18 +441,31 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
             crate::completion::Message::Assistant { id, content } => {
                 let mut reasoning_items = Vec::new();
                 let mut other_items = Vec::new();
+                let content = content.into_iter().collect::<Vec<_>>();
+                let has_unreplayable_reasoning = content.iter().any(|assistant_content| {
+                    matches!(
+                        assistant_content,
+                        crate::message::AssistantContent::Reasoning(reasoning)
+                            if reasoning.id.is_none()
+                    )
+                });
 
                 for assistant_content in content {
                     match assistant_content {
                         crate::message::AssistantContent::Text(Text { text, .. }) => {
-                            let id = id.as_ref().unwrap_or(&String::default()).clone();
+                            if text.is_empty() {
+                                continue;
+                            }
+                            let text = if has_unreplayable_reasoning {
+                                AssistantContent::InputText { text }
+                            } else {
+                                AssistantContent::OutputText(Text::new(text))
+                            };
                             other_items.push(InputItem {
                                 role: Some(Role::Assistant),
                                 input: InputContent::Message(Message::Assistant {
-                                    content: OneOrMany::one(AssistantContentType::Text(
-                                        AssistantContent::OutputText(Text::new(text)),
-                                    )),
-                                    id,
+                                    content: OneOrMany::one(AssistantContentType::Text(text)),
+                                    id: id.clone().unwrap_or_default(),
                                     name: None,
                                     status: ToolStatus::Completed,
                                 }),
@@ -478,10 +491,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         crate::message::AssistantContent::Reasoning(reasoning) => {
                             let openai_reasoning = openai_reasoning_from_core(&reasoning)
                                 .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
-                            reasoning_items.push(InputItem {
-                                role: None,
-                                input: InputContent::Reasoning(openai_reasoning),
-                            });
+                            if let Some(openai_reasoning) = openai_reasoning {
+                                reasoning_items.push(InputItem {
+                                    role: None,
+                                    input: InputContent::Reasoning(openai_reasoning),
+                                });
+                            }
                         }
                         crate::message::AssistantContent::Image(_) => {
                             return Err(CompletionError::ProviderError(
@@ -516,12 +531,11 @@ fn require_call_id(call_id: Option<String>, context: &str) -> Result<String, Com
 
 fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
-) -> Result<OpenAIReasoning, MessageError> {
-    let id = reasoning.id.clone().ok_or_else(|| {
-        MessageError::ConversionError(
-            "An OpenAI-generated ID is required when using OpenAI reasoning items".to_string(),
-        )
-    })?;
+) -> Result<Option<OpenAIReasoning>, MessageError> {
+    let Some(id) = reasoning.id.clone() else {
+        return Ok(None);
+    };
+
     let mut summary = Vec::new();
     let mut encrypted_content = None;
     for content in &reasoning.content {
@@ -539,12 +553,24 @@ fn openai_reasoning_from_core(
         }
     }
 
-    Ok(OpenAIReasoning {
+    Ok(Some(OpenAIReasoning {
         id,
         summary,
         encrypted_content,
         status: None,
-    })
+    }))
+}
+
+fn optional_reasoning_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        match Option::<serde_json::Value>::deserialize(deserializer)? {
+            Some(serde_json::Value::String(reasoning)) => Some(reasoning),
+            _ => None,
+        },
+    )
 }
 
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
@@ -1044,6 +1070,15 @@ pub struct CompletionResponse {
     pub max_output_tokens: Option<u64>,
     /// The model name
     pub model: String,
+    /// Provider-specific top-level reasoning content returned by some
+    /// OpenAI-compatible Responses implementations.
+    #[serde(
+        default,
+        rename = "reasoning",
+        deserialize_with = "optional_reasoning_string",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub provider_reasoning: Option<String>,
     /// Token usage
     pub usage: Option<ResponsesUsage>,
     /// The model output (messages, etc will go here)
@@ -1517,24 +1552,35 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        if response.output.is_empty() {
-            return Err(CompletionError::ResponseError(
-                "Response contained no parts".to_owned(),
-            ));
-        }
-
         // Extract the msg_ ID from the first Output::Message item
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(msg) => Some(msg.id.clone()),
             _ => None,
         });
 
-        let content: Vec<completion::AssistantContent> = response
+        let output_content: Vec<completion::AssistantContent> = response
             .output
             .iter()
             .cloned()
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
+        let has_structured_reasoning = response
+            .output
+            .iter()
+            .any(|item| matches!(item, Output::Reasoning { .. }));
+        let content = response
+            .provider_reasoning
+            .as_ref()
+            .filter(|reasoning| !has_structured_reasoning && !reasoning.is_empty())
+            .map(|reasoning| {
+                let mut content = Vec::with_capacity(output_content.len() + 1);
+                content.push(completion::AssistantContent::Reasoning(
+                    message::Reasoning::new(reasoning),
+                ));
+                content.extend(output_content.clone());
+                content
+            })
+            .unwrap_or(output_content);
 
         let choice = OneOrMany::many(content).map_err(|_| {
             CompletionError::ResponseError(
@@ -1611,6 +1657,7 @@ impl Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantContent {
+    InputText { text: String },
     OutputText(Text),
     Refusal { refusal: String },
 }
@@ -1618,6 +1665,9 @@ pub enum AssistantContent {
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
         match value {
+            AssistantContent::InputText { text } => {
+                completion::AssistantContent::Text(Text::new(text))
+            }
             AssistantContent::Refusal { refusal } => {
                 completion::AssistantContent::Text(Text::new(refusal))
             }
@@ -1863,65 +1913,84 @@ impl TryFrom<message::Message> for Vec<Message> {
                 }
             }
             message::Message::Assistant { content, id } => {
-                let assistant_message_id = id.ok_or_else(|| {
-                    MessageError::ConversionError(
-                        "Assistant message ID is required for OpenAI Responses API".into(),
+                let assistant_message_id = id.unwrap_or_default();
+                let mut messages = Vec::new();
+                let content = content.into_iter().collect::<Vec<_>>();
+                let has_unreplayable_reasoning = content.iter().any(|assistant_content| {
+                    matches!(
+                        assistant_content,
+                        crate::message::AssistantContent::Reasoning(reasoning)
+                            if reasoning.id.is_none()
                     )
-                })?;
+                });
 
-                match content.first() {
-                    crate::message::AssistantContent::Text(Text { text, .. }) => {
-                        Ok(vec![Message::Assistant {
-                            id: assistant_message_id.clone(),
-                            status: ToolStatus::Completed,
-                            content: OneOrMany::one(AssistantContentType::Text(
-                                AssistantContent::OutputText(Text::new(text)),
-                            )),
-                            name: None,
-                        }])
-                    }
-                    crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                        id,
-                        call_id,
-                        function,
-                        ..
-                    }) => Ok(vec![Message::Assistant {
-                        content: OneOrMany::one(AssistantContentType::ToolCall(
-                            OutputFunctionCall {
-                                call_id: call_id.ok_or_else(|| {
-                                    MessageError::ConversionError(
-                                        "Tool call `call_id` is required for OpenAI Responses API"
-                                            .into(),
-                                    )
-                                })?,
-                                arguments: function.arguments,
-                                id,
-                                name: function.name,
+                for assistant_content in content {
+                    match assistant_content {
+                        crate::message::AssistantContent::Text(Text { text, .. }) => {
+                            if text.is_empty() {
+                                continue;
+                            }
+                            let text = if has_unreplayable_reasoning {
+                                AssistantContent::InputText { text }
+                            } else {
+                                AssistantContent::OutputText(Text::new(text))
+                            };
+                            messages.push(Message::Assistant {
+                                id: assistant_message_id.clone(),
                                 status: ToolStatus::Completed,
-                            },
-                        )),
-                        id: assistant_message_id.clone(),
-                        name: None,
-                        status: ToolStatus::Completed,
-                    }]),
-                    crate::message::AssistantContent::Reasoning(reasoning) => {
-                        let openai_reasoning = openai_reasoning_from_core(&reasoning)?;
-                        Ok(vec![Message::Assistant {
-                            content: OneOrMany::one(AssistantContentType::Reasoning(
-                                openai_reasoning,
-                            )),
-                            id: assistant_message_id,
-                            name: None,
-                            status: ToolStatus::Completed,
-                        }])
-                    }
-                    crate::message::AssistantContent::Image(_) => {
-                        Err(MessageError::ConversionError(
-                            "Assistant image content is not supported in OpenAI Responses API"
-                                .into(),
-                        ))
+                                content: OneOrMany::one(AssistantContentType::Text(text)),
+                                name: None,
+                            });
+                        }
+                        crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
+                            id,
+                            call_id,
+                            function,
+                            ..
+                        }) => {
+                            messages.push(Message::Assistant {
+                                content: OneOrMany::one(AssistantContentType::ToolCall(
+                                    OutputFunctionCall {
+                                        call_id: call_id.ok_or_else(|| {
+                                            MessageError::ConversionError(
+                                                "Tool call `call_id` is required for OpenAI Responses API"
+                                                    .into(),
+                                            )
+                                        })?,
+                                        arguments: function.arguments,
+                                        id,
+                                        name: function.name,
+                                        status: ToolStatus::Completed,
+                                    },
+                                )),
+                                id: assistant_message_id.clone(),
+                                name: None,
+                                status: ToolStatus::Completed,
+                            });
+                        }
+                        crate::message::AssistantContent::Reasoning(reasoning) => {
+                            if let Some(openai_reasoning) = openai_reasoning_from_core(&reasoning)?
+                            {
+                                messages.push(Message::Assistant {
+                                    content: OneOrMany::one(AssistantContentType::Reasoning(
+                                        openai_reasoning,
+                                    )),
+                                    id: assistant_message_id.clone(),
+                                    name: None,
+                                    status: ToolStatus::Completed,
+                                });
+                            }
+                        }
+                        crate::message::AssistantContent::Image(_) => {
+                            return Err(MessageError::ConversionError(
+                                "Assistant image content is not supported in OpenAI Responses API"
+                                    .into(),
+                            ));
+                        }
                     }
                 }
+
+                Ok(messages)
             }
         }
     }
@@ -2062,6 +2131,402 @@ mod tests {
         assert_eq!(token_usage.output_tokens, 50);
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.total_tokens, 150);
+    }
+
+    #[test]
+    fn completion_response_accepts_top_level_reasoning_string() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "Qwen/Qwen3-4B",
+            "reasoning": "thinking through the answer",
+            "usage": {
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "total_tokens": 3
+            },
+            "output": [{
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("mistral.rs-style reasoning string should deserialize");
+
+        assert_eq!(
+            response.provider_reasoning.as_deref(),
+            Some("thinking through the answer")
+        );
+
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("response should convert");
+        let items = completion.choice.iter().collect::<Vec<_>>();
+        assert!(matches!(
+            items[0],
+            completion::AssistantContent::Reasoning(_)
+        ));
+        assert!(matches!(items[1], completion::AssistantContent::Text(_)));
+    }
+
+    #[test]
+    fn completion_response_accepts_reasoning_only_response() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "Qwen/Qwen3-4B",
+            "reasoning": "thinking only",
+            "usage": {
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "total_tokens": 3
+            },
+            "output": [],
+            "tools": []
+        }))
+        .expect("reasoning-only response should deserialize");
+
+        let completion: completion::CompletionResponse<CompletionResponse> = response
+            .try_into()
+            .expect("reasoning-only response should convert");
+        let items = completion.choice.iter().collect::<Vec<_>>();
+
+        assert_eq!(items.len(), 1);
+        assert!(matches!(
+            items[0],
+            completion::AssistantContent::Reasoning(_)
+        ));
+    }
+
+    #[test]
+    fn completion_response_rejects_empty_response_without_reasoning() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "Qwen/Qwen3-4B",
+            "output": [],
+            "tools": []
+        }))
+        .expect("empty response shape should deserialize");
+
+        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+            .expect_err("empty response without reasoning should be rejected");
+
+        assert!(
+            err.to_string()
+                .contains("Response contained no message or tool call")
+        );
+    }
+
+    #[test]
+    fn completion_response_ignores_top_level_reasoning_object_as_text() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "Qwen/Qwen3-4B",
+            "reasoning": {
+                "effort": "high"
+            },
+            "output": [{
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("object-shaped reasoning should be tolerated");
+
+        assert!(response.provider_reasoning.is_none());
+
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("response should convert");
+        let items = completion.choice.iter().collect::<Vec<_>>();
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], completion::AssistantContent::Text(_)));
+    }
+
+    #[test]
+    fn completion_response_does_not_duplicate_structured_reasoning() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "reasoning": "provider top-level text",
+            "output": [{
+                "type": "reasoning",
+                "id": "rs_123",
+                "summary": [{
+                    "type": "summary_text",
+                    "text": "structured summary"
+                }]
+            }, {
+                "type": "message",
+                "id": "msg_123",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("response should deserialize");
+
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("response should convert");
+        let reasoning_count = completion
+            .choice
+            .iter()
+            .filter(|item| matches!(item, completion::AssistantContent::Reasoning(_)))
+            .count();
+
+        assert_eq!(reasoning_count, 1);
+    }
+
+    #[test]
+    fn idless_reasoning_is_skipped_when_converting_responses_history() {
+        let assistant = message::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::one(message::AssistantContent::Reasoning(
+                message::Reasoning::new("provider reasoning"),
+            )),
+        };
+
+        let converted = Vec::<Message>::try_from(assistant)
+            .expect("idless reasoning should degrade gracefully");
+
+        assert!(converted.is_empty());
+    }
+
+    #[test]
+    fn idless_reasoning_only_is_skipped_without_empty_input_item() {
+        let assistant = completion::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(
+                message::Reasoning::new("provider reasoning"),
+            )),
+        };
+
+        let converted = Vec::<InputItem>::try_from(assistant)
+            .expect("idless reasoning should degrade gracefully");
+
+        assert!(converted.is_empty());
+    }
+
+    #[test]
+    fn idless_reasoning_plus_text_preserves_text_for_responses_history() {
+        let assistant = message::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::many(vec![
+                message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
+                message::AssistantContent::Text(Text::new("final answer")),
+            ])
+            .expect("assistant content should be non-empty"),
+        };
+
+        let converted =
+            Vec::<Message>::try_from(assistant).expect("assistant history should convert");
+
+        assert_eq!(converted.len(), 1);
+        let Message::Assistant { content, .. } = &converted[0] else {
+            panic!("expected assistant message");
+        };
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+        ));
+    }
+
+    #[test]
+    fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
+        let assistant = completion::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::many(vec![
+                message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
+                message::AssistantContent::Text(Text::new("final answer")),
+            ])
+            .expect("assistant content should be non-empty"),
+        };
+
+        let converted =
+            Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+
+        assert_eq!(converted.len(), 1);
+        assert!(matches!(converted[0].role, Some(Role::Assistant)));
+        let InputContent::Message(Message::Assistant { content, .. }) = &converted[0].input else {
+            panic!("expected assistant message input item");
+        };
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+        ));
+    }
+
+    #[test]
+    fn assistant_text_without_idless_reasoning_replays_as_output_text() {
+        let assistant = completion::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
+        };
+
+        let converted =
+            Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+
+        assert_eq!(converted.len(), 1);
+        let InputContent::Message(Message::Assistant { content, .. }) = &converted[0].input else {
+            panic!("expected assistant message input item");
+        };
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
+        ));
+    }
+
+    #[test]
+    fn structured_reasoning_with_id_still_converts_for_responses_history() {
+        let assistant = message::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+                id: Some("rs_123".to_string()),
+                content: vec![message::ReasoningContent::Summary(
+                    "structured summary".to_string(),
+                )],
+            })),
+        };
+
+        let converted =
+            Vec::<Message>::try_from(assistant).expect("structured reasoning should still convert");
+
+        assert_eq!(converted.len(), 1);
+        let Message::Assistant { content, .. } = &converted[0] else {
+            panic!("expected assistant message");
+        };
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Reasoning(OpenAIReasoning { id, .. }) if id == "rs_123"
+        ));
+    }
+
+    #[test]
+    fn structured_reasoning_with_id_still_converts_to_input_item() {
+        let assistant = completion::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+                id: Some("rs_123".to_string()),
+                content: vec![message::ReasoningContent::Summary(
+                    "structured summary".to_string(),
+                )],
+            })),
+        };
+
+        let converted =
+            Vec::<InputItem>::try_from(assistant).expect("structured reasoning should convert");
+
+        assert_eq!(converted.len(), 1);
+        assert!(converted[0].role.is_none());
+        assert!(matches!(
+            &converted[0].input,
+            InputContent::Reasoning(OpenAIReasoning { id, .. }) if id == "rs_123"
+        ));
+    }
+
+    #[test]
+    fn mocked_second_turn_request_omits_unreplayable_reasoning() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: Some("You are concise.".to_string()),
+            chat_history: OneOrMany::many(vec![
+                completion::Message::User {
+                    content: OneOrMany::one(message::UserContent::Text(Text::new(
+                        "Think briefly, then answer.",
+                    ))),
+                },
+                completion::Message::Assistant {
+                    id: Some("msg_123".to_string()),
+                    content: OneOrMany::many(vec![
+                        message::AssistantContent::Reasoning(message::Reasoning::new(
+                            "provider reasoning",
+                        )),
+                        message::AssistantContent::Text(Text::new("final answer")),
+                    ])
+                    .expect("assistant content should be non-empty"),
+                },
+                completion::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::many(vec![
+                        message::AssistantContent::Reasoning(message::Reasoning::new(
+                            "provider reasoning only",
+                        )),
+                        message::AssistantContent::Text(Text::new("")),
+                    ])
+                    .expect("assistant content should be non-empty"),
+                },
+                completion::Message::User {
+                    content: OneOrMany::one(message::UserContent::Text(Text::new(
+                        "/no_think Reply with exactly: OK",
+                    ))),
+                },
+            ])
+            .expect("history should be non-empty"),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
+            .expect("request should convert");
+        let value = serde_json::to_value(&request).expect("request should serialize");
+        let input = value["input"]
+            .as_array()
+            .expect("mocked multi-turn request should serialize input as an array");
+
+        assert!(!input.iter().any(|item| {
+            item.get("type") == Some(&json!("reasoning")) && item.get("id").is_none()
+        }));
+        assert!(!input.iter().any(|item| {
+            item.get("role") == Some(&json!("assistant"))
+                && item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .is_some_and(Vec::is_empty)
+        }));
+
+        let assistant_items = input
+            .iter()
+            .filter(|item| item.get("role") == Some(&json!("assistant")))
+            .collect::<Vec<_>>();
+
+        assert_eq!(assistant_items.len(), 1);
+        assert_eq!(assistant_items[0]["content"][0]["type"], "input_text");
+        assert_eq!(assistant_items[0]["content"][0]["text"], "final answer");
     }
 
     #[test]

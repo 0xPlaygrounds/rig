@@ -952,6 +952,7 @@ mod tests {
             instructions: None,
             max_output_tokens: None,
             model: "gpt-5.4".to_string(),
+            provider_reasoning: None,
             usage: None,
             output: Vec::new(),
             tools: Vec::new(),
