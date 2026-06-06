@@ -9,21 +9,14 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 use super::super::support::with_openrouter_openai_cassette;
 
 const DEFAULT_OPENAI_COMPAT_MODEL: &str = "google/gemini-3-flash-preview";
-const OPENAI_COMPAT_MODEL_ENV: &str = "OPENROUTER_OPENAI_COMPAT_MODEL";
-
-fn openai_compatible_model() -> String {
-    std::env::var(OPENAI_COMPAT_MODEL_ENV)
-        .unwrap_or_else(|_| DEFAULT_OPENAI_COMPAT_MODEL.to_string())
-}
 
 #[tokio::test]
 async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
         |client| async move {
-            let model_name = openai_compatible_model();
             let response = client
-                .completion_model(&model_name)
+                .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
                 .completion_request("Reply with exactly: openrouter responses service tier ok")
                 .preamble(
                     "Return the requested text exactly, with no extra commentary.".to_string(),
@@ -41,7 +34,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
 
             assert!(
                 !format!("{service_tier:?}").is_empty(),
-                "expected OpenRouter model {model_name} to return service_tier metadata"
+                "expected OpenRouter model {DEFAULT_OPENAI_COMPAT_MODEL} to return service_tier metadata"
             );
         },
     )
@@ -54,7 +47,7 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .agent(openai_compatible_model())
+                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer with one short sentence.")
                 .build();
 
@@ -75,7 +68,7 @@ async fn openai_responses_stream_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .agent(openai_compatible_model())
+                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer directly.")
                 .build();
 
