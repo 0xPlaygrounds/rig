@@ -51,8 +51,9 @@ use tracing::info_span;
 use tracing_futures::Instrument as _;
 
 const GITHUB_COPILOT_API_BASE_URL: &str = "https://api.githubcopilot.com";
-const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.26.7";
-const USER_AGENT: &str = "GitHubCopilotChat/0.26.7";
+pub(crate) const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.35.0";
+pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
+pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
 
 /// `gpt-4`
@@ -355,10 +356,10 @@ fn default_headers(
             format!("Bearer {api_key}"),
         ),
         ("copilot-integration-id", "vscode-chat".to_string()),
-        ("editor-version", "vscode/1.95.0".to_string()),
+        ("editor-version", EDITOR_VERSION.to_string()),
         ("editor-plugin-version", EDITOR_PLUGIN_VERSION.to_string()),
         ("user-agent", USER_AGENT.to_string()),
-        ("openai-intent", "conversation-panel".to_string()),
+        ("openai-intent", "conversation-edits".to_string()),
         ("x-github-api-version", API_VERSION.to_string()),
         ("x-request-id", nanoid::nanoid!()),
         (
@@ -385,13 +386,41 @@ fn apply_headers(
 }
 
 fn runtime_base_url<'a, H>(client: &'a Client<H>, auth: &'a auth::AuthContext) -> Cow<'a, str> {
-    if client.base_url() == GITHUB_COPILOT_API_BASE_URL {
-        auth.api_base
-            .as_deref()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Borrowed(client.base_url()))
+    if client.base_url() != GITHUB_COPILOT_API_BASE_URL {
+        return Cow::Borrowed(client.base_url());
+    }
+
+    if let Some(api_base) = auth.api_base.as_deref() {
+        return Cow::Borrowed(api_base);
+    }
+
+    if let Some(base_url) = base_url_from_token(&auth.api_key) {
+        return Cow::Owned(base_url);
+    }
+
+    Cow::Borrowed(client.base_url())
+}
+
+/// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment,
+/// rewriting the `proxy.` host prefix to `api.` (e.g.
+/// `proxy.individual.githubcopilot.com` ->
+/// `https://api.individual.githubcopilot.com`). Returns `None` when the token
+/// carries no proxy endpoint.
+fn base_url_from_token(token: &str) -> Option<String> {
+    let proxy_ep = token
+        .split(';')
+        .find_map(|part| part.trim().strip_prefix("proxy-ep="))?
+        .trim();
+
+    if proxy_ep.is_empty() {
+        return None;
+    }
+
+    let api_ep = proxy_ep.replacen("proxy.", "api.", 1);
+    if api_ep.starts_with("http://") || api_ep.starts_with("https://") {
+        Some(api_ep)
     } else {
-        Cow::Borrowed(client.base_url())
+        Some(format!("https://{api_ep}"))
     }
 }
 
@@ -1530,8 +1559,8 @@ fn config_dir() -> Option<PathBuf> {
 mod tests {
     use super::{
         ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute,
-        TEXT_EMBEDDING_3_SMALL, env_api_key, env_base_url, env_github_access_token,
-        route_for_model,
+        TEXT_EMBEDDING_3_SMALL, base_url_from_token, env_api_key, env_base_url,
+        env_github_access_token, route_for_model,
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
@@ -1716,6 +1745,40 @@ mod tests {
         assert_eq!(
             route_for_model("claude-sonnet-4.5"),
             CompletionRoute::ChatCompletions
+        );
+    }
+
+    #[test]
+    fn base_url_from_token_derives_api_endpoint() {
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+                .as_deref(),
+            Some("https://api.individual.githubcopilot.com")
+        );
+        assert_eq!(base_url_from_token("tid=1;exp=2"), None);
+    }
+
+    #[tokio::test]
+    async fn api_key_with_proxy_endpoint_overrides_base_url() {
+        let http_client = RecordingHttpClient::new(minimal_chat_response());
+        let client = Client::builder()
+            .api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+
+        let _response = model.completion(request).await.expect("chat completion");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0]
+                .uri
+                .starts_with("https://api.individual.githubcopilot.com"),
+            "expected proxy-derived base URL, got {}",
+            requests[0].uri
         );
     }
 
