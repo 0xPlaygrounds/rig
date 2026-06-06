@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system","type":"message"},{"content":"I''m looking at a property that might be interesting.","role":"user","type":"message"},{"content":"The address is 123 Main St in Springfield, IL 62701.","role":"user","type":"message"}],"model":"grok-3-mini","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is to extract structured data from the provided text. The text is: \"I''m looking at a property that might be interesting. The address is 123 Main St in Springfield, IL 62701.\"\n","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"submit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":382,"output_tokens":260},"cost_in_usd_ticks":9931000,"input_tokens":382,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":260,"output_tokens_details":{"reasoning_tokens":227},"total_tokens":642},"user":null}'
