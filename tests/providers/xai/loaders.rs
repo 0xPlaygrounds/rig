@@ -19,7 +19,12 @@ async fn loaders_smoke() {
 
         let agent = examples
             .fold(client.agent(xai::GROK_4), |builder, (path, content)| {
-                builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
+                let file_name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("loader fixture path should have a UTF-8 file name");
+
+                builder.context(format!("Rust Example {file_name}:\n{content}").as_str())
             })
             .preamble(
                 "Use only the provided Rust Example contexts. \
