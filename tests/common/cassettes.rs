@@ -1588,6 +1588,11 @@ impl CassetteScrubber {
                         *text = self.placeholder(text, "url");
                         return;
                     }
+
+                    if key == "b64_json" {
+                        *text = "aGVsbG8=".to_string();
+                        return;
+                    }
                 }
 
                 *text = self.scrub_text(text);

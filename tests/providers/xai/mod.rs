@@ -14,5 +14,6 @@ mod reasoning_tool_roundtrip;
 mod request_hook;
 mod streaming;
 mod streaming_tools;
+mod support;
 mod tools;
 mod typed_prompt_tools;

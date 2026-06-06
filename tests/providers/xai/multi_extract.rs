@@ -1,12 +1,15 @@
 //! xAI live coverage for batch multi-extract pipelines.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::pipeline::{self, TryOp, agent_ops};
 use rig::providers::xai;
 use rig::try_parallel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use super::support::with_xai_cassette_result;
+use crate::cassettes::CassetteSpec;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -70,81 +73,85 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 }
 
 #[tokio::test]
-#[ignore = "requires XAI_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = xai::Client::from_env().expect("client should build");
-    let names_extractor = client
-        .extractor::<Names>(xai::GROK_3_MINI)
-        .preamble("Extract names from the given text.")
-        .retries(2)
-        .build();
-    let topics_extractor = client
-        .extractor::<Topics>(xai::GROK_3_MINI)
-        .preamble("Extract topics from the given text.")
-        .retries(2)
-        .build();
-    let sentiment_extractor = client
-        .extractor::<Sentiment>(xai::GROK_3_MINI)
-        .preamble(
-            "Extract sentiment and confidence from the given text. \
-             Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
-        )
-        .retries(2)
-        .build();
+    with_xai_cassette_result(
+        CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
+        |client| async move {
+            let names_extractor = client
+                .extractor::<Names>(xai::GROK_3_MINI)
+                .preamble("Extract names from the given text.")
+                .retries(2)
+                .build();
+            let topics_extractor = client
+                .extractor::<Topics>(xai::GROK_3_MINI)
+                .preamble("Extract topics from the given text.")
+                .retries(2)
+                .build();
+            let sentiment_extractor = client
+                .extractor::<Sentiment>(xai::GROK_3_MINI)
+                .preamble(
+                    "Extract sentiment and confidence from the given text. \
+                     Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
+                )
+                .retries(2)
+                .build();
 
-    let chain = pipeline::new()
-        .chain(try_parallel!(
-            agent_ops::extract(names_extractor),
-            agent_ops::extract(topics_extractor),
-            agent_ops::extract(sentiment_extractor),
-        ))
-        .map_ok(|(names, topics, sentiment)| CombinedExtract {
-            names: names.names,
-            topics: topics.topics,
-            sentiment: sentiment.sentiment,
-            confidence: sentiment.confidence,
-        });
+            let chain = pipeline::new()
+                .chain(try_parallel!(
+                    agent_ops::extract(names_extractor),
+                    agent_ops::extract(topics_extractor),
+                    agent_ops::extract(sentiment_extractor),
+                ))
+                .map_ok(|(names, topics, sentiment)| CombinedExtract {
+                    names: names.names,
+                    topics: topics.topics,
+                    sentiment: sentiment.sentiment,
+                    confidence: sentiment.confidence,
+                });
 
-    let responses = chain
-        .try_batch_call(
-            4,
-            vec![
-                "Ada Lovelace discussed analytical engines and early programming with Charles Babbage.",
-                "Grace said she hates rainy weather but still walked her dog to the park.",
-                "Linus is going to the store to buy milk and bread for dinner.",
-            ],
-        )
-        .await?;
+            let responses = chain
+                .try_batch_call(
+                    4,
+                    vec![
+                        "Ada Lovelace discussed analytical engines and early programming with Charles Babbage.",
+                        "Grace said she hates rainy weather but still walked her dog to the park.",
+                        "Linus is going to the store to buy milk and bread for dinner.",
+                    ],
+                )
+                .await?;
 
-    anyhow::ensure!(responses.len() == 3);
+            anyhow::ensure!(responses.len() == 3);
 
-    assert_contains_any(
-        &responses[0].names,
-        &["ada", "lovelace", "charles", "babbage"],
-        "names",
-    );
-    assert_contains_any(
-        &responses[0].topics,
-        &["analytical", "engine", "programming"],
-        "topics",
-    );
-    assert_sentiment_shape(&responses[0]);
+            assert_contains_any(
+                &responses[0].names,
+                &["ada", "lovelace", "charles", "babbage"],
+                "names",
+            );
+            assert_contains_any(
+                &responses[0].topics,
+                &["analytical", "engine", "programming"],
+                "topics",
+            );
+            assert_sentiment_shape(&responses[0]);
 
-    assert_contains_any(&responses[1].names, &["grace"], "names");
-    assert_contains_any(
-        &responses[1].topics,
-        &["dog", "rain", "weather", "park"],
-        "topics",
-    );
-    assert_sentiment_shape(&responses[1]);
+            assert_contains_any(&responses[1].names, &["grace"], "names");
+            assert_contains_any(
+                &responses[1].topics,
+                &["dog", "rain", "weather", "park"],
+                "topics",
+            );
+            assert_sentiment_shape(&responses[1]);
 
-    assert_contains_any(&responses[2].names, &["linus"], "names");
-    assert_contains_any(
-        &responses[2].topics,
-        &["store", "milk", "bread", "dinner"],
-        "topics",
-    );
-    assert_sentiment_shape(&responses[2]);
+            assert_contains_any(&responses[2].names, &["linus"], "names");
+            assert_contains_any(
+                &responses[2].topics,
+                &["store", "milk", "bread", "dinner"],
+                "topics",
+            );
+            assert_sentiment_shape(&responses[2]);
 
-    Ok(())
+            Ok(())
+        },
+    )
+    .await
 }

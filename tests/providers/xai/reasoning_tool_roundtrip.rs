@@ -6,50 +6,56 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::xai;
 use rig::streaming::StreamingChat;
 
+use super::support::with_xai_cassette;
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
-#[ignore = "requires XAI_API_KEY - validate with grok-4-0725 once key is available"]
 async fn streaming() {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let client = xai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(xai::GROK_3_MINI)
-        .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-        .max_tokens(4096)
-        .tool(WeatherTool::new(call_count.clone()))
-        .build();
+    with_xai_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let agent = client
+            .agent(xai::GROK_3_MINI)
+            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+            .max_tokens(4096)
+            .tool(WeatherTool::new(call_count.clone()))
+            .build();
 
-    let stream = agent
-        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
-        .multi_turn(3)
-        .await;
+        let stream = agent
+            .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+            .multi_turn(3)
+            .await;
 
-    let stats = reasoning::collect_stream_stats(stream, "xai").await;
-    reasoning::assert_universal(&stats, &call_count, "xai");
+        let stats = reasoning::collect_stream_stats(stream, "xai").await;
+        reasoning::assert_universal(&stats, &call_count, "xai");
+    })
+    .await;
 }
 
 #[tokio::test]
-#[ignore = "requires XAI_API_KEY - validate with grok-4-0725 once key is available"]
 async fn nonstreaming() {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let client = xai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(xai::GROK_3_MINI)
-        .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-        .max_tokens(4096)
-        .tool(WeatherTool::new(call_count.clone()))
-        .build();
+    with_xai_cassette(
+        "reasoning_tool_roundtrip/nonstreaming",
+        |client| async move {
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let agent = client
+                .agent(xai::GROK_3_MINI)
+                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                .max_tokens(4096)
+                .tool(WeatherTool::new(call_count.clone()))
+                .build();
 
-    let result = agent
-        .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
-        .await
-        .expect("[xai] Non-streaming chat failed - likely 400 from dropped reasoning");
+            let result = agent
+                .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
+                .await
+                .expect("[xai] Non-streaming chat failed - likely 400 from dropped reasoning");
 
-    reasoning::assert_nonstreaming_universal(&result, &call_count, "xai");
+            reasoning::assert_nonstreaming_universal(&result, &call_count, "xai");
+        },
+    )
+    .await;
 }

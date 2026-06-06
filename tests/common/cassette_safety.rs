@@ -46,6 +46,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
     },
+    ProviderCassetteSuite {
+        provider: "xai",
+        source_dir: "tests/providers/xai",
+        wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],
+    },
 ];
 
 #[test]

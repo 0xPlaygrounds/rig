@@ -1,9 +1,10 @@
 //! xAI context smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::xai;
 
+use super::support::with_xai_cassette;
 use crate::support::assert_contains_any_case_insensitive;
 
 const XAI_CONTEXT_DOCS: [&str; 3] = [
@@ -13,30 +14,31 @@ const XAI_CONTEXT_DOCS: [&str; 3] = [
 ];
 
 #[tokio::test]
-#[ignore = "requires XAI_API_KEY"]
 async fn context_smoke() {
-    let client = xai::Client::from_env().expect("client should build");
-    let agent = XAI_CONTEXT_DOCS
-        .iter()
-        .copied()
-        .fold(client.agent(xai::completion::GROK_4), |builder, doc| {
-            builder.context(doc)
-        })
-        .preamble(
-            "Use only the provided context snippets. \
-             One snippet explicitly defines glarb-glarb. \
-             If that definition says it is an ancient tool, reply with exactly: ancient tool. \
-             Otherwise reply with exactly: not found.",
-        )
-        .build();
+    with_xai_cassette("context/context_smoke", |client| async move {
+        let agent = XAI_CONTEXT_DOCS
+            .iter()
+            .copied()
+            .fold(client.agent(xai::completion::GROK_4), |builder, doc| {
+                builder.context(doc)
+            })
+            .preamble(
+                "Use only the provided context snippets. \
+                 One snippet explicitly defines glarb-glarb. \
+                 If that definition says it is an ancient tool, reply with exactly: ancient tool. \
+                 Otherwise reply with exactly: not found.",
+            )
+            .build();
 
-    let response = agent
-        .prompt(
-            "What is glarb-glarb according to the provided context? \
-             Answer with exactly `ancient tool` or `not found`.",
-        )
-        .await
-        .expect("context prompt should succeed");
+        let response = agent
+            .prompt(
+                "What is glarb-glarb according to the provided context? \
+                 Answer with exactly `ancient tool` or `not found`.",
+            )
+            .await
+            .expect("context prompt should succeed");
 
-    assert_contains_any_case_insensitive(&response, &["ancient tool"]);
+        assert_contains_any_case_insensitive(&response, &["ancient tool"]);
+    })
+    .await;
 }
