@@ -51,6 +51,15 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/xai",
         wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],
     },
+    ProviderCassetteSuite {
+        provider: "openrouter",
+        source_dir: "tests/providers/openrouter/cassette",
+        wrapper_names: &[
+            "with_openrouter_cassette",
+            "with_openrouter_cassette_result",
+            "with_openrouter_openai_cassette",
+        ],
+    },
 ];
 
 #[test]
