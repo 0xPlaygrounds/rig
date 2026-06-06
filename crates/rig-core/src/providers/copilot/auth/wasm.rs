@@ -40,9 +40,9 @@ impl PlatformAuthenticator {
         let response = reqwest::Client::new()
             .get(GITHUB_API_KEY_URL)
             .header(reqwest::header::ACCEPT, "application/json")
-            .header("editor-version", "vscode/1.95.0")
-            .header("editor-plugin-version", "copilot-chat/0.26.7")
-            .header("user-agent", "GitHubCopilotChat/0.26.7")
+            .header("editor-version", super::super::EDITOR_VERSION)
+            .header("editor-plugin-version", super::super::EDITOR_PLUGIN_VERSION)
+            .header("user-agent", super::super::USER_AGENT)
             .header(
                 reqwest::header::AUTHORIZATION,
                 format!("token {access_token}"),
