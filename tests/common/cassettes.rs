@@ -1537,6 +1537,13 @@ impl CassetteScrubber {
                     .map(str::to_ascii_lowercase);
 
                 for (key, value) in map {
+                    if key == "data" && object_type.as_deref() == Some("reasoning.encrypted") {
+                        if let Value::String(data) = value {
+                            *data = self.placeholder(data, "encrypted_reasoning_");
+                        }
+                        continue;
+                    }
+
                     if key == "id"
                         && should_scrub_id_for_object(
                             self.policy,
