@@ -60,6 +60,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openrouter_openai_cassette",
         ],
     },
+    ProviderCassetteSuite {
+        provider: "deepseek",
+        source_dir: "tests/providers/deepseek",
+        wrapper_names: &["with_deepseek_cassette", "with_deepseek_cassette_result"],
+    },
 ];
 
 #[test]

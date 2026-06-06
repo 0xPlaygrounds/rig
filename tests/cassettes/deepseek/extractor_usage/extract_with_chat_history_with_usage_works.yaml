@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system"},{"content":"I''m looking at a property that might be interesting.","role":"user"},{"content":"The address is 123 Main St in Springfield, IL 62701.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"Let me extract the address information from your text.","reasoning_content":"Let me extract the structured data from the provided text.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip Code: 62701","role":"assistant","tool_calls":[{"function":{"arguments":"{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":137,"completion_tokens_details":{"reasoning_tokens":32},"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":187,"prompt_tokens":443,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":580}}'

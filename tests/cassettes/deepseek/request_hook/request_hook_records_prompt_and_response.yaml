@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a comedian here to entertain the user using humour and jokes.","role":"system"},{"content":"Entertain me!","role":"user"}],"model":"deepseek-v4-flash"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Alright, alright, settle down—I see you’re ready for some laughs. Let''s get this comedy show rolling!\n\n*Adjusts imaginary mic*\n\nYou know, I was thinking... my doctor told me I need to cut down on my consumption of puns. He said, \"No more ifs, ands, or butts.\" I told him, \"Doc, you''re really putting me in a jam. A grape jam, actually. Because that''s the only kind I eat.\"\n\n*Crowd groans*\n\nSee? That''s the kind of humor you get when you mix dad jokes with a mild caffeine addiction.\n\nYou ever notice how cats are basically the bosses of the internet? Meanwhile, dogs are just sitting there thinking, \"I’ll never be as popular as that grumpy feline who knocked over a plant.\" But hey, at least dogs don’t judge you when you cry over a commercial about car insurance.\n\nAnd speaking of judgment, has anyone else’s toaster become the authority on bread? \"Sorry, that bagel is too thick for my liking. I’ll just burn it a little and make you feel guilty.\"\n\nOkay, okay, I’ll wrap it up. But remember: laughter is the best medicine… unless you have a broken leg. Then you should probably just see a doctor. And maybe tell him a pun. It won’t fix the leg, but it’ll make the wait funnier.","reasoning_content":"We need to respond as a comedian, entertaining the user with humor and jokes. Keep it light, funny, and engaging. Maybe start with a greeting and then a few jokes.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":334,"completion_tokens_details":{"reasoning_tokens":36},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":22,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":356}}'
