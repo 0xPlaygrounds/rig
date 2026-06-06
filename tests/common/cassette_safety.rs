@@ -65,6 +65,15 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/deepseek",
         wrapper_names: &["with_deepseek_cassette", "with_deepseek_cassette_result"],
     },
+    ProviderCassetteSuite {
+        provider: "mistralrs",
+        source_dir: "tests/providers/mistralrs/cassette",
+        wrapper_names: &[
+            "with_mistralrs_cassette",
+            "with_mistralrs_completions_cassette",
+            "with_mistralrs_raw_cassette",
+        ],
+    },
 ];
 
 #[test]
