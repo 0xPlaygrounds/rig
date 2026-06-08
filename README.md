@@ -36,7 +36,7 @@
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
 [✍🏽 Blogs](https://docs.rig.rs/guides)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="26" align="absmiddle" alt="Ryzome" /></a>
+<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome" /></a>
 
 </div>
 
