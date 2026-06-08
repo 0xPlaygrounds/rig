@@ -128,7 +128,7 @@ tokio-tungstenite = { version = "0.28.0", default-features = false }
 tonic = "0.14.6"
 tonic-build = "0.14.6"
 tonic-prost = "0.14.5"
-tonic-prost-build = "0.14.5"
+tonic-prost-build = "0.14.6"
 prost = "0.14.3"
 tracing = "0.1.41"
 tracing-futures = "0.2.5"
