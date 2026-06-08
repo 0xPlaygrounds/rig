@@ -18,11 +18,16 @@ use crate::streaming;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
+    pub model: Option<String>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage.token_usage()
+    }
+
+    fn routed_model(&self) -> Option<&str> {
+        self.model.as_deref()
     }
 }
 
@@ -165,6 +170,7 @@ where
             model: request_model.as_ref(),
             request: completion_request,
             strict_tools: self.strict_tools,
+            model_fallbacks: self.model_fallbacks.clone(),
         })?;
 
         let params = json_utils::merge(
@@ -254,8 +260,15 @@ impl CompatibleStreamProfile for OpenRouterCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        response_model: Option<String>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            model: response_model,
+        }
     }
 
     fn decorate_tool_call(
@@ -294,6 +307,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::GetResponseModel;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
@@ -320,6 +334,33 @@ mod tests {
         assert_eq!(response.id, "gen-abc123");
         assert_eq!(response.model, "gpt-3.5-turbo");
         assert_eq!(response.choices.len(), 1);
+    }
+
+    #[test]
+    fn test_streaming_final_response_preserves_routed_model() {
+        let profile = OpenRouterCompatibleProfile;
+        let chunk = profile
+            .normalize_chunk(
+                &json!({
+                    "id": "gen-abc123",
+                    "model": "anthropic/claude-sonnet-4.6",
+                    "choices": [{
+                        "index": 0,
+                        "delta": { "content": "Hello" }
+                    }]
+                })
+                .to_string(),
+            )
+            .expect("chunk should parse")
+            .expect("chunk should be present");
+
+        let final_response =
+            profile.build_final_response(Usage::default(), chunk.response_model.clone());
+
+        assert_eq!(
+            final_response.response_model(),
+            Some("anthropic/claude-sonnet-4.6")
+        );
     }
 
     #[test]

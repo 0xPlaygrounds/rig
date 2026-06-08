@@ -695,7 +695,11 @@ impl CompatibleStreamProfile for GroqCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         StreamingCompletionResponse { usage }
     }
 

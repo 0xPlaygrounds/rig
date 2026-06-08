@@ -6,7 +6,7 @@ use crate::message::{
     self, AudioMediaType, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType,
     VideoMediaType,
 };
-use crate::telemetry::SpanCombinator;
+use crate::telemetry::{ProviderResponseExt, SpanCombinator};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -571,6 +571,114 @@ impl ProviderPreferences {
     }
 }
 
+/// Model fallback preferences for OpenRouter routing.
+///
+/// When the primary model fails (downtime, rate limits, moderation, etc.),
+/// OpenRouter tries the fallback models in order after the primary configured on
+/// [`CompletionModel`] or overridden on [`CompletionRequest`].
+///
+/// See: <https://openrouter.ai/docs/guides/routing/model-fallbacks>
+///
+/// # Example
+///
+/// ```rust
+/// use rig_core::providers::openrouter::ModelFallbacks;
+///
+/// let fallbacks = ModelFallbacks::new(["anthropic/claude-sonnet-4.6", "gryphe/mythomax-l2-13b"])
+///     .expect("fallback list must not be empty");
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModelFallbacks {
+    models: Vec<String>,
+}
+
+impl ModelFallbacks {
+    /// Create a fallback model list.
+    ///
+    /// The primary model is configured separately; these models are tried after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CompletionError::RequestError`] when `models` is empty.
+    pub fn new(
+        models: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Result<Self, CompletionError> {
+        let models: Vec<String> = models.into_iter().map(Into::into).collect();
+        if models.is_empty() {
+            return Err(CompletionError::RequestError(
+                "ModelFallbacks requires at least one fallback model".into(),
+            ));
+        }
+        Ok(Self { models })
+    }
+
+    /// Convert to JSON for use in [`CompletionRequest::additional_params`](crate::completion::CompletionRequest::additional_params).
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "models": self.models
+        })
+    }
+
+    pub(crate) fn from_additional_params(params: &serde_json::Value) -> Option<Self> {
+        let models = params.get("models")?.as_array()?;
+        let models: Vec<String> = models
+            .iter()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect();
+        if models.is_empty() {
+            return None;
+        }
+        Some(Self { models })
+    }
+}
+
+fn strip_models_from_additional_params(
+    additional_params: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    let Some(serde_json::Value::Object(mut map)) = additional_params else {
+        return additional_params;
+    };
+    map.remove("models");
+    if map.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(map))
+    }
+}
+
+type ResolvedModelRouting = (String, Option<Vec<String>>, Option<serde_json::Value>);
+
+fn resolve_model_routing(
+    primary: &str,
+    model_fallbacks: Option<&ModelFallbacks>,
+    additional_params: &Option<serde_json::Value>,
+) -> Result<ResolvedModelRouting, CompletionError> {
+    let primary = primary.to_string();
+
+    let (fallback_models, strip_models) = if let Some(fallbacks) = model_fallbacks {
+        if fallbacks.models.is_empty() {
+            return Err(CompletionError::RequestError(
+                "ModelFallbacks requires at least one fallback model".into(),
+            ));
+        }
+        (Some(fallbacks.models.clone()), true)
+    } else if let Some(params) = additional_params
+        && let Some(fallbacks) = ModelFallbacks::from_additional_params(params)
+    {
+        (Some(fallbacks.models), true)
+    } else {
+        (None, false)
+    };
+
+    let additional_params = if strip_models {
+        strip_models_from_additional_params(additional_params.clone())
+    } else {
+        additional_params.clone()
+    };
+
+    Ok((primary, fallback_models, additional_params))
+}
+
 /// A openrouter completion object.
 ///
 /// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
@@ -737,12 +845,56 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })
             .unwrap_or_default();
 
+        let response_model = response.model.clone();
         Ok(completion::CompletionResponse {
             choice,
             usage,
             raw_response: response,
             message_id: None,
+            response_model: Some(response_model),
         })
+    }
+}
+
+impl ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Choice;
+    type Usage = Usage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.choices.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        self.choices
+            .first()
+            .and_then(|choice| match &choice.message {
+                Message::Assistant { content, .. } => {
+                    let text = content
+                        .iter()
+                        .filter_map(|c| match c {
+                            openai::AssistantContent::Text { text, .. } if !text.is_empty() => {
+                                Some(text.as_str())
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
+                    (!text.is_empty()).then_some(text)
+                }
+                _ => None,
+            })
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
     }
 }
 
@@ -1321,7 +1473,7 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
 // Response Types
 // ================================================================
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Choice {
     pub index: usize,
     pub native_finish_reason: Option<String>,
@@ -1767,6 +1919,8 @@ pub(super) fn final_request_body(
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct OpenrouterCompletionRequest {
     model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    models: Option<Vec<String>>,
     pub messages: Vec<Message>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f64>,
@@ -1783,6 +1937,7 @@ pub struct OpenRouterRequestParams<'a> {
     pub model: &'a str,
     pub request: CompletionRequest,
     pub strict_tools: bool,
+    pub model_fallbacks: Option<ModelFallbacks>,
 }
 
 impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
@@ -1793,8 +1948,9 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             request: req,
             strict_tools,
+            model_fallbacks,
         } = params;
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
+        let primary = req.model.clone().unwrap_or_else(|| model.to_string());
 
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
@@ -1860,8 +2016,12 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             req.additional_params
         };
 
+        let (model, models, additional_params) =
+            resolve_model_routing(&primary, model_fallbacks.as_ref(), &additional_params)?;
+
         Ok(Self {
             model,
+            models,
             messages: full_history,
             temperature: req.temperature,
             tools,
@@ -1880,6 +2040,7 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
             model: &model,
             request: req,
             strict_tools: false,
+            model_fallbacks: None,
         })
     }
 }
@@ -1898,6 +2059,8 @@ pub struct CompletionModel<T = reqwest::Client> {
     /// intended for models and providers that support explicit cache
     /// breakpoints.
     pub prompt_caching: bool,
+    /// Fallback models tried after the primary when OpenRouter routing fails.
+    pub model_fallbacks: Option<ModelFallbacks>,
 }
 
 impl<T> CompletionModel<T> {
@@ -1907,6 +2070,7 @@ impl<T> CompletionModel<T> {
             model: model.into(),
             strict_tools: false,
             prompt_caching: false,
+            model_fallbacks: None,
         }
     }
 
@@ -1931,6 +2095,14 @@ impl<T> CompletionModel<T> {
     /// Note: Not all models on OpenRouter support strict mode. This works best with OpenAI models.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
+        self
+    }
+
+    /// Configure fallback models tried after the primary on OpenRouter routing failures.
+    ///
+    /// See [`ModelFallbacks`] and the [OpenRouter model fallbacks guide](https://openrouter.ai/docs/guides/routing/model-fallbacks).
+    pub fn with_model_fallbacks(mut self, fallbacks: ModelFallbacks) -> Self {
+        self.model_fallbacks = Some(fallbacks);
         self
     }
 }
@@ -1961,6 +2133,7 @@ where
             model: request_model.as_ref(),
             request: completion_request,
             strict_tools: self.strict_tools,
+            model_fallbacks: self.model_fallbacks.clone(),
         })?;
 
         let body = final_request_body(&request, self.prompt_caching)?;
@@ -2098,6 +2271,176 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "openai/gpt-4o-mini");
+    }
+
+    fn sample_completion_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one("Hello".into()),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    #[test]
+    fn test_model_fallbacks_serializes_model_and_models() {
+        let fallbacks =
+            ModelFallbacks::new(["anthropic/claude-sonnet-4.6", "gryphe/mythomax-l2-13b"])
+                .expect("fallback list should be valid");
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o",
+            request: sample_completion_request(),
+            strict_tools: false,
+            model_fallbacks: Some(fallbacks),
+        })
+        .expect("request conversion should succeed");
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(body["model"], "openai/gpt-4o");
+        assert_eq!(
+            body["models"],
+            json!(["anthropic/claude-sonnet-4.6", "gryphe/mythomax-l2-13b"])
+        );
+    }
+
+    #[test]
+    fn test_model_fallbacks_uses_request_model_override_as_primary() {
+        let mut completion_request = sample_completion_request();
+        completion_request.model = Some("google/gemini-2.5-flash".to_string());
+        let fallbacks = ModelFallbacks::new(["anthropic/claude-sonnet-4.6"])
+            .expect("fallback list should be valid");
+
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o",
+            request: completion_request,
+            strict_tools: false,
+            model_fallbacks: Some(fallbacks),
+        })
+        .expect("request conversion should succeed");
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(body["model"], "google/gemini-2.5-flash");
+        assert_eq!(body["models"], json!(["anthropic/claude-sonnet-4.6"]));
+    }
+
+    #[test]
+    fn test_model_fallbacks_merges_with_provider_preferences() {
+        let mut completion_request = sample_completion_request();
+        completion_request.additional_params = Some(
+            ProviderPreferences::new()
+                .require_parameters(true)
+                .to_json(),
+        );
+        let fallbacks = ModelFallbacks::new(["anthropic/claude-sonnet-4.6"])
+            .expect("fallback list should be valid");
+
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request: completion_request,
+            strict_tools: false,
+            model_fallbacks: Some(fallbacks),
+        })
+        .expect("request conversion should succeed");
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(body["provider"]["require_parameters"], true);
+        assert_eq!(body["models"], json!(["anthropic/claude-sonnet-4.6"]));
+    }
+
+    #[test]
+    fn test_model_fallbacks_rejects_empty_list() {
+        let err = ModelFallbacks::new(Vec::<&str>::new()).expect_err("empty list should fail");
+        assert!(matches!(err, CompletionError::RequestError(_)));
+    }
+
+    #[test]
+    fn test_model_fallbacks_additional_params_precedence() {
+        let mut completion_request = sample_completion_request();
+        completion_request.additional_params = Some(json!({
+            "models": ["from-additional-params"]
+        }));
+        let fallbacks =
+            ModelFallbacks::new(["typed-fallback"]).expect("fallback list should be valid");
+
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o",
+            request: completion_request,
+            strict_tools: false,
+            model_fallbacks: Some(fallbacks),
+        })
+        .expect("request conversion should succeed");
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(body["models"], json!(["typed-fallback"]));
+    }
+
+    #[test]
+    fn test_model_fallbacks_omits_models_when_unset() {
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request: sample_completion_request(),
+            strict_tools: false,
+            model_fallbacks: None,
+        })
+        .expect("request conversion should succeed");
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(body["model"], "openai/gpt-4o-mini");
+        assert!(body.get("models").is_none());
+    }
+
+    #[test]
+    fn test_model_fallbacks_streaming_preserves_routing() {
+        let fallbacks = ModelFallbacks::new(["anthropic/claude-sonnet-4.6"])
+            .expect("fallback list should be valid");
+        let mut request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o",
+            request: sample_completion_request(),
+            strict_tools: false,
+            model_fallbacks: Some(fallbacks),
+        })
+        .expect("request conversion should succeed");
+        request.additional_params = Some(json!({ "stream": true }));
+
+        let body = final_request_body(&request, false).expect("body should serialize");
+
+        assert_eq!(body["model"], "openai/gpt-4o");
+        assert_eq!(body["models"], json!(["anthropic/claude-sonnet-4.6"]));
+        assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn test_completion_response_populates_response_model() {
+        let json = json!({
+            "id": "gen-test",
+            "object": "chat.completion",
+            "created": 1u64,
+            "model": "anthropic/claude-sonnet-4.6",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Hello"
+                },
+                "finish_reason": "stop"
+            }]
+        });
+
+        let response: CompletionResponse =
+            serde_json::from_value(json).expect("should deserialize");
+        let converted: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("should convert");
+
+        assert_eq!(
+            converted.response_model.as_deref(),
+            Some("anthropic/claude-sonnet-4.6")
+        );
     }
 
     #[test]
@@ -3795,6 +4138,7 @@ mod tests {
             model: "anthropic/claude-3.5-sonnet",
             request: prompt_caching_completion_request(),
             strict_tools: false,
+            model_fallbacks: None,
         })
         .expect("request conversion should succeed");
 
@@ -3820,6 +4164,7 @@ mod tests {
             model: "anthropic/claude-3.5-sonnet",
             request: prompt_caching_completion_request(),
             strict_tools: false,
+            model_fallbacks: None,
         })
         .expect("request conversion should succeed");
         request.additional_params = Some(json!({ "stream": true }));

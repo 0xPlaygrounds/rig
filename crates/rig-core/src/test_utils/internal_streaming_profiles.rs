@@ -71,7 +71,11 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 }
@@ -126,7 +130,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 
@@ -168,7 +176,11 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 }

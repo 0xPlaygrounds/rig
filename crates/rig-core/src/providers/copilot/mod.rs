@@ -596,6 +596,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
             usage,
             raw_response: response,
             message_id: None,
+            response_model: None,
         })
     }
 }
@@ -755,6 +756,7 @@ where
                             usage: core.usage,
                             raw_response: CopilotCompletionResponse::Chat(response),
                             message_id: core.message_id,
+                            response_model: None,
                         })
                     }
                     ChatApiResponse::Err(err) => Err(CompletionError::ProviderError(
@@ -832,6 +834,7 @@ where
                     usage: core.usage,
                     raw_response: CopilotCompletionResponse::Responses(Box::new(response)),
                     message_id: core.message_id,
+                    response_model: None,
                 })
             } else {
                 let body = http_client::text(response).await?;
@@ -1482,7 +1485,11 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        _response_model: Option<String>,
+    ) -> Self::FinalResponse {
         CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
             usage,
         })

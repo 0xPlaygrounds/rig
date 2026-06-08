@@ -150,7 +150,7 @@ async fn main() -> Result<()> {
     println!("\n\nfinal response: {}", response.response());
     print_usage("aggregate agent usage", response.usage());
 
-    if let Some(final_completion_call) = response.completion_calls().last().copied() {
+    if let Some(final_completion_call) = response.completion_calls().last().cloned() {
         if let Some(usage) = final_completion_call.usage {
             print_usage("final completion call usage", usage);
             println!("final prompt/context token length: {}", usage.input_tokens);

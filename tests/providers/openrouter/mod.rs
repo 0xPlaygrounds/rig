@@ -24,6 +24,7 @@ mod cassette {
 mod audio_generation;
 mod document_file_data;
 mod file_id;
+mod model_fallbacks;
 
 pub(super) const DEFAULT_MODEL: &str = "openai/gpt-4o-mini";
 pub(super) const TOOL_MODEL: &str = "openai/gpt-4o";

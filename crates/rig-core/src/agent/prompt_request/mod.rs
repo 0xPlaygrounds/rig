@@ -287,7 +287,7 @@ where
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
@@ -298,16 +298,31 @@ pub struct CompletionCall {
     /// is the existing sentinel for missing provider usage metrics.
     #[serde(default)]
     pub usage: Option<Usage>,
+    /// Model the provider actually routed to for this completion request, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model: Option<String>,
 }
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run.
     pub fn new(call_index: usize, usage: Option<Usage>) -> Self {
-        Self { call_index, usage }
+        Self {
+            call_index,
+            usage,
+            response_model: None,
+        }
     }
 
-    pub(crate) fn from_reported_usage(call_index: usize, usage: Usage) -> Self {
-        Self::new(call_index, reported_usage(usage))
+    pub(crate) fn from_reported_usage_with_model(
+        call_index: usize,
+        usage: Usage,
+        response_model: Option<String>,
+    ) -> Self {
+        Self {
+            call_index,
+            usage: reported_usage(usage),
+            response_model,
+        }
     }
 }
 
@@ -320,6 +335,9 @@ pub(crate) fn reported_usage(usage: Usage) -> Option<Usage> {
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
+    /// Model the provider actually routed to on the final completion request, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model: Option<String>,
     /// Successfully completed completion requests made by this agent run, with token usage when available.
     ///
     /// `usage` remains the aggregate across the whole run. Use the last entry's
@@ -342,6 +360,7 @@ impl PromptResponse {
         Self {
             output: output.into(),
             usage,
+            response_model: None,
             completion_calls: Vec::new(),
             messages: None,
         }
@@ -354,6 +373,9 @@ impl PromptResponse {
 
     /// Attach completion call details to this response.
     pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
+        self.response_model = completion_calls
+            .last()
+            .and_then(|call| call.response_model.clone());
         self.completion_calls = completion_calls;
         self
     }
@@ -371,6 +393,9 @@ impl PromptResponse {
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
+    /// Model the provider actually routed to on the final completion request, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model: Option<String>,
     /// Successfully completed completion requests made by this agent run, with token usage when available.
     ///
     /// `usage` remains the aggregate across the whole run. Use the last entry's
@@ -386,12 +411,16 @@ impl<T> TypedPromptResponse<T> {
         Self {
             output,
             usage,
+            response_model: None,
             completion_calls: Vec::new(),
         }
     }
 
     /// Attach completion call details to this response.
     pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
+        self.response_model = completion_calls
+            .last()
+            .and_then(|call| call.response_model.clone());
         self.completion_calls = completion_calls;
         self
     }
@@ -733,9 +762,10 @@ where
                 .instrument(chat_span.clone())
                 .await?;
 
-            completion_calls.push(CompletionCall::from_reported_usage(
+            completion_calls.push(CompletionCall::from_reported_usage_with_model(
                 completion_call_index,
                 resp.usage,
+                resp.response_model.clone(),
             ));
             completion_call_index += 1;
             usage += resp.usage;
@@ -1613,6 +1643,31 @@ mod tests {
         assert_eq!(response.output, "ok");
         assert_eq!(response.usage, Usage::new());
         assert_eq!(response.completion_calls(), &[CompletionCall::new(0, None)]);
+    }
+
+    #[tokio::test]
+    async fn completion_call_carries_response_model() {
+        let routed_model = "anthropic/claude-sonnet-4.6";
+        let model =
+            MockCompletionModel::new([MockTurn::text("ok").with_response_model(routed_model)]);
+        let agent = AgentBuilder::new(model).build();
+
+        let response = agent
+            .prompt("say ok")
+            .extended_details()
+            .await
+            .expect("prompt should succeed");
+
+        assert_eq!(response.output, "ok");
+        assert_eq!(response.response_model.as_deref(), Some(routed_model));
+        assert_eq!(
+            response.completion_calls(),
+            &[CompletionCall {
+                call_index: 0,
+                usage: None,
+                response_model: Some(routed_model.to_string()),
+            }]
+        );
     }
 
     #[tokio::test]
