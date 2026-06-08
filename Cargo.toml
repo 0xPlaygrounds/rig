@@ -1,6 +1,6 @@
 [package]
 name = "rig"
-version = "0.37.0"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -40,11 +40,12 @@ opt-level = "s"
 
 
 [workspace.package]
+version = "0.38.1"
 edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1.0.102"
-arrow-array = "56"
+arrow-array = "58"
 as-any = "0.3.2"
 assert_fs = "1.1.3"
 async-stream = "0.3.6"
@@ -68,25 +69,25 @@ futures = "0.3.32"
 futures-timer = "3.0.3"
 getrandom = "0.2"
 glob = "0.3.2"
-google-cloud-auth = "1.0"
-google-cloud-aiplatform-v1 = { version = "1.2.0", default-features = false, features = [
+google-cloud-auth = "1.10"
+google-cloud-aiplatform-v1 = { version = "1.11.0", default-features = false, features = [
     "prediction-service",
 ] }
 http = "1.3.1"
 httpmock = "0.8.3"
 hyper-util = "0.1.14"
 indoc = "2.0.6"
-lancedb = { version = "0.23", default-features = false }
+lancedb = { version = "0.30", default-features = false }
 log = "0.4.27"
 lopdf = "0.40.0"
 mime = "0.3.17"
 mime_guess = "2.0.5"
-mongodb = "3.2.5"
+mongodb = "3.7.0"
 nanoid = "0.4"
 neo4rs = "0.8.0"
-opentelemetry = "0.31.0"
-opentelemetry-otlp = "0.31.0"
-opentelemetry_sdk = "0.31.0"
+opentelemetry = "0.32.0"
+opentelemetry-otlp = "0.32.0"
+opentelemetry_sdk = "0.32.1"
 ordered-float = "5.0.0"
 pgvector = "0.4"
 pin-project-lite = "0.2.16"
@@ -94,7 +95,7 @@ proc-macro2 = "1.0.95"
 qdrant-client = { version = "1.14.0", default-features = false, features = [
     "serde",
 ] }
-quick-xml = "0.39.4"
+quick-xml = "0.40.1"
 quote = "1.0.40"
 rayon = "1.10.0"
 redis = { version = "1.2.1", default-features = false }
@@ -108,7 +109,7 @@ scylla = "1.2.0"
 schemars = "1.0.4"
 serde = "1.0.219"
 serde_yaml = "0.9.34"
-serde_json = "1.0.140"
+serde_json = "1.0.150"
 serde_path_to_error = "0.1.17"
 sqlite-vec = "0.1"
 sqlx = "0.8.6"
@@ -124,18 +125,18 @@ tokio-rusqlite = { version = "0.6.0", default-features = false }
 tokio-test = "0.4.4"
 tokio-stream = "0.1.17"
 tokio-tungstenite = { version = "0.28.0", default-features = false }
-tonic = "0.14.5"
+tonic = "0.14.6"
 tonic-build = "0.14.6"
 tonic-prost = "0.14.5"
 tonic-prost-build = "0.14.5"
 prost = "0.14.3"
 tracing = "0.1.41"
 tracing-futures = "0.2.5"
-tracing-opentelemetry = "0.32.1"
+tracing-opentelemetry = "0.33.0"
 tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
 wasm-bindgen-futures = "0.4.54"
-zerocopy = "0.8.26"
+zerocopy = "0.8.50"
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
@@ -145,32 +146,32 @@ exclude-members = ["crates/rig-core", "crates/rig-derive"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "crates/rig-core", version = "0.37.0", default-features = false }
-rig-bedrock = { path = "crates/rig-bedrock", version = "0.4.6", optional = true, default-features = false }
-rig-fastembed = { path = "crates/rig-fastembed", version = "0.4.1", optional = true, default-features = false }
-rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.2.6", optional = true, default-features = false }
-rig-helixdb = { path = "crates/rig-helixdb", version = "0.2.6", optional = true, default-features = false }
-rig-lancedb = { path = "crates/rig-lancedb", version = "0.4.6", optional = true, default-features = false }
-rig-memory = { path = "crates/rig-memory", version = "0.1.1", optional = true, default-features = false }
-rig-milvus = { path = "crates/rig-milvus", version = "0.2.6", optional = true, default-features = false }
-rig-mongodb = { path = "crates/rig-mongodb", version = "0.4.6", optional = true, default-features = false }
-rig-neo4j = { path = "crates/rig-neo4j", version = "0.5.6", optional = true, default-features = false }
-rig-postgres = { path = "crates/rig-postgres", version = "0.2.6", optional = true, default-features = false }
-rig-qdrant = { path = "crates/rig-qdrant", version = "0.2.6", optional = true, default-features = false }
-rig-redis = { path = "crates/rig-redis", version = "0.1.0", optional = true, default-features = false }
-rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.2.6", optional = true, default-features = false }
-rig-scylladb = { path = "crates/rig-scylladb", version = "0.2.6", optional = true, default-features = false }
-rig-sqlite = { path = "crates/rig-sqlite", version = "0.2.6", optional = true, default-features = false }
-rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.2.6", optional = true, default-features = false }
-rig-vectorize = { path = "crates/rig-vectorize", version = "0.2.6", optional = true, default-features = false }
-rig-vertexai = { path = "crates/rig-vertexai", version = "0.3.6", optional = true, default-features = false }
+rig-core = { path = "crates/rig-core", version = "0.38.1", default-features = false }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.38.1", optional = true, default-features = false }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.38.1", optional = true, default-features = false }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.38.1", optional = true, default-features = false }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.38.1", optional = true, default-features = false }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.38.1", optional = true, default-features = false }
+rig-memory = { path = "crates/rig-memory", version = "0.38.1", optional = true, default-features = false }
+rig-milvus = { path = "crates/rig-milvus", version = "0.38.1", optional = true, default-features = false }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.38.1", optional = true, default-features = false }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.38.1", optional = true, default-features = false }
+rig-postgres = { path = "crates/rig-postgres", version = "0.38.1", optional = true, default-features = false }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.38.1", optional = true, default-features = false }
+rig-redis = { path = "crates/rig-redis", version = "0.38.1", optional = true, default-features = false }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.38.1", optional = true, default-features = false }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.38.1", optional = true, default-features = false }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.38.1", optional = true, default-features = false }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.38.1", optional = true, default-features = false }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.38.1", optional = true, default-features = false }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.38.1", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
-rig-core = { path = "crates/rig-core", version = "0.37.0", default-features = false, features = [
+rig-core = { path = "crates/rig-core", version = "0.38.1", default-features = false, features = [
   "test-utils",
 ] }
 tokio = { workspace = true, features = ["full"] }
@@ -326,6 +327,10 @@ required-features = ["derive"]
 
 [[example]]
 name = "gemini_extractor_with_rag"
+required-features = ["derive"]
+
+[[example]]
+name = "gemini_default_api_recovery"
 required-features = ["derive"]
 
 [[example]]

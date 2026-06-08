@@ -1,0 +1,33 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"messages":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"}],"model":"openai/gpt-5.2","reasoning":{"effort":"high"},"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo, Japan\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"native_finish_reason":"completed"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-5.2-20251211","object":"chat.completion","provider":"OpenAI","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":20,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.000539,"cost_details":{"upstream_inference_completions_cost":0.00028,"upstream_inference_cost":0.000539,"upstream_inference_prompt_cost":0.000259},"is_byok":false,"prompt_tokens":148,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":168}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include_reasoning":true,"messages":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"text"}],"role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo, Japan\"}","name":"get_weather"},"id":"call_REDACTED_1","type":"function"}]},{"content":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"openai/gpt-5.2","reasoning":{"effort":"high"},"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Tokyo, Japan is currently **72°F (22°C)**, **sunny with light clouds**, **45% humidity**, and **8 mph NW wind**.\n\n- **Pack sunscreen:** Yes — the sun is out, so sunscreen is a good idea.\n- **Pack an umbrella:** Not necessary based on current conditions (no rain indicated). If you want to be safe for sudden changes, a compact one is optional.","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"completed"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"openai/gpt-5.2-20251211","object":"chat.completion","provider":"OpenAI","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":89,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00160125,"cost_details":{"upstream_inference_completions_cost":0.001246,"upstream_inference_cost":0.00160125,"upstream_inference_prompt_cost":0.00035525},"is_byok":false,"prompt_tokens":203,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":292}}'

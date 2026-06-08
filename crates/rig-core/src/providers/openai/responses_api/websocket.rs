@@ -836,10 +836,11 @@ mod tests {
                 input_tokens: 1,
                 input_tokens_details: None,
                 output_tokens: 2,
-                output_tokens_details:
+                output_tokens_details: Some(
                     crate::providers::openai::responses_api::OutputTokensDetails {
                         reasoning_tokens: 0,
                     },
+                ),
                 total_tokens: 3,
             }),
             output: Vec::new(),

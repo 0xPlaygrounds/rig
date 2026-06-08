@@ -270,10 +270,16 @@ impl RawChoiceAccumulator {
 
     fn decode_item_chunk(
         &mut self,
-        item: ItemChunkKind,
+        chunk: ItemChunk,
         options: ResponsesStreamOptions,
     ) -> Vec<StreamingRawChoice> {
         let mut immediate = Vec::new();
+
+        let ItemChunk {
+            item_id: outer_item_id,
+            data: item,
+            ..
+        } = chunk;
 
         match item {
             ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
@@ -311,16 +317,18 @@ impl RawChoiceAccumulator {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                let internal_call_id = self
-                    .tool_call_internal_ids
-                    .entry(delta.item_id.clone())
-                    .or_insert_with(|| nanoid::nanoid!())
-                    .clone();
-                immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: delta.item_id,
-                    internal_call_id,
-                    content: streaming::ToolCallDeltaContent::Delta(delta.delta),
-                });
+                if let Some(item_id) = outer_item_id {
+                    let internal_call_id = self
+                        .tool_call_internal_ids
+                        .entry(item_id.clone())
+                        .or_insert_with(|| nanoid::nanoid!())
+                        .clone();
+                    immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
+                        id: item_id,
+                        internal_call_id,
+                        content: streaming::ToolCallDeltaContent::Delta(delta.delta),
+                    });
+                }
             }
             _ => {}
         }
@@ -435,7 +443,7 @@ pub(crate) fn raw_choices_from_sse_body(
         if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
             match chunk {
                 StreamingCompletionChunk::Delta(chunk) => {
-                    raw_choices.extend(accumulator.decode_item_chunk(chunk.data, options));
+                    raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
                 }
                 StreamingCompletionChunk::Response(chunk) => {
                     let ResponseChunk { kind, response, .. } = *chunk;
@@ -668,7 +676,7 @@ where
 
                     match data {
                         StreamingCompletionChunk::Delta(chunk) => {
-                            for choice in accumulator.decode_item_chunk(chunk.data, options) {
+                            for choice in accumulator.decode_item_chunk(chunk, options) {
                                 yield Ok(choice);
                             }
                         }
@@ -807,8 +815,8 @@ pub struct DeltaTextChunk {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeltaTextChunkWithItemId {
-    pub item_id: String,
-    pub content_index: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_index: Option<u64>,
     pub sequence_number: u64,
     pub delta: String,
 }
@@ -829,7 +837,8 @@ pub struct RefusalTextChunk {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ArgsTextChunk {
-    pub content_index: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_index: Option<u64>,
     pub sequence_number: u64,
     pub arguments: serde_json::Value,
 }
@@ -943,6 +952,7 @@ mod tests {
             instructions: None,
             max_output_tokens: None,
             model: "gpt-5.4".to_string(),
+            provider_reasoning: None,
             usage: None,
             output: Vec::new(),
             tools: Vec::new(),
@@ -1271,9 +1281,9 @@ mod tests {
             input_tokens: 10,
             input_tokens_details: None,
             output_tokens: 5,
-            output_tokens_details: OutputTokensDetails {
+            output_tokens_details: Some(OutputTokensDetails {
                 reasoning_tokens: 0,
-            },
+            }),
             total_tokens: 15,
         });
 
@@ -1316,9 +1326,9 @@ mod tests {
             input_tokens: 4,
             input_tokens_details: None,
             output_tokens: 2,
-            output_tokens_details: OutputTokensDetails {
+            output_tokens_details: Some(OutputTokensDetails {
                 reasoning_tokens: 0,
-            },
+            }),
             total_tokens: 6,
         });
 

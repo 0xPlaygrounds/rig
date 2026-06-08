@@ -239,6 +239,34 @@ where
         self.default_conversation_id = Some(id.into());
         self
     }
+
+    /// Set the default hook for the agent.
+    ///
+    /// This hook will be used for all prompt requests unless overridden
+    /// via `.with_hook()` on the request.
+    pub fn hook<P2>(self, hook: P2) -> AgentBuilder<M, P2, ToolState>
+    where
+        P2: PromptHook<M>,
+    {
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            max_tokens: self.max_tokens,
+            dynamic_context: self.dynamic_context,
+            temperature: self.temperature,
+            tool_choice: self.tool_choice,
+            default_max_turns: self.default_max_turns,
+            tool_state: self.tool_state,
+            hook: Some(hook),
+            output_schema: self.output_schema,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
+        }
+    }
 }
 
 impl<M> AgentBuilder<M, (), NoToolConfig>
@@ -482,34 +510,6 @@ where
         }
     }
 
-    /// Set the default hook for the agent.
-    ///
-    /// This hook will be used for all prompt requests unless overridden
-    /// via `.with_hook()` on the request.
-    pub fn hook<P2>(self, hook: P2) -> AgentBuilder<M, P2, NoToolConfig>
-    where
-        P2: PromptHook<M>,
-    {
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            tool_state: self.tool_state,
-            hook: Some(hook),
-            output_schema: self.output_schema,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
-
     /// Build the agent with no tools configured.
     ///
     /// An empty `ToolServer` will be created for the agent.
@@ -649,5 +649,24 @@ where
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{MockAddTool, MockCompletionModel};
+
+    #[derive(Clone)]
+    struct BuilderHook;
+
+    impl PromptHook<MockCompletionModel> for BuilderHook {}
+
+    #[test]
+    fn hook_can_be_set_after_tool_configuration() {
+        let _agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .tool(MockAddTool)
+            .hook(BuilderHook)
+            .build();
     }
 }

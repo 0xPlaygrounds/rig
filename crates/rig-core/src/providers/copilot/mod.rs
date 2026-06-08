@@ -586,6 +586,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
                     .map(|d| d.cached_tokens as u64)
                     .unwrap_or(0),
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .unwrap_or_default();
@@ -1014,15 +1015,17 @@ where
                                         yield Ok(RawStreamingChoice::Message(delta.delta.clone()))
                                     }
                                     ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                        let internal_call_id = tool_call_internal_ids
-                                            .entry(delta.item_id.clone())
-                                            .or_insert_with(|| nanoid::nanoid!())
-                                            .clone();
-                                        yield Ok(RawStreamingChoice::ToolCallDelta {
-                                            id: delta.item_id.clone(),
-                                            internal_call_id,
-                                            content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
-                                        })
+                                        if let Some(item_id) = chunk.item_id.as_ref() {
+                                            let internal_call_id = tool_call_internal_ids
+                                                .entry(item_id.clone())
+                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .clone();
+                                            yield Ok(RawStreamingChoice::ToolCallDelta {
+                                                id: item_id.clone(),
+                                                internal_call_id,
+                                                content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
+                                            })
+                                        }
                                     }
                                     _ => continue,
                                 }

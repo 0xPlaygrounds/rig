@@ -25,6 +25,8 @@ use tracing::{Instrument, Level, enabled, info_span};
 pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
 /// `claude-opus-4-7` completion model
 pub const CLAUDE_OPUS_4_7: &str = "claude-opus-4-7";
+/// `claude-opus-4-8` completion model
+pub const CLAUDE_OPUS_4_8: &str = "claude-opus-4-8";
 /// `claude-sonnet-4-6` completion model
 pub const CLAUDE_SONNET_4_6: &str = "claude-sonnet-4-6";
 /// `claude-haiku-4-5` completion model
@@ -150,20 +152,25 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
+    /// Cache breakpoint marker. Set on the last tool in the array to cache
+    /// the tools layer independently of the system prompt. Anthropic accepts
+    /// up to 4 `cache_control` markers per request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 /// TTL for a cache control breakpoint.
 ///
 /// The Anthropic API supports two TTL values:
 /// - `"5m"` — 5 minutes (default when `ttl` is omitted)
-/// - `"1h"` — 1 hour (requires the `extended-cache-ttl-2025-04-11` beta header)
+/// - `"1h"` — 1 hour
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
     #[default]
     #[serde(rename = "5m")]
     FiveMinutes,
-    /// 1-hour TTL. Requires the `extended-cache-ttl-2025-04-11` beta header.
+    /// 1-hour TTL.
     #[serde(rename = "1h")]
     OneHour,
 }
@@ -242,6 +249,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 + response.usage.output_tokens,
             cached_input_tokens: response.usage.cache_read_input_tokens.unwrap_or(0),
             cache_creation_input_tokens: response.usage.cache_creation_input_tokens.unwrap_or(0),
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
 
@@ -266,6 +274,7 @@ pub struct Message {
 pub enum Role {
     User,
     Assistant,
+    System,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -742,8 +751,8 @@ fn extract_anthropic_doc_params(
 /// # Example
 ///
 /// ```no_run
-/// use rig::completion::message::{self, AssistantContent};
-/// use rig::providers::anthropic::completion::anthropic_citations;
+/// use rig_core::completion::message::{self, AssistantContent};
+/// use rig_core::providers::anthropic::completion::anthropic_citations;
 ///
 /// fn print_citations(content: &AssistantContent) {
 ///     if let AssistantContent::Text(text) = content
@@ -1269,7 +1278,7 @@ impl TryFrom<message::Message> for Message {
             },
 
             message::Message::System { content } => Message {
-                role: Role::User,
+                role: Role::System,
                 content: OneOrMany::one(Content::Text {
                     text: content,
                     citations: Vec::new(),
@@ -1449,6 +1458,24 @@ impl TryFrom<Message> for message::Message {
                 id: None,
                 content: message.content.try_map(|content| content.try_into())?,
             },
+            Role::System => {
+                let content =
+                    message
+                        .content
+                        .into_iter()
+                        .try_fold(String::new(), |mut content, block| {
+                            let Content::Text { text, .. } = block else {
+                                return Err(MessageError::ConversionError(
+                                    "Unsupported content type for System role".to_owned(),
+                                ));
+                            };
+
+                            content.push_str(&text);
+                            Ok(content)
+                        })?;
+
+                message::Message::System { content }
+            }
         })
     }
 }
@@ -1459,15 +1486,15 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
     pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
-    /// Enable automatic prompt caching (adds cache_control breakpoints to system prompt and messages)
+    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
+    /// tools, and messages)
     pub prompt_caching: bool,
     /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
     /// request). The API automatically places the breakpoint on the last cacheable block and moves
     /// it forward as the conversation grows. No beta header is required.
     pub automatic_caching: bool,
     /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL (requires the
-    /// `extended-cache-ttl-2025-04-11` beta header).
+    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
@@ -1509,13 +1536,23 @@ where
         }
     }
 
-    /// Enable automatic prompt caching.
+    /// Enable manual prompt caching.
     ///
     /// When enabled, cache_control breakpoints are automatically added to:
     /// - The system prompt (marked with ephemeral cache)
+    /// - The final tool definition, when tools are present (marked with ephemeral cache)
     /// - The last content block of the last message (marked with ephemeral cache)
     ///
-    /// This allows Anthropic to cache the conversation history for cost savings.
+    /// This allows Anthropic to cache the system prompt, tools layer, and conversation
+    /// history for cost savings. Use [`with_automatic_caching`] when you want Anthropic
+    /// to choose and advance a single top-level cache breakpoint automatically.
+    /// When combined with [`with_automatic_caching`], the top-level automatic breakpoint
+    /// owns the moving message cache point while Rig still marks tools and system prompt
+    /// blocks when budget permits.
+    /// Existing `cache_control` markers in provider-specific tool definitions are preserved
+    /// and count toward Anthropic's request limit of 4 cache breakpoints.
+    ///
+    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
@@ -1531,9 +1568,10 @@ where
     /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
     /// instead when you need fine-grained, per-block control over what is cached.
     ///
-    /// To use a one-hour TTL instead of the default five minutes, pass `ttl: "1h"` via
-    /// `additional_params` or combine with an explicit block-level breakpoint that carries the
-    /// extended TTL.
+    /// To use a one-hour TTL instead of the default five minutes, use
+    /// [`with_automatic_caching_1h`] or pass top-level `cache_control` with
+    /// `ttl: "1h"` via `additional_params`. Rig normalizes raw top-level
+    /// `cache_control` before budgeting and ordering manual prompt cache markers.
     ///
     /// ```ignore
     /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
@@ -1553,6 +1591,7 @@ where
     /// | `claude-haiku-4-5` | 4 096 |
     ///
     /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
+    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -1561,14 +1600,9 @@ where
     /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
     ///
     /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
-    /// top-level `cache_control` field. Requires the
-    /// `extended-cache-ttl-2025-04-11` beta header to be sent with the client:
+    /// top-level `cache_control` field:
     ///
     /// ```ignore
-    /// let client = anthropic::Client::builder()
-    ///     .api_key(std::env::var("ANTHROPIC_API_KEY").unwrap())
-    ///     .anthropic_beta("extended-cache-ttl-2025-04-11")
-    ///     .build()?;
     /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
     ///     .with_automatic_caching_1h();
     /// ```
@@ -1585,7 +1619,10 @@ where
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
 fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4-7") || model.starts_with("claude-opus-4-6") {
+    if model.starts_with("claude-opus-4-8")
+        || model.starts_with("claude-opus-4-7")
+        || model.starts_with("claude-opus-4-6")
+    {
         Some(128_000)
     } else if model.starts_with("claude-opus-4")
         || model.starts_with("claude-sonnet-4")
@@ -1599,6 +1636,10 @@ fn default_max_tokens_for_model(model: &str) -> Option<u64> {
 
 fn default_max_tokens_with_fallback(model: &str) -> u64 {
     default_max_tokens_for_model(model).unwrap_or(2_048)
+}
+
+pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
+    model.starts_with(CLAUDE_OPUS_4_8)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1780,6 +1821,8 @@ fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>)
     }
 }
 
+const MAX_CACHE_CONTROL_MARKERS: usize = 4;
+
 /// Apply cache control breakpoints to system prompt and messages.
 /// Strategy: cache the system prompt, and mark the last content block of the last message
 /// for caching. This allows the conversation history to be cached while new messages
@@ -1803,27 +1846,401 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
     }
 }
 
+fn final_cacheable_tool_idx(tools: &[serde_json::Value]) -> Option<usize> {
+    tools.iter().rposition(|tool| {
+        tool.as_object().is_some_and(|tool| {
+            !matches!(
+                tool.get("defer_loading"),
+                Some(serde_json::Value::Bool(true))
+            )
+        })
+    })
+}
+
+fn tool_cache_control_count(tools: &[serde_json::Value]) -> usize {
+    tools
+        .iter()
+        .filter(|tool| tool_cache_control_value(tool).is_some())
+        .count()
+}
+
+fn tool_cache_control_value(tool: &serde_json::Value) -> Option<&serde_json::Value> {
+    tool.get("cache_control")
+        .filter(|cache_control| !cache_control.is_null())
+}
+
+fn normalize_tool_cache_control(tools: &mut [serde_json::Value]) {
+    for tool in tools.iter_mut() {
+        if let Some(tool) = tool.as_object_mut()
+            && tool
+                .get("cache_control")
+                .is_some_and(serde_json::Value::is_null)
+        {
+            tool.remove("cache_control");
+        }
+    }
+}
+
+fn build_cache_control(ttl: Option<CacheTtl>) -> CacheControl {
+    CacheControl::Ephemeral { ttl }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CacheControlTtl {
+    FiveMinutes,
+    OneHour,
+}
+
+fn cache_control_ttl(cache_control: &CacheControl) -> CacheControlTtl {
+    match cache_control {
+        CacheControl::Ephemeral {
+            ttl: Some(CacheTtl::OneHour),
+        } => CacheControlTtl::OneHour,
+        CacheControl::Ephemeral { .. } => CacheControlTtl::FiveMinutes,
+    }
+}
+
+fn cache_control_ttl_from_json(cache_control: &serde_json::Value) -> CacheControlTtl {
+    match cache_control.get("ttl") {
+        Some(serde_json::Value::String(ttl)) if ttl == "1h" => CacheControlTtl::OneHour,
+        _ => CacheControlTtl::FiveMinutes,
+    }
+}
+
+fn content_cache_control(content: &Content) -> Option<&CacheControl> {
+    match content {
+        Content::Text { cache_control, .. }
+        | Content::Image { cache_control, .. }
+        | Content::ToolResult { cache_control, .. }
+        | Content::Document { cache_control, .. } => cache_control.as_ref(),
+        _ => None,
+    }
+}
+
+fn validate_cache_control_ttl(
+    ttl: CacheControlTtl,
+    shorter_ttl_seen: &mut bool,
+) -> Result<(), CompletionError> {
+    match ttl {
+        CacheControlTtl::OneHour if *shorter_ttl_seen => Err(CompletionError::RequestError(
+            "Anthropic cache_control markers with ttl `1h` must appear before markers with \
+                 the default 5-minute TTL"
+                .into(),
+        )),
+        CacheControlTtl::OneHour => Ok(()),
+        CacheControlTtl::FiveMinutes => {
+            *shorter_ttl_seen = true;
+            Ok(())
+        }
+    }
+}
+
+fn validate_cache_control_ttl_order(
+    system: &[SystemContent],
+    messages: &[Message],
+    tools: &[serde_json::Value],
+    top_level_cache_control: Option<&CacheControl>,
+) -> Result<(), CompletionError> {
+    let mut shorter_ttl_seen = false;
+
+    for tool in tools {
+        if let Some(cache_control) = tool_cache_control_value(tool) {
+            validate_cache_control_ttl(
+                cache_control_ttl_from_json(cache_control),
+                &mut shorter_ttl_seen,
+            )?;
+        }
+    }
+
+    for SystemContent::Text { cache_control, .. } in system {
+        if let Some(cache_control) = cache_control {
+            validate_cache_control_ttl(cache_control_ttl(cache_control), &mut shorter_ttl_seen)?;
+        }
+    }
+
+    for message in messages {
+        for content in message.content.iter() {
+            if let Some(cache_control) = content_cache_control(content) {
+                validate_cache_control_ttl(
+                    cache_control_ttl(cache_control),
+                    &mut shorter_ttl_seen,
+                )?;
+            }
+        }
+    }
+
+    if let Some(cache_control) = top_level_cache_control {
+        validate_cache_control_ttl(cache_control_ttl(cache_control), &mut shorter_ttl_seen)?;
+    }
+
+    Ok(())
+}
+
+fn top_level_cache_control_ttl(cache_control: Option<&CacheControl>) -> Option<CacheTtl> {
+    cache_control
+        .map(|cache_control| match cache_control {
+            CacheControl::Ephemeral { ttl } => ttl.clone(),
+        })
+        .unwrap_or_default()
+}
+
+/// Apply a cache-control breakpoint to the final cacheable tool definition in the request.
+fn apply_tool_cache_control(
+    tools: &mut [serde_json::Value],
+    remaining_cache_markers: &mut usize,
+    cache_control: &CacheControl,
+) -> Result<(), CompletionError> {
+    let Some(idx) = final_cacheable_tool_idx(tools) else {
+        return Ok(());
+    };
+
+    let Some(tool) = tools
+        .get_mut(idx)
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return Ok(());
+    };
+
+    if tool
+        .get("cache_control")
+        .is_some_and(|cache_control| !cache_control.is_null())
+    {
+        return Ok(());
+    }
+
+    if *remaining_cache_markers == 0 {
+        return Err(CompletionError::RequestError(
+            "Anthropic manual prompt caching requires a cache_control marker on the final \
+             non-deferred tool, but explicit tool markers exhaust the available cache point budget"
+                .into(),
+        ));
+    }
+
+    tool.insert(
+        "cache_control".to_string(),
+        serde_json::to_value(cache_control)?,
+    );
+    *remaining_cache_markers -= 1;
+
+    Ok(())
+}
+
+fn apply_system_cache_control(
+    system: &mut [SystemContent],
+    remaining_cache_markers: &mut usize,
+    cache_control_value: &CacheControl,
+) {
+    if *remaining_cache_markers == 0 {
+        return;
+    }
+
+    if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut()
+        && cache_control.is_none()
+    {
+        *cache_control = Some(cache_control_value.clone());
+        *remaining_cache_markers -= 1;
+    }
+}
+
+fn clear_message_cache_control(messages: &mut [Message]) {
+    for msg in messages.iter_mut() {
+        for content in msg.content.iter_mut() {
+            set_content_cache_control(content, None);
+        }
+    }
+}
+
+fn apply_message_cache_control(
+    messages: &mut [Message],
+    remaining_cache_markers: &mut usize,
+    cache_control: &CacheControl,
+) {
+    clear_message_cache_control(messages);
+
+    if *remaining_cache_markers == 0 {
+        return;
+    }
+
+    if let Some(last_msg) = messages.last_mut() {
+        set_content_cache_control(last_msg.content.last_mut(), Some(cache_control.clone()));
+        *remaining_cache_markers -= 1;
+    }
+}
+
+pub(super) fn apply_prompt_cache_control(
+    system: &mut [SystemContent],
+    messages: &mut [Message],
+    tools: &mut [serde_json::Value],
+    prompt_caching: bool,
+    top_level_cache_control: Option<&CacheControl>,
+) -> Result<(), CompletionError> {
+    normalize_tool_cache_control(tools);
+
+    let max_cache_markers = if top_level_cache_control.is_some() {
+        MAX_CACHE_CONTROL_MARKERS - 1
+    } else {
+        MAX_CACHE_CONTROL_MARKERS
+    };
+    let tool_cache_markers = tool_cache_control_count(tools);
+
+    if tool_cache_markers > max_cache_markers {
+        return Err(CompletionError::RequestError(
+            format!(
+                "Too many Anthropic tool `cache_control` markers: {tool_cache_markers} exceeds \
+                 the available prompt caching budget of {max_cache_markers}"
+            )
+            .into(),
+        ));
+    }
+
+    let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
+
+    if prompt_caching {
+        let generated_cache_control =
+            build_cache_control(top_level_cache_control_ttl(top_level_cache_control));
+
+        apply_tool_cache_control(
+            tools,
+            &mut remaining_cache_markers,
+            &generated_cache_control,
+        )?;
+        apply_system_cache_control(
+            system,
+            &mut remaining_cache_markers,
+            &generated_cache_control,
+        );
+
+        if top_level_cache_control.is_some() {
+            clear_message_cache_control(messages);
+        } else {
+            apply_message_cache_control(
+                messages,
+                &mut remaining_cache_markers,
+                &generated_cache_control,
+            );
+        }
+    }
+
+    validate_cache_control_ttl_order(system, messages, tools, top_level_cache_control)?;
+
+    Ok(())
+}
+
+pub(super) fn extract_top_level_cache_control(
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<CacheControl>, CompletionError> {
+    if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_cache_control) = map.remove("cache_control")
+    {
+        if raw_cache_control.is_null() {
+            return Ok(None);
+        }
+
+        return serde_json::from_value::<CacheControl>(raw_cache_control)
+            .map(Some)
+            .map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid Anthropic `additional_params.cache_control` payload: {err}")
+                        .into(),
+                )
+            });
+    }
+
+    Ok(None)
+}
+
+pub(super) fn resolve_top_level_cache_control(
+    automatic_caching: bool,
+    automatic_caching_ttl: Option<CacheTtl>,
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<CacheControl>, CompletionError> {
+    let raw_cache_control = extract_top_level_cache_control(additional_params)?;
+    let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
+        ttl: automatic_caching_ttl.clone(),
+    });
+
+    match (typed_cache_control, raw_cache_control) {
+        (Some(typed_cache_control), Some(raw_cache_control)) => {
+            if automatic_caching_ttl.is_some()
+                && cache_control_ttl(&typed_cache_control) != cache_control_ttl(&raw_cache_control)
+            {
+                return Err(CompletionError::RequestError(
+                    "Anthropic `additional_params.cache_control` conflicts with the typed \
+                     automatic caching TTL"
+                        .into(),
+                ));
+            }
+
+            Ok(Some(raw_cache_control))
+        }
+        (Some(typed_cache_control), None) => Ok(Some(typed_cache_control)),
+        (None, raw_cache_control) => Ok(raw_cache_control),
+    }
+}
+
 pub(super) fn split_system_messages_from_history(
     history: Vec<message::Message>,
+    preserve_mid_conversation_system_messages: bool,
 ) -> (Vec<SystemContent>, Vec<message::Message>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
 
-    for message in history {
+    for (index, message) in history.iter().enumerate() {
         match message {
             message::Message::System { content } => {
                 if !content.is_empty() {
-                    system.push(SystemContent::Text {
-                        text: content,
-                        cache_control: None,
-                    });
+                    if preserve_mid_conversation_system_messages
+                        && is_valid_mid_conversation_system_message(&history, index)
+                    {
+                        remaining.push(message.clone());
+                    } else {
+                        system.push(SystemContent::Text {
+                            text: content.clone(),
+                            cache_control: None,
+                        });
+                    }
                 }
             }
-            other => remaining.push(other),
+            other => remaining.push(other.clone()),
         }
     }
 
     (system, remaining)
+}
+
+fn is_valid_mid_conversation_system_message(history: &[message::Message], index: usize) -> bool {
+    let follows_valid_turn = index > 0
+        && history.get(index - 1).is_some_and(|message| {
+            matches!(message, message::Message::User { .. })
+                || assistant_ends_in_server_tool_block(message)
+        });
+    let is_last_or_precedes_assistant = history
+        .get(index + 1)
+        .is_none_or(|message| matches!(message, message::Message::Assistant { .. }));
+
+    follows_valid_turn && is_last_or_precedes_assistant
+}
+
+fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
+    let message::Message::Assistant { content, .. } = message else {
+        return false;
+    };
+
+    let Some(message::AssistantContent::Text(text)) = content.iter().last() else {
+        return false;
+    };
+
+    let Some(raw_type) = text
+        .additional_params
+        .as_ref()
+        .and_then(|params| params.get(ANTHROPIC_RAW_CONTENT_KEY))
+        .and_then(|raw_content| raw_content.get("type"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+
+    matches!(raw_type, "server_tool_use" | "web_search_tool_result")
 }
 
 /// Parameters for building an AnthropicCompletionRequest
@@ -1856,12 +2273,16 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             ));
         };
 
+        let docs = req.normalized_documents();
+        let (history_system, chat_history) = split_system_messages_from_history(
+            req.chat_history.into_iter().collect(),
+            supports_mid_conversation_system_messages(model),
+        );
         let mut full_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
+        if let Some(docs) = docs {
             full_history.push(docs);
         }
-        full_history.extend(req.chat_history);
-        let (history_system, full_history) = split_system_messages_from_history(full_history);
+        full_history.extend(chat_history);
 
         let mut messages = full_history
             .into_iter()
@@ -1872,20 +2293,12 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             .additional_params
             .take()
             .unwrap_or(serde_json::Value::Null);
-        let mut additional_tools =
-            extract_tools_from_additional_params(&mut additional_params_payload)?;
-
-        let mut tools = req
-            .tools
-            .into_iter()
-            .map(|tool| ToolDefinition {
-                name: tool.name,
-                description: Some(tool.description),
-                input_schema: tool.parameters,
-            })
-            .map(serde_json::to_value)
-            .collect::<Result<Vec<_>, _>>()?;
-        tools.append(&mut additional_tools);
+        let top_level_cache_control = resolve_top_level_cache_control(
+            automatic_caching,
+            automatic_caching_ttl,
+            &mut additional_params_payload,
+        )?;
+        let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
 
         // Convert system prompt to array format for cache_control support
         let mut system = if let Some(preamble) = req.preamble {
@@ -1902,10 +2315,13 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
         };
         system.extend(history_system);
 
-        // Apply cache control breakpoints only if prompt_caching is enabled
-        if prompt_caching {
-            apply_cache_control(&mut system, &mut messages);
-        }
+        apply_prompt_cache_control(
+            &mut system,
+            &mut messages,
+            &mut tools,
+            prompt_caching,
+            top_level_cache_control.as_ref(),
+        )?;
 
         let output_config = if let Some(schema) = req.output_schema {
             let mut schema_value = schema.to_value();
@@ -1929,13 +2345,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             tools,
             output_config,
             // Automatic caching: one top-level field; the API moves the breakpoint automatically.
-            cache_control: if automatic_caching {
-                Some(CacheControl::Ephemeral {
-                    ttl: automatic_caching_ttl,
-                })
-            } else {
-                None
-            },
+            cache_control: top_level_cache_control,
             additional_params: if additional_params_payload.is_null() {
                 None
             } else {
@@ -1945,7 +2355,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     }
 }
 
-fn extract_tools_from_additional_params(
+pub(super) fn extract_tools_from_additional_params(
     additional_params: &mut serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, CompletionError> {
     if let Some(map) = additional_params.as_object_mut()
@@ -1959,6 +2369,27 @@ fn extract_tools_from_additional_params(
     }
 
     Ok(Vec::new())
+}
+
+pub(super) fn build_tool_definitions(
+    tools: Vec<completion::ToolDefinition>,
+    additional_params_payload: &mut serde_json::Value,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
+    let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
+
+    let mut tools = tools
+        .into_iter()
+        .map(|tool| ToolDefinition {
+            name: tool.name,
+            description: Some(tool.description),
+            input_schema: tool.parameters,
+            cache_control: None,
+        })
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    tools.append(&mut additional_tools);
+
+    Ok(tools)
 }
 
 impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
@@ -2115,6 +2546,7 @@ mod tests {
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {
+        assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_8), Some(128_000));
         assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_7), Some(128_000));
         assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_6), Some(128_000));
         assert_eq!(
@@ -2128,6 +2560,32 @@ mod tests {
     fn unknown_model_uses_conservative_default_max_tokens_fallback() {
         assert_eq!(default_max_tokens_for_model("claude-unknown"), None);
         assert_eq!(default_max_tokens_with_fallback("claude-unknown"), 2_048);
+    }
+
+    #[test]
+    fn system_role_message_deserializes_and_round_trips() {
+        let message: Message = serde_json::from_str(
+            r#"
+        {
+            "role": "system",
+            "content": "From now on, require explicit type annotations."
+        }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(message.role, Role::System);
+
+        let generic: message::Message = message.try_into().unwrap();
+        assert_eq!(
+            generic,
+            message::Message::System {
+                content: "From now on, require explicit type annotations.".to_string()
+            }
+        );
+
+        let provider: Message = generic.try_into().unwrap();
+        assert_eq!(provider.role, Role::System);
     }
 
     #[test]
@@ -2532,6 +2990,1394 @@ mod tests {
                 assert!(cache_control.is_some());
             }
         }
+    }
+
+    fn generic_tool(name: &str) -> completion::ToolDefinition {
+        completion::ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            parameters: json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    fn completion_request_with_tools(
+        tools: Vec<completion::ToolDefinition>,
+        additional_params: Option<serde_json::Value>,
+    ) -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: Some("System prompt".to_string()),
+            chat_history: OneOrMany::one(message::Message::from("Hello")),
+            documents: Vec::new(),
+            tools,
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params,
+            output_schema: None,
+        }
+    }
+
+    fn completion_request_with_history(
+        chat_history: Vec<message::Message>,
+        preamble: Option<String>,
+    ) -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble,
+            chat_history: OneOrMany::many(chat_history).unwrap(),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+    }
+
+    fn system_has_cache_control(value: &serde_json::Value) -> bool {
+        value["system"]
+            .as_array()
+            .and_then(|blocks| blocks.last())
+            .and_then(|block| block.get("cache_control"))
+            .is_some()
+    }
+
+    fn last_message_has_cache_control(value: &serde_json::Value) -> bool {
+        value["messages"]
+            .as_array()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message["content"].as_array())
+            .and_then(|content| content.last())
+            .and_then(|content| content.get("cache_control"))
+            .is_some()
+    }
+
+    #[test]
+    fn opus_4_8_preserves_mid_conversation_system_message() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::System {
+                    content: "Global history instruction.".to_string(),
+                },
+                message::Message::from("Review this code."),
+                message::Message::System {
+                    content: "From now on, require explicit type annotations.".to_string(),
+                },
+            ],
+            Some("Top-level instruction.".to_string()),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["system"][0]["text"], "Top-level instruction.");
+        assert_eq!(value["system"][1]["text"], "Global history instruction.");
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "system");
+        assert_eq!(
+            messages[1]["content"][0]["text"],
+            "From now on, require explicit type annotations."
+        );
+    }
+
+    #[test]
+    fn opus_4_8_preserves_mid_conversation_system_message_before_assistant_turn() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::user("Review this code."),
+                message::Message::System {
+                    content: "From now on, require explicit type annotations.".to_string(),
+                },
+                message::Message::assistant("I will enforce explicit type annotations."),
+            ],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "system");
+        assert_eq!(messages[2]["role"], "assistant");
+        assert!(value.get("system").is_none());
+    }
+
+    #[test]
+    fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
+        let mut request = completion_request_with_history(
+            vec![
+                message::Message::System {
+                    content: "Global history instruction.".to_string(),
+                },
+                message::Message::assistant("Acknowledged."),
+                message::Message::user("Answer from the document."),
+            ],
+            None,
+        );
+        request.documents = vec![completion::Document {
+            id: "doc".to_string(),
+            text: "Document context.".to_string(),
+            additional_props: Default::default(),
+        }];
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["system"][0]["text"], "Global history instruction.");
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "assistant");
+        assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages
+                .iter()
+                .all(|message| message["role"].as_str() != Some("system"))
+        );
+    }
+
+    #[test]
+    fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::many([
+                        message::AssistantContent::Text(message::Text {
+                            text: String::new(),
+                            additional_params: Some(json!({
+                                ANTHROPIC_RAW_CONTENT_KEY: {
+                                    "type": "server_tool_use",
+                                    "id": "srvtoolu_01",
+                                    "name": "web_search",
+                                    "input": {
+                                        "query": "clear daytime sky color"
+                                    }
+                                }
+                            })),
+                        }),
+                        message::AssistantContent::Text(message::Text {
+                            text: String::new(),
+                            additional_params: Some(json!({
+                                ANTHROPIC_RAW_CONTENT_KEY: {
+                                    "type": "web_search_tool_result",
+                                    "tool_use_id": "srvtoolu_01",
+                                    "content": {
+                                        "type": "web_search_tool_result_error",
+                                        "error_code": "unavailable"
+                                    }
+                                }
+                            })),
+                        }),
+                    ])
+                    .unwrap(),
+                },
+                message::Message::System {
+                    content: "For the rest of this conversation, answer in Spanish.".to_string(),
+                },
+                message::Message::assistant("Entendido."),
+            ],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value.get("system").is_none());
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "assistant");
+        assert_eq!(messages[0]["content"][0]["type"], "server_tool_use");
+        assert_eq!(messages[0]["content"][1]["type"], "web_search_tool_result");
+        assert_eq!(messages[1]["role"], "system");
+        assert_eq!(
+            messages[1]["content"][0]["text"],
+            "For the rest of this conversation, answer in Spanish."
+        );
+        assert_eq!(messages[2]["role"], "assistant");
+    }
+
+    #[test]
+    fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+                        text: String::new(),
+                        additional_params: Some(json!({
+                            ANTHROPIC_RAW_CONTENT_KEY: {
+                                "type": "server_tool_use",
+                                "id": "srvtoolu_01",
+                                "name": "web_search",
+                                "input": {
+                                    "query": "clear daytime sky color"
+                                }
+                            }
+                        })),
+                    })),
+                },
+                message::Message::System {
+                    content: "For the rest of this conversation, answer in Spanish.".to_string(),
+                },
+                message::Message::assistant("Entendido."),
+            ],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value.get("system").is_none());
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "assistant");
+        assert_eq!(messages[0]["content"][0]["type"], "server_tool_use");
+        assert_eq!(messages[1]["role"], "system");
+        assert_eq!(
+            messages[1]["content"][0]["text"],
+            "For the rest of this conversation, answer in Spanish."
+        );
+        assert_eq!(messages[2]["role"], "assistant");
+    }
+
+    #[test]
+    fn opus_4_8_hoists_system_message_in_invalid_mid_conversation_position() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::user("Review this code."),
+                message::Message::System {
+                    content: "From now on, require explicit type annotations.".to_string(),
+                },
+                message::Message::user("Now review this other file."),
+            ],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_8,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(
+            value["system"][0]["text"],
+            "From now on, require explicit type annotations."
+        );
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[1]["role"], "user");
+    }
+
+    #[test]
+    fn older_anthropic_models_hoist_mid_conversation_system_message() {
+        let request = completion_request_with_history(
+            vec![
+                message::Message::from("Review this code."),
+                message::Message::System {
+                    content: "From now on, require explicit type annotations.".to_string(),
+                },
+            ],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_OPUS_4_7,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(
+            value["system"][0]["text"],
+            "From now on, require explicit type annotations."
+        );
+
+        let messages = value["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], "user");
+    }
+
+    #[test]
+    fn test_tool_definition_cache_control_serialization() {
+        let tool = ToolDefinition {
+            name: "cached_tool".to_string(),
+            description: Some("Cached tool".to_string()),
+            input_schema: json!({"type": "object"}),
+            cache_control: Some(CacheControl::ephemeral()),
+        };
+
+        let value = serde_json::to_value(tool).unwrap();
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+
+        let tool_without_cache = ToolDefinition {
+            name: "uncached_tool".to_string(),
+            description: Some("Uncached tool".to_string()),
+            input_schema: json!({"type": "object"}),
+            cache_control: None,
+        };
+
+        let value = serde_json::to_value(tool_without_cache).unwrap();
+        assert!(value.get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_apply_tool_cache_control_marks_only_final_tool() {
+        let mut tools = vec![
+            json!({
+                "name": "first_tool",
+                "description": "First tool",
+                "input_schema": {"type": "object"}
+            }),
+            json!({
+                "name": "second_tool",
+                "description": "Second tool",
+                "input_schema": {"type": "object"}
+            }),
+        ];
+
+        let mut remaining_cache_markers = 4;
+        apply_tool_cache_control(
+            &mut tools,
+            &mut remaining_cache_markers,
+            &CacheControl::ephemeral(),
+        )
+        .unwrap();
+
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(remaining_cache_markers, 3);
+    }
+
+    #[test]
+    fn test_prompt_caching_skips_final_deferred_tool_in_request() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "regular_tool",
+                        "description": "Regular tool",
+                        "input_schema": {"type": "object"}
+                    },
+                    {
+                        "name": "deferred_tool",
+                        "description": "Deferred tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["name"], "regular_tool");
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["name"], "deferred_tool");
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_existing_final_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+    }
+
+    #[test]
+    fn test_prompt_caching_all_deferred_tools_do_not_receive_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_deferred_tool",
+                        "description": "First deferred tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true
+                    },
+                    {
+                        "name": "second_deferred_tool",
+                        "description": "Second deferred tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert!(tools[0].get("cache_control").is_none());
+        assert!(tools[1].get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_earlier_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "earlier_tool",
+                        "description": "Earlier tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    },
+                    {
+                        "name": "later_tool",
+                        "description": "Later tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_deferred_marker_does_not_suppress_loaded_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "regular_tool",
+                        "description": "Regular tool",
+                        "input_schema": {"type": "object"}
+                    },
+                    {
+                        "name": "deferred_cached_tool",
+                        "description": "Deferred cached tool",
+                        "input_schema": {"type": "object"},
+                        "defer_loading": true,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_errors_when_tool_cache_control_ttl_order_is_invalid() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_valid_mixed_ttl_tool_cache_controls() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral", "ttl": "1h"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert!(tools[1]["cache_control"].get("ttl").is_none());
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_deferred_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "deferred_cached_tool",
+                    "description": "Deferred cached tool",
+                    "input_schema": {"type": "object"},
+                    "defer_loading": true,
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_budget_preserves_three_tool_markers_and_skips_message() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[2]["cache_control"]["type"], "ephemeral");
+        assert!(system_has_cache_control(&value));
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_caching_errors_when_explicit_tool_markers_exceed_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fifth_cached_tool",
+                        "description": "Fifth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_prompt_caching_errors_when_final_tool_marker_has_no_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "final_uncached_tool",
+                        "description": "Final uncached tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("final non-deferred tool"));
+    }
+
+    #[test]
+    fn test_prompt_caching_replaces_null_final_tool_cache_control() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "final_tool",
+                    "description": "Final tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": null
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_ignores_null_tool_cache_control_when_budgeting() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_null_tool",
+                        "description": "First null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "second_null_tool",
+                        "description": "Second null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "third_null_tool",
+                        "description": "Third null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "fourth_null_tool",
+                        "description": "Fourth null tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": null
+                    },
+                    {
+                        "name": "final_uncached_tool",
+                        "description": "Final uncached tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert!(tools[0].get("cache_control").is_none());
+        assert!(tools[1].get("cache_control").is_none());
+        assert!(tools[2].get("cache_control").is_none());
+        assert!(tools[3].get("cache_control").is_none());
+        assert_eq!(tools[4]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_preserves_non_null_provider_tool_cache_control_escape_hatch() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "provider_tool",
+                    "description": "Provider tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "provider_specific"}
+                }]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "provider_specific");
+    }
+
+    #[test]
+    fn test_prompt_caching_automatic_mode_uses_reduced_marker_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[2]["cache_control"]["type"], "ephemeral");
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+        assert!(!system_has_cache_control(&value));
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_caching_automatic_mode_errors_when_final_tool_marker_has_no_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "final_uncached_tool",
+                        "description": "Final uncached tool",
+                        "input_schema": {"type": "object"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("final non-deferred tool"));
+    }
+
+    #[test]
+    fn test_automatic_caching_errors_when_explicit_tool_markers_exhaust_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_automatic_caching_1h_errors_with_explicit_five_minute_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_prompt_and_automatic_caching_1h_uses_1h_generated_markers() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_and_raw_top_level_automatic_caching_1h_uses_1h_generated_markers() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "metadata": {"source": "test"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert_eq!(value["metadata"]["source"], "test");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_prompt_caching_uses_raw_top_level_cache_control_ttl() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "metadata": {"source": "raw-cache-control"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+        assert_eq!(value["metadata"]["source"], "raw-cache-control");
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_raw_top_level_automatic_caching_reduces_marker_budget() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral"},
+                "tools": [
+                    {
+                        "name": "first_cached_tool",
+                        "description": "First cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "second_cached_tool",
+                        "description": "Second cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "third_cached_tool",
+                        "description": "Third cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    },
+                    {
+                        "name": "fourth_cached_tool",
+                        "description": "Fourth cached tool",
+                        "input_schema": {"type": "object"},
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("Too many Anthropic tool"));
+    }
+
+    #[test]
+    fn test_raw_top_level_automatic_caching_1h_errors_after_explicit_five_minute_tool_marker() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                "tools": [{
+                    "name": "cached_tool",
+                    "description": "Cached tool",
+                    "input_schema": {"type": "object"},
+                    "cache_control": {"type": "ephemeral"}
+                }]
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap_err();
+
+        assert!(err.to_string().contains("ttl `1h`"));
+    }
+
+    #[test]
+    fn test_typed_automatic_caching_ttl_errors_on_conflicting_raw_top_level_ttl() {
+        let request = completion_request_with_tools(
+            Vec::new(),
+            Some(json!({
+                "cache_control": {"type": "ephemeral"}
+            })),
+        );
+
+        let err = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("conflicts with the typed automatic caching TTL")
+        );
+    }
+
+    #[test]
+    fn test_prompt_caching_marks_final_tool_in_request() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("first_tool"), generic_tool("second_tool")],
+            None,
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_prompt_caching_marks_final_additional_tool_in_request() {
+        let request = completion_request_with_tools(
+            vec![generic_tool("rig_tool")],
+            Some(json!({
+                "tools": [{
+                    "name": "provider_tool",
+                    "description": "Provider tool",
+                    "input_schema": {"type": "object"}
+                }],
+                "metadata": {"source": "test"}
+            })),
+        );
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert!(tools[0].get("cache_control").is_none());
+        assert_eq!(tools[1]["name"], "provider_tool");
+        assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+        assert_eq!(value["metadata"]["source"], "test");
+    }
+
+    #[test]
+    fn test_prompt_caching_without_tools_omits_tools() {
+        let request = completion_request_with_tools(Vec::new(), None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value.get("tools").is_none());
     }
 
     #[test]

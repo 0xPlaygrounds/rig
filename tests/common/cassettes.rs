@@ -105,6 +105,7 @@ impl CassettePolicy {
     fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
         let required_request_headers = match provider {
             "openai" => OPENAI_REQUIRED_REQUEST_HEADERS,
+            "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
             "gemini" if scenario.starts_with("interactions_api/") => {
                 GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
@@ -1348,6 +1349,7 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
 
 const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
 const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
+const CHATGPT_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
 const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
 const GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
 
@@ -1388,6 +1390,8 @@ const SENSITIVE_STRING_KEYS: &[&str] = &[
     "encrypted_content",
     "encryptedcontent",
     "obfuscation",
+    "prompt_cache_key",
+    "safety_identifier",
     "signature",
     "thoughtsignature",
 ];
@@ -1533,6 +1537,13 @@ impl CassetteScrubber {
                     .map(str::to_ascii_lowercase);
 
                 for (key, value) in map {
+                    if key == "data" && object_type.as_deref() == Some("reasoning.encrypted") {
+                        if let Value::String(data) = value {
+                            *data = self.placeholder(data, "encrypted_reasoning_");
+                        }
+                        continue;
+                    }
+
                     if key == "id"
                         && should_scrub_id_for_object(
                             self.policy,
@@ -1582,6 +1593,11 @@ impl CassetteScrubber {
 
                     if key == "url" && text.contains("grounding-api-redirect/") {
                         *text = self.placeholder(text, "url");
+                        return;
+                    }
+
+                    if key == "b64_json" {
+                        *text = "aGVsbG8=".to_string();
                         return;
                     }
                 }

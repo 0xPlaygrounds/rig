@@ -19,6 +19,10 @@ use crate::streaming;
 #[derive(Default, Deserialize, Debug)]
 pub(crate) struct StreamingFunction {
     pub(crate) name: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::json_utils::deserialize_json_string_or_value"
+    )]
     pub(crate) arguments: Option<String>,
 }
 
@@ -235,6 +239,32 @@ mod tests {
             function.arguments.as_ref().unwrap(),
             r#"{"location":"Paris"}"#
         );
+    }
+
+    #[test]
+    fn test_streaming_function_object_arguments() {
+        // Some OpenAI-compatible gateways send `arguments` as a JSON object
+        // instead of the spec-mandated JSON-encoded string. Accept it by
+        // re-serializing to the string form rather than dropping the chunk.
+        let json = r#"{"name": "list_dir", "arguments": {}}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert_eq!(function.name, Some("list_dir".to_string()));
+        assert_eq!(function.arguments.as_ref().unwrap(), "{}");
+
+        let json = r#"{"name": "get_weather", "arguments": {"city": "London"}}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert_eq!(function.arguments.as_ref().unwrap(), r#"{"city":"London"}"#);
+    }
+
+    #[test]
+    fn test_streaming_function_null_arguments() {
+        let json = r#"{"name": "list_dir", "arguments": null}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert!(function.arguments.is_none());
+
+        let json = r#"{"name": "list_dir"}"#;
+        let function: StreamingFunction = serde_json::from_str(json).unwrap();
+        assert!(function.arguments.is_none());
     }
 
     #[test]
@@ -473,6 +503,62 @@ mod tests {
         let usage = final_usage.expect("expected a final response with usage");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_reasoning_content_and_text_chunks_are_incremental() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"think \",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"more\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"content\":\"hel\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"content\":\"lo\",\"tool_calls\":[]},\"finish_reason\":\"stop\"}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}",
+                "[DONE]",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut reasoning_chunks = Vec::new();
+        let mut text_chunks = Vec::new();
+        let mut final_usage = None;
+
+        while let Some(chunk) = stream.next().await {
+            match chunk.unwrap() {
+                streaming::StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
+                    reasoning_chunks.push(reasoning)
+                }
+                streaming::StreamedAssistantContent::Text(text) => text_chunks.push(text.text),
+                streaming::StreamedAssistantContent::Final(response) => {
+                    final_usage = Some(response.usage)
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(
+            reasoning_chunks,
+            vec!["think ".to_string(), "more".to_string()]
+        );
+        assert_eq!(text_chunks, vec!["hel".to_string(), "lo".to_string()]);
+
+        let usage = final_usage.expect("expected final usage");
+        assert_eq!(usage.prompt_tokens, 4);
+        assert_eq!(usage.total_tokens, 10);
+        let token_usage = usage.token_usage().expect("usage should convert");
+        assert_eq!(token_usage.output_tokens, 6);
     }
 
     #[tokio::test]

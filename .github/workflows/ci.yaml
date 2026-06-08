@@ -10,7 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: 1.90.0
+  RUST_VERSION: 1.91.0
 
 # ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
 # and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
@@ -30,7 +30,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt
-          toolchain: ${{ vars.RUST_VERSION }}
+          toolchain: ${{ env.RUST_VERSION }}
 
       - name: Run cargo fmt
         run: cargo fmt -- --check
@@ -47,7 +47,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: wasm32-unknown-unknown
-          toolchain: ${{ vars.RUST_VERSION }}
+          toolchain: ${{ env.RUST_VERSION }}
 
       - name: Run cargo check wasm target
         run: cargo check --package rig-core --features wasm --target wasm32-unknown-unknown
@@ -65,7 +65,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
-          toolchain: ${{ vars.RUST_VERSION }}
+          toolchain: ${{ env.RUST_VERSION }}
 
       # Required to compile rig-lancedb
       - name: Install Protoc
@@ -86,7 +86,7 @@ jobs:
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: ${{ vars.RUST_VERSION }}
+          toolchain: ${{ env.RUST_VERSION }}
 
       - name: Install nextest
         uses: taiki-e/install-action@v2
@@ -120,7 +120,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rust-docs
-          toolchain: ${{ vars.RUST_VERSION }}
+          toolchain: ${{ env.RUST_VERSION }}
 
       # Required to compile rig-lancedb
       - name: Install Protoc

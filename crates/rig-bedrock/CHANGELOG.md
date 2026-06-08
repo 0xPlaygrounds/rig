@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.7...rig-bedrock-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.4.7](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.6...rig-bedrock-v0.4.7) - 2026-06-02
+
+### Added
+
+- *(gemini)* expose streaming response metadata ([#1790](https://github.com/0xPlaygrounds/rig/pull/1790)) (by @mateobelanger)
+- *(anthropic)* support document citations ([#1778](https://github.com/0xPlaygrounds/rig/pull/1778)) (by @temrjan)
+
+### Contributors
+
+* @mateobelanger
+* @temrjan
 ## [0.4.6](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.4.5...rig-bedrock-v0.4.6) - 2026-05-13
 
 ### Added

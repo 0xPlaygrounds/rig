@@ -35,6 +35,28 @@ pub fn value_to_json_string(value: &serde_json::Value) -> String {
     }
 }
 
+/// Deserialize a field that may arrive as either a JSON-encoded string or any other
+/// JSON value, into `Option<String>`.
+///
+/// - A string is taken verbatim.
+/// - Any other JSON value is re-serialized to its compact JSON-string form (via
+///   [`value_to_json_string`]). Object key order is not preserved, which is fine
+///   because callers re-parse the string.
+/// - `null` or a missing field becomes `None`.
+///
+/// Tolerates OpenAI-compatible gateways that stream `tool_calls[].function.arguments`
+/// as an object (e.g. `{}`) instead of the spec-mandated JSON string (`"{}"`).
+pub fn deserialize_json_string_or_value<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(match value {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(value_to_json_string(&v)),
+    })
+}
+
 /// Parse tool arguments from a streamed string payload.
 /// Some providers emit an empty string for parameterless tool calls; normalize that to `{}`.
 pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::Value> {
@@ -205,6 +227,65 @@ mod tests {
     struct DummyMaybeStringified {
         #[serde(deserialize_with = "stringified_json::deserialize_maybe_stringified")]
         data: serde_json::Value,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct ArgWrapper {
+        #[serde(default, deserialize_with = "deserialize_json_string_or_value")]
+        arguments: Option<String>,
+    }
+
+    /// Spec-compliant case: `arguments` is already a JSON-encoded string, taken verbatim.
+    #[test]
+    fn json_string_or_value_string_passthrough() {
+        let w: ArgWrapper = serde_json::from_str(r#"{"arguments":"{\"a\":1}"}"#).unwrap();
+        assert_eq!(w.arguments.as_deref(), Some(r#"{"a":1}"#));
+    }
+
+    /// Non-compliant gateway: an empty object `{}` must serialize to the string `"{}"`,
+    /// not be treated as absent (None).
+    #[test]
+    fn json_string_or_value_empty_object() {
+        let w: ArgWrapper = serde_json::from_str(r#"{"arguments":{}}"#).unwrap();
+        assert_eq!(w.arguments.as_deref(), Some("{}"));
+    }
+
+    /// Non-compliant gateway: a nested object is re-serialized to a string.
+    #[test]
+    fn json_string_or_value_nested_object() {
+        let w: ArgWrapper =
+            serde_json::from_str(r#"{"arguments":{"path":"/tmp","depth":2}}"#).unwrap();
+        // `arguments` is re-serialized from a Value; object key order is not guaranteed
+        // (depends on serde_json's `preserve_order` feature), so re-parse and compare
+        // values rather than the raw string.
+        let parsed: serde_json::Value =
+            serde_json::from_str(w.arguments.as_deref().unwrap()).unwrap();
+        assert_eq!(parsed["path"], "/tmp");
+        assert_eq!(parsed["depth"], 2);
+    }
+
+    /// Non-compliant gateway: an array is also "any other JSON value" and serializes to a
+    /// string. Array order is meaningful and preserved by serde_json, so compare the string
+    /// directly.
+    #[test]
+    fn json_string_or_value_array() {
+        let w: ArgWrapper = serde_json::from_str(r#"{"arguments":[1,2,3]}"#).unwrap();
+        assert_eq!(w.arguments.as_deref(), Some("[1,2,3]"));
+    }
+
+    /// Regression test: JSON null must collapse to None (not the string "null").
+    /// Removing `.filter(|v| !v.is_null())` from the deserializer would fail this test.
+    #[test]
+    fn json_string_or_value_null_is_none() {
+        let w: ArgWrapper = serde_json::from_str(r#"{"arguments":null}"#).unwrap();
+        assert!(w.arguments.is_none());
+    }
+
+    /// A missing field is likewise None (relies on `#[serde(default)]`).
+    #[test]
+    fn json_string_or_value_missing_is_none() {
+        let w: ArgWrapper = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(w.arguments.is_none());
     }
 
     #[test]

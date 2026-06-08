@@ -5,8 +5,11 @@ use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::providers::openai;
+use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
+
+use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
@@ -16,6 +19,72 @@ use crate::support::{
     assert_raw_stream_tool_call_precedes_text, assert_tool_call_precedes_later_text,
     collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
 };
+
+#[derive(Debug, Deserialize)]
+struct CassetteInteraction {
+    then: CassetteResponse,
+}
+
+#[derive(Debug, Deserialize)]
+struct CassetteResponse {
+    body: Option<String>,
+}
+
+#[test]
+fn streaming_tools_smoke_cassette_sse_events_parse() {
+    let contents = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/cassettes/openai/streaming_tools/streaming_tools_smoke.yaml"
+    ))
+    .expect("streaming tools cassette should be readable");
+
+    let mut event_count = 0;
+    let mut function_call_delta_count = 0;
+    let mut failures = Vec::new();
+
+    for (interaction_index, document) in serde_yaml::Deserializer::from_str(&contents).enumerate() {
+        let interaction = CassetteInteraction::deserialize(document)
+            .expect("streaming tools cassette interaction should deserialize");
+        let Some(body) = interaction.then.body else {
+            continue;
+        };
+
+        for (line_index, line) in body.lines().enumerate() {
+            let Some(data) = line.trim_start().strip_prefix("data:").map(str::trim) else {
+                continue;
+            };
+
+            if data.is_empty() || data == "[DONE]" {
+                continue;
+            }
+
+            event_count += 1;
+            if data.contains(r#""type":"response.function_call_arguments.delta""#) {
+                function_call_delta_count += 1;
+            }
+
+            if let Err(error) = serde_json::from_str::<StreamingCompletionChunk>(data) {
+                failures.push(format!(
+                    "interaction {interaction_index}, body line {line_index}: {error}\n{data}"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        event_count > 0,
+        "expected cassette to contain SSE data events"
+    );
+    assert!(
+        function_call_delta_count > 0,
+        "expected cassette to cover function-call argument delta events"
+    );
+    assert!(
+        failures.is_empty(),
+        "all cassette SSE data events should parse as StreamingCompletionChunk; failures:\n{}",
+        failures.join("\n\n")
+    );
+}
 
 #[tokio::test]
 async fn streaming_tools_smoke() {

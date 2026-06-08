@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"text"}],"role":"system"},{"content":"/no_think Explain why a local OpenAI-compatible server should return token usage.","role":"user"}],"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"\n\nA local OpenAI-compatible server should return token usage to help users understand and manage their model''s resource consumption. This data is crucial for cost tracking, optimizing model performance, and ensuring fair usage. It also supports compliance with usage policies and helps in planning for scalability.","reasoning_content":"\n\n","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3-4B","object":"chat.completion","system_fingerprint":"local","usage":{"avg_compl_tok_per_sec":16.407356,"avg_prompt_tok_per_sec":64.02439,"avg_tok_per_sec":23.849274,"completion_tokens":58,"prompt_tokens":42,"total_completion_time_sec":3.535,"total_prompt_time_sec":0.656,"total_time_sec":4.193,"total_tokens":100}}'

@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"Let me check the current weather in Tokyo for you!","reasoning_content":"The user wants to know the weather in Tokyo, Japan. Let me call the get_weather tool to check the current weather conditions.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"Tokyo, Japan\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":84,"completion_tokens_details":{"reasoning_tokens":27},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":381,"prompt_tokens":381,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":465}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"},{"content":"Let me check the current weather in Tokyo for you!","reasoning_content":"The user wants to know the weather in Tokyo, Japan. Let me call the get_weather tool to check the current weather conditions.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo, Japan\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Here''s the current weather in **Tokyo, Japan**:\n\n- **Temperature**: 72°F (22°C)\n- **Conditions**: ☀️ Sunny with light clouds\n- **Humidity**: 45%\n- **Wind**: 8 mph NW\n\n### Packing Recommendation: 🧴 Sunscreen!\n\nSince it''s **sunny with light clouds** and no rain in the forecast, you''ll want to **pack sunscreen** rather than an umbrella. The UV rays can be strong even with those light clouds, so definitely bring some SPF to protect your skin while you explore Tokyo! Enjoy your trip! 🗾","reasoning_content":"The weather in Tokyo is sunny with light clouds, 72°F (22°C), humidity at 45%, and wind at 8 mph NW. Since it''s sunny, sunscreen would be more appropriate than an umbrella.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":176,"completion_tokens_details":{"reasoning_tokens":46},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":120,"prompt_tokens":504,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":680}}'

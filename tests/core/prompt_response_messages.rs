@@ -4,7 +4,7 @@
 use rig::agent::AgentBuilder;
 use rig::completion::{Chat, Message, Prompt, Usage};
 use rig::message::{AssistantContent, UserContent};
-use rig::test_utils::{MockCompletionModel, MockTurn};
+use rig::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
 
 // ---------------------------------------------------------------------------
 // Mock model infrastructure
@@ -18,6 +18,7 @@ fn simple_text_turn() -> MockTurn {
             total_tokens: 15,
             cached_input_tokens: 0,
             cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         })
         .with_message_id("msg_mock_1")
@@ -29,20 +30,17 @@ fn simple_text_model(turns: usize) -> MockCompletionModel {
 
 fn tool_then_text_model() -> MockCompletionModel {
     MockCompletionModel::new([
-        MockTurn::tool_call(
-            "tc_1",
-            "calculator",
-            serde_json::json!({"op": "add", "a": 2, "b": 3}),
-        )
-        .with_usage(Usage {
-            input_tokens: 15,
-            output_tokens: 8,
-            total_tokens: 23,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            reasoning_tokens: 0,
-        })
-        .with_message_id("msg_tool"),
+        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3}))
+            .with_usage(Usage {
+                input_tokens: 15,
+                output_tokens: 8,
+                total_tokens: 23,
+                cached_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            })
+            .with_message_id("msg_tool"),
         MockTurn::text("The answer is 5")
             .with_usage(Usage {
                 input_tokens: 20,
@@ -50,6 +48,7 @@ fn tool_then_text_model() -> MockCompletionModel {
                 total_tokens: 24,
                 cached_input_tokens: 0,
                 cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
             .with_message_id("msg_text"),
@@ -57,7 +56,7 @@ fn tool_then_text_model() -> MockCompletionModel {
 }
 
 fn always_tool_call_turn() -> MockTurn {
-    MockTurn::tool_call("tc_loop", "infinite_tool", serde_json::json!({"x": 1}))
+    MockTurn::tool_call("tc_loop", "add", serde_json::json!({"x": 1, "y": 1}))
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +172,9 @@ async fn standard_with_history_works() {
 /// full conversation: User → Assistant(tool_call) → User(tool_result) → Assistant(text).
 #[tokio::test]
 async fn multi_turn_messages_include_tool_calls() {
-    let agent = AgentBuilder::new(tool_then_text_model()).build();
+    let agent = AgentBuilder::new(tool_then_text_model())
+        .tool(MockAddTool)
+        .build();
 
     let resp = agent
         .prompt("What is 2 + 3?")
@@ -188,8 +189,8 @@ async fn multi_turn_messages_include_tool_calls() {
 
     // Expected sequence:
     // [0] User: "What is 2 + 3?"
-    // [1] Assistant: ToolCall(calculator)
-    // [2] User: ToolResult (error since calculator tool isn't registered, but that's fine)
+    // [1] Assistant: ToolCall(add)
+    // [2] User: ToolResult
     // [3] Assistant: "The answer is 5"
     assert_eq!(messages.len(), 4, "expected 4 messages, got: {messages:#?}");
 
@@ -278,6 +279,7 @@ async fn max_turns_error_still_contains_history() {
     let agent = AgentBuilder::new(MockCompletionModel::new(
         (0..10).map(|_| always_tool_call_turn()),
     ))
+    .tool(MockAddTool)
     .build();
 
     let result = agent
@@ -308,7 +310,9 @@ async fn max_turns_error_still_contains_history() {
 /// be populated (this is the core feature: no need for &mut borrow).
 #[tokio::test]
 async fn extended_details_works_without_with_history() {
-    let agent = AgentBuilder::new(tool_then_text_model()).build();
+    let agent = AgentBuilder::new(tool_then_text_model())
+        .tool(MockAddTool)
+        .build();
 
     // Note: NO .with_history() call — this is the new use case
     let resp = agent
@@ -377,7 +381,9 @@ async fn chat_appends_prompt_and_assistant_to_history() {
 /// Test 11: `Chat::chat` appends every message produced by a tool roundtrip.
 #[tokio::test]
 async fn chat_appends_tool_roundtrip_to_history() {
-    let agent = AgentBuilder::new(tool_then_text_model()).build();
+    let agent = AgentBuilder::new(tool_then_text_model())
+        .tool(MockAddTool)
+        .build();
     let mut history = Vec::<Message>::new();
 
     let output = agent

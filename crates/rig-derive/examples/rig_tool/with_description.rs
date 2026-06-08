@@ -4,12 +4,20 @@ use rig_core::providers;
 use rig_core::tool::Tool;
 use rig_derive::rig_tool;
 
-// Example with description attribute
+// Demonstrates explicit attribute override.
+// The description and params() attributes override any doc comments.
 #[rig_tool(
     description = "Perform basic arithmetic operations",
     required(x, y, operation)
 )]
-fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig_core::tool::ToolError> {
+fn calculator(
+    /// The first operand
+    x: i32,
+    /// The second operand
+    y: i32,
+    /// The operation to perform
+    operation: String,
+) -> Result<i32, rig_core::tool::ToolError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),

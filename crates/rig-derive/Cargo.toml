@@ -1,6 +1,6 @@
 [package]
 name = "rig-derive"
-version = "0.1.14"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 description = "Internal crate that implements Rig derive macros."
@@ -25,6 +25,7 @@ proc-macro = true
 [dev-dependencies]
 anyhow = { workspace = true }
 rig-core = { path = "../rig-core" }
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -46,3 +47,7 @@ path = "examples/rig_tool/full.rs"
 [[example]]
 name = "async_tool"
 path = "examples/rig_tool/async_tool.rs"
+
+[[example]]
+name = "complex_types"
+path = "examples/rig_tool/complex_types.rs"
