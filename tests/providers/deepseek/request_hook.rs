@@ -5,11 +5,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{HookAction, PromptHook};
-use rig::client::{CompletionClient, ProviderClient};
+use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::UserContent;
 use rig::providers::deepseek;
 
+use super::support::with_deepseek_cassette_result;
 use crate::support::assert_nonempty_response;
 
 #[derive(Clone)]
@@ -66,60 +67,64 @@ where
 }
 
 #[tokio::test]
-#[ignore = "requires DEEPSEEK_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = deepseek::Client::from_env()
-        .expect("client should build")
-        .agent(deepseek::DEEPSEEK_V4_FLASH)
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
-        .build();
+    with_deepseek_cassette_result(
+        "request_hook/request_hook_records_prompt_and_response",
+        |client| async move {
+            let agent = client
+                .agent(deepseek::DEEPSEEK_V4_FLASH)
+                .preamble("You are a comedian here to entertain the user using humour and jokes.")
+                .build();
 
-    let hook = SessionIdHook {
-        session_id: "abc123",
-        prompt_calls: Arc::new(AtomicUsize::new(0)),
-        response_calls: Arc::new(AtomicUsize::new(0)),
-        seen_prompt: Arc::new(Mutex::new(None)),
-        seen_response: Arc::new(Mutex::new(None)),
-    };
+            let hook = SessionIdHook {
+                session_id: "abc123",
+                prompt_calls: Arc::new(AtomicUsize::new(0)),
+                response_calls: Arc::new(AtomicUsize::new(0)),
+                seen_prompt: Arc::new(Mutex::new(None)),
+                seen_response: Arc::new(Mutex::new(None)),
+            };
 
-    let response = agent
-        .prompt("Entertain me!")
-        .with_hook(hook.clone())
-        .await?;
+            let response = agent
+                .prompt("Entertain me!")
+                .with_hook(hook.clone())
+                .await?;
 
-    assert_nonempty_response(&response);
-    anyhow::ensure!(
-        hook.prompt_calls.load(Ordering::SeqCst) == 1,
-        "expected one prompt hook call"
-    );
-    anyhow::ensure!(
-        hook.response_calls.load(Ordering::SeqCst) == 1,
-        "expected one response hook call"
-    );
+            assert_nonempty_response(&response);
+            anyhow::ensure!(
+                hook.prompt_calls.load(Ordering::SeqCst) == 1,
+                "expected one prompt hook call"
+            );
+            anyhow::ensure!(
+                hook.response_calls.load(Ordering::SeqCst) == 1,
+                "expected one response hook call"
+            );
 
-    let seen_prompt = hook
-        .seen_prompt
-        .lock()
-        .map_err(|_| anyhow!("prompt hook state unavailable"))?
-        .clone();
-    let seen_response = hook
-        .seen_response
-        .lock()
-        .map_err(|_| anyhow!("response hook state unavailable"))?
-        .clone();
+            let seen_prompt = hook
+                .seen_prompt
+                .lock()
+                .map_err(|_| anyhow!("prompt hook state unavailable"))?
+                .clone();
+            let seen_response = hook
+                .seen_response
+                .lock()
+                .map_err(|_| anyhow!("response hook state unavailable"))?
+                .clone();
 
-    anyhow::ensure!(
-        seen_prompt
-            .as_deref()
-            .is_some_and(|prompt| prompt.contains("Entertain me!")),
-        "expected hook to capture prompt text"
-    );
-    anyhow::ensure!(
-        seen_response
-            .as_deref()
-            .is_some_and(|captured| !captured.is_empty()),
-        "expected hook to capture response text"
-    );
+            anyhow::ensure!(
+                seen_prompt
+                    .as_deref()
+                    .is_some_and(|prompt| prompt.contains("Entertain me!")),
+                "expected hook to capture prompt text"
+            );
+            anyhow::ensure!(
+                seen_response
+                    .as_deref()
+                    .is_some_and(|captured| !captured.is_empty()),
+                "expected hook to capture response text"
+            );
 
-    Ok(())
+            Ok(())
+        },
+    )
+    .await
 }

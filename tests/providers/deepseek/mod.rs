@@ -1,3 +1,5 @@
+mod support;
+
 mod agent;
 mod extractor;
 mod extractor_usage;
