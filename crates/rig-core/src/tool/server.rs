@@ -567,7 +567,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result, "\"session:abc-123\"");
+        assert_eq!(result, "session:abc-123");
     }
 
     #[tokio::test]
@@ -576,7 +576,7 @@ mod tests {
         let handle = server.run();
 
         let result = handle.call_tool("context_reader", "{}").await.unwrap();
-        assert_eq!(result, "\"no session\"");
+        assert_eq!(result, "no session");
     }
 
     #[tokio::test]
