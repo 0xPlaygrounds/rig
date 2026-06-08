@@ -85,27 +85,42 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
     type Error = CompletionError;
 
     fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
-        let message: RigMessage = value
+        let stop_reason = value.0.stop_reason.clone();
+
+        let aws_message = value
             .to_owned()
             .0
             .output
-            .ok_or(CompletionError::ProviderError(
-                "Model didn't return any output".into(),
-            ))?
+            .ok_or_else(|| {
+                CompletionError::ResponseError(format!(
+                    "Model returned no output (stop_reason={stop_reason})"
+                ))
+            })?
             .as_message()
             .map_err(|_| {
-                CompletionError::ProviderError(
-                    "Failed to extract message from converse output".into(),
-                )
+                CompletionError::ResponseError(format!(
+                    "Failed to extract message from converse output (stop_reason={stop_reason})"
+                ))
             })?
-            .to_owned()
-            .try_into()?;
+            .to_owned();
+
+        // Short-circuit empty content blocks with a descriptive ResponseError so
+        // callers can distinguish guardrail/content-filter/max-tokens cases from
+        // a generic "RequestError(EmptyListError)" raised deeper in the
+        // OneOrMany conversion.
+        if aws_message.content.is_empty() {
+            return Err(CompletionError::ResponseError(format!(
+                "No assistance content returned (stop_reason={stop_reason})"
+            )));
+        }
+
+        let message: RigMessage = aws_message.try_into()?;
 
         let choice = match message.0 {
             completion::Message::Assistant { content, .. } => Ok(content),
-            _ => Err(CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )),
+            _ => Err(CompletionError::ResponseError(format!(
+                "Response contained no message or tool call (stop_reason={stop_reason})"
+            ))),
         }?;
 
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();

@@ -64,8 +64,16 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                     .map(|rig_assistant_content| rig_assistant_content.0)
                     .collect::<Vec<AssistantContent>>();
 
-                let content = OneOrMany::many(assistant_content)
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                // Response-side failure: Bedrock returned an assistant message
+                // with zero content blocks. Surface as ResponseError; the
+                // `RequestError` variant is reserved for outgoing request
+                // construction failures.
+                let content = OneOrMany::many(assistant_content).map_err(|_| {
+                    CompletionError::ResponseError(
+                        "Bedrock returned an assistant message with no content blocks"
+                            .to_owned(),
+                    )
+                })?;
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))
             }
@@ -79,8 +87,11 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                     .map(|user_content| user_content.0)
                     .collect::<Vec<UserContent>>();
 
-                let content = OneOrMany::many(user_content)
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                let content = OneOrMany::many(user_content).map_err(|_| {
+                    CompletionError::ResponseError(
+                        "Bedrock returned a user message with no content blocks".to_owned(),
+                    )
+                })?;
                 Ok(RigMessage(Message::User { content }))
             }
             _ => Err(CompletionError::ProviderError(

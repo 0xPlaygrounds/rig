@@ -82,6 +82,20 @@ pub enum StopReason {
 /// the crate.
 ///
 /// This is not intended to be used directly.
+impl fmt::Display for StopReason {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            StopReason::ContentFiltered => write!(f, "content_filtered"),
+            StopReason::EndTurn => write!(f, "end_turn"),
+            StopReason::GuardrailIntervened => write!(f, "guardrail_intervened"),
+            StopReason::MaxTokens => write!(f, "max_tokens"),
+            StopReason::StopSequence => write!(f, "stop_sequence"),
+            StopReason::ToolUse => write!(f, "tool_use"),
+            StopReason::Unknown(value) => write!(f, "unknown({value})"),
+        }
+    }
+}
+
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd, Debug, Hash, Serialize, Deserialize)]
 pub struct UnknownVariantValue(pub(crate) String);
 
