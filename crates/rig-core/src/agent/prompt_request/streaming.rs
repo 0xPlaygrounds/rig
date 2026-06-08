@@ -320,15 +320,38 @@ fn record_completion_call_if_needed(
     completion_call_emitted: &mut bool,
     call_index: usize,
     current_call_usage: Option<crate::completion::Usage>,
+    chat_stream_span: &tracing::Span,
 ) -> Option<CompletionCall> {
     if *completion_call_emitted {
         return None;
+    }
+
+    if let Some(usage) = current_call_usage {
+        record_usage_on_span(chat_stream_span, usage);
     }
 
     let completion_call = CompletionCall::new(call_index, current_call_usage);
     completion_calls.push(completion_call);
     *completion_call_emitted = true;
     Some(completion_call)
+}
+
+fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
+    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+    span.record(
+        "gen_ai.usage.cache_read.input_tokens",
+        usage.cached_input_tokens,
+    );
+    span.record(
+        "gen_ai.usage.cache_creation.input_tokens",
+        usage.cache_creation_input_tokens,
+    );
+    span.record(
+        "gen_ai.usage.tool_use_prompt_tokens",
+        usage.tool_use_prompt_tokens,
+    );
+    span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 }
 
 /// Combine input history with new messages for building completion requests.
@@ -745,23 +768,26 @@ where
     }
 
     async fn send(self) -> StreamingResult<M::StreamingResponse> {
-        let agent_span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                "invoke_agent",
-                gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent_name(),
-                gen_ai.system_instructions = self.preamble,
-                gen_ai.prompt = tracing::field::Empty,
-                gen_ai.completion = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+        let (agent_span, created_agent_span) = if tracing::Span::current().is_disabled() {
+            (
+                info_span!(
+                    "invoke_agent",
+                    gen_ai.operation.name = "invoke_agent",
+                    gen_ai.agent.name = self.agent_name(),
+                    gen_ai.system_instructions = self.preamble,
+                    gen_ai.prompt = tracing::field::Empty,
+                    gen_ai.completion = tracing::field::Empty,
+                    gen_ai.usage.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.output_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                    gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                ),
+                true,
             )
         } else {
-            tracing::Span::current()
+            (tracing::Span::current(), false)
         };
 
         let prompt = self.prompt;
@@ -907,7 +933,7 @@ where
                 let mut stream = prepared_request
                     .builder
                     .stream()
-                    .instrument(chat_stream_span)
+                    .instrument(chat_stream_span.clone())
                     .await?;
 
                 let call_index = completion_call_index;
@@ -1029,6 +1055,7 @@ where
                                             &mut completion_call_emitted,
                                             call_index,
                                             current_call_usage,
+                                            &chat_stream_span,
                                         ) {
                                             yield Ok(MultiTurnStreamItem::CompletionCall(
                                                 completion_call,
@@ -1095,6 +1122,7 @@ where
                                             &mut completion_call_emitted,
                                             call_index,
                                             current_call_usage,
+                                            &chat_stream_span,
                                         ) {
                                             yield Ok(MultiTurnStreamItem::CompletionCall(
                                                 completion_call,
@@ -1222,6 +1250,7 @@ where
                                                     &mut completion_call_emitted,
                                                     call_index,
                                                     current_call_usage,
+                                                    &chat_stream_span,
                                                 ) {
                                                     yield Ok(MultiTurnStreamItem::CompletionCall(
                                                         completion_call,
@@ -1291,6 +1320,7 @@ where
                                                     &mut completion_call_emitted,
                                                     call_index,
                                                     current_call_usage,
+                                                    &chat_stream_span,
                                                 ) {
                                                     yield Ok(MultiTurnStreamItem::CompletionCall(
                                                         completion_call,
@@ -1391,10 +1421,15 @@ where
                             if let Some(usage) = current_call_usage {
                                 aggregated_usage += usage;
                             }
-                            let completion_call = CompletionCall::new(call_index, current_call_usage);
-                            completion_calls.push(completion_call);
-                            completion_call_emitted = true;
-                            yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
+                            if let Some(completion_call) = record_completion_call_if_needed(
+                                &mut completion_calls,
+                                &mut completion_call_emitted,
+                                call_index,
+                                current_call_usage,
+                                &chat_stream_span,
+                            ) {
+                                yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
+                            }
 
                             if saw_text_this_turn {
                                 if let Some(ref hook) = self.hook &&
@@ -1419,9 +1454,13 @@ where
                     break 'outer;
                 }
 
-                if !completion_call_emitted {
-                    let completion_call = CompletionCall::new(call_index, current_call_usage);
-                    completion_calls.push(completion_call);
+                if let Some(completion_call) = record_completion_call_if_needed(
+                    &mut completion_calls,
+                    &mut completion_call_emitted,
+                    call_index,
+                    current_call_usage,
+                    &chat_stream_span,
+                ) {
                     yield Ok(MultiTurnStreamItem::CompletionCall(completion_call));
                 }
 
@@ -1611,13 +1650,10 @@ where
                         );
                     }
 
-                    let current_span = tracing::Span::current();
-                    current_span.record("gen_ai.usage.input_tokens", aggregated_usage.input_tokens);
-                    current_span.record("gen_ai.usage.output_tokens", aggregated_usage.output_tokens);
-                    current_span.record("gen_ai.usage.cache_read.input_tokens", aggregated_usage.cached_input_tokens);
-                    current_span.record("gen_ai.usage.cache_creation.input_tokens", aggregated_usage.cache_creation_input_tokens);
-                    current_span.record("gen_ai.usage.tool_use_prompt_tokens", aggregated_usage.tool_use_prompt_tokens);
-                    current_span.record("gen_ai.usage.reasoning_tokens", aggregated_usage.reasoning_tokens);
+                    if created_agent_span {
+                        let current_span = tracing::Span::current();
+                        record_usage_on_span(&current_span, aggregated_usage);
+                    }
                     tracing::info!("Agent multi-turn stream finished");
                     if let Some((memory, id)) = memory_handle.as_ref()
                         && let Err(err) = memory.append(id, new_messages.clone()).await
@@ -1731,11 +1767,16 @@ mod tests {
         MockStreamEvent, MockSubtractTool, MockToolError,
     };
     use crate::tool::Tool;
-    use futures::StreamExt;
+    use futures::{StreamExt, TryStreamExt};
     use serde::Deserialize;
+    use std::collections::HashMap;
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use tracing::field::{Field, Visit};
+    use tracing::{Id, Subscriber};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
     #[test]
     fn merge_reasoning_blocks_preserves_order_and_signatures() {
@@ -2140,6 +2181,171 @@ mod tests {
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct CapturedSpan {
+        id: u64,
+        name: String,
+        parent_id: Option<u64>,
+        fields: HashMap<String, u64>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
+
+    impl CapturedSpans {
+        fn insert(&self, id: &Id, name: &str, parent_id: Option<u64>) {
+            let id = id.into_u64();
+            if let Ok(mut spans) = self.0.lock() {
+                spans.push(CapturedSpan {
+                    id,
+                    name: name.to_string(),
+                    parent_id,
+                    fields: HashMap::new(),
+                });
+            }
+        }
+
+        fn record(&self, id: &Id, fields: Vec<(String, u64)>) {
+            if let Ok(mut spans) = self.0.lock()
+                && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
+            {
+                span.fields.extend(fields);
+            }
+        }
+
+        fn snapshot(&self) -> Vec<CapturedSpan> {
+            self.0.lock().map(|spans| spans.clone()).unwrap_or_default()
+        }
+    }
+
+    struct SpanCaptureLayer {
+        spans: CapturedSpans,
+    }
+
+    impl<S> Layer<S> for SpanCaptureLayer
+    where
+        S: Subscriber,
+        S: for<'lookup> LookupSpan<'lookup>,
+    {
+        fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+            let parent_id = attrs
+                .parent()
+                .map(Id::into_u64)
+                .or_else(|| ctx.current_span().id().map(Id::into_u64));
+            self.spans.insert(id, attrs.metadata().name(), parent_id);
+        }
+
+        fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
+            let mut fields = Vec::new();
+            values.record(&mut SpanFieldCaptureVisitor {
+                fields: &mut fields,
+            });
+            self.spans.record(span, fields);
+        }
+    }
+
+    struct SpanFieldCaptureVisitor<'a> {
+        fields: &'a mut Vec<(String, u64)>,
+    }
+
+    impl Visit for SpanFieldCaptureVisitor<'_> {
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields.push((field.name().to_string(), value));
+        }
+
+        fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
+    }
+
+    async fn assert_stream_usage_recorded_on_chat_spans(
+        agent: crate::agent::Agent<MockCompletionModel>,
+        prompt: &str,
+        max_turns: usize,
+        expected_usages: &[Usage],
+    ) {
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+        let empty_history: &[Message] = &[];
+        let outer_span = tracing::info_span!("outer");
+
+        async {
+            let mut stream = agent
+                .stream_prompt(prompt)
+                .with_history(empty_history)
+                .multi_turn(max_turns)
+                .await;
+
+            while let Some(item) = stream.try_next().await.expect("stream should not error") {
+                if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                    break;
+                }
+            }
+        }
+        .instrument(outer_span)
+        .await;
+
+        let span_snapshot = spans.snapshot();
+        let outer_span_id = span_snapshot
+            .iter()
+            .find(|span| span.name == "outer")
+            .map(|span| span.id)
+            .expect("outer span should be captured");
+        let chat_spans = span_snapshot
+            .iter()
+            .filter(|span| span.name == "chat_streaming")
+            .collect::<Vec<_>>();
+
+        assert_eq!(chat_spans.len(), expected_usages.len());
+        assert!(
+            span_snapshot.iter().all(|span| span.name != "invoke_agent"),
+            "outer span path should not create invoke_agent"
+        );
+
+        for (chat_span, expected_usage) in chat_spans.into_iter().zip(expected_usages) {
+            assert_eq!(chat_span.parent_id, Some(outer_span_id));
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.input_tokens"),
+                Some(&expected_usage.input_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.output_tokens"),
+                Some(&expected_usage.output_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.cache_read.input_tokens"),
+                Some(&expected_usage.cached_input_tokens)
+            );
+            assert_eq!(
+                chat_span
+                    .fields
+                    .get("gen_ai.usage.cache_creation.input_tokens"),
+                Some(&expected_usage.cache_creation_input_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.tool_use_prompt_tokens"),
+                Some(&expected_usage.tool_use_prompt_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.reasoning_tokens"),
+                Some(&expected_usage.reasoning_tokens)
+            );
+        }
+
+        let outer_span = span_snapshot
+            .iter()
+            .find(|span| span.id == outer_span_id)
+            .expect("outer span should be present");
+        assert!(
+            outer_span
+                .fields
+                .keys()
+                .all(|field| !field.starts_with("gen_ai.usage.")),
+            "usage should not be recorded onto the caller's outer span"
+        );
     }
 
     #[test]
@@ -4943,6 +5149,48 @@ mod tests {
                 CompletionCall::new(1, Some(second_call_usage))
             ]
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_records_single_call_usage_on_chat_span_under_outer_span() {
+        let call_usage = usage(10, 2);
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response(call_usage),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        assert_stream_usage_recorded_on_chat_spans(agent, "say done", 1, &[call_usage]).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_records_multi_turn_usage_on_chat_spans_under_outer_span() {
+        let first_call_usage = usage(10, 2);
+        let second_call_usage = usage(25, 5);
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response(first_call_usage),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response(second_call_usage),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        assert_stream_usage_recorded_on_chat_spans(
+            agent,
+            "do tool work",
+            3,
+            &[first_call_usage, second_call_usage],
+        )
+        .await;
     }
 
     #[tokio::test]
