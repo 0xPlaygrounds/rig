@@ -98,7 +98,7 @@ qdrant-client = { version = "1.14.0", default-features = false, features = [
 quick-xml = "0.40.1"
 quote = "1.0.40"
 rayon = "1.10.0"
-redis = "1.2.1"
+redis = { version = "1.2.1", default-features = false }
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5.1", default-features = false }
 reqwest-retry = "0.9"
@@ -158,6 +158,7 @@ rig-mongodb = { path = "crates/rig-mongodb", version = "0.38.1", optional = true
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.38.1", optional = true, default-features = false }
 rig-postgres = { path = "crates/rig-postgres", version = "0.38.1", optional = true, default-features = false }
 rig-qdrant = { path = "crates/rig-qdrant", version = "0.38.1", optional = true, default-features = false }
+rig-redis = { path = "crates/rig-redis", version = "0.38.1", optional = true, default-features = false }
 rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.38.1", optional = true, default-features = false }
 rig-scylladb = { path = "crates/rig-scylladb", version = "0.38.1", optional = true, default-features = false }
 rig-sqlite = { path = "crates/rig-sqlite", version = "0.38.1", optional = true, default-features = false }
@@ -244,6 +245,7 @@ mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]
 postgres = ["dep:rig-postgres"]
 qdrant = ["dep:rig-qdrant"]
+redis = ["dep:rig-redis"]
 s3vectors = ["dep:rig-s3vectors"]
 scylladb = ["dep:rig-scylladb"]
 sqlite = ["dep:rig-sqlite"]
