@@ -6,7 +6,7 @@ Vector store index integration for [Redis](https://redis.io/) using RediSearch v
 
 - Vector similarity search using Redis's RediSearch module
 - Support for KNN (k-nearest neighbors) queries
-- Metadata filtering with Redis query syntax
+- RediSearch filtering for fields that already exist in your Redis hashes and index schema
 - Document insertion with automatic embedding storage
 - Compatible with Redis 7.2+ or Redis Stack
 
@@ -56,7 +56,9 @@ let vector_store = RedisVectorStore::new(
     redis_client,
     "word_idx".to_string(),      // index name
     "embedding".to_string(),      // vector field name
-);
+)
+.await?
+.with_key_prefix("doc:".to_string());
 
 // Insert documents
 vector_store.insert_documents(documents).await?;
@@ -72,7 +74,23 @@ let results = vector_store
     .await?;
 ```
 
-You can find complete examples [here](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-redis/examples).
+You can find complete examples [here](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-redis/examples).
+
+## Filtering
+
+Redis filters target fields that already exist in your Redis hashes and are declared in your RediSearch schema. `InsertDocuments` writes `document`, `embedded_text`, and the configured vector field; it does not automatically expand document metadata into separate Redis hash fields.
+
+When constructing Redis filters directly, use the fallible numeric range constructors so runtime values are rejected before Redis execution:
+
+```rust
+use rig_redis::filter::{Filter, RedisValue};
+
+let price_filter = Filter::gte("price", RedisValue::Number(50.0))?;
+let category_filter = Filter::eq("category", RedisValue::String("books".to_string()))?;
+let filter = price_filter.and(category_filter);
+```
+
+Use `Filter::eq` or `Filter::tag_in` for tag/string matching. Numeric range filters return an error for strings and booleans instead of converting them into tag matches.
 
 ## Distance Metrics
 
@@ -88,12 +106,13 @@ Choose the metric that matches your embedding model when creating the index.
 - Requires pre-created RediSearch index
 - Vector dimensionality must match the index definition
 - Embeddings are stored as FLOAT32 (converted from FLOAT64)
+- `InsertDocuments` stores only `document`, `embedded_text`, and the configured vector field. Filters work only for fields that are present in the Redis hash and declared in the RediSearch schema.
 
 ## Testing
 
 ### Prerequisites
 
-Integration tests require Docker to be running, as they use testcontainers to spin up a Redis Stack instance.
+Integration tests use Redis Stack. By default they try to start Redis Stack with testcontainers and skip cleanly if Docker is unavailable. Set `REDIS_URL` to run against an explicit Redis Stack instance; the tests probe for RediSearch support before running.
 
 ### Running Tests
 

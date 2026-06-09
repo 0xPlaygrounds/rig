@@ -5,43 +5,215 @@
 //!
 //! # Field Type Expectations
 //!
-//! - **Numeric fields**: `eq`, `gt`, `lt`, `gte`, `lte`, `range` produce range syntax (`@field:[min max]`)
+//! - **Numeric fields**: `eq`, `gt`, `lt`, `gte`, `lte`, and `range` produce range syntax (`@field:[min max]`)
 //! - **Tag fields**: String equality uses tag syntax (`@field:{value}`)
-//! - **Bool fields**: Treated as numeric TAG (1/0) with tag syntax
+//! - **Bool fields**: Equality uses numeric TAG values (`1` or `0`) with tag syntax
+//! - **Range filters**: Redis-specific range constructors reject non-numeric values instead of converting them into tag matches
 //!
-//! Ensure your RediSearch schema matches the filter types you use.
+//! The generic [`SearchFilter`] implementation is numeric-only because Rig's
+//! shared trait is infallible. Use the inherent [`Filter`] constructors when
+//! building Redis filters directly, especially for tag values and fallible
+//! numeric range filters. Ensure your RediSearch schema matches the filter
+//! types you use.
 
 use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
 use serde::{Deserialize, Serialize};
 
-/// Typed value for Redis filter expressions.
+/// Typed value for Redis-specific filter expressions.
 ///
 /// Determines how the value is formatted in the RediSearch query syntax.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RedisValue {
-    /// Numeric value — produces range syntax for all comparisons.
+    /// Numeric value. Equality produces range syntax; range constructors use
+    /// this as the only supported value kind.
     Number(f64),
-    /// String/tag value — produces tag syntax `{value}`.
+    /// String/tag value. Equality and tag filters produce tag syntax.
     String(String),
-    /// Boolean value — treated as numeric TAG (`1` or `0`).
+    /// Boolean value. Equality treats this as a TAG value (`1` or `0`).
     Bool(bool),
 }
 
-impl RedisValue {
-    /// Formats value for tag-style filters (`@field:{value}` or `@field:{1}`).
-    fn to_tag_expr(&self) -> String {
-        match self {
-            RedisValue::Number(n) => n.to_string(),
-            RedisValue::String(s) => s.clone(),
-            RedisValue::Bool(b) => {
-                if *b {
-                    "1".to_string()
-                } else {
-                    "0".to_string()
-                }
-            }
+/// Finite numeric value for Redis range-syntax filters.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RedisNumber(f64);
+
+impl RedisNumber {
+    /// Creates a finite Redis numeric filter value.
+    pub fn new(value: f64) -> Result<Self, FilterError> {
+        if value.is_finite() {
+            Ok(Self(value))
+        } else {
+            Err(FilterError::Expected {
+                expected: "finite numeric value for Redis numeric filter".into(),
+                got: value.to_string(),
+            })
         }
     }
+
+    fn get(self) -> f64 {
+        self.0
+    }
+}
+
+impl TryFrom<f64> for RedisNumber {
+    type Error = FilterError;
+
+    fn try_from(value: f64) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl From<i64> for RedisNumber {
+    fn from(value: i64) -> Self {
+        Self(value as f64)
+    }
+}
+
+impl From<u64> for RedisNumber {
+    fn from(value: u64) -> Self {
+        Self(value as f64)
+    }
+}
+
+fn numeric_bound(value: RedisValue, operation: &'static str) -> Result<RedisNumber, FilterError> {
+    match value {
+        RedisValue::Number(n) if n.is_finite() => Ok(RedisNumber(n)),
+        RedisValue::Number(n) => Err(FilterError::Expected {
+            expected: format!("finite numeric value for Redis {operation} filter"),
+            got: n.to_string(),
+        }),
+        other => Err(FilterError::Expected {
+            expected: format!("numeric value for Redis {operation} filter"),
+            got: format!("{other:?}"),
+        }),
+    }
+}
+
+fn numeric_eq_filter(key: impl AsRef<str>, value: RedisNumber) -> Filter {
+    let value = value.get();
+    Filter(format!("@{}:[{value} {value}]", field_name(key)))
+}
+
+fn gt_number_filter(key: impl AsRef<str>, value: RedisNumber) -> Filter {
+    let value = value.get();
+    Filter(format!("@{}:[({value} +inf]", field_name(key)))
+}
+
+fn lt_number_filter(key: impl AsRef<str>, value: RedisNumber) -> Filter {
+    let value = value.get();
+    Filter(format!("@{}:[-inf ({value}]", field_name(key)))
+}
+
+fn gte_number_filter(key: impl AsRef<str>, value: RedisNumber) -> Filter {
+    let value = value.get();
+    Filter(format!("@{}:[{value} +inf]", field_name(key)))
+}
+
+fn lte_number_filter(key: impl AsRef<str>, value: RedisNumber) -> Filter {
+    let value = value.get();
+    Filter(format!("@{}:[-inf {value}]", field_name(key)))
+}
+
+fn field_name(key: impl AsRef<str>) -> String {
+    key.as_ref()
+        .split('.')
+        .map(escape_field_segment)
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+fn escape_field_segment(segment: &str) -> String {
+    let mut escaped = String::with_capacity(segment.len());
+    for ch in segment.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            escaped.push(ch);
+        } else {
+            escaped.push('\\');
+            escaped.push(ch);
+        }
+    }
+    escaped
+}
+
+fn escape_tag_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if matches!(
+            ch,
+            '\\' | ' '
+                | ','
+                | '.'
+                | '<'
+                | '>'
+                | '{'
+                | '}'
+                | '['
+                | ']'
+                | '"'
+                | '\''
+                | ':'
+                | ';'
+                | '!'
+                | '@'
+                | '#'
+                | '$'
+                | '%'
+                | '^'
+                | '&'
+                | '*'
+                | '('
+                | ')'
+                | '-'
+                | '+'
+                | '='
+                | '~'
+                | '|'
+                | '/'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
+
+fn escape_text_query(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if matches!(
+            ch,
+            '\\' | '<'
+                | '>'
+                | '{'
+                | '}'
+                | '['
+                | ']'
+                | '"'
+                | '\''
+                | ':'
+                | ';'
+                | '!'
+                | '@'
+                | '#'
+                | '$'
+                | '%'
+                | '^'
+                | '&'
+                | '*'
+                | '('
+                | ')'
+                | '-'
+                | '+'
+                | '='
+                | '~'
+                | '|'
+                | '/'
+        ) {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
 }
 
 impl From<i64> for RedisValue {
@@ -105,61 +277,79 @@ impl TryFrom<serde_json::Value> for RedisValue {
 
 /// Redis filter for FT.SEARCH queries.
 ///
-/// Wraps a raw RediSearch query string. Combine filters with [`SearchFilter::and`]
-/// and [`SearchFilter::or`], or use the additional helpers like [`Filter::range`]
-/// and [`Filter::tag_in`].
+/// Wraps a raw RediSearch query string. Use the inherent constructors on this
+/// type for Redis-specific filters, including fallible numeric range filters
+/// and tag filters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filter(String);
 
 impl SearchFilter for Filter {
-    type Value = RedisValue;
+    type Value = RedisNumber;
 
+    /// Numeric equality filter.
+    ///
+    /// Redis-specific string and boolean equality are available through the
+    /// inherent [`Filter::eq`] constructor.
+    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+        numeric_eq_filter(key, value)
+    }
+
+    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        gt_number_filter(key, value)
+    }
+
+    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+        lt_number_filter(key, value)
+    }
+
+    fn and(self, rhs: Self) -> Self {
+        self.and(rhs)
+    }
+
+    fn or(self, rhs: Self) -> Self {
+        self.or(rhs)
+    }
+}
+
+impl Filter {
     /// Equality filter.
     ///
     /// - Numeric: `@field:[val val]` (exact range match)
     /// - String: `@field:{value}` (tag match)
     /// - Bool: `@field:{1}` or `@field:{0}` (tag match)
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        match value {
-            RedisValue::Number(n) => Self(format!("@{}:[{} {}]", key.as_ref(), n, n)),
-            RedisValue::String(ref s) => Self(format!("@{}:{{{}}}", key.as_ref(), s)),
+    pub fn eq(key: impl AsRef<str>, value: impl Into<RedisValue>) -> Result<Self, FilterError> {
+        let key = field_name(key);
+        let filter = match value.into() {
+            RedisValue::Number(n) => numeric_eq_filter(key, RedisNumber::new(n)?),
+            RedisValue::String(ref s) => Self(format!("@{key}:{{{}}}", escape_tag_value(s))),
             RedisValue::Bool(b) => {
                 let v = if b { "1" } else { "0" };
-                Self(format!("@{}:{{{}}}", key.as_ref(), v))
+                Self(format!("@{key}:{{{v}}}"))
             }
-        }
+        };
+        Ok(filter)
     }
 
     /// Greater-than filter (exclusive).
     ///
-    /// Numeric: `@field:[(val +inf]`. Non-numeric falls back to tag syntax.
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        match value {
-            RedisValue::Number(n) => Self(format!("@{}:[({} +inf]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
-        }
+    /// Produces `@field:[(val +inf]` for numeric values and returns an error
+    /// for strings or booleans. Use [`Filter::eq`] or [`Filter::tag_in`] for
+    /// tag comparisons.
+    pub fn gt(key: impl AsRef<str>, value: impl Into<RedisValue>) -> Result<Self, FilterError> {
+        let value = numeric_bound(value.into(), "greater-than")?;
+        Ok(gt_number_filter(key, value))
     }
 
     /// Less-than filter (exclusive).
     ///
-    /// Numeric: `@field:[-inf (val]`. Non-numeric falls back to tag syntax.
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        match value {
-            RedisValue::Number(n) => Self(format!("@{}:[-inf ({}]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
-        }
+    /// Produces `@field:[-inf (val]` for numeric values and returns an error
+    /// for strings or booleans. Use [`Filter::eq`] or [`Filter::tag_in`] for
+    /// tag comparisons.
+    pub fn lt(key: impl AsRef<str>, value: impl Into<RedisValue>) -> Result<Self, FilterError> {
+        let value = numeric_bound(value.into(), "less-than")?;
+        Ok(lt_number_filter(key, value))
     }
 
-    fn and(self, rhs: Self) -> Self {
-        Self(format!("({} {})", self.0, rhs.0))
-    }
-
-    fn or(self, rhs: Self) -> Self {
-        Self(format!("({} | {})", self.0, rhs.0))
-    }
-}
-
-impl Filter {
     /// Negates this filter expression.
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
@@ -168,45 +358,67 @@ impl Filter {
 
     /// Greater than or equal (inclusive).
     ///
-    /// Numeric: `@field:[val +inf]`.
-    pub fn gte(key: impl AsRef<str>, value: <Self as SearchFilter>::Value) -> Self {
-        match value {
-            RedisValue::Number(n) => Self(format!("@{}:[{} +inf]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
-        }
+    /// Produces `@field:[val +inf]` for numeric values and returns an error
+    /// for strings or booleans. Use [`Filter::eq`] or [`Filter::tag_in`] for
+    /// tag comparisons.
+    pub fn gte(key: impl AsRef<str>, value: impl Into<RedisValue>) -> Result<Self, FilterError> {
+        let value = numeric_bound(value.into(), "greater-than-or-equal")?;
+        Ok(gte_number_filter(key, value))
     }
 
     /// Less than or equal (inclusive).
     ///
-    /// Numeric: `@field:[-inf val]`.
-    pub fn lte(key: impl AsRef<str>, value: <Self as SearchFilter>::Value) -> Self {
-        match value {
-            RedisValue::Number(n) => Self(format!("@{}:[-inf {}]", key.as_ref(), n)),
-            _ => Self(format!("@{}:{{{}}}", key.as_ref(), value.to_tag_expr())),
-        }
+    /// Produces `@field:[-inf val]` for numeric values and returns an error
+    /// for strings or booleans. Use [`Filter::eq`] or [`Filter::tag_in`] for
+    /// tag comparisons.
+    pub fn lte(key: impl AsRef<str>, value: impl Into<RedisValue>) -> Result<Self, FilterError> {
+        let value = numeric_bound(value.into(), "less-than-or-equal")?;
+        Ok(lte_number_filter(key, value))
+    }
+
+    /// Combines this filter with another using RediSearch AND semantics.
+    pub fn and(self, rhs: Self) -> Self {
+        Self(format!("({} {})", self.0, rhs.0))
+    }
+
+    /// Combines this filter with another using RediSearch OR semantics.
+    pub fn or(self, rhs: Self) -> Self {
+        Self(format!("({} | {})", self.0, rhs.0))
     }
 
     /// Numeric range filter (inclusive on both ends).
-    pub fn range(key: impl AsRef<str>, min: f64, max: f64) -> Self {
-        Self(format!("@{}:[{} {}]", key.as_ref(), min, max))
+    pub fn range(key: impl AsRef<str>, min: f64, max: f64) -> Result<Self, FilterError> {
+        let min = RedisNumber::new(min)?.get();
+        let max = RedisNumber::new(max)?.get();
+        Ok(Self(format!("@{}:[{} {}]", field_name(key), min, max)))
     }
 
     /// Numeric range filter (exclusive on both ends).
-    pub fn range_exclusive(key: impl AsRef<str>, min: f64, max: f64) -> Self {
-        Self(format!("@{}:[({} ({}]", key.as_ref(), min, max))
+    pub fn range_exclusive(key: impl AsRef<str>, min: f64, max: f64) -> Result<Self, FilterError> {
+        let min = RedisNumber::new(min)?.get();
+        let max = RedisNumber::new(max)?.get();
+        Ok(Self(format!("@{}:[({} ({}]", field_name(key), min, max)))
     }
 
     /// Tag filter for multiple values (OR).
     ///
     /// Produces `@field:{val1 | val2 | val3}`.
     pub fn tag_in(key: impl AsRef<str>, values: Vec<String>) -> Self {
-        let tags = values.join(" | ");
-        Self(format!("@{}:{{{}}}", key.as_ref(), tags))
+        let tags = values
+            .iter()
+            .map(|value| escape_tag_value(value))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        Self(format!("@{}:{{{}}}", field_name(key), tags))
     }
 
     /// Full-text search within a TEXT field.
     pub fn text_contains(key: impl AsRef<str>, text: impl AsRef<str>) -> Self {
-        Self(format!("@{}:{}", key.as_ref(), text.as_ref()))
+        Self(format!(
+            "@{}:({})",
+            field_name(key),
+            escape_text_query(text.as_ref())
+        ))
     }
 
     /// Consumes the filter and returns the raw RediSearch query string.
@@ -220,9 +432,9 @@ impl TryFrom<CoreFilter<serde_json::Value>> for Filter {
 
     fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
         let filter = match value {
-            CoreFilter::Eq(k, val) => Filter::eq(k, val.try_into()?),
-            CoreFilter::Gt(k, val) => Filter::gt(k, val.try_into()?),
-            CoreFilter::Lt(k, val) => Filter::lt(k, val.try_into()?),
+            CoreFilter::Eq(k, val) => Filter::eq(k, RedisValue::try_from(val)?)?,
+            CoreFilter::Gt(k, val) => Filter::gt(k, RedisValue::try_from(val)?)?,
+            CoreFilter::Lt(k, val) => Filter::lt(k, RedisValue::try_from(val)?)?,
             CoreFilter::And(l, r) => Self::try_from(*l)?.and(Self::try_from(*r)?),
             CoreFilter::Or(l, r) => Self::try_from(*l)?.or(Self::try_from(*r)?),
         };
