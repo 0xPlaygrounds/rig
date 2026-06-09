@@ -1,15 +1,17 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::{
+    OneOrMany,
     completion::CompletionError,
     message::{AssistantContent, Text},
 };
+
 use serde::{Deserialize, Serialize};
 
 use crate::types::message::RigMessage;
 
 use super::{
-    converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
+    converse_output::{ContentBlock, InternalConverseOutput, StopReason, TokenUsage},
     json::AwsDocument,
 };
 use rig_core::completion::{self, GetTokenUsage};
@@ -104,14 +106,29 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
             })?
             .to_owned();
 
-        // Short-circuit empty content blocks with a descriptive ResponseError so
-        // callers can distinguish guardrail/content-filter/max-tokens cases from
-        // a generic "RequestError(EmptyListError)" raised deeper in the
-        // OneOrMany conversion.
+        // Handle empty content blocks. When `stop_reason=end_turn` we treat this
+        // as a benign empty response and synthesize a single empty text block so
+        // downstream code receives a well-formed `CompletionResponse` instead of
+        // failing on `OneOrMany::many`. For every other stop reason (guardrail
+        // intervention, content filter, max_tokens exhaustion, etc.) the empty
+        // response is surfaced as a `ResponseError` carrying the stop_reason so
+        // callers can branch.
         if aws_message.content.is_empty() {
-            return Err(CompletionError::ResponseError(format!(
-                "No assistance content returned (stop_reason={stop_reason})"
-            )));
+            return match stop_reason {
+                StopReason::EndTurn => {
+                    let choice = OneOrMany::one(AssistantContent::Text(Text::new("")));
+                    let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
+                    Ok(completion::CompletionResponse {
+                        choice,
+                        usage,
+                        raw_response: value,
+                        message_id: None,
+                    })
+                }
+                _ => Err(CompletionError::ResponseError(format!(
+                    "No assistance content returned (stop_reason={stop_reason})"
+                ))),
+            };
         }
 
         let message: RigMessage = aws_message.try_into()?;
@@ -382,6 +399,69 @@ mod tests {
             completion.choice,
             OneOrMany::one(AssistantContent::Text("txt".into()))
         );
+    }
+
+    fn make_output_with_content_and_stop_reason(
+        content: Vec<aws_bedrock::ContentBlock>,
+        stop_reason: aws_bedrock::StopReason,
+    ) -> AwsConverseOutput {
+        let message = aws_bedrock::Message::builder()
+            .role(aws_bedrock::ConversationRole::Assistant)
+            .set_content(Some(content))
+            .build()
+            .unwrap();
+        let builder = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .output(aws_bedrock::ConverseOutput::Message(message))
+            .stop_reason(stop_reason);
+        let internal: InternalConverseOutput = builder.build().unwrap().try_into().unwrap();
+        AwsConverseOutput(internal)
+    }
+
+    #[test]
+    fn empty_content_with_end_turn_yields_empty_text_choice() {
+        let output = make_output_with_content_and_stop_reason(
+            vec![],
+            aws_bedrock::StopReason::EndTurn,
+        );
+        let completion: completion::CompletionResponse<AwsConverseOutput> = output
+            .try_into()
+            .expect("end_turn with empty content should not error");
+        assert_eq!(
+            completion.choice,
+            OneOrMany::one(AssistantContent::Text("".into()))
+        );
+    }
+
+    #[test]
+    fn empty_content_with_max_tokens_yields_response_error() {
+        let output = make_output_with_content_and_stop_reason(
+            vec![],
+            aws_bedrock::StopReason::MaxTokens,
+        );
+        let result: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
+            output.try_into();
+        let Err(err) = result else {
+            panic!("max_tokens with empty content should error");
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("max_tokens"),
+            "error should mention stop_reason: {msg}"
+        );
+    }
+
+    #[test]
+    fn empty_content_with_guardrail_yields_response_error() {
+        let output = make_output_with_content_and_stop_reason(
+            vec![],
+            aws_bedrock::StopReason::GuardrailIntervened,
+        );
+        let result: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
+            output.try_into();
+        let Err(err) = result else {
+            panic!("guardrail with empty content should error");
+        };
+        assert!(err.to_string().contains("guardrail_intervened"));
     }
 
     #[test]
