@@ -56,6 +56,25 @@ pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
 pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
 
+/// Copilot conversation intent sent in the `openai-intent` request header.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum CopilotIntent {
+    /// Generic chat panel conversation semantics.
+    #[default]
+    Panel,
+    /// Edit-oriented conversation semantics.
+    Edits,
+}
+
+impl CopilotIntent {
+    fn as_header(self) -> &'static str {
+        match self {
+            Self::Panel => "conversation-panel",
+            Self::Edits => "conversation-edits",
+        }
+    }
+}
+
 /// `gpt-4`
 pub const GPT_4: &str = "gpt-4";
 /// `gpt-4o`
@@ -349,6 +368,7 @@ fn default_headers(
     api_key: &str,
     initiator: &'static str,
     has_vision: bool,
+    intent: CopilotIntent,
 ) -> Vec<(&'static str, String)> {
     let mut headers = vec![
         (
@@ -359,7 +379,7 @@ fn default_headers(
         ("editor-version", EDITOR_VERSION.to_string()),
         ("editor-plugin-version", EDITOR_PLUGIN_VERSION.to_string()),
         ("user-agent", USER_AGENT.to_string()),
-        ("openai-intent", "conversation-edits".to_string()),
+        ("openai-intent", intent.as_header().to_string()),
         ("x-github-api-version", API_VERSION.to_string()),
         ("x-request-id", nanoid::nanoid!()),
         (
@@ -659,6 +679,7 @@ pub struct CompletionModel<H = reqwest::Client> {
     pub model: String,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
+    pub intent: CopilotIntent,
 }
 
 impl<H> CompletionModel<H>
@@ -672,6 +693,7 @@ where
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
+            intent: CopilotIntent::default(),
         }
     }
 
@@ -683,6 +705,19 @@ where
     pub fn with_tool_result_array_content(mut self) -> Self {
         self.tool_result_array_content = true;
         self
+    }
+
+    pub fn with_intent(mut self, intent: CopilotIntent) -> Self {
+        self.intent = intent;
+        self
+    }
+
+    pub fn with_panel_intent(self) -> Self {
+        self.with_intent(CopilotIntent::Panel)
+    }
+
+    pub fn with_edits_intent(self) -> Self {
+        self.with_intent(CopilotIntent::Edits)
     }
 
     fn route(&self) -> CompletionRoute {
@@ -727,7 +762,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let auth = self.auth_context().await?;
 
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Http)?,
             &headers,
@@ -808,7 +843,7 @@ where
         let request = self.responses_request(completion_request)?;
         let auth = self.auth_context().await?;
 
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/responses", Transport::Http)?,
             &headers,
@@ -879,7 +914,7 @@ where
         let has_vision = request_has_vision(&completion_request);
         let request = self.chat_request(completion_request)?;
         let auth = self.auth_context().await?;
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let mut request_json = serde_json::to_value(&request)?;
         let request_object = request_json.as_object_mut().ok_or_else(|| {
             CompletionError::ResponseError("copilot request body must be a JSON object".into())
@@ -931,7 +966,7 @@ where
         request.stream = Some(true);
         let auth = self.auth_context().await?;
 
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/responses", Transport::Sse)?,
             &headers,
@@ -1234,7 +1269,7 @@ where
             .await
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
-        let headers = default_headers(&auth.api_key, "user", false);
+        let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let mut body = json!({
             "model": self.model,
             "input": documents,
@@ -1374,7 +1409,7 @@ where
             }
         })?;
 
-        let headers = default_headers(&auth.api_key, "user", false);
+        let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let req = apply_headers(
             get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH, Transport::Http)?,
             &headers,
@@ -1558,8 +1593,8 @@ fn config_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute,
-        TEXT_EMBEDDING_3_SMALL, base_url_from_token, env_api_key, env_base_url,
+        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, CopilotIntent,
+        TEXT_EMBEDDING_3_SMALL, base_url_from_token, default_headers, env_api_key, env_base_url,
         env_github_access_token, route_for_model,
     };
     use crate::client::CompletionClient;
@@ -1746,6 +1781,49 @@ mod tests {
             route_for_model("claude-sonnet-4.5"),
             CompletionRoute::ChatCompletions
         );
+    }
+
+    #[test]
+    fn copilot_intent_headers_use_panel_by_default_and_edits_when_requested() {
+        let panel_headers = default_headers("token", "user", false, CopilotIntent::default());
+        assert_eq!(
+            panel_headers
+                .iter()
+                .find(|(name, _)| *name == "openai-intent")
+                .map(|(_, value)| value.as_str()),
+            Some("conversation-panel")
+        );
+
+        let edits_headers = default_headers("token", "user", false, CopilotIntent::Edits);
+        assert_eq!(
+            edits_headers
+                .iter()
+                .find(|(name, _)| *name == "openai-intent")
+                .map(|(_, value)| value.as_str()),
+            Some("conversation-edits")
+        );
+    }
+
+    #[test]
+    fn copilot_completion_model_intent_builders_update_intent() {
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .build()
+            .expect("build client");
+
+        let default_model = client.completion_model("gpt-4o");
+        assert_eq!(default_model.intent.as_header(), "conversation-panel");
+
+        let edits_model = client
+            .completion_model("gpt-4o")
+            .with_intent(CopilotIntent::Edits);
+        assert_eq!(edits_model.intent.as_header(), "conversation-edits");
+
+        let panel_model = client
+            .completion_model("gpt-4o")
+            .with_edits_intent()
+            .with_panel_intent();
+        assert_eq!(panel_model.intent.as_header(), "conversation-panel");
     }
 
     #[test]
