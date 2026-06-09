@@ -19,6 +19,8 @@ use crate::{
 pub struct CapturedHttpRequest {
     /// Request URI.
     pub uri: String,
+    /// Request headers.
+    pub headers: http::HeaderMap,
     /// Request body bytes.
     pub body: Bytes,
 }
@@ -112,17 +114,15 @@ impl HttpClientExt for RecordingHttpClient {
         let requests = Arc::clone(&self.requests);
         let response = self.response_guard().clone();
         let (parts, body) = req.into_parts();
+        let uri = parts.uri.to_string();
+        let headers = parts.headers;
         let body = body.into();
 
         match requests.lock() {
-            Ok(mut guard) => guard.push(CapturedHttpRequest {
-                uri: parts.uri.to_string(),
-                body,
-            }),
-            Err(poisoned) => poisoned.into_inner().push(CapturedHttpRequest {
-                uri: parts.uri.to_string(),
-                body,
-            }),
+            Ok(mut guard) => guard.push(CapturedHttpRequest { uri, headers, body }),
+            Err(poisoned) => poisoned
+                .into_inner()
+                .push(CapturedHttpRequest { uri, headers, body }),
         }
 
         async move {

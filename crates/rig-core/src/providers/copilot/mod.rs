@@ -57,7 +57,7 @@ pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
 
 /// Copilot conversation intent sent in the `openai-intent` request header.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CopilotIntent {
     /// Generic chat panel conversation semantics.
     #[default]
@@ -451,7 +451,7 @@ fn normalize_copilot_proxy_endpoint(proxy_ep: &str) -> Option<String> {
     if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
         return None;
     }
-    if url.query().is_some() || url.fragment().is_some() {
+    if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
         return None;
     }
 
@@ -736,15 +736,18 @@ where
         self
     }
 
+    /// Set the Copilot `openai-intent` header for completion and streaming requests.
     pub fn with_intent(mut self, intent: CopilotIntent) -> Self {
         self.intent = intent;
         self
     }
 
+    /// Use the generic chat panel `openai-intent` header for completion and streaming requests.
     pub fn with_panel_intent(self) -> Self {
         self.with_intent(CopilotIntent::Panel)
     }
 
+    /// Use the edit-oriented `openai-intent` header for completion and streaming requests.
     pub fn with_edits_intent(self) -> Self {
         self.with_intent(CopilotIntent::Edits)
     }
@@ -1882,6 +1885,12 @@ mod tests {
         );
         assert_eq!(base_url_from_token("tid=1;proxy-ep=://bad;exp=2"), None);
         assert_eq!(base_url_from_token("tid=1;proxy-ep=;exp=2"), None);
+        assert_eq!(
+            base_url_from_token(
+                "tid=1;proxy-ep=https://proxy.individual.githubcopilot.com/base;exp=2"
+            ),
+            None
+        );
     }
 
     #[tokio::test]
@@ -1928,6 +1937,30 @@ mod tests {
             requests[0].uri.starts_with("https://custom.example.com"),
             "expected explicit base URL, got {}",
             requests[0].uri
+        );
+    }
+
+    #[tokio::test]
+    async fn completion_model_edits_intent_sets_request_header() {
+        let http_client = RecordingHttpClient::new(minimal_chat_response());
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o").with_edits_intent();
+        let request = model.completion_request("hello").build();
+
+        let _response = model.completion(request).await.expect("chat completion");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0]
+                .headers
+                .get("openai-intent")
+                .and_then(|value| value.to_str().ok()),
+            Some("conversation-edits")
         );
     }
 
