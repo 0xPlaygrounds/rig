@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::info_span;
 
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionRequest, CompletionTerminalMetadata, GetTokenUsage,
+};
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleStreamProfile, CompatibleToolCallChunk,
 };
 use crate::providers::openrouter::{
     OpenRouterRequestParams, OpenrouterCompletionRequest, ReasoningDetails,
@@ -18,11 +19,17 @@ use crate::streaming;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -36,6 +43,17 @@ pub enum FinishReason {
     Length,
     #[serde(untagged)]
     Other(String),
+}
+
+fn raw_finish_reason(reason: &FinishReason) -> String {
+    match reason {
+        FinishReason::ToolCalls => "tool_calls".to_owned(),
+        FinishReason::Stop => "stop".to_owned(),
+        FinishReason::Error => "error".to_owned(),
+        FinishReason::ContentFilter => "content_filter".to_owned(),
+        FinishReason::Length => "length".to_owned(),
+        FinishReason::Other(reason) => reason.clone(),
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -237,25 +255,34 @@ impl CompatibleStreamProfile for OpenRouterCompatibleProfile {
                 Some(data.model),
                 data.usage,
                 &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
-                    },
+                |choice| {
+                    CompatibleChoiceData {
+                    terminal_metadata: choice
+                        .native_finish_reason
+                        .clone()
+                        .or_else(|| choice.finish_reason.as_ref().map(raw_finish_reason))
+                        .map(openai_chat_completions_compatible::terminal_metadata_from_raw_finish_reason),
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning.clone(),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
                         &choice.delta.tool_calls,
                     ),
                     details: choice.delta.reasoning_details.clone(),
+                }
                 },
             ),
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            terminal_metadata,
+        }
     }
 
     fn decorate_tool_call(

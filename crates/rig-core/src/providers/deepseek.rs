@@ -20,12 +20,12 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
     ProviderBuilder, ProviderClient,
 };
-use crate::completion::GetTokenUsage;
+use crate::completion::{CompletionTerminalMetadata, GetTokenUsage};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{Document, DocumentSourceKind};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleStreamProfile,
 };
 use crate::{
     OneOrMany,
@@ -705,6 +705,7 @@ pub struct StreamingDelta {
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -718,11 +719,17 @@ struct StreamingCompletionChunk {
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -755,21 +762,32 @@ impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
                 data.model,
                 data.usage,
                 &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: CompatibleFinishReason::Other,
+                |choice| {
+                    CompatibleChoiceData {
+                    terminal_metadata: choice.finish_reason.clone().map(
+                        openai_chat_completions_compatible::terminal_metadata_from_raw_finish_reason,
+                    ),
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning_content.clone(),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
+                }
                 },
             ),
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            terminal_metadata,
+        }
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {

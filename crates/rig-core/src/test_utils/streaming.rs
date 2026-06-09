@@ -1,7 +1,7 @@
 //! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel).
 
 use crate::{
-    completion::{CompletionError, GetTokenUsage, Usage},
+    completion::{CompletionError, CompletionTerminalMetadata, GetTokenUsage, Usage},
     message::ReasoningContent,
     streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
 };
@@ -11,17 +11,24 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MockResponse {
     usage: Option<Usage>,
+    terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl MockResponse {
     /// Create a mock raw response without token usage.
     pub fn new() -> Self {
-        Self { usage: None }
+        Self {
+            usage: None,
+            terminal_metadata: None,
+        }
     }
 
     /// Create a mock raw response carrying token usage.
     pub fn with_usage(usage: Usage) -> Self {
-        Self { usage: Some(usage) }
+        Self {
+            usage: Some(usage),
+            terminal_metadata: None,
+        }
     }
 
     /// Create a mock raw response whose usage has only `total_tokens` set.
@@ -30,11 +37,21 @@ impl MockResponse {
         usage.total_tokens = total_tokens;
         Self::with_usage(usage)
     }
+
+    /// Attach provider terminal metadata.
+    pub fn with_terminal_metadata(mut self, metadata: CompletionTerminalMetadata) -> Self {
+        self.terminal_metadata = Some(metadata);
+        self
+    }
 }
 
 impl GetTokenUsage for MockResponse {
     fn token_usage(&self) -> Option<Usage> {
         self.usage
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
