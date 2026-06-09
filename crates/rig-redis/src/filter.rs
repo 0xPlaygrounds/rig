@@ -14,10 +14,10 @@
 //! # Filtering Limitations
 //!
 //! Filters apply to fields that exist in your RediSearch index schema and are
-//! present in the stored hash keys. Documents inserted via [`InsertDocuments`](crate::RedisVectorStore)
-//! only store `document`, `embedded_text`, and the vector field. To use filters,
-//! you must either write additional hash fields out-of-band or use a custom
-//! insertion approach that includes the filterable fields in the hash.
+//! present in the stored hash keys. Configure [`RedisVectorStore::with_metadata_fields`](crate::RedisVectorStore::with_metadata_fields)
+//! to have metadata fields automatically extracted from documents during insertion.
+//! Only top-level scalar values (string, number, bool) are supported; null, array,
+//! and object values are silently skipped.
 //!
 //! # Escaping
 //!

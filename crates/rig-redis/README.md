@@ -9,13 +9,43 @@ Vector store index integration for [Redis](https://redis.io/) using RediSearch v
 - Document insertion with automatic embedding storage
 - Compatible with Redis 7.2+ or Redis Stack
 
-## Filtering
+## Metadata Filtering
 
-Filters apply to fields that exist in your RediSearch index schema **and** are
-present in the stored hash keys. The `InsertDocuments` implementation only writes
-`document`, `embedded_text`, and the vector field. If you need filterable metadata
-fields, write them to the hash separately or use a custom insertion approach that
-includes the filterable fields in the hash.
+To filter search results by document fields, configure metadata fields when
+creating the store. These fields are extracted from the serialized document JSON
+during insertion and written as separate hash fields that RediSearch can index.
+
+Your RediSearch index schema must declare these fields (TAG, NUMERIC, TEXT) in
+addition to the core fields (`document`, `embedded_text`, vector field).
+
+```bash
+FT.CREATE products_idx
+  ON HASH
+  PREFIX 1 prod:
+  SCHEMA
+    document TEXT
+    embedded_text TEXT
+    embedding VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
+    category TAG
+    price NUMERIC
+```
+
+```rust,no_run
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let store = RedisVectorStore::new(model, client, "products_idx".into(), "embedding".into())
+    .await?
+    .with_key_prefix("prod:".to_string())
+    .with_metadata_fields(vec!["category".to_string(), "price".to_string()]);
+
+// Documents with `category` and `price` fields will have those written
+// as hash fields, enabling filter queries like:
+// @category:{Electronics} or @price:[50 100]
+# Ok(())
+# }
+```
+
+Fields that are missing from a document or have null/array/object values are
+silently skipped.
 
 ## Prerequisites
 
@@ -100,7 +130,7 @@ Choose the metric that matches your embedding model when creating the index.
 - Requires pre-created RediSearch index
 - Vector dimensionality must match the index definition
 - Embeddings are stored as FLOAT32 (converted from FLOAT64)
-- `InsertDocuments` stores only the serialized document, embedded text, and vector — additional metadata fields for filtering must be written separately
+- Metadata filtering requires configuring `with_metadata_fields` during store creation; only top-level scalar fields (string/number/bool) are extracted
 
 ## Testing
 
