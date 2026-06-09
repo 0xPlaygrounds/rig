@@ -421,27 +421,56 @@ fn runtime_base_url<'a, H>(client: &'a Client<H>, auth: &'a auth::AuthContext) -
     Cow::Borrowed(client.base_url())
 }
 
-/// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment,
-/// rewriting the `proxy.` host prefix to `api.` (e.g.
-/// `proxy.individual.githubcopilot.com` ->
-/// `https://api.individual.githubcopilot.com`). Returns `None` when the token
-/// carries no proxy endpoint.
+/// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
+///
+/// The endpoint is parsed from a credential string, not from explicit caller
+/// configuration. For that reason, token-derived routing is limited to GitHub
+/// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
+/// can still opt in explicitly with [`ClientBuilder::base_url`].
 fn base_url_from_token(token: &str) -> Option<String> {
     let proxy_ep = token
         .split(';')
         .find_map(|part| part.trim().strip_prefix("proxy-ep="))?
         .trim();
 
+    normalize_copilot_proxy_endpoint(proxy_ep)
+}
+
+fn normalize_copilot_proxy_endpoint(proxy_ep: &str) -> Option<String> {
     if proxy_ep.is_empty() {
         return None;
     }
 
-    let api_ep = proxy_ep.replacen("proxy.", "api.", 1);
-    if api_ep.starts_with("http://") || api_ep.starts_with("https://") {
-        Some(api_ep)
+    let candidate = if proxy_ep.starts_with("http://") || proxy_ep.starts_with("https://") {
+        proxy_ep.to_string()
     } else {
-        Some(format!("https://{api_ep}"))
+        format!("https://{proxy_ep}")
+    };
+
+    let mut url = url::Url::parse(&candidate).ok()?;
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return None;
     }
+    if url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
+
+    let host = url.host_str()?.to_ascii_lowercase();
+    if !is_allowed_token_derived_copilot_host(&host) {
+        return None;
+    }
+
+    let api_host = host
+        .strip_prefix("proxy.")
+        .map(|suffix| format!("api.{suffix}"))
+        .unwrap_or(host);
+    url.set_host(Some(&api_host)).ok()?;
+
+    Some(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn is_allowed_token_derived_copilot_host(host: &str) -> bool {
+    host == "githubcopilot.com" || host.ends_with(".githubcopilot.com")
 }
 
 fn post_with_auth_base<H>(
@@ -1833,7 +1862,26 @@ mod tests {
                 .as_deref(),
             Some("https://api.individual.githubcopilot.com")
         );
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=https://proxy.individual.githubcopilot.com;exp=2")
+                .as_deref(),
+            Some("https://api.individual.githubcopilot.com")
+        );
         assert_eq!(base_url_from_token("tid=1;exp=2"), None);
+    }
+
+    #[test]
+    fn base_url_from_token_rejects_unsafe_or_non_copilot_endpoints() {
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=http://proxy.individual.githubcopilot.com;exp=2"),
+            None
+        );
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=https://evil.example.com;exp=2"),
+            None
+        );
+        assert_eq!(base_url_from_token("tid=1;proxy-ep=://bad;exp=2"), None);
+        assert_eq!(base_url_from_token("tid=1;proxy-ep=;exp=2"), None);
     }
 
     #[tokio::test]
@@ -1856,6 +1904,29 @@ mod tests {
                 .uri
                 .starts_with("https://api.individual.githubcopilot.com"),
             "expected proxy-derived base URL, got {}",
+            requests[0].uri
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_base_url_wins_over_token_proxy_endpoint() {
+        let http_client = RecordingHttpClient::new(minimal_chat_response());
+        let client = Client::builder()
+            .api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+            .base_url("https://custom.example.com")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+
+        let _response = model.completion(request).await.expect("chat completion");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0].uri.starts_with("https://custom.example.com"),
+            "expected explicit base URL, got {}",
             requests[0].uri
         );
     }
