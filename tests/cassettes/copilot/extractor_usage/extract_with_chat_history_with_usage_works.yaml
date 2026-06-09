@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"role":"system"},{"content":"I''m looking at a property that might be interesting.","role":"user"},{"content":"The address is 123 Main St in Springfield, IL 62701.","role":"user"}],"model":"gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"content_filter_results":{},"finish_reason":"tool_calls","index":0,"message":{"padding":"abcdefghijklmnopqrstuvwxyz012","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Springfield\",\"state\":\"IL\",\"street\":\"123 Main St\",\"zip_code\":\"62701\"}","name":"submit"},"id":"call_REDACTED_1","type":"function"}]}}],"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":0,"token_count":176,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_write"},{"batch_size":1000000,"cost_per_batch":0,"token_count":31,"token_type":"output"}],"total_nano_aiu":0},"id":"chatcmpl-REDACTED_1","model":"gpt-4o-mini-2024-07-18","prompt_filter_results":[{"content_filter_results":{},"prompt_index":0}],"service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":31,"completion_tokens_details":{"accepted_prediction_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":176,"prompt_tokens_details":{"cached_tokens":0},"reasoning_tokens":0,"total_tokens":207}}'

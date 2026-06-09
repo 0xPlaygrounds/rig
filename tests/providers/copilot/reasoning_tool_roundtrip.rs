@@ -7,7 +7,7 @@ use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::streaming::StreamingChat;
 
-use crate::copilot::{live_client, live_responses_model};
+use crate::copilot::{live_client, live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
@@ -42,23 +42,28 @@ async fn streaming() {
 }
 
 #[tokio::test]
-#[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn nonstreaming() {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = live_client()
-        .agent(live_responses_model())
-        .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-        .max_tokens(4096)
-        .tool(WeatherTool::new(call_count.clone()))
-        .additional_params(serde_json::json!({
-            "reasoning": { "effort": "high" }
-        }))
-        .build();
+    with_copilot_cassette(
+        "reasoning_tool_roundtrip/nonstreaming",
+        |client| async move {
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let agent = client
+                .agent(live_responses_model())
+                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                .max_tokens(4096)
+                .tool(WeatherTool::new(call_count.clone()))
+                .additional_params(serde_json::json!({
+                    "reasoning": { "effort": "high" }
+                }))
+                .build();
 
-    let result = agent
-        .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
-        .await
-        .expect("[copilot] Non-streaming chat failed");
+            let result = agent
+                .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
+                .await
+                .expect("[copilot] Non-streaming chat failed");
 
-    reasoning::assert_nonstreaming_universal(&result, &call_count, "copilot");
+            reasoning::assert_nonstreaming_universal(&result, &call_count, "copilot");
+        },
+    )
+    .await;
 }
