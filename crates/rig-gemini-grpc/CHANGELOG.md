@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Contributors
 
 * @gold-silver-copper
+## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.38.1...rig-gemini-grpc-v0.38.2) - 2026-06-09
+
+### Other
+
+- update Cargo.toml dependencies
 
 ## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.2.6...rig-gemini-grpc-v0.2.7) - 2026-06-02
 

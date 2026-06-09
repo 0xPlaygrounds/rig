@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.38.1...rig-core-v0.38.2) - 2026-06-09
+
+### Fixed
+
+- *(streaming)* record per-call token usage on chat generation spans ([#1880](https://github.com/0xPlaygrounds/rig/pull/1880)) (by @mateobelanger)
+- support Anthropic mid-conversation system role ([#1862](https://github.com/0xPlaygrounds/rig/pull/1862)) (by @fangkangmi) - #1862
+- *(openai)* make token usage details optional in responses API ([#1857](https://github.com/0xPlaygrounds/rig/pull/1857)) (by @sosal123tyu1)
+
+### Other
+
+- Add configurable Copilot intent ([#1883](https://github.com/0xPlaygrounds/rig/pull/1883)) (by @gold-silver-copper) - #1883
+- [codex] support mistral.rs OpenAI-compatible reasoning ([#1864](https://github.com/0xPlaygrounds/rig/pull/1864)) (by @gold-silver-copper) - #1864
+- [codex] cover Anthropic streaming tool result batching ([#1863](https://github.com/0xPlaygrounds/rig/pull/1863)) (by @gold-silver-copper) - #1863
+
+### Contributors
+
+* @gold-silver-copper
+* @mateobelanger
+* @fangkangmi
+* @sosal123tyu1
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.38.0...rig-core-v0.38.1) - 2026-06-02
 
 ### Other
