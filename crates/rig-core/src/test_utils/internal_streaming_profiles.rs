@@ -1,7 +1,7 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::CompletionError,
+    completion::{CompletionError, CompletionTerminalMetadata},
     providers::internal::openai_chat_completions_compatible::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleToolCallChunk,
@@ -20,11 +20,13 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<MockResponse, ()>
 }
 
 fn tool_call_choice(
-    finish_reason: CompatibleFinishReason,
+    finish_reason: Option<CompatibleFinishReason>,
     tool_calls: Vec<CompatibleToolCallChunk>,
 ) -> CompatibleChoice<()> {
     CompatibleChoice {
-        finish_reason,
+        terminal_metadata: finish_reason.map(|reason| {
+            CompletionTerminalMetadata::new(reason.into()).with_raw_reason(format!("{reason:?}"))
+        }),
         text: None,
         reasoning: None,
         tool_calls,
@@ -61,7 +63,7 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
         match data {
             "start" => Ok(Some(test_chunk(tool_call_choice(
-                CompatibleFinishReason::Other,
+                None,
                 vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
             )))),
             "bad" => Err(CompletionError::ProviderError(
@@ -71,8 +73,17 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        let response = MockResponse::new();
+        if let Some(metadata) = terminal_metadata {
+            response.with_terminal_metadata(metadata)
+        } else {
+            response
+        }
     }
 }
 
@@ -91,7 +102,7 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
         let choice = match data {
             "first_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                None,
                 vec![tool_call_chunk(
                     0,
                     Some("call_aaa"),
@@ -100,11 +111,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 )],
             )),
             "first_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                None,
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
             )),
             "second_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                None,
                 vec![tool_call_chunk(
                     0,
                     Some("call_bbb"),
@@ -113,11 +124,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 )],
             )),
             "second_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                None,
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"two\"}"))],
             )),
             "finish" => Some(tool_call_choice(
-                CompatibleFinishReason::ToolCalls,
+                Some(CompatibleFinishReason::ToolCalls),
                 Vec::new(),
             )),
             _ => None,
@@ -126,8 +137,17 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        let response = MockResponse::new();
+        if let Some(metadata) = terminal_metadata {
+            response.with_terminal_metadata(metadata)
+        } else {
+            response
+        }
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -150,7 +170,7 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
         let choice = match data {
             "start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                None,
                 vec![tool_call_chunk(
                     0,
                     Some("call_123"),
@@ -159,7 +179,7 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
                 )],
             )),
             "finish" => Some(tool_call_choice(
-                CompatibleFinishReason::ToolCalls,
+                Some(CompatibleFinishReason::ToolCalls),
                 Vec::new(),
             )),
             _ => None,
@@ -168,7 +188,16 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        let response = MockResponse::new();
+        if let Some(metadata) = terminal_metadata {
+            response.with_terminal_metadata(metadata)
+        } else {
+            response
+        }
     }
 }

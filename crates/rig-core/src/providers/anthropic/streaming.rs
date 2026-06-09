@@ -11,7 +11,10 @@ use super::completion::{
     resolve_top_level_cache_control, split_system_messages_from_history,
     supports_mid_conversation_system_messages,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionFinishReason, CompletionRequest, CompletionTerminalMetadata,
+    GetTokenUsage,
+};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
@@ -143,6 +146,8 @@ struct ThinkingState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
@@ -159,6 +164,22 @@ impl GetTokenUsage for StreamingCompletionResponse {
 
         Some(usage)
     }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
+    }
+}
+
+fn terminal_metadata_from_stop_reason(stop_reason: &str) -> CompletionTerminalMetadata {
+    let reason = match stop_reason {
+        "end_turn" | "stop_sequence" => CompletionFinishReason::Stop,
+        "max_tokens" | "model_context_window" => CompletionFinishReason::Length,
+        "tool_use" => CompletionFinishReason::ToolCalls,
+        "refusal" | "safety" | "content_filter" => CompletionFinishReason::ContentFilter,
+        _ => CompletionFinishReason::Unknown,
+    };
+
+    CompletionTerminalMetadata::new(reason).with_raw_reason(stop_reason.to_owned())
 }
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
@@ -322,6 +343,7 @@ where
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut final_terminal_metadata = None;
 
             let mut text_content = String::new();
 
@@ -341,7 +363,7 @@ where
                                         span.record("gen_ai.response.model", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
-                                        if delta.stop_reason.is_some() {
+                                        if let Some(stop_reason) = delta.stop_reason.as_deref() {
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -355,6 +377,8 @@ where
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage);
                                             final_usage = Some(usage);
+                                            final_terminal_metadata =
+                                                Some(terminal_metadata_from_stop_reason(stop_reason));
                                             break;
                                         }
                                     }
@@ -393,7 +417,8 @@ where
             sse_stream.close();
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                terminal_metadata: final_terminal_metadata,
             }))
         }.instrument(span));
 
@@ -589,6 +614,10 @@ fn handle_event(
 mod tests {
     use super::super::completion::{CacheControl, CacheTtl};
     use super::*;
+    use crate::completion::{CompletionModel as _, GetTokenUsage};
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockStreamingClient;
     use async_stream::stream;
     use futures::StreamExt;
 
@@ -695,6 +724,78 @@ mod tests {
             &mut server_tool_uses,
             current_thinking,
         )
+    }
+
+    #[test]
+    fn terminal_metadata_maps_anthropic_stop_reasons() {
+        let terminal_metadata = terminal_metadata_from_stop_reason("max_tokens");
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+        assert_eq!(terminal_metadata.raw_reason(), Some("max_tokens"));
+
+        let terminal_metadata = terminal_metadata_from_stop_reason("safety");
+        assert_eq!(
+            terminal_metadata.reason,
+            CompletionFinishReason::ContentFilter
+        );
+
+        let terminal_metadata = terminal_metadata_from_stop_reason("end_turn");
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Stop);
+    }
+
+    #[tokio::test]
+    async fn streaming_final_response_preserves_anthropic_terminal_metadata() {
+        let message_start = serde_json::json!({
+            "type": "message_start",
+            "message": {
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-test",
+                "content": [],
+                "stop_reason": null,
+                "stop_sequence": null,
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 0
+                }
+            }
+        });
+        let message_delta = serde_json::json!({
+            "type": "message_delta",
+            "delta": {
+                "stop_reason": "max_tokens",
+                "stop_sequence": null
+            },
+            "usage": {
+                "output_tokens": 5
+            }
+        });
+
+        let client = super::super::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[message_start, message_delta]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = super::super::completion::CompletionModel::with_model(client, "claude-test");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("stream item should be ok")
+            {
+                let terminal_metadata = response
+                    .terminal_metadata()
+                    .expect("final response should include terminal metadata");
+                assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+                assert_eq!(terminal_metadata.raw_reason(), Some("max_tokens"));
+                return;
+            }
+        }
+
+        panic!("stream should yield a final response");
     }
 
     #[test]
@@ -1369,6 +1470,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                terminal_metadata: None,
             }));
         };
 
@@ -1514,6 +1616,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                terminal_metadata: None,
             }));
         };
 

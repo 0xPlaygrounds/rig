@@ -12,7 +12,10 @@ use super::completion::{
     streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionFinishReason, CompletionRequest, CompletionTerminalMetadata,
+    GetTokenUsage,
+};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
@@ -79,11 +82,61 @@ pub struct StreamingCompletionResponse {
     pub finish_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage_metadata.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
+    }
+}
+
+fn terminal_metadata_from_finish_reason(
+    finish_reason: &FinishReason,
+) -> CompletionTerminalMetadata {
+    let reason = match finish_reason {
+        FinishReason::Stop => CompletionFinishReason::Stop,
+        FinishReason::MaxTokens => CompletionFinishReason::Length,
+        FinishReason::Safety
+        | FinishReason::Recitation
+        | FinishReason::Language
+        | FinishReason::Blocklist
+        | FinishReason::ProhibitedContent
+        | FinishReason::Spii => CompletionFinishReason::ContentFilter,
+        FinishReason::FinishReasonUnspecified
+        | FinishReason::Other
+        | FinishReason::MalformedFunctionCall
+        | FinishReason::UnexpectedToolCall
+        | FinishReason::MissingThoughtSignature
+        | FinishReason::TooManyToolCalls
+        | FinishReason::MalformedResponse => CompletionFinishReason::Unknown,
+    };
+
+    CompletionTerminalMetadata::new(reason).with_raw_reason(raw_finish_reason(finish_reason))
+}
+
+fn raw_finish_reason(finish_reason: &FinishReason) -> &'static str {
+    match finish_reason {
+        FinishReason::FinishReasonUnspecified => "FINISH_REASON_UNSPECIFIED",
+        FinishReason::Stop => "STOP",
+        FinishReason::MaxTokens => "MAX_TOKENS",
+        FinishReason::Safety => "SAFETY",
+        FinishReason::Recitation => "RECITATION",
+        FinishReason::Language => "LANGUAGE",
+        FinishReason::Other => "OTHER",
+        FinishReason::Blocklist => "BLOCKLIST",
+        FinishReason::ProhibitedContent => "PROHIBITED_CONTENT",
+        FinishReason::Spii => "SPII",
+        FinishReason::MalformedFunctionCall => "MALFORMED_FUNCTION_CALL",
+        FinishReason::UnexpectedToolCall => "UNEXPECTED_TOOL_CALL",
+        FinishReason::MissingThoughtSignature => "MISSING_THOUGHT_SIGNATURE",
+        FinishReason::TooManyToolCalls => "TOO_MANY_TOOL_CALLS",
+        FinishReason::MalformedResponse => "MALFORMED_RESPONSE",
     }
 }
 
@@ -148,6 +201,7 @@ where
             let mut final_finish_reason: Option<FinishReason> = None;
             let mut final_finish_message: Option<String> = None;
             let mut final_model_version: Option<String> = None;
+            let mut final_terminal_metadata = None;
             let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -194,6 +248,7 @@ where
                         let should_stop = choice.finish_reason.is_some();
                         if let Some(fr) = &choice.finish_reason {
                             final_finish_reason = Some(fr.clone());
+                            final_terminal_metadata = Some(terminal_metadata_from_finish_reason(fr));
                         }
                         if let Some(message) = &choice.finish_message {
                             final_finish_message = Some(message.clone());
@@ -297,6 +352,7 @@ where
                     finish_reason: final_finish_reason,
                     finish_message: final_finish_message,
                     model_version: final_model_version,
+                    terminal_metadata: final_terminal_metadata,
                 }));
             }
         }.instrument(span);
@@ -310,7 +366,68 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::{CompletionModel as _, GetTokenUsage};
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockStreamingClient;
     use serde_json::json;
+
+    #[test]
+    fn terminal_metadata_maps_gemini_finish_reasons() {
+        let terminal_metadata = terminal_metadata_from_finish_reason(&FinishReason::MaxTokens);
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+        assert_eq!(terminal_metadata.raw_reason(), Some("MAX_TOKENS"));
+
+        let terminal_metadata = terminal_metadata_from_finish_reason(&FinishReason::Safety);
+        assert_eq!(
+            terminal_metadata.reason,
+            CompletionFinishReason::ContentFilter
+        );
+
+        let terminal_metadata = terminal_metadata_from_finish_reason(&FinishReason::Stop);
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Stop);
+    }
+
+    #[tokio::test]
+    async fn streaming_final_response_preserves_gemini_terminal_metadata() {
+        let event = json!({
+            "candidates": [{
+                "finishReason": "MAX_TOKENS",
+                "index": 0
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 5,
+                "totalTokenCount": 15
+            }
+        });
+
+        let client = super::super::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[event]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = super::super::CompletionModel::with_model(client, "gemini-test");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("stream item should be ok")
+            {
+                let terminal_metadata = response
+                    .terminal_metadata()
+                    .expect("final response should include terminal metadata");
+                assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+                assert_eq!(terminal_metadata.raw_reason(), Some("MAX_TOKENS"));
+                return;
+            }
+        }
+
+        panic!("stream should yield a final response");
+    }
 
     #[test]
     fn test_deserialize_stream_response_with_single_text_part() {
@@ -721,6 +838,7 @@ mod tests {
             finish_reason: Some(FinishReason::Stop),
             finish_message: None,
             model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+            terminal_metadata: None,
         };
 
         assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
@@ -760,6 +878,7 @@ mod tests {
             finish_reason: Some(FinishReason::Stop),
             finish_message: None,
             model_version: Some("gemini-2.0-flash-001".to_string()),
+            terminal_metadata: None,
         };
 
         let token_usage = response.token_usage().unwrap();

@@ -1,6 +1,8 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
-use crate::completion::{self, CompletionError, GetTokenUsage};
+use crate::completion::{
+    self, CompletionError, CompletionFinishReason, CompletionTerminalMetadata, GetTokenUsage,
+};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
@@ -38,6 +40,9 @@ pub enum StreamingCompletionChunk {
 pub struct StreamingCompletionResponse {
     /// Token usage
     pub usage: ResponsesUsage,
+    /// Provider terminal metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 pub(crate) fn reasoning_choices_from_done_item(
@@ -68,6 +73,10 @@ pub(crate) fn reasoning_choices_from_done_item(
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -136,6 +145,48 @@ fn response_error_message(error: Option<&super::ResponseError>, fallback: &str) 
     }
 }
 
+fn response_terminal_metadata(
+    kind: &ResponseChunkKind,
+    response: &CompletionResponse,
+) -> Option<CompletionTerminalMetadata> {
+    match kind {
+        ResponseChunkKind::ResponseCompleted => Some(
+            CompletionTerminalMetadata::new(CompletionFinishReason::Stop)
+                .with_raw_reason("completed"),
+        ),
+        ResponseChunkKind::ResponseIncomplete => {
+            let raw_reason = response
+                .incomplete_details
+                .as_ref()
+                .map(|details| details.reason.as_str())
+                .unwrap_or("incomplete");
+            Some(
+                CompletionTerminalMetadata::new(incomplete_finish_reason(raw_reason))
+                    .with_raw_reason(raw_reason.to_owned()),
+            )
+        }
+        _ => None,
+    }
+}
+
+fn incomplete_finish_reason(raw_reason: &str) -> CompletionFinishReason {
+    let normalized = raw_reason.trim().to_ascii_lowercase();
+    if normalized.contains("max_output")
+        || normalized.contains("max_token")
+        || normalized == "length"
+    {
+        CompletionFinishReason::Length
+    } else if normalized.contains("filter")
+        || normalized.contains("safety")
+        || normalized.contains("policy")
+        || normalized.contains("blocked")
+    {
+        CompletionFinishReason::ContentFilter
+    } else {
+        CompletionFinishReason::Unknown
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum ResponsesStreamOptions {
     Strict,
@@ -151,7 +202,7 @@ impl ResponsesStreamOptions {
         Self::StrictWithImmediateToolCalls
     }
 
-    const fn errors_on_terminal_response(self) -> bool {
+    const fn errors_on_failed_response(self) -> bool {
         true
     }
 
@@ -255,6 +306,7 @@ pub(crate) fn parse_sse_completion_body(
 
 struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
+    terminal_metadata: Option<CompletionTerminalMetadata>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
 }
@@ -263,6 +315,7 @@ impl RawChoiceAccumulator {
     fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
             final_usage: initial_usage,
+            terminal_metadata: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
         }
@@ -345,14 +398,20 @@ impl RawChoiceAccumulator {
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
-                if let Some(usage) = response.usage {
+                if let Some(usage) = response.usage.clone() {
                     self.final_usage = usage;
                 }
+                self.terminal_metadata = response_terminal_metadata(&kind, &response);
                 Ok(())
             }
-            ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete
-                if options.errors_on_terminal_response() =>
-            {
+            ResponseChunkKind::ResponseIncomplete => {
+                if let Some(usage) = response.usage.clone() {
+                    self.final_usage = usage;
+                }
+                self.terminal_metadata = response_terminal_metadata(&kind, &response);
+                Ok(())
+            }
+            ResponseChunkKind::ResponseFailed if options.errors_on_failed_response() => {
                 let error_message = response_chunk_error_message(&kind, &response, provider_name)
                     .unwrap_or_else(|| {
                         format!(
@@ -416,6 +475,7 @@ impl RawChoiceAccumulator {
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
+                terminal_metadata: self.terminal_metadata,
             },
         ));
         choices
@@ -924,7 +984,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ItemChunkKind, StreamingCompletionChunk, reasoning_choices_from_done_item};
-    use crate::completion::CompletionModel;
+    use crate::completion::{CompletionFinishReason, CompletionModel};
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::{
@@ -981,7 +1041,9 @@ mod tests {
             .expect_err("stream should surface a provider error")
     }
 
-    async fn final_usage_from_event(event: serde_json::Value) -> ResponsesUsage {
+    async fn final_response_from_event(
+        event: serde_json::Value,
+    ) -> super::StreamingCompletionResponse {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
                 sse_bytes: sse_bytes_from_json_events(&[event]),
@@ -995,7 +1057,7 @@ mod tests {
 
         while let Some(item) = stream.next().await {
             match item.expect("completed stream should not error") {
-                StreamedAssistantContent::Final(res) => return res.usage,
+                StreamedAssistantContent::Final(res) => return res,
                 _ => continue,
             }
         }
@@ -1201,7 +1263,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn response_incomplete_chunk_uses_incomplete_details_reason() {
+    async fn response_incomplete_chunk_preserves_length_terminal_metadata() {
         let mut response = sample_response(ResponseStatus::Incomplete);
         response.incomplete_details = Some(IncompleteDetailsReason {
             reason: "max_output_tokens".to_string(),
@@ -1213,12 +1275,38 @@ mod tests {
             "response": response,
         });
 
-        let err = first_error_from_event(event).await;
+        let response = final_response_from_event(event).await;
+        let terminal_metadata = response
+            .terminal_metadata
+            .expect("incomplete response should include terminal metadata");
+
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+        assert_eq!(terminal_metadata.raw_reason(), Some("max_output_tokens"));
+    }
+
+    #[tokio::test]
+    async fn response_incomplete_chunk_preserves_filter_terminal_metadata() {
+        let mut response = sample_response(ResponseStatus::Incomplete);
+        response.incomplete_details = Some(IncompleteDetailsReason {
+            reason: "content_filter".to_string(),
+        });
+
+        let event = json!({
+            "type": "response.incomplete",
+            "sequence_number": 1,
+            "response": response,
+        });
+
+        let response = final_response_from_event(event).await;
+        let terminal_metadata = response
+            .terminal_metadata
+            .expect("incomplete response should include terminal metadata");
 
         assert_eq!(
-            err.to_string(),
-            "ProviderError: OpenAI response stream was incomplete: max_output_tokens"
+            terminal_metadata.reason,
+            CompletionFinishReason::ContentFilter
         );
+        assert_eq!(terminal_metadata.raw_reason(), Some("content_filter"));
     }
 
     #[tokio::test]
@@ -1293,10 +1381,17 @@ mod tests {
             "response": response,
         });
 
-        let usage = final_usage_from_event(event).await;
+        let response = final_response_from_event(event).await;
+        let usage = response.usage;
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
         assert_eq!(usage.total_tokens, 15);
+
+        let terminal_metadata = response
+            .terminal_metadata
+            .expect("completed response should include terminal metadata");
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Stop);
+        assert_eq!(terminal_metadata.raw_reason(), Some("completed"));
     }
 
     #[tokio::test]

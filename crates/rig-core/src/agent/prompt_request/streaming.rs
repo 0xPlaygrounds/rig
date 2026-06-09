@@ -5,7 +5,7 @@ use crate::{
         HookAction, InvalidToolCallResolution, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         hooks::PromptHook, resolve_invalid_tool_call, validate_tool_call_name,
     },
-    completion::{Document, GetTokenUsage},
+    completion::{CompletionFinishReason, CompletionTerminalMetadata, Document, GetTokenUsage},
     json_utils,
     memory::ConversationMemory,
     message::{
@@ -78,6 +78,8 @@ pub struct FinalResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     completion_calls: Vec<CompletionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    terminal_metadata: Option<CompletionTerminalMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     history: Option<Vec<Message>>,
 }
 
@@ -101,6 +103,7 @@ impl FinalResponse {
             response,
             aggregated_usage,
             completion_calls: Vec::new(),
+            terminal_metadata: None,
             history,
         }
     }
@@ -134,6 +137,23 @@ impl FinalResponse {
         &self.completion_calls
     }
 
+    /// Returns provider terminal metadata for the final provider call, when available.
+    pub fn terminal_metadata(&self) -> Option<&CompletionTerminalMetadata> {
+        self.terminal_metadata.as_ref()
+    }
+
+    /// Returns the normalized finish reason for the final provider call, when available.
+    pub fn finish_reason(&self) -> Option<CompletionFinishReason> {
+        self.terminal_metadata()
+            .map(|terminal_metadata| terminal_metadata.reason)
+    }
+
+    /// Returns the provider's raw finish reason for the final provider call, when available.
+    pub fn raw_finish_reason(&self) -> Option<&str> {
+        self.terminal_metadata()
+            .and_then(CompletionTerminalMetadata::raw_reason)
+    }
+
     pub fn history(&self) -> Option<&[Message]> {
         self.history.as_deref()
     }
@@ -164,9 +184,11 @@ impl<R> MultiTurnStreamItem<R> {
         aggregated_usage: crate::completion::Usage,
         completion_calls: Vec<CompletionCall>,
         history: Option<Vec<Message>>,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
     ) -> Self {
         let mut response = FinalResponse::new(content, aggregated_usage, history);
         response.completion_calls = completion_calls;
+        response.terminal_metadata = terminal_metadata;
         Self::FinalResponse(response)
     }
 }
@@ -839,6 +861,7 @@ where
         let mut aggregated_usage = crate::completion::Usage::new();
         let mut completion_calls = Vec::new();
         let mut completion_call_index = 0;
+        let mut last_terminal_metadata = None;
         let mut invalid_tool_call_retries = 0;
 
         // NOTE: We use .instrument(agent_span) instead of span.enter() to avoid
@@ -1418,6 +1441,7 @@ where
                             if let Some(usage) = final_resp.token_usage() {
                                 current_call_usage = reported_usage(usage);
                             }
+                            last_terminal_metadata = final_resp.terminal_metadata();
                             if let Some(usage) = current_call_usage {
                                 aggregated_usage += usage;
                             }
@@ -1674,6 +1698,7 @@ where
                         aggregated_usage,
                         completion_calls,
                         final_messages,
+                        last_terminal_metadata.clone(),
                     ));
                     break;
                 }
@@ -1755,7 +1780,10 @@ mod tests {
     };
     use crate::client::ProviderClient;
     use crate::client::completion::CompletionClient;
-    use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
+    use crate::completion::{
+        CompletionFinishReason, CompletionRequest, CompletionTerminalMetadata, PromptError,
+        ToolDefinition, Usage,
+    };
     use crate::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolChoice, ToolResultContent, UserContent,
@@ -2406,6 +2434,7 @@ mod tests {
                     CompletionCall::new(1, Some(usage(3, 4))),
                 ],
                 None,
+                None,
             );
 
         let value = serde_json::to_value(&item).expect("serialize final response");
@@ -2486,6 +2515,18 @@ mod tests {
     fn streaming_final_only_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
             MockStreamEvent::final_response_with_total_tokens(1),
+        ]])
+    }
+
+    fn streaming_text_then_terminal_metadata_model() -> MockCompletionModel {
+        MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("partial"),
+            MockStreamEvent::FinalResponse(
+                MockResponse::with_total_tokens(3).with_terminal_metadata(
+                    CompletionTerminalMetadata::new(CompletionFinishReason::Length)
+                        .with_raw_reason("max_output_tokens"),
+                ),
+            ),
         ]])
     }
 
@@ -5442,6 +5483,30 @@ mod tests {
 
         assert!(streamed_text.is_empty());
         assert_eq!(final_response_text.as_deref(), Some(""));
+    }
+
+    #[tokio::test]
+    async fn final_response_retains_provider_terminal_metadata() {
+        let agent = AgentBuilder::new(streaming_text_then_terminal_metadata_model()).build();
+
+        let mut stream = agent.stream_prompt("continue until truncated").await;
+        let mut terminal_metadata = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    terminal_metadata = res.terminal_metadata().cloned();
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        let terminal_metadata =
+            terminal_metadata.expect("final response should retain terminal metadata");
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+        assert_eq!(terminal_metadata.raw_reason(), Some("max_output_tokens"));
     }
 
     /// Background task that logs periodically to detect span leakage.

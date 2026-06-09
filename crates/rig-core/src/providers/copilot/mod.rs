@@ -26,13 +26,12 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
 };
-use crate::completion::{self, CompletionError, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionTerminalMetadata, GetTokenUsage};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleStreamProfile, CompatibleToolCallChunk,
 };
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
@@ -570,6 +569,13 @@ impl GetTokenUsage for CopilotStreamingResponse {
         match self {
             Self::Chat(response) => response.token_usage(),
             Self::Responses(response) => response.token_usage(),
+        }
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        match self {
+            Self::Chat(response) => response.terminal_metadata(),
+            Self::Responses(response) => response.terminal_metadata(),
         }
     }
 }
@@ -1186,7 +1192,10 @@ where
 
                 yield Ok(RawStreamingChoice::FinalResponse(
                     CopilotStreamingResponse::Responses(
-                        responses_api::streaming::StreamingCompletionResponse { usage: final_usage }
+                        responses_api::streaming::StreamingCompletionResponse {
+                            usage: final_usage,
+                            terminal_metadata: None,
+                        }
                     )
                 ));
             },
@@ -1521,6 +1530,16 @@ enum ChatFinishReason {
     Other(String),
 }
 
+fn chat_raw_finish_reason(reason: &ChatFinishReason) -> String {
+    match reason {
+        ChatFinishReason::ToolCalls => "tool_calls".to_owned(),
+        ChatFinishReason::Stop => "stop".to_owned(),
+        ChatFinishReason::ContentFilter => "content_filter".to_owned(),
+        ChatFinishReason::Length => "length".to_owned(),
+        ChatFinishReason::Other(reason) => reason.clone(),
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct ChatStreamingChoice {
     delta: ChatStreamingDelta,
@@ -1561,26 +1580,33 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                 data.model,
                 data.usage,
                 &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
-                    },
+                |choice| {
+                    CompatibleChoiceData {
+                    terminal_metadata: choice.finish_reason.as_ref().map(|reason| {
+                        openai_chat_completions_compatible::terminal_metadata_from_raw_finish_reason(
+                            chat_raw_finish_reason(reason),
+                        )
+                    }),
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning_content.clone(),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
                         &choice.delta.tool_calls,
                     ),
                     details: Vec::new(),
+                }
                 },
             ),
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
         CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
             usage,
+            terminal_metadata,
         })
     }
 

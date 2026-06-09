@@ -3,12 +3,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{Level, enabled, info_span};
 
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionRequest, CompletionTerminalMetadata, GetTokenUsage,
+};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::{self, merge};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleStreamProfile, CompatibleToolCallChunk,
 };
 use crate::providers::openai::completion::{GenericCompletionModel, OpenAIRequestParams, Usage};
 use crate::streaming;
@@ -66,6 +67,16 @@ pub enum FinishReason {
     Other(String), // This will handle the deprecated function_call
 }
 
+pub(crate) fn raw_finish_reason(reason: &FinishReason) -> String {
+    match reason {
+        FinishReason::ToolCalls => "tool_calls".to_owned(),
+        FinishReason::Stop => "stop".to_owned(),
+        FinishReason::ContentFilter => "content_filter".to_owned(),
+        FinishReason::Length => "length".to_owned(),
+        FinishReason::Other(reason) => reason.clone(),
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
     delta: StreamingDelta,
@@ -83,11 +94,17 @@ struct StreamingCompletionChunk {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Usage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_metadata: Option<CompletionTerminalMetadata>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> Option<crate::completion::Usage> {
         self.usage.token_usage()
+    }
+
+    fn terminal_metadata(&self) -> Option<CompletionTerminalMetadata> {
+        self.terminal_metadata.clone()
     }
 }
 
@@ -182,25 +199,34 @@ impl CompatibleStreamProfile for OpenAICompatibleProfile {
                 data.model,
                 data.usage,
                 &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(FinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
-                    },
-                    text: choice.delta.content.clone(),
-                    reasoning: choice.delta.reasoning_content.clone(),
-                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                        &choice.delta.tool_calls,
-                    ),
-                    details: Vec::new(),
+                |choice| {
+                    CompatibleChoiceData {
+                        terminal_metadata: choice.finish_reason.as_ref().map(|reason| {
+                            openai_chat_completions_compatible::terminal_metadata_from_raw_finish_reason(
+                                raw_finish_reason(reason),
+                            )
+                        }),
+                        text: choice.delta.content.clone(),
+                        reasoning: choice.delta.reasoning_content.clone(),
+                        tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                            &choice.delta.tool_calls,
+                        ),
+                        details: Vec::new(),
+                    }
                 },
             ),
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            terminal_metadata,
+        }
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -559,6 +585,44 @@ mod tests {
         assert_eq!(usage.total_tokens, 10);
         let token_usage = usage.token_usage().expect("usage should convert");
         assert_eq!(token_usage.output_tokens, 6);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_final_response_preserves_finish_reason() {
+        use crate::completion::CompletionFinishReason;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
+                "[DONE]",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut terminal_metadata = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+                terminal_metadata = res.terminal_metadata();
+                break;
+            }
+        }
+
+        let terminal_metadata =
+            terminal_metadata.expect("expected a final response with terminal metadata");
+        assert_eq!(terminal_metadata.reason, CompletionFinishReason::Length);
+        assert_eq!(terminal_metadata.raw_reason(), Some("length"));
     }
 
     #[tokio::test]

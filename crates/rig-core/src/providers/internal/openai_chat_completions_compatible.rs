@@ -13,7 +13,9 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::{
+    CompletionError, CompletionFinishReason, CompletionTerminalMetadata, GetTokenUsage,
+};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
@@ -22,8 +24,48 @@ use crate::wasm_compat::WasmCompatSend;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
+    Stop,
+    Length,
     ToolCalls,
-    Other,
+    ContentFilter,
+    Unknown,
+}
+
+impl From<CompatibleFinishReason> for CompletionFinishReason {
+    fn from(value: CompatibleFinishReason) -> Self {
+        match value {
+            CompatibleFinishReason::Stop => Self::Stop,
+            CompatibleFinishReason::Length => Self::Length,
+            CompatibleFinishReason::ToolCalls => Self::ToolCalls,
+            CompatibleFinishReason::ContentFilter => Self::ContentFilter,
+            CompatibleFinishReason::Unknown => Self::Unknown,
+        }
+    }
+}
+
+pub(crate) fn compatible_finish_reason_from_raw(raw_reason: &str) -> CompatibleFinishReason {
+    match raw_reason.trim().to_ascii_lowercase().as_str() {
+        "stop" | "end_turn" | "stop_sequence" | "completed" => CompatibleFinishReason::Stop,
+        "length"
+        | "max_tokens"
+        | "max_completion_tokens"
+        | "max_output_tokens"
+        | "model_context_window" => CompatibleFinishReason::Length,
+        "tool_calls" | "tool_use" | "function_call" => CompatibleFinishReason::ToolCalls,
+        "content_filter" | "filtered" | "safety" | "refusal" | "recitation" | "language"
+        | "blocklist" | "prohibited_content" | "spii" => CompatibleFinishReason::ContentFilter,
+        _ => CompatibleFinishReason::Unknown,
+    }
+}
+
+pub(crate) fn terminal_metadata_from_raw_finish_reason(
+    raw_reason: impl Into<String>,
+) -> CompletionTerminalMetadata {
+    let raw_reason = raw_reason.into();
+    CompletionTerminalMetadata::new(CompletionFinishReason::from(
+        compatible_finish_reason_from_raw(&raw_reason),
+    ))
+    .with_raw_reason(raw_reason)
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +103,7 @@ impl CompatibleToolCallChunk {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoice<D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) terminal_metadata: Option<CompletionTerminalMetadata>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
@@ -70,7 +112,7 @@ pub(crate) struct CompatibleChoice<D> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoiceData<T, D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) terminal_metadata: Option<CompletionTerminalMetadata>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<T>,
@@ -94,7 +136,7 @@ where
 {
     fn from(value: CompatibleChoiceData<T, D>) -> Self {
         Self {
-            finish_reason: value.finish_reason,
+            terminal_metadata: value.terminal_metadata,
             text: value.text,
             reasoning: value.reasoning,
             tool_calls: value.tool_calls.into_iter().map(Into::into).collect(),
@@ -141,7 +183,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        terminal_metadata: Option<CompletionTerminalMetadata>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -210,6 +256,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut final_terminal_metadata = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -246,6 +293,7 @@ where
                     let Some(choice) = chunk.choice else {
                         continue;
                     };
+                    let choice_terminal_metadata = choice.terminal_metadata.clone();
 
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
@@ -324,13 +372,20 @@ where
                         yield Ok(RawStreamingChoice::Message(content));
                     }
 
-                    if choice.finish_reason == CompatibleFinishReason::ToolCalls {
+                    if choice_terminal_metadata
+                        .as_ref()
+                        .is_some_and(|metadata| metadata.reason == CompletionFinishReason::ToolCalls)
+                    {
                         for tool_call in take_finalized_tool_calls(
                             &mut tool_calls,
                             DroppedToolCallContext::ToolCallsFinishReason,
                         ) {
                             yield Ok(RawStreamingChoice::ToolCall(tool_call));
                         }
+                    }
+
+                    if let Some(terminal_metadata) = choice_terminal_metadata {
+                        final_terminal_metadata = Some(terminal_metadata);
                     }
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
@@ -360,7 +415,7 @@ where
         let final_usage = final_usage.unwrap_or_default();
         record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(final_usage, final_terminal_metadata),
         ));
     }
     .instrument(instrument_span);
