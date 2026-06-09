@@ -29,13 +29,17 @@ async fn main() -> Result<(), anyhow::Error> {
         std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
     let redis_client = redis::Client::open(redis_url)?;
 
+    // Key prefix must match the index PREFIX configuration.
+    // If your index was created with: FT.CREATE word_idx ON HASH PREFIX 1 doc: ...
+    // then use "doc:" as the key prefix.
     let vector_store = rig_redis::RedisVectorStore::new(
         model.clone(),
         redis_client,
         "word_idx".to_string(),
         "embedding".to_string(),
     )
-    .await?;
+    .await?
+    .with_key_prefix("doc:".to_string());
 
     let words = vec![
         WordDefinition {

@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use rig_core::vector_store::request::{Filter as CoreFilter, SearchFilter};
-use rig_redis::filter::{Filter, RedisValue};
+use rig_redis::filter::{Filter, RedisValue, escape_tag_value, escape_text_value};
 
 #[test]
 fn test_filter_eq_string() {
@@ -12,7 +12,6 @@ fn test_filter_eq_string() {
 #[test]
 fn test_filter_eq_number() {
     let filter = Filter::eq("price", RedisValue::Number(99.99));
-    // Numeric equality uses range syntax: @field:[val val]
     assert_eq!(filter.into_inner(), "@price:[99.99 99.99]");
 }
 
@@ -176,4 +175,57 @@ fn test_filter_gt_non_numeric_uses_tag_syntax() {
 fn test_filter_lt_non_numeric_uses_tag_syntax() {
     let filter = Filter::lt("status", RedisValue::String("inactive".to_string()));
     assert_eq!(filter.into_inner(), "@status:{inactive}");
+}
+
+// Escaping tests
+
+#[test]
+fn test_escape_tag_value_special_chars() {
+    assert_eq!(escape_tag_value("hello-world"), r"hello\-world");
+    assert_eq!(escape_tag_value("it's"), r"it\'s");
+    assert_eq!(escape_tag_value("foo|bar"), r"foo\|bar");
+    assert_eq!(escape_tag_value("test@email"), r"test\@email");
+    assert_eq!(escape_tag_value("a{b}c"), r"a\{b\}c");
+    assert_eq!(escape_tag_value("(group)"), r"\(group\)");
+    assert_eq!(escape_tag_value("[bracket]"), r"\[bracket\]");
+    assert_eq!(escape_tag_value(r"back\slash"), r"back\\slash");
+}
+
+#[test]
+fn test_escape_tag_value_no_special_chars() {
+    assert_eq!(escape_tag_value("simple"), "simple");
+    assert_eq!(escape_tag_value("hello world"), "hello world");
+    assert_eq!(escape_tag_value("123"), "123");
+}
+
+#[test]
+fn test_escape_text_value_special_chars() {
+    assert_eq!(escape_text_value("hello-world"), r"hello\-world");
+    assert_eq!(escape_text_value("foo.bar"), r"foo\.bar");
+    assert_eq!(escape_text_value("a:b"), r"a\:b");
+    assert_eq!(escape_text_value("test@email.com"), r"test\@email\.com");
+}
+
+#[test]
+fn test_filter_eq_string_with_special_chars() {
+    let filter = Filter::eq("category", RedisValue::String("hello-world".to_string()));
+    assert_eq!(filter.into_inner(), r"@category:{hello\-world}");
+}
+
+#[test]
+fn test_filter_eq_string_with_pipe() {
+    let filter = Filter::eq("status", RedisValue::String("on|off".to_string()));
+    assert_eq!(filter.into_inner(), r"@status:{on\|off}");
+}
+
+#[test]
+fn test_filter_tag_in_with_special_chars() {
+    let filter = Filter::tag_in("tags", vec!["it's-new".to_string(), "50% off".to_string()]);
+    assert_eq!(filter.into_inner(), r"@tags:{it\'s\-new | 50% off}");
+}
+
+#[test]
+fn test_filter_raw() {
+    let filter = Filter::raw("@field:{raw value with no escaping}");
+    assert_eq!(filter.into_inner(), "@field:{raw value with no escaping}");
 }

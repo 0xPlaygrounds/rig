@@ -1,3 +1,11 @@
+//! Integration tests for rig-redis vector store.
+//!
+//! These tests require a Redis Stack instance (with RediSearch module).
+//! They use testcontainers to spin up an isolated Redis Stack container by default.
+//!
+//! Set `REDIS_URL` environment variable to use an external Redis instance instead.
+//!
+//! Run with: `cargo test --test integration_tests -- --ignored`
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -31,25 +39,28 @@ struct Word {
     definition: String,
 }
 
-/// Check if Redis is already running on localhost:6379
-async fn is_redis_running() -> bool {
-    match redis::Client::open("redis://127.0.0.1:6379") {
-        Ok(client) => client.get_multiplexed_async_connection().await.is_ok(),
-        Err(_) => false,
-    }
-}
-
-/// Get Redis connection info - either from existing instance or new container
+/// Get Redis connection info.
+///
+/// If `REDIS_URL` is set, uses that external instance.
+/// Otherwise, starts an isolated testcontainers Redis Stack instance.
 async fn get_redis_connection() -> (
     String,
     u16,
     Option<testcontainers::ContainerAsync<GenericImage>>,
 ) {
-    if is_redis_running().await {
-        println!("Using existing Redis instance on localhost:6379");
-        ("127.0.0.1".to_string(), REDIS_PORT, None)
+    if let Ok(url) = std::env::var("REDIS_URL") {
+        // Parse host:port from URL like redis://host:port
+        let url = url.strip_prefix("redis://").unwrap_or(&url);
+        let parts: Vec<&str> = url.split(':').collect();
+        let host = parts.first().unwrap_or(&"127.0.0.1").to_string();
+        let port: u16 = parts
+            .get(1)
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(REDIS_PORT);
+        println!("Using external Redis instance at {host}:{port}");
+        (host, port, None)
     } else {
-        println!("Starting new Redis Stack container");
+        println!("Starting new Redis Stack container via testcontainers");
         let container = GenericImage::new("redis/redis-stack", "latest")
             .with_exposed_port(REDIS_PORT.tcp())
             .with_wait_for(WaitFor::Duration {
@@ -57,13 +68,26 @@ async fn get_redis_connection() -> (
             })
             .start()
             .await
-            .expect("Failed to start Redis Stack container");
+            .expect("Failed to start Redis Stack container. Is Docker/Podman running?");
 
         let port = container.get_host_port_ipv4(REDIS_PORT).await.unwrap();
         let host = container.get_host().await.unwrap().to_string();
 
         (host, port, Some(container))
     }
+}
+
+/// Verifies that the Redis instance has RediSearch module loaded.
+async fn verify_redisearch(client: &redis::Client) -> bool {
+    let mut con = match client.get_multiplexed_async_connection().await {
+        Ok(con) => con,
+        Err(_) => return false,
+    };
+
+    // FT._LIST returns an array of index names. If the command errors,
+    // RediSearch is not available.
+    let result: Result<redis::Value, _> = redis::cmd("FT._LIST").query_async(&mut con).await;
+    result.is_ok()
 }
 
 async fn setup_redis_index(
@@ -133,9 +157,18 @@ async fn cleanup_redis_index(
 }
 
 #[tokio::test]
+#[ignore = "requires Docker/Podman for testcontainers"]
 async fn test_vector_search_basic() {
     let (host, port, _container) = get_redis_connection().await;
     let index_name = "test_vector_search_basic";
+
+    let redis_url = format!("redis://{host}:{port}");
+    let redis_client = redis::Client::open(redis_url).unwrap();
+
+    assert!(
+        verify_redisearch(&redis_client).await,
+        "RediSearch module not available on this Redis instance"
+    );
 
     let server = httpmock::MockServer::start();
 
@@ -193,9 +226,6 @@ async fn test_vector_search_basic() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
-
     setup_redis_index(&redis_client, index_name, 1536)
         .await
         .unwrap();
@@ -245,8 +275,6 @@ async fn test_vector_search_basic() {
 
     assert_eq!(results.len(), 1);
     let (score, _, doc) = &results[0];
-    // Redis returns cosine distance (0 = identical, higher = more different)
-    // So we just check it's a valid number
     assert!(score.is_finite());
     assert!(doc.definition.contains("linglingdong"));
 
@@ -256,9 +284,18 @@ async fn test_vector_search_basic() {
 }
 
 #[tokio::test]
+#[ignore = "requires Docker/Podman for testcontainers"]
 async fn test_top_n_ids() {
     let (host, port, _container) = get_redis_connection().await;
     let index_name = "test_top_n_ids";
+
+    let redis_url = format!("redis://{host}:{port}");
+    let redis_client = redis::Client::open(redis_url).unwrap();
+
+    assert!(
+        verify_redisearch(&redis_client).await,
+        "RediSearch module not available on this Redis instance"
+    );
 
     let server = httpmock::MockServer::start();
 
@@ -308,9 +345,6 @@ async fn test_top_n_ids() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
-
     setup_redis_index(&redis_client, index_name, 1536)
         .await
         .unwrap();
@@ -355,7 +389,6 @@ async fn test_top_n_ids() {
     let results = vector_store.top_n_ids(req).await.unwrap();
 
     assert_eq!(results.len(), 2);
-    // Redis returns cosine distance, so scores can be 0 or positive
     assert!(results[0].0.is_finite());
     assert!(!results[0].1.is_empty());
 
@@ -365,9 +398,18 @@ async fn test_top_n_ids() {
 }
 
 #[tokio::test]
+#[ignore = "requires Docker/Podman for testcontainers"]
 async fn test_threshold_filtering() {
     let (host, port, _container) = get_redis_connection().await;
     let index_name = "test_threshold_filtering";
+
+    let redis_url = format!("redis://{host}:{port}");
+    let redis_client = redis::Client::open(redis_url).unwrap();
+
+    assert!(
+        verify_redisearch(&redis_client).await,
+        "RediSearch module not available on this Redis instance"
+    );
 
     let server = httpmock::MockServer::start();
 
@@ -416,9 +458,6 @@ async fn test_threshold_filtering() {
         .unwrap();
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
 
     setup_redis_index(&redis_client, index_name, 1536)
         .await
@@ -474,9 +513,18 @@ async fn test_threshold_filtering() {
 }
 
 #[tokio::test]
+#[ignore = "requires Docker/Podman for testcontainers"]
 async fn test_insert_multiple_embeddings() {
     let (host, port, _container) = get_redis_connection().await;
     let index_name = "test_insert_multiple_embeddings";
+
+    let redis_url = format!("redis://{host}:{port}");
+    let redis_client = redis::Client::open(redis_url).unwrap();
+
+    assert!(
+        verify_redisearch(&redis_client).await,
+        "RediSearch module not available on this Redis instance"
+    );
 
     let server = httpmock::MockServer::start();
 
@@ -510,9 +558,6 @@ async fn test_insert_multiple_embeddings() {
         .unwrap();
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
 
     setup_redis_index(&redis_client, index_name, 1536)
         .await
@@ -554,18 +599,17 @@ async fn test_insert_multiple_embeddings() {
 
     sleep(Duration::from_millis(500)).await;
 
-    // Verify documents were inserted
+    // Verify documents were inserted by searching
     let mut con = redis_client
         .get_multiplexed_async_connection()
         .await
         .unwrap();
     let keys: Vec<String> = redis::cmd("KEYS")
-        .arg("*")
+        .arg(format!("{index_name}:*"))
         .query_async(&mut con)
         .await
         .unwrap();
 
-    // Should have at least 3 documents (one per embedding)
     assert!(keys.len() >= 3, "Should have inserted at least 3 documents");
 
     cleanup_redis_index(&redis_client, index_name)
@@ -574,9 +618,18 @@ async fn test_insert_multiple_embeddings() {
 }
 
 #[tokio::test]
+#[ignore = "requires Docker/Podman for testcontainers"]
 async fn test_empty_results() {
     let (host, port, _container) = get_redis_connection().await;
     let index_name = "test_empty_results";
+
+    let redis_url = format!("redis://{host}:{port}");
+    let redis_client = redis::Client::open(redis_url).unwrap();
+
+    assert!(
+        verify_redisearch(&redis_client).await,
+        "RediSearch module not available on this Redis instance"
+    );
 
     let server = httpmock::MockServer::start();
 
@@ -604,9 +657,6 @@ async fn test_empty_results() {
         .unwrap();
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
 
     setup_redis_index(&redis_client, index_name, 1536)
         .await

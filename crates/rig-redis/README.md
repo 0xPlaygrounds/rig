@@ -6,9 +6,16 @@ Vector store index integration for [Redis](https://redis.io/) using RediSearch v
 
 - Vector similarity search using Redis's RediSearch module
 - Support for KNN (k-nearest neighbors) queries
-- Metadata filtering with Redis query syntax
 - Document insertion with automatic embedding storage
 - Compatible with Redis 7.2+ or Redis Stack
+
+## Filtering
+
+Filters apply to fields that exist in your RediSearch index schema **and** are
+present in the stored hash keys. The `InsertDocuments` implementation only writes
+`document`, `embedded_text`, and the vector field. If you need filterable metadata
+fields, write them to the hash separately or use a custom insertion approach that
+includes the filterable fields in the hash.
 
 ## Prerequisites
 
@@ -38,25 +45,28 @@ Replace `1536` with your embedding model's dimensionality.
 
 ## Usage Example
 
-```rust
+```rust,no_run
 use rig::providers::openai;
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig_redis::RedisVectorStore;
 
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 // Create embedding model
-let openai_client = openai::Client::from_env();
+let openai_client = openai::Client::from_env()?;
 let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
 
 // Create Redis client
 let redis_client = redis::Client::open("redis://127.0.0.1:6379")?;
 
-// Create vector store
+// Create vector store — key prefix must match the index PREFIX configuration
 let vector_store = RedisVectorStore::new(
     model,
     redis_client,
     "word_idx".to_string(),      // index name
     "embedding".to_string(),      // vector field name
-);
+)
+.await?
+.with_key_prefix("doc:".to_string());
 
 // Insert documents
 vector_store.insert_documents(documents).await?;
@@ -67,12 +77,14 @@ let results = vector_store
         VectorSearchRequest::builder()
             .query("your search query")
             .samples(5)
-            .build()?
+            .build()
     )
     .await?;
+# Ok(())
+# }
 ```
 
-You can find complete examples [here](https://github.com/0xPlaygrounds/rig/tree/main/rig-integrations/rig-redis/examples).
+You can find complete examples [here](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-redis/examples).
 
 ## Distance Metrics
 
@@ -88,12 +100,13 @@ Choose the metric that matches your embedding model when creating the index.
 - Requires pre-created RediSearch index
 - Vector dimensionality must match the index definition
 - Embeddings are stored as FLOAT32 (converted from FLOAT64)
+- `InsertDocuments` stores only the serialized document, embedded text, and vector — additional metadata fields for filtering must be written separately
 
 ## Testing
 
 ### Prerequisites
 
-Integration tests require Docker to be running, as they use testcontainers to spin up a Redis Stack instance.
+Integration tests require Docker (or Podman) to be running, as they use testcontainers to spin up a Redis Stack instance.
 
 ### Running Tests
 
@@ -104,8 +117,8 @@ cargo test
 # Run only unit tests
 cargo test --lib
 
-# Run only integration tests
-cargo test --test integration_tests
+# Run only integration tests (requires Docker/Podman)
+cargo test --test integration_tests -- --ignored
 
 # Or use the Makefile
 make test              # All tests
@@ -124,7 +137,7 @@ make redis-local
 docker run -d --name redis-stack -p 6379:6379 redis/redis-stack:latest
 
 # Create a test index
-redis-cli FT.CREATE word_idx ON HASH SCHEMA document TEXT embedded_text TEXT embedding VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
+redis-cli FT.CREATE word_idx ON HASH PREFIX 1 doc: SCHEMA document TEXT embedded_text TEXT embedding VECTOR FLAT 6 TYPE FLOAT32 DIM 1536 DISTANCE_METRIC COSINE
 
 # Run the example
 make run-example

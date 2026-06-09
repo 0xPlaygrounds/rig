@@ -18,6 +18,14 @@
 //! to cosine similarity (1 = identical, -1 = opposite) via `1.0 - distance`.
 //! Using a different distance metric (L2, IP) will produce incorrect similarity scores.
 //!
+//! # Filtering
+//!
+//! Filters apply to fields that exist in your RediSearch index schema **and** are
+//! present in the stored hash keys. The [`InsertDocuments`] implementation only
+//! writes `document`, `embedded_text`, and the vector field. If you need filterable
+//! metadata fields, write them to the hash separately or use a custom insertion
+//! approach. See [`filter`] module documentation for details.
+//!
 //! # Example
 //! ```ignore
 //! use rig_redis::RedisVectorStore;
@@ -27,7 +35,8 @@
 //!     redis_client,
 //!     "my_index".into(),
 //!     "embedding".into(),
-//! );
+//! )
+//! .await?;
 //! ```
 
 pub mod filter;
@@ -49,6 +58,12 @@ use serde::{Deserialize, Serialize};
 ///
 /// Uses Redis's `FT.SEARCH` command with KNN vector queries for similarity search.
 /// Internally holds a [`ConnectionManager`] for automatic reconnection on transient failures.
+///
+/// # Key Prefix
+///
+/// If your RediSearch index uses a `PREFIX` configuration (e.g., `PREFIX 1 doc:`),
+/// you **must** call [`RedisVectorStore::with_key_prefix`] with the matching prefix
+/// so that inserted documents are discoverable by the index.
 pub struct RedisVectorStore<M>
 where
     M: EmbeddingModel,
@@ -99,7 +114,8 @@ where
     /// Sets a key prefix for document keys.
     ///
     /// Documents stored via [`InsertDocuments`] will be keyed as `{prefix}{uuid}`.
-    /// This prefix should match the index's `PREFIX` configuration.
+    /// This prefix **must** match the index's `PREFIX` configuration for documents
+    /// to be indexed and discoverable by `FT.SEARCH`.
     pub fn with_key_prefix(mut self, prefix: String) -> Self {
         self.key_prefix = Some(prefix);
         self
@@ -293,9 +309,8 @@ where
 
         cmd.arg("DIALECT").arg(2);
 
-        if req.threshold().is_some() {
-            cmd.arg("LIMIT").arg(0).arg(req.samples());
-        }
+        // Always specify LIMIT to override RediSearch's default of 10 results.
+        cmd.arg("LIMIT").arg(0).arg(req.samples());
 
         cmd.query_async(&mut con)
             .await
