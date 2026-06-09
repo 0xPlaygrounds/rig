@@ -31,39 +31,97 @@ struct Word {
     definition: String,
 }
 
-/// Check if Redis is already running on localhost:6379
-async fn is_redis_running() -> bool {
-    match redis::Client::open("redis://127.0.0.1:6379") {
-        Ok(client) => client.get_multiplexed_async_connection().await.is_ok(),
-        Err(_) => false,
-    }
+struct TestRedis {
+    client: redis::Client,
+    _container: Option<testcontainers::ContainerAsync<GenericImage>>,
 }
 
-/// Get Redis connection info - either from existing instance or new container
-async fn get_redis_connection() -> (
-    String,
-    u16,
-    Option<testcontainers::ContainerAsync<GenericImage>>,
-) {
-    if is_redis_running().await {
-        println!("Using existing Redis instance on localhost:6379");
-        ("127.0.0.1".to_string(), REDIS_PORT, None)
-    } else {
-        println!("Starting new Redis Stack container");
-        let container = GenericImage::new("redis/redis-stack", "latest")
-            .with_exposed_port(REDIS_PORT.tcp())
-            .with_wait_for(WaitFor::Duration {
-                length: std::time::Duration::from_secs(3),
-            })
-            .start()
-            .await
-            .expect("Failed to start Redis Stack container");
+async fn redis_has_search(client: &redis::Client) -> bool {
+    let Ok(mut con) = client.get_multiplexed_async_connection().await else {
+        return false;
+    };
 
-        let port = container.get_host_port_ipv4(REDIS_PORT).await.unwrap();
-        let host = container.get_host().await.unwrap().to_string();
+    redis::cmd("FT._LIST")
+        .query_async::<Vec<String>>(&mut con)
+        .await
+        .is_ok()
+}
 
-        (host, port, Some(container))
+async fn get_redis_connection() -> Option<TestRedis> {
+    if let Ok(redis_url) = std::env::var("REDIS_URL") {
+        let client = match redis::Client::open(redis_url.clone()) {
+            Ok(client) => client,
+            Err(err) => {
+                eprintln!("Skipping Redis integration tests: invalid REDIS_URL ({err})");
+                return None;
+            }
+        };
+
+        if redis_has_search(&client).await {
+            return Some(TestRedis {
+                client,
+                _container: None,
+            });
+        }
+
+        eprintln!("Skipping Redis integration tests: REDIS_URL does not expose RediSearch");
+        return None;
     }
+
+    let container = match GenericImage::new("redis/redis-stack", "latest")
+        .with_exposed_port(REDIS_PORT.tcp())
+        .with_wait_for(WaitFor::Duration {
+            length: std::time::Duration::from_secs(3),
+        })
+        .start()
+        .await
+    {
+        Ok(container) => container,
+        Err(err) => {
+            eprintln!(
+                "Skipping Redis integration tests: could not start Redis Stack container ({err})"
+            );
+            return None;
+        }
+    };
+
+    let port = match container.get_host_port_ipv4(REDIS_PORT).await {
+        Ok(port) => port,
+        Err(err) => {
+            eprintln!("Skipping Redis integration tests: could not read Redis Stack port ({err})");
+            return None;
+        }
+    };
+    let host = match container.get_host().await {
+        Ok(host) => host.to_string(),
+        Err(err) => {
+            eprintln!("Skipping Redis integration tests: could not read Redis Stack host ({err})");
+            return None;
+        }
+    };
+    let client = match redis::Client::open(format!("redis://{host}:{port}")) {
+        Ok(client) => client,
+        Err(err) => {
+            eprintln!("Skipping Redis integration tests: invalid container Redis URL ({err})");
+            return None;
+        }
+    };
+
+    if !redis_has_search(&client).await {
+        eprintln!(
+            "Skipping Redis integration tests: Redis Stack container does not expose RediSearch"
+        );
+        return None;
+    }
+
+    Some(TestRedis {
+        client,
+        _container: Some(container),
+    })
+}
+
+fn unique_index_name(base: &str) -> String {
+    format!("{}_{}", base, uuid::Uuid::new_v4().simple())
 }
 
 async fn setup_redis_index(
@@ -134,8 +192,10 @@ async fn cleanup_redis_index(
 
 #[tokio::test]
 async fn test_vector_search_basic() {
-    let (host, port, _container) = get_redis_connection().await;
-    let index_name = "test_vector_search_basic";
+    let Some(redis) = get_redis_connection().await else {
+        return;
+    };
+    let index_name = unique_index_name("test_vector_search_basic");
 
     let server = httpmock::MockServer::start();
 
@@ -193,17 +253,16 @@ async fn test_vector_search_basic() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
+    let redis_client = redis.client;
 
-    setup_redis_index(&redis_client, index_name, 1536)
+    setup_redis_index(&redis_client, &index_name, 1536)
         .await
         .unwrap();
 
     let vector_store = RedisVectorStore::new(
         model.clone(),
         redis_client.clone(),
-        index_name.to_string(),
+        index_name.clone(),
         VECTOR_FIELD.to_string(),
     )
     .await
@@ -250,15 +309,17 @@ async fn test_vector_search_basic() {
     assert!(score.is_finite());
     assert!(doc.definition.contains("linglingdong"));
 
-    cleanup_redis_index(&redis_client, index_name)
+    cleanup_redis_index(&redis_client, &index_name)
         .await
         .unwrap();
 }
 
 #[tokio::test]
 async fn test_top_n_ids() {
-    let (host, port, _container) = get_redis_connection().await;
-    let index_name = "test_top_n_ids";
+    let Some(redis) = get_redis_connection().await else {
+        return;
+    };
+    let index_name = unique_index_name("test_top_n_ids");
 
     let server = httpmock::MockServer::start();
 
@@ -308,17 +369,16 @@ async fn test_top_n_ids() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
+    let redis_client = redis.client;
 
-    setup_redis_index(&redis_client, index_name, 1536)
+    setup_redis_index(&redis_client, &index_name, 1536)
         .await
         .unwrap();
 
     let vector_store = RedisVectorStore::new(
         model.clone(),
         redis_client.clone(),
-        index_name.to_string(),
+        index_name.clone(),
         VECTOR_FIELD.to_string(),
     )
     .await
@@ -359,15 +419,17 @@ async fn test_top_n_ids() {
     assert!(results[0].0.is_finite());
     assert!(!results[0].1.is_empty());
 
-    cleanup_redis_index(&redis_client, index_name)
+    cleanup_redis_index(&redis_client, &index_name)
         .await
         .unwrap();
 }
 
 #[tokio::test]
 async fn test_threshold_filtering() {
-    let (host, port, _container) = get_redis_connection().await;
-    let index_name = "test_threshold_filtering";
+    let Some(redis) = get_redis_connection().await else {
+        return;
+    };
+    let index_name = unique_index_name("test_threshold_filtering");
 
     let server = httpmock::MockServer::start();
 
@@ -417,17 +479,16 @@ async fn test_threshold_filtering() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
+    let redis_client = redis.client;
 
-    setup_redis_index(&redis_client, index_name, 1536)
+    setup_redis_index(&redis_client, &index_name, 1536)
         .await
         .unwrap();
 
     let vector_store = RedisVectorStore::new(
         model.clone(),
         redis_client.clone(),
-        index_name.to_string(),
+        index_name.clone(),
         VECTOR_FIELD.to_string(),
     )
     .await
@@ -468,15 +529,17 @@ async fn test_threshold_filtering() {
         assert!(score >= &0.5, "All results should meet threshold");
     }
 
-    cleanup_redis_index(&redis_client, index_name)
+    cleanup_redis_index(&redis_client, &index_name)
         .await
         .unwrap();
 }
 
 #[tokio::test]
 async fn test_insert_multiple_embeddings() {
-    let (host, port, _container) = get_redis_connection().await;
-    let index_name = "test_insert_multiple_embeddings";
+    let Some(redis) = get_redis_connection().await else {
+        return;
+    };
+    let index_name = unique_index_name("test_insert_multiple_embeddings");
 
     let server = httpmock::MockServer::start();
 
@@ -511,17 +574,16 @@ async fn test_insert_multiple_embeddings() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
+    let redis_client = redis.client;
 
-    setup_redis_index(&redis_client, index_name, 1536)
+    setup_redis_index(&redis_client, &index_name, 1536)
         .await
         .unwrap();
 
     let vector_store = RedisVectorStore::new(
         model.clone(),
         redis_client.clone(),
-        index_name.to_string(),
+        index_name.clone(),
         VECTOR_FIELD.to_string(),
     )
     .await
@@ -560,7 +622,7 @@ async fn test_insert_multiple_embeddings() {
         .await
         .unwrap();
     let keys: Vec<String> = redis::cmd("KEYS")
-        .arg("*")
+        .arg(format!("{index_name}:*"))
         .query_async(&mut con)
         .await
         .unwrap();
@@ -568,15 +630,17 @@ async fn test_insert_multiple_embeddings() {
     // Should have at least 3 documents (one per embedding)
     assert!(keys.len() >= 3, "Should have inserted at least 3 documents");
 
-    cleanup_redis_index(&redis_client, index_name)
+    cleanup_redis_index(&redis_client, &index_name)
         .await
         .unwrap();
 }
 
 #[tokio::test]
 async fn test_empty_results() {
-    let (host, port, _container) = get_redis_connection().await;
-    let index_name = "test_empty_results";
+    let Some(redis) = get_redis_connection().await else {
+        return;
+    };
+    let index_name = unique_index_name("test_empty_results");
 
     let server = httpmock::MockServer::start();
 
@@ -605,17 +669,16 @@ async fn test_empty_results() {
 
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let redis_url = format!("redis://{host}:{port}");
-    let redis_client = redis::Client::open(redis_url).unwrap();
+    let redis_client = redis.client;
 
-    setup_redis_index(&redis_client, index_name, 1536)
+    setup_redis_index(&redis_client, &index_name, 1536)
         .await
         .unwrap();
 
     let vector_store = RedisVectorStore::new(
         model.clone(),
         redis_client.clone(),
-        index_name.to_string(),
+        index_name.clone(),
         VECTOR_FIELD.to_string(),
     )
     .await
@@ -631,7 +694,7 @@ async fn test_empty_results() {
 
     assert_eq!(results.len(), 0);
 
-    cleanup_redis_index(&redis_client, index_name)
+    cleanup_redis_index(&redis_client, &index_name)
         .await
         .unwrap();
 }

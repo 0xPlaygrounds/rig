@@ -35,7 +35,8 @@ async fn main() -> Result<(), anyhow::Error> {
         "word_idx".to_string(),
         "embedding".to_string(),
     )
-    .await?;
+    .await?
+    .with_key_prefix("doc:".to_string());
 
     let words = vec![
         WordDefinition {

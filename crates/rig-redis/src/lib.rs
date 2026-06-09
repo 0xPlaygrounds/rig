@@ -27,7 +27,9 @@
 //!     redis_client,
 //!     "my_index".into(),
 //!     "embedding".into(),
-//! );
+//! )
+//! .await?
+//! .with_key_prefix("doc:".to_string());
 //! ```
 
 pub mod filter;
@@ -291,11 +293,11 @@ where
             cmd.arg(1).arg("__vector_score");
         }
 
-        cmd.arg("DIALECT").arg(2);
-
-        if req.threshold().is_some() {
-            cmd.arg("LIMIT").arg(0).arg(req.samples());
-        }
+        cmd.arg("LIMIT")
+            .arg(0)
+            .arg(req.samples())
+            .arg("DIALECT")
+            .arg(2);
 
         cmd.query_async(&mut con)
             .await
