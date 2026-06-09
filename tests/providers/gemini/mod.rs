@@ -5,6 +5,7 @@ mod cassette {
     mod chat_history;
     mod embeddings;
     mod extractor;
+    mod image_generation;
     mod interactions_api;
     mod models;
     mod multi_turn_streaming;
