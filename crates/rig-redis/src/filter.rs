@@ -11,13 +11,28 @@
 //!
 //! Ensure your RediSearch schema matches the filter types you use.
 //!
-//! # Filtering Limitations
+//! # Field Names
+//!
+//! Filter field names (the `key` argument) must be valid RediSearch identifiers
+//! matching the fields declared in your index schema. RediSearch field names
+//! are alphanumeric with underscores (`[a-zA-Z_][a-zA-Z0-9_]*`).
+//!
+//! # Filtering with Metadata
 //!
 //! Filters apply to fields that exist in your RediSearch index schema and are
 //! present in the stored hash keys. Configure [`RedisVectorStore::with_metadata_fields`](crate::RedisVectorStore::with_metadata_fields)
 //! to have metadata fields automatically extracted from documents during insertion.
 //! Only top-level scalar values (string, number, bool) are supported; null, array,
 //! and object values are silently skipped.
+//!
+//! # Dynamic API Subset
+//!
+//! The [`VectorStoreIndexDyn`](rig_core::vector_store::VectorStoreIndexDyn) path
+//! only supports the five [`CoreFilter`](rig_core::vector_store::request::Filter)
+//! variants: `Eq`, `Gt`, `Lt`, `And`, `Or`. Redis-specific methods like
+//! [`Filter::gte`], [`Filter::lte`], [`Filter::range`], [`Filter::tag_in`],
+//! [`Filter::text_contains`], and [`Filter::text_phrase`] are only accessible
+//! through the typed [`VectorStoreIndex`](rig_core::vector_store::VectorStoreIndex) API.
 //!
 //! # Escaping
 //!
@@ -131,6 +146,10 @@ impl From<i64> for RedisValue {
     }
 }
 
+/// Converts a `u64` to [`RedisValue::Number`].
+///
+/// Note: values above 2⁵³ (9,007,199,254,740,992) will lose precision
+/// due to the `f64` representation.
 impl From<u64> for RedisValue {
     fn from(value: u64) -> Self {
         Self::Number(value as f64)
@@ -324,7 +343,13 @@ impl Filter {
     /// Tag filter for multiple values (OR).
     ///
     /// Produces `@field:{val1 | val2 | val3}`. Values are escaped for special characters.
+    ///
+    /// If `values` is empty, returns a match-all filter (`*`) to avoid producing
+    /// invalid RediSearch syntax.
     pub fn tag_in(key: impl AsRef<str>, values: Vec<String>) -> Self {
+        if values.is_empty() {
+            return Self::raw("*");
+        }
         let tags = values
             .iter()
             .map(|v| escape_tag_value(v))
@@ -333,9 +358,15 @@ impl Filter {
         Self(format!("@{}:{{{}}}", key.as_ref(), tags))
     }
 
-    /// Full-text search within a TEXT field.
+    /// Full-text token search within a TEXT field.
+    ///
+    /// Performs a token-AND search: all words in `text` must appear in the field,
+    /// but they can appear in any order and at any position. This is **not** a
+    /// phrase search.
     ///
     /// The text value is escaped for RediSearch text-field special characters.
+    ///
+    /// Use [`Filter::text_phrase`] for exact phrase matching (word order preserved).
     pub fn text_contains(key: impl AsRef<str>, text: impl AsRef<str>) -> Self {
         Self(format!(
             "@{}:{}",
@@ -344,9 +375,31 @@ impl Filter {
         ))
     }
 
+    /// Exact phrase search within a TEXT field.
+    ///
+    /// Matches the exact sequence of words in `phrase` (order matters).
+    /// Produces `@field:"phrase"` syntax.
+    ///
+    /// The phrase value is escaped for RediSearch text-field special characters
+    /// (except the wrapping quotes).
+    pub fn text_phrase(key: impl AsRef<str>, phrase: impl AsRef<str>) -> Self {
+        Self(format!(
+            "@{}:\"{}\"",
+            key.as_ref(),
+            escape_text_value(phrase.as_ref())
+        ))
+    }
+
     /// Creates a filter from a raw RediSearch query string.
     ///
     /// No escaping is applied — the caller is responsible for correct syntax.
+    ///
+    /// # Security Warning
+    ///
+    /// Do **not** pass unsanitized user input to this method. Arbitrary RediSearch
+    /// query clauses can be injected, potentially returning unintended results or
+    /// causing query parse errors. Use the typed filter methods (e.g., [`Filter::eq`],
+    /// [`Filter::tag_in`]) for values that originate from user input.
     pub fn raw(query: impl Into<String>) -> Self {
         Self(query.into())
     }

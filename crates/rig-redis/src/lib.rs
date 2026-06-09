@@ -233,18 +233,39 @@ where
     }
 
     /// Parses FT.SEARCH response into results with deserialized documents.
+    ///
+    /// Documents with empty or unparseable JSON are skipped with a warning rather
+    /// than aborting the entire result set.
     fn parse_search_response<T>(
         response: redis::Value,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError>
     where
         T: for<'a> Deserialize<'a>,
     {
-        Self::parse_response_generic(response, true).and_then(|items| {
+        Self::parse_response_generic(response, true).map(|items| {
             items
                 .into_iter()
-                .map(|(score, id, doc_json)| {
-                    let doc = serde_json::from_str::<T>(&doc_json)?;
-                    Ok((score, id, doc))
+                .filter_map(|(score, id, doc_json)| {
+                    if doc_json.is_empty() {
+                        tracing::warn!(
+                            target: "rig",
+                            id = %id,
+                            "Document field missing or empty in hash, skipping"
+                        );
+                        return None;
+                    }
+                    match serde_json::from_str::<T>(&doc_json) {
+                        Ok(doc) => Some((score, id, doc)),
+                        Err(e) => {
+                            tracing::warn!(
+                                target: "rig",
+                                id = %id,
+                                error = %e,
+                                "Failed to deserialize document, skipping"
+                            );
+                            None
+                        }
+                    }
                 })
                 .collect()
         })
@@ -303,6 +324,7 @@ where
                     };
 
                     let mut score = 0.0;
+                    let mut score_found = false;
                     let mut document_json = String::new();
 
                     let mut field_iter = fields_val.chunks(2);
@@ -314,6 +336,7 @@ where
 
                         if field_name == "__vector_score" {
                             score = Self::extract_score(value_val)?;
+                            score_found = true;
                         } else if include_document && field_name == "document" {
                             match Self::extract_string(value_val) {
                                 Some(json) => document_json = json,
@@ -326,6 +349,14 @@ where
                                 }
                             }
                         }
+                    }
+
+                    if !score_found {
+                        tracing::warn!(
+                            target: "rig",
+                            id = %id,
+                            "__vector_score field missing from search result, defaulting to 0.0"
+                        );
                     }
 
                     results.push((score, id, document_json));
@@ -409,6 +440,13 @@ impl<Model> InsertDocuments for RedisVectorStore<Model>
 where
     Model: EmbeddingModel + Send + Sync,
 {
+    /// Inserts documents with their precomputed embeddings into Redis.
+    ///
+    /// Each embedding in [`OneOrMany<Embedding>`] produces a separate Redis hash
+    /// keyed by `{prefix}{uuid}`. All hashes for a given document share the same
+    /// serialized JSON in the `document` field but have distinct `embedded_text`
+    /// values (one per embedding). This means a single logical document may produce
+    /// multiple hash entries if it has multiple embeddings.
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,

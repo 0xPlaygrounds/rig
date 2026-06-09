@@ -229,3 +229,33 @@ fn test_filter_raw() {
     let filter = Filter::raw("@field:{raw value with no escaping}");
     assert_eq!(filter.into_inner(), "@field:{raw value with no escaping}");
 }
+
+// tag_in edge cases
+
+#[test]
+fn test_filter_tag_in_empty_values_returns_match_all() {
+    let filter = Filter::tag_in("tags", vec![]);
+    assert_eq!(filter.into_inner(), "*");
+}
+
+// text_phrase tests
+
+#[test]
+fn test_filter_text_phrase() {
+    let filter = Filter::text_phrase("description", "hello world");
+    assert_eq!(filter.into_inner(), "@description:\"hello world\"");
+}
+
+#[test]
+fn test_filter_text_phrase_with_special_chars() {
+    let filter = Filter::text_phrase("description", "it's a test");
+    assert_eq!(filter.into_inner(), r#"@description:"it\'s a test""#);
+}
+
+#[test]
+fn test_filter_text_contains_is_token_and_not_phrase() {
+    // text_contains escapes spaces but does not wrap in quotes
+    let filter = Filter::text_contains("description", "hello world");
+    // Each word is escaped individually — no quotes means token-AND semantics
+    assert_eq!(filter.into_inner(), "@description:hello world");
+}
