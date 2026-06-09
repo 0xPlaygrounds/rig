@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant that can read files using different methods.","type":"text"}],"role":"system"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user"}],"model":"gpt-4o-mini","tools":[{"function":{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"}},"type":"function"},{"function":{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"content_filter_results":{},"finish_reason":"tool_calls","index":0,"message":{"padding":"abcdefghijklmnopqrstuvwxyz0123456","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"read_file_head"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"read_file_tail"},"id":"call_REDACTED_2","type":"function"}]}}],"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":0,"token_count":105,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_write"},{"batch_size":1000000,"cost_per_batch":0,"token_count":42,"token_type":"output"}],"total_nano_aiu":0},"id":"chatcmpl-REDACTED_1","model":"gpt-4o-mini-2024-07-18","prompt_filter_results":[{"content_filter_results":{},"prompt_index":0}],"service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":42,"completion_tokens_details":{"accepted_prediction_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":105,"prompt_tokens_details":{"cached_tokens":0},"reasoning_tokens":0,"total_tokens":147}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant that can read files using different methods.","type":"text"}],"role":"system"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"read_file_head"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"read_file_tail"},"id":"call_REDACTED_2","type":"function"}]},{"content":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"hello world","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"gpt-4o-mini","tools":[{"function":{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"}},"type":"function"},{"function":{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"content_filter_results":{},"finish_reason":"stop","index":0,"message":{"content":"The last line of the file `test.txt` is: \"hello world\". However, I am unable to read the first line at this time.","padding":"abcdefghijklmnopqrstuvwxyz01","role":"assistant"}}],"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":0,"token_count":184,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_write"},{"batch_size":1000000,"cost_per_batch":0,"token_count":32,"token_type":"output"}],"total_nano_aiu":0},"id":"chatcmpl-REDACTED_2","model":"gpt-4o-mini-2024-07-18","prompt_filter_results":[{"content_filter_results":{},"prompt_index":0}],"service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":32,"completion_tokens_details":{"accepted_prediction_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":184,"prompt_tokens_details":{"cached_tokens":0},"reasoning_tokens":0,"total_tokens":216}}'

@@ -1,0 +1,33 @@
+when:
+  path: /responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":4096,"model":"gpt-5.3-codex","reasoning":{"effort":"high"},"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":175000000000,"token_count":148,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":17500000000,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":1400000000000,"token_count":65,"token_type":"output"}],"total_nano_aiu":116900000},"created_at":0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"model":"gpt-5.3-codex","object":"response","output":[{"content":[],"encrypted_content":"encrypted_content_REDACTED_1","id":"id_REDACTED_1","summary":[],"type":"reasoning"},{"arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"get_weather","status":"completed","type":"function_call"}],"output_text":null,"parallel_tool_calls":true,"previous_response_id":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"high","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"default","status":"completed","temperature":1,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}],"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":148,"input_tokens_details":{"cached_tokens":0},"output_tokens":65,"output_tokens_details":{"reasoning_tokens":43},"total_tokens":213}}'
+---
+when:
+  path: /responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","type":"input_text"}],"role":"user","type":"message"},{"encrypted_content":"encrypted_content_REDACTED_1","id":"id_REDACTED_1","summary":[],"type":"reasoning"},{"arguments":"{\"city\":\"Tokyo, Japan\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"get_weather","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","status":"completed","type":"function_call_output"}],"max_output_tokens":4096,"model":"gpt-5.3-codex","reasoning":{"effort":"high"},"tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":175000000000,"token_count":251,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":17500000000,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":1400000000000,"token_count":94,"token_type":"output"}],"total_nano_aiu":175525000},"created_at":0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":4096,"model":"gpt-5.3-codex","object":"response","output":[{"content":[],"encrypted_content":"encrypted_content_REDACTED_2","id":"id_REDACTED_3","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"Current weather in **Tokyo, Japan** is **72°F (22°C)**, **sunny with light clouds**, with **45% humidity** and a light **8 mph NW wind**.\n\nBased on this, pack **sunscreen**. An umbrella isn’t necessary for current conditions.","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"output_text":null,"parallel_tool_calls":true,"previous_response_id":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"high","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"default","status":"completed","temperature":1,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}],"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":251,"input_tokens_details":{"cached_tokens":0},"output_tokens":94,"output_tokens_details":{"reasoning_tokens":28},"total_tokens":345}}'
