@@ -114,12 +114,6 @@ pub mod qdrant {
     pub use rig_qdrant::*;
 }
 
-#[cfg(feature = "redis")]
-#[cfg_attr(docsrs, doc(cfg(feature = "redis")))]
-pub mod redis {
-    pub use rig_redis::*;
-}
-
 #[cfg(feature = "s3vectors")]
 #[cfg_attr(docsrs, doc(cfg(feature = "s3vectors")))]
 pub mod s3vectors {

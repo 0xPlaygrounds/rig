@@ -1178,15 +1178,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "backon"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cffb0e931875b666fc4fcb20fee52e9bbd1ef836fd9e9e04ec21555f9f85f7ef"
-dependencies = [
- "fastrand",
-]
-
-[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8630,21 +8621,20 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72d32a1ac9123f0d84fda64bfc02a271d9868483162dd2d9099b5c362ece064c"
 dependencies = [
- "arc-swap",
  "arcstr",
  "async-lock",
- "backon",
  "bytes",
  "cfg-if",
  "combine",
- "futures-channel",
  "futures-util",
  "itoa",
+ "num-bigint",
  "percent-encoding",
  "pin-project-lite",
  "ryu",
  "serde",
  "serde_json",
+ "sha1_smol",
  "socket2 0.6.3",
  "tokio",
  "tokio-util",
@@ -8994,7 +8984,6 @@ dependencies = [
  "rig-neo4j",
  "rig-postgres",
  "rig-qdrant",
- "rig-redis",
  "rig-s3vectors",
  "rig-scylladb",
  "rig-sqlite",
@@ -9280,23 +9269,6 @@ dependencies = [
  "serde_json",
  "testcontainers",
  "tokio",
- "uuid",
-]
-
-[[package]]
-name = "rig-redis"
-version = "0.38.1"
-dependencies = [
- "anyhow",
- "httpmock",
- "redis",
- "rig-core",
- "serde",
- "serde_json",
- "testcontainers",
- "tokio",
- "tracing",
- "tracing-subscriber",
  "uuid",
 ]
 
@@ -10388,6 +10360,12 @@ dependencies = [
  "cpufeatures 0.2.17",
  "digest 0.10.7",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
