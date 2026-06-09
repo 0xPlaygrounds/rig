@@ -68,7 +68,7 @@ where
 
         let request = self
             .client
-            .post(&generate_content_path(&self.model))?
+            .post(generate_content_path(&self.model))?
             .body(body)
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 
