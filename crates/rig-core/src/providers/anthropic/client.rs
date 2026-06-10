@@ -1,7 +1,15 @@
 //! Anthropic client api implementation
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
+
 use http::{HeaderName, HeaderValue};
 
-use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
+use super::{
+    auth,
+    completion::{ANTHROPIC_VERSION_LATEST, CompletionModel, OAuthRequestHook},
+};
 use crate::{
     client::{
         self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -34,31 +42,54 @@ impl<H> Capabilities<H> for AnthropicExt {
     type AudioGeneration = Nothing;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AnthropicBuilder {
     pub(crate) anthropic_version: String,
     pub(crate) anthropic_betas: Vec<String>,
+    pub(crate) auth_file: Option<PathBuf>,
+    pub(crate) oauth_prompt_handler: auth::OAuthPromptHandler,
+    pub(crate) manual_code_handler: auth::ManualCodeHandler,
+    pub(crate) oauth_request_hook: Option<OAuthRequestHook>,
+}
+
+impl fmt::Debug for AnthropicBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AnthropicBuilder")
+            .field("anthropic_version", &self.anthropic_version)
+            .field("anthropic_betas", &self.anthropic_betas)
+            .field("auth_file", &self.auth_file)
+            .field("oauth_prompt_handler", &self.oauth_prompt_handler)
+            .field("manual_code_handler", &self.manual_code_handler)
+            .field("oauth_request_hook", &self.oauth_request_hook.is_some())
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct AnthropicKey(String);
+pub enum AnthropicKey {
+    ApiKey(String),
+    OAuth,
+}
 
 impl<S> From<S> for AnthropicKey
 where
     S: Into<String>,
 {
     fn from(value: S) -> Self {
-        Self(value.into())
+        Self::ApiKey(value.into())
     }
 }
 
 impl ApiKey for AnthropicKey {
     fn into_header(self) -> Option<http_client::Result<(http::HeaderName, HeaderValue)>> {
-        Some(
-            HeaderValue::from_str(&self.0)
-                .map(|val| (HeaderName::from_static("x-api-key"), val))
-                .map_err(Into::into),
-        )
+        match self {
+            Self::ApiKey(key) => Some(
+                HeaderValue::from_str(&key)
+                    .map(|val| (HeaderName::from_static("x-api-key"), val))
+                    .map_err(Into::into),
+            ),
+            Self::OAuth => None,
+        }
     }
 }
 
@@ -71,6 +102,10 @@ impl Default for AnthropicBuilder {
         Self {
             anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
             anthropic_betas: Vec::new(),
+            auth_file: default_auth_file(),
+            oauth_prompt_handler: auth::OAuthPromptHandler::default(),
+            manual_code_handler: auth::ManualCodeHandler::default(),
+            oauth_request_hook: None,
         }
     }
 }
@@ -85,11 +120,22 @@ impl ProviderBuilder for AnthropicBuilder {
     const BASE_URL: &'static str = "https://api.anthropic.com";
 
     fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
     ) -> http_client::Result<Self::Extension<H>>
     where
         H: HttpClientExt,
     {
+        let ext = builder.ext();
+        let source = match builder.get_api_key() {
+            AnthropicKey::ApiKey(key) => auth::AuthSource::ApiKey(key.clone()),
+            AnthropicKey::OAuth => auth::AuthSource::OAuth,
+        };
+        let _authenticator = auth::Authenticator::new(
+            source,
+            ext.auth_file.clone(),
+            ext.oauth_prompt_handler.clone(),
+            ext.manual_code_handler.clone(),
+        );
         Ok(AnthropicExt)
     }
 
@@ -141,6 +187,13 @@ impl ProviderClient for Client {
 /// # Ok(())
 /// # }
 /// ```
+impl<H> client::ClientBuilder<AnthropicBuilder, crate::markers::Missing, H> {
+    /// Select Anthropic Claude subscription OAuth managed by rig.
+    pub fn oauth(self) -> client::ClientBuilder<AnthropicBuilder, AnthropicKey, H> {
+        self.api_key(AnthropicKey::OAuth)
+    }
+}
+
 impl<H> ClientBuilder<H> {
     pub fn anthropic_version(self, anthropic_version: &str) -> Self {
         self.over_ext(|ext| AnthropicBuilder {
@@ -165,6 +218,55 @@ impl<H> ClientBuilder<H> {
             ext
         })
     }
+
+    /// Register a callback for the Anthropic OAuth authorization URL.
+    pub fn on_oauth_prompt<F>(self, handler: F) -> Self
+    where
+        F: Fn(auth::OAuthPrompt) + Send + Sync + 'static,
+    {
+        self.over_ext(|mut ext| {
+            ext.oauth_prompt_handler = auth::OAuthPromptHandler::new(handler);
+            ext
+        })
+    }
+
+    /// Register a callback that customizes Anthropic OAuth requests before they are sent.
+    pub fn on_oauth_request<F>(self, hook: F) -> Self
+    where
+        F: Fn(&mut serde_json::Value, &mut http::HeaderMap, &str) -> super::completion::ToolNameMap
+            + crate::wasm_compat::WasmCompatSend
+            + crate::wasm_compat::WasmCompatSync
+            + 'static,
+    {
+        self.over_ext(|mut ext| {
+            ext.oauth_request_hook = Some(std::sync::Arc::new(hook));
+            ext
+        })
+    }
+
+    /// Register a callback that returns a manually pasted OAuth redirect URL or `code#state`.
+    pub fn on_manual_code<F>(self, handler: F) -> Self
+    where
+        F: Fn() -> Option<String> + Send + Sync + 'static,
+    {
+        self.over_ext(|mut ext| {
+            ext.manual_code_handler = auth::ManualCodeHandler::new(handler);
+            ext
+        })
+    }
+
+    /// Store Anthropic OAuth tokens in the provided file.
+    pub fn auth_file(self, path: impl AsRef<Path>) -> Self {
+        let auth_file = path.as_ref().to_path_buf();
+        self.over_ext(|mut ext| {
+            ext.auth_file = Some(auth_file);
+            ext
+        })
+    }
+}
+
+fn default_auth_file() -> Option<PathBuf> {
+    std::env::home_dir().map(|home| home.join(".rig").join("anthropic-auth.json"))
 }
 
 pub fn normalize_anthropic_base_url(base_url: &str) -> String {

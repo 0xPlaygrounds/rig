@@ -37,17 +37,18 @@ rig-derive = { version = "0.38.2", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 rmcp = { workspace = true, optional = true, features = ["client"] }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "time"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 serenity = { workspace = true, optional = true }
 fastrand = { workspace = true }
 nanoid = { workspace = true }
-getrandom = { workspace = true, optional = true }
+getrandom = { workspace = true }
 eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
@@ -116,7 +117,6 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 wasm = [
-  "dep:getrandom",
   "dep:wasm-bindgen-futures",
   "futures-timer/wasm-bindgen",
   "getrandom/js",
