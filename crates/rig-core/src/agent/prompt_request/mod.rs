@@ -11,6 +11,7 @@ use crate::{
     json_utils,
     memory::ConversationMemory,
     message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
+    telemetry::SpanCombinator,
     tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
@@ -586,23 +587,26 @@ where
     }
 
     async fn send(self) -> Result<PromptResponse, PromptError> {
-        let agent_span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                "invoke_agent",
-                gen_ai.operation.name = "invoke_agent",
-                gen_ai.agent.name = self.agent_name(),
-                gen_ai.system_instructions = self.preamble,
-                gen_ai.prompt = tracing::field::Empty,
-                gen_ai.completion = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+        let (agent_span, created_agent_span) = if tracing::Span::current().is_disabled() {
+            (
+                info_span!(
+                    "invoke_agent",
+                    gen_ai.operation.name = "invoke_agent",
+                    gen_ai.agent.name = self.agent_name(),
+                    gen_ai.system_instructions = self.preamble,
+                    gen_ai.prompt = tracing::field::Empty,
+                    gen_ai.completion = tracing::field::Empty,
+                    gen_ai.usage.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.output_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                    gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                    gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                ),
+                true,
             )
         } else {
-            tracing::Span::current()
+            (tracing::Span::current(), false)
         };
 
         if let Some(text) = self.prompt.rag_text() {
@@ -692,6 +696,7 @@ where
                 gen_ai.usage.reasoning_tokens = tracing::field::Empty,
                 gen_ai.input.messages = tracing::field::Empty,
                 gen_ai.output.messages = tracing::field::Empty,
+                gen_ai.completion = tracing::field::Empty,
             );
 
             let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
@@ -708,6 +713,13 @@ where
             // Build history for completion request (input + new messages except last)
             let history_for_request =
                 build_history_for_request(chat_history.as_deref(), history_for_current_turn);
+
+            // Record the messages sent to the model for this call.
+            {
+                let mut input_messages = history_for_request.clone();
+                input_messages.push(prompt.clone());
+                chat_span.record_model_input(&input_messages);
+            }
 
             let prepared_request = build_prepared_completion_request(
                 &self.model,
@@ -739,6 +751,9 @@ where
             ));
             completion_call_index += 1;
             usage += resp.usage;
+
+            // Record the model's response on the per-call chat span.
+            chat_span.record_model_output(&resp.choice);
 
             let mut response_choice = resp.choice.clone();
             let has_tool_calls = response_choice
@@ -888,22 +903,29 @@ where
                     tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
                 }
 
-                agent_span.record("gen_ai.completion", &merged_texts);
-                agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                agent_span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    usage.cached_input_tokens,
-                );
-                agent_span.record(
-                    "gen_ai.usage.cache_creation.input_tokens",
-                    usage.cache_creation_input_tokens,
-                );
-                agent_span.record(
-                    "gen_ai.usage.tool_use_prompt_tokens",
-                    usage.tool_use_prompt_tokens,
-                );
-                agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+                // Always record completion text on the per-call chat span (which declares
+                // the field). Only record aggregate completion + usage on the agent span
+                // when rig created it; caller-owned spans do not declare these fields and
+                // tracing would silently drop them.
+                chat_span.record("gen_ai.completion", &merged_texts);
+                if created_agent_span {
+                    agent_span.record("gen_ai.completion", &merged_texts);
+                    agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                    agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                    agent_span.record(
+                        "gen_ai.usage.cache_read.input_tokens",
+                        usage.cached_input_tokens,
+                    );
+                    agent_span.record(
+                        "gen_ai.usage.cache_creation.input_tokens",
+                        usage.cache_creation_input_tokens,
+                    );
+                    agent_span.record(
+                        "gen_ai.usage.tool_use_prompt_tokens",
+                        usage.tool_use_prompt_tokens,
+                    );
+                    agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+                }
 
                 if let Some((memory, id)) = memory_handle.as_ref()
                     && let Err(err) = memory.append(id, new_messages.clone()).await

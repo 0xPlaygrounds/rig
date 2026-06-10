@@ -13,6 +13,7 @@ use crate::{
         UserContent,
     },
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
+    telemetry::SpanCombinator,
     tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
@@ -910,7 +911,18 @@ where
                     gen_ai.usage.reasoning_tokens = tracing::field::Empty,
                     gen_ai.input.messages = tracing::field::Empty,
                     gen_ai.output.messages = tracing::field::Empty,
+                    gen_ai.completion = tracing::field::Empty,
                 );
+
+                // Record the messages sent to the model for this turn: chat history
+                // (prior turns / loaded memory) + current prompt (the last user message).
+                // This mirrors what build_prepared_completion_request passes to the
+                // provider and matches the format PostHog expects from the SpanCombinator.
+                {
+                    let mut input_messages = history_snapshot.clone();
+                    input_messages.push(current_prompt.clone());
+                    chat_stream_span.record_model_input(&input_messages);
+                }
 
                 let prepared_request = build_prepared_completion_request(
                     &model,
@@ -1475,7 +1487,17 @@ where
 
                 let final_turn_content = stream.choice.clone();
                 let turn_text_response = assistant_text_from_choice(&final_turn_content);
-                tracing::Span::current().record("gen_ai.completion", &turn_text_response);
+                // Record per-call output on the per-call chat_stream_span (which declares these
+                // fields). The previous code targeted tracing::Span::current() (the ambient
+                // invoke_agent/caller span), which silently dropped it because the field is not
+                // declared there.
+                chat_stream_span.record_model_output(&final_turn_content);
+                chat_stream_span.record("gen_ai.completion", &turn_text_response);
+                // Write aggregate completion text to the agent span only when rig created it,
+                // so that caller-owned spans are never polluted with per-call data.
+                if created_agent_span {
+                    tracing::Span::current().record("gen_ai.completion", &turn_text_response);
+                }
 
                 if !pending_tool_calls.is_empty() {
                     let diagnostic_history =
@@ -2189,6 +2211,8 @@ mod tests {
         name: String,
         parent_id: Option<u64>,
         fields: HashMap<String, u64>,
+        /// String-valued span fields (e.g. gen_ai.input.messages, gen_ai.output.messages).
+        string_fields: HashMap<String, String>,
     }
 
     #[derive(Clone, Default)]
@@ -2203,6 +2227,7 @@ mod tests {
                     name: name.to_string(),
                     parent_id,
                     fields: HashMap::new(),
+                    string_fields: HashMap::new(),
                 });
             }
         }
@@ -2212,6 +2237,14 @@ mod tests {
                 && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
             {
                 span.fields.extend(fields);
+            }
+        }
+
+        fn record_str(&self, id: &Id, fields: Vec<(String, String)>) {
+            if let Ok(mut spans) = self.0.lock()
+                && let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64())
+            {
+                span.string_fields.extend(fields);
             }
         }
 
@@ -2238,21 +2271,30 @@ mod tests {
         }
 
         fn on_record(&self, span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
-            let mut fields = Vec::new();
+            let mut int_fields = Vec::new();
+            let mut str_fields = Vec::new();
             values.record(&mut SpanFieldCaptureVisitor {
-                fields: &mut fields,
+                int_fields: &mut int_fields,
+                str_fields: &mut str_fields,
             });
-            self.spans.record(span, fields);
+            self.spans.record(span, int_fields);
+            self.spans.record_str(span, str_fields);
         }
     }
 
     struct SpanFieldCaptureVisitor<'a> {
-        fields: &'a mut Vec<(String, u64)>,
+        int_fields: &'a mut Vec<(String, u64)>,
+        str_fields: &'a mut Vec<(String, String)>,
     }
 
     impl Visit for SpanFieldCaptureVisitor<'_> {
         fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields.push((field.name().to_string(), value));
+            self.int_fields.push((field.name().to_string(), value));
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.str_fields
+                .push((field.name().to_string(), value.to_string()));
         }
 
         fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
@@ -5191,6 +5233,202 @@ mod tests {
             &[first_call_usage, second_call_usage],
         )
         .await;
+    }
+
+    /// Drive the agent stream under an outer span and return the captured spans.
+    async fn run_agent_stream_under_outer_span(
+        agent: crate::agent::Agent<MockCompletionModel>,
+        prompt: &str,
+        max_turns: usize,
+    ) -> (Vec<CapturedSpan>, u64) {
+        let spans = CapturedSpans::default();
+        let subscriber = Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let _default = tracing::subscriber::set_default(subscriber);
+        let empty_history: &[Message] = &[];
+        let outer_span = tracing::info_span!("outer");
+
+        async {
+            let mut stream = agent
+                .stream_prompt(prompt)
+                .with_history(empty_history)
+                .multi_turn(max_turns)
+                .await;
+
+            while let Some(item) = stream.try_next().await.expect("stream should not error") {
+                if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                    break;
+                }
+            }
+        }
+        .instrument(outer_span)
+        .await;
+
+        let snapshot = spans.snapshot();
+        let outer_span_id = snapshot
+            .iter()
+            .find(|span| span.name == "outer")
+            .map(|span| span.id)
+            .expect("outer span should be captured");
+        (snapshot, outer_span_id)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_records_input_and_output_messages_on_single_turn_chat_span() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("hello from model"),
+            MockStreamEvent::final_response(usage(5, 3)),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let (snapshot, outer_span_id) = run_agent_stream_under_outer_span(agent, "hello", 1).await;
+
+        let chat_spans: Vec<_> = snapshot
+            .iter()
+            .filter(|s| s.name == "chat_streaming")
+            .collect();
+        assert_eq!(
+            chat_spans.len(),
+            1,
+            "expected exactly one chat_streaming span"
+        );
+
+        let chat_span = chat_spans[0];
+        assert_eq!(chat_span.parent_id, Some(outer_span_id));
+
+        let input = chat_span
+            .string_fields
+            .get("gen_ai.input.messages")
+            .expect("gen_ai.input.messages should be recorded on the chat span");
+        assert!(
+            !input.is_empty(),
+            "gen_ai.input.messages should be non-empty"
+        );
+        // The user prompt should appear in the input.
+        assert!(
+            input.contains("hello"),
+            "gen_ai.input.messages should contain the user prompt, got: {input}"
+        );
+
+        let output = chat_span
+            .string_fields
+            .get("gen_ai.output.messages")
+            .expect("gen_ai.output.messages should be recorded on the chat span");
+        assert!(
+            !output.is_empty(),
+            "gen_ai.output.messages should be non-empty"
+        );
+        assert!(
+            output.contains("hello from model"),
+            "gen_ai.output.messages should contain the assistant reply, got: {output}"
+        );
+
+        // The outer span must not carry per-call content.
+        let outer = snapshot
+            .iter()
+            .find(|s| s.id == outer_span_id)
+            .expect("outer span");
+        assert!(
+            !outer.string_fields.contains_key("gen_ai.input.messages"),
+            "outer span should not carry gen_ai.input.messages"
+        );
+        assert!(
+            !outer.string_fields.contains_key("gen_ai.output.messages"),
+            "outer span should not carry gen_ai.output.messages"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_records_input_and_output_messages_on_each_turn_in_multi_turn() {
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call(
+                    "tool_call_1",
+                    "add",
+                    serde_json::json!({"x": 1, "y": 2}),
+                )
+                .with_call_id("call_1"),
+                MockStreamEvent::final_response(usage(10, 2)),
+            ],
+            vec![
+                MockStreamEvent::text("result is 3"),
+                MockStreamEvent::final_response(usage(25, 5)),
+            ],
+        ]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let (snapshot, outer_span_id) =
+            run_agent_stream_under_outer_span(agent, "add 1 and 2", 3).await;
+
+        let chat_spans: Vec<_> = snapshot
+            .iter()
+            .filter(|s| s.name == "chat_streaming")
+            .collect();
+        assert_eq!(
+            chat_spans.len(),
+            2,
+            "expected two chat_streaming spans for two-turn agent run"
+        );
+
+        for (i, chat_span) in chat_spans.iter().enumerate() {
+            let input = chat_span
+                .string_fields
+                .get("gen_ai.input.messages")
+                .unwrap_or_else(|| {
+                    panic!("chat span #{i} should have gen_ai.input.messages recorded")
+                });
+            assert!(
+                !input.is_empty(),
+                "chat span #{i}: gen_ai.input.messages should be non-empty"
+            );
+
+            let output = chat_span
+                .string_fields
+                .get("gen_ai.output.messages")
+                .unwrap_or_else(|| {
+                    panic!("chat span #{i} should have gen_ai.output.messages recorded")
+                });
+            assert!(
+                !output.is_empty(),
+                "chat span #{i}: gen_ai.output.messages should be non-empty"
+            );
+        }
+
+        // Turn 1 input contains the original user prompt.
+        let first_input = chat_spans[0]
+            .string_fields
+            .get("gen_ai.input.messages")
+            .unwrap();
+        assert!(
+            first_input.contains("add 1 and 2"),
+            "first turn input should contain the user prompt, got: {first_input}"
+        );
+
+        // Turn 2 input should contain the tool result (richer history).
+        let second_input = chat_spans[1]
+            .string_fields
+            .get("gen_ai.input.messages")
+            .unwrap();
+        // The second turn input must be longer (it contains the tool result message).
+        assert!(
+            second_input.len() > first_input.len(),
+            "second turn input should be longer than first (includes tool result)"
+        );
+
+        // The outer span must not carry any per-call content.
+        let outer = snapshot
+            .iter()
+            .find(|s| s.id == outer_span_id)
+            .expect("outer span");
+        assert!(
+            !outer.string_fields.contains_key("gen_ai.input.messages"),
+            "outer span should not carry gen_ai.input.messages"
+        );
+        assert!(
+            !outer.string_fields.contains_key("gen_ai.output.messages"),
+            "outer span should not carry gen_ai.output.messages"
+        );
     }
 
     #[tokio::test]
