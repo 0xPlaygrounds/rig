@@ -119,7 +119,7 @@ impl<H> Capabilities<H> for GeminiExt {
     type ModelListing = Capable<GeminiModelLister<H>>;
 
     #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
+    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
 }

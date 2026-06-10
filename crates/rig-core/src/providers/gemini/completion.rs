@@ -18,6 +18,10 @@ pub const GEMINI_2_5_FLASH_PREVIEW_04_17: &str = "gemini-2.5-flash-preview-04-17
 pub const GEMINI_2_5_PRO_EXP_03_25: &str = "gemini-2.5-pro-exp-03-25";
 /// `gemini-2.5-flash` completion model
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
+/// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
+#[cfg(feature = "image")]
+#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
+pub const GEMINI_2_5_FLASH_IMAGE: &str = "gemini-2.5-flash-image";
 /// `gemini-2.0-flash-lite` completion model
 pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
@@ -1606,6 +1610,9 @@ pub mod gemini_api_types {
         /// Configuration for thinking/reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
+        /// Response modalities requested from models that support multimodal output.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub response_modalities: Option<Vec<ResponseModality>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub image_config: Option<ImageConfig>,
     }
@@ -1628,9 +1635,19 @@ pub mod gemini_api_types {
                 response_logprobs: None,
                 logprobs: None,
                 thinking_config: None,
+                response_modalities: None,
                 image_config: None,
             }
         }
+    }
+
+    /// Response modalities supported by Gemini multimodal output models.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+    pub enum ResponseModality {
+        Text,
+        Image,
+        Audio,
     }
 
     /// Thinking depth level for Gemini 3 models.
