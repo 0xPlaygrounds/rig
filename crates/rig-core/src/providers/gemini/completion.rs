@@ -195,12 +195,12 @@ where
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
-    let documents_message = completion_request.normalized_documents();
+    let chat_history = completion_request.chat_history_with_documents();
 
     let CompletionRequest {
         model: _,
         preamble,
-        chat_history,
+        chat_history: _,
         documents: _,
         tools: function_tools,
         temperature,
@@ -211,9 +211,6 @@ pub(crate) fn create_request_body(
     } = completion_request;
 
     let mut full_history = Vec::new();
-    if let Some(msg) = documents_message {
-        full_history.push(msg);
-    }
     full_history.extend(chat_history);
     let (history_system, full_history) = split_system_messages_from_history(full_history);
 
@@ -3025,10 +3022,29 @@ mod tests {
             },
         ];
 
+        let documents_message = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::one(Message::user("placeholder")),
+            documents,
+            tools: vec![],
+            temperature: None,
+            model: None,
+            output_schema: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        }
+        .normalized_documents()
+        .unwrap();
+
         let completion_request = CompletionRequest {
             preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: OneOrMany::one(Message::user("What are my notes about?")),
-            documents: documents.clone(),
+            chat_history: OneOrMany::many(vec![
+                documents_message,
+                Message::user("What are my notes about?"),
+            ])
+            .unwrap(),
+            documents: vec![],
             tools: vec![],
             temperature: None,
             model: None,

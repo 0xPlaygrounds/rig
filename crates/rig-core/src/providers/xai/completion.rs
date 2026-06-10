@@ -51,6 +51,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for xAI");
         }
@@ -60,14 +61,9 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             .as_ref()
             .map_or_else(Vec::new, |p| vec![Message::system(p)]);
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            input.extend(docs);
-        }
-
         let mut additional_params_payload = req.additional_params.unwrap_or(Value::Null);
 
-        for msg in req.chat_history {
+        for msg in chat_history {
             let msg: Vec<Message> = msg.try_into()?;
             input.extend(msg);
         }
@@ -291,28 +287,21 @@ where
 #[cfg(test)]
 mod tests {
     use super::XAICompletionRequest;
-    use crate::OneOrMany;
-    use crate::completion::CompletionRequest;
     use crate::completion::request::Document;
+    use crate::completion::{CompletionRequestBuilder, Message};
+    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn xai_request_includes_normalized_documents() {
-        let request = CompletionRequest {
-            model: None,
-            preamble: Some("Use the provided context.".to_string()),
-            chat_history: OneOrMany::one("What is glarb-glarb?".into()),
-            documents: vec![Document {
-                id: "doc_1".to_string(),
-                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
-                additional_props: Default::default(),
-            }],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        };
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "What is glarb-glarb?")
+                .message(Message::system("Use the provided context."))
+                .document(Document {
+                    id: "doc_1".to_string(),
+                    text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                    additional_props: Default::default(),
+                })
+                .build();
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
             .expect("request conversion should succeed");

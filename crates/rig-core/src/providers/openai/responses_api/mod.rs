@@ -847,13 +847,11 @@ impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionReque
     fn try_from(
         (model, mut req): (String, crate::completion::CompletionRequest),
     ) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
         let input = {
             let mut partial_history = vec![];
-            if let Some(docs) = req.normalized_documents() {
-                partial_history.push(docs);
-            }
-            partial_history.extend(req.chat_history);
+            partial_history.extend(chat_history);
 
             // Initialize full history with preamble (or empty if non-existent)
             // Some "Responses API compatible" providers don't support `instructions` field
@@ -2013,8 +2011,19 @@ impl FromStr for UserContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::CompletionRequestBuilder;
     use crate::message;
+    use crate::test_utils::MockCompletionModel;
     use serde_json::json;
+    use std::collections::HashMap;
+
+    fn test_document(id: &str, text: &str) -> crate::completion::Document {
+        crate::completion::Document {
+            id: id.to_string(),
+            text: text.to_string(),
+            additional_props: HashMap::new(),
+        }
+    }
 
     fn response_with_service_tier(service_tier: &str) -> Value {
         json!({
@@ -2065,6 +2074,46 @@ mod tests {
         };
 
         assert_eq!(service_tier, "provider_experimental");
+    }
+
+    #[test]
+    fn responses_request_keeps_documents_after_system_messages() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+            .message(completion::Message::system("System prompt"))
+            .message(completion::Message::user("Earlier user turn"))
+            .message(completion::Message::assistant("Earlier assistant turn"))
+            .document(test_document("doc1", "Document text."))
+            .build();
+
+        let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
+            .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&responses_request.input).expect("input should serialize");
+        let input = serialized.as_array().expect("input should be an array");
+
+        assert_eq!(input.len(), 5);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[1]["role"], "user");
+        assert!(
+            input[1].to_string().contains("<file id: doc1>"),
+            "document input should follow system input: {input:?}"
+        );
+        assert_eq!(input[2]["role"], "user");
+        assert!(
+            input[2].to_string().contains("Earlier user turn"),
+            "prior user history should follow document input: {input:?}"
+        );
+        assert_eq!(input[3]["role"], "assistant");
+        assert!(
+            input[3].to_string().contains("Earlier assistant turn"),
+            "prior assistant history should follow prior user history: {input:?}"
+        );
+        assert_eq!(input[4]["role"], "user");
+        assert!(
+            input[4].to_string().contains("Prompt"),
+            "prompt should remain last: {input:?}"
+        );
     }
 
     #[test]

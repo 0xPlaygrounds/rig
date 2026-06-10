@@ -297,11 +297,10 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
     stream_override: Option<bool>,
 ) -> Result<CreateInteractionRequest, CompletionError> {
+    let chat_history = completion_request.chat_history_with_documents();
+
     let mut history = Vec::new();
-    if let Some(docs) = completion_request.normalized_documents() {
-        history.push(docs);
-    }
-    history.extend(completion_request.chat_history);
+    history.extend(chat_history);
     let (history_system, history) = split_system_messages_from_history(history);
 
     let turns = history

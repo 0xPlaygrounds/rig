@@ -147,6 +147,7 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for TogetherAI");
         }
@@ -155,13 +156,8 @@ impl TryFrom<(&str, CompletionRequest)> for TogetherAICompletionRequest {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
 
-        let chat_history: Vec<openai::Message> = req
-            .chat_history
+        let chat_history: Vec<openai::Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?

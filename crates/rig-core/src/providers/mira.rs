@@ -224,6 +224,7 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Mira");
         }
@@ -237,40 +238,25 @@ impl TryFrom<(&str, CompletionRequest)> for MiraCompletionRequest {
             });
         }
 
-        if let Some(Message::User { content }) = req.normalized_documents() {
-            let text = content
-                .into_iter()
-                .filter_map(|doc| match doc {
-                    UserContent::Document(Document {
-                        data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
-                        ..
-                    }) => Some(data),
-                    UserContent::Text(text) => Some(text.text),
-
-                    // This should always be `Document`
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            messages.push(RawMessage {
-                role: "user".to_string(),
-                content: text,
-            });
-        }
-
-        for msg in req.chat_history {
+        for msg in chat_history {
             let (role, content) = match msg {
                 Message::System { content } => ("system", content),
                 Message::User { content } => {
-                    let text = content
-                        .iter()
-                        .map(|c| match c {
-                            UserContent::Text(text) => &text.text,
-                            _ => "",
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let text =
+                        content
+                            .iter()
+                            .map(|c| match c {
+                                UserContent::Text(text) => &text.text,
+                                UserContent::Document(Document {
+                                    data:
+                                        DocumentSourceKind::Base64(data)
+                                        | DocumentSourceKind::String(data),
+                                    ..
+                                }) => data,
+                                _ => "",
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
                     ("user", text)
                 }
                 Message::Assistant { content, .. } => {

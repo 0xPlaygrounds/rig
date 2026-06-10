@@ -171,6 +171,8 @@ where
         mut completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
     {
+        let chat_history = completion_request.chat_history_with_documents();
+
         let request_model = completion_request
             .model
             .clone()
@@ -205,15 +207,11 @@ where
             ));
         };
 
-        let docs = completion_request.normalized_documents();
         let (history_system, chat_history) = split_system_messages_from_history(
-            completion_request.chat_history.into_iter().collect(),
+            chat_history,
             supports_mid_conversation_system_messages(&request_model),
         );
         let mut full_history = vec![];
-        if let Some(docs) = docs {
-            full_history.push(docs);
-        }
         full_history.extend(chat_history);
 
         let mut messages = full_history

@@ -2265,6 +2265,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             automatic_caching,
             automatic_caching_ttl,
         } = params;
+        let chat_history = req.chat_history_with_documents();
 
         // Check if max_tokens is set, required for Anthropic
         let Some(max_tokens) = req.max_tokens else {
@@ -2273,15 +2274,11 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             ));
         };
 
-        let docs = req.normalized_documents();
         let (history_system, chat_history) = split_system_messages_from_history(
-            req.chat_history.into_iter().collect(),
+            chat_history,
             supports_mid_conversation_system_messages(model),
         );
         let mut full_history = vec![];
-        if let Some(docs) = docs {
-            full_history.push(docs);
-        }
         full_history.extend(chat_history);
 
         let mut messages = full_history
@@ -3128,21 +3125,36 @@ mod tests {
 
     #[test]
     fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
-        let mut request = completion_request_with_history(
+        let docs = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(message::Message::user("placeholder")),
+            documents: vec![completion::Document {
+                id: "doc".to_string(),
+                text: "Document context.".to_string(),
+                additional_props: Default::default(),
+            }],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        }
+        .normalized_documents()
+        .unwrap();
+
+        let request = completion_request_with_history(
             vec![
                 message::Message::System {
                     content: "Global history instruction.".to_string(),
                 },
+                docs,
                 message::Message::assistant("Acknowledged."),
                 message::Message::user("Answer from the document."),
             ],
             None,
         );
-        request.documents = vec![completion::Document {
-            id: "doc".to_string(),
-            text: "Document context.".to_string(),
-            additional_props: Default::default(),
-        }];
 
         let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
             model: CLAUDE_OPUS_4_8,
