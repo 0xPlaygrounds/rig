@@ -1400,13 +1400,19 @@ impl<'de> Deserialize<'de> for Output {
         // (rather than silently falling through to `Unknown`), preserving the
         // original strictness of the internally tagged derive.
         let value = Value::deserialize(deserializer)?;
-        match value.get("type").and_then(Value::as_str) {
-            Some("message" | "function_call" | "reasoning") => {
-                serde_json::from_value::<KnownOutput>(value)
-                    .map(Output::from)
-                    .map_err(serde::de::Error::custom)
-            }
-            _ => Ok(Output::Unknown(value)),
+        match value.get("type") {
+            Some(Value::String(r#type)) => match r#type.as_str() {
+                "message" | "function_call" | "reasoning" => {
+                    serde_json::from_value::<KnownOutput>(value)
+                        .map(Output::from)
+                        .map_err(serde::de::Error::custom)
+                }
+                _ => Ok(Output::Unknown(value)),
+            },
+            Some(_) => Err(serde::de::Error::custom(
+                "invalid type: non-string value, expected output `type` to be a string",
+            )),
+            None => Err(serde::de::Error::missing_field("type")),
         }
     }
 }
@@ -2229,6 +2235,29 @@ mod tests {
             "type": "function_call",
             "id": "call_1",
             // missing `arguments`, `call_id`, `name`
+        });
+
+        let result: Result<Output, _> = serde_json::from_value(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn output_missing_type_errors() {
+        let malformed = json!({
+            "id": "item_1",
+            "status": "completed",
+        });
+
+        let result: Result<Output, _> = serde_json::from_value(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn output_non_string_type_errors() {
+        let malformed = json!({
+            "type": 123,
+            "id": "item_1",
+            "status": "completed",
         });
 
         let result: Result<Output, _> = serde_json::from_value(malformed);
