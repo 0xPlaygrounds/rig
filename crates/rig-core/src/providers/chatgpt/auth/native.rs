@@ -5,6 +5,7 @@ use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
 
 const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
 const CHATGPT_DEVICE_CODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -73,7 +74,7 @@ impl PlatformAuthenticator {
     }
 
     pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
-        let mut record = self.read_auth_record()?;
+        let mut record = self.read_auth_record().await?;
 
         if let Some(access_token) = record.access_token.clone()
             && !token_expired(record.expires_at)
@@ -85,7 +86,7 @@ impl PlatformAuthenticator {
                 .or_else(|| extract_account_id(Some(&access_token)));
             if account_id != record.account_id {
                 record.account_id = account_id.clone();
-                self.write_auth_record(&record)?;
+                self.write_auth_record(&record).await?;
             }
             return Ok(AuthContext {
                 access_token,
@@ -96,7 +97,7 @@ impl PlatformAuthenticator {
         if let Some(refresh_token) = record.refresh_token.clone() {
             match self.refresh_tokens(&refresh_token).await {
                 Ok(refreshed) => {
-                    self.write_auth_record(&refreshed)?;
+                    self.write_auth_record(&refreshed).await?;
                     return Ok(AuthContext {
                         access_token: refreshed.access_token.unwrap_or_default(),
                         account_id: refreshed.account_id,
@@ -108,32 +109,45 @@ impl PlatformAuthenticator {
         }
 
         let fresh = self.login_device_flow().await?;
-        self.write_auth_record(&fresh)?;
+        self.write_auth_record(&fresh).await?;
         Ok(AuthContext {
             access_token: fresh.access_token.unwrap_or_default(),
             account_id: fresh.account_id,
         })
     }
 
-    fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
+    async fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
         let Some(path) = &self.auth_file else {
             return Ok(AuthRecord::default());
         };
 
-        match std::fs::read(path) {
+        match tokio::fs::read(path).await {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AuthRecord::default()),
             Err(err) => Err(err.into()),
         }
     }
 
-    fn write_auth_record(&self, record: &AuthRecord) -> Result<(), AuthError> {
+    async fn write_auth_record(&self, record: &AuthRecord) -> Result<(), AuthError> {
         let Some(path) = &self.auth_file else {
             return Ok(());
         };
 
-        ensure_parent_dir(path)?;
-        std::fs::write(path, serde_json::to_vec_pretty(record)?)?;
+        ensure_parent_dir(path).await?;
+        let bytes = serde_json::to_vec_pretty(record)?;
+        #[cfg(unix)]
+        {
+            let mut file = tokio::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .mode(0o600)
+                .open(path)
+                .await?;
+            file.write_all(&bytes).await?;
+        }
+        #[cfg(not(unix))]
+        tokio::fs::write(path, bytes).await?;
         Ok(())
     }
 
@@ -282,9 +296,9 @@ fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt
     }
 }
 
-fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
+async fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        tokio::fs::create_dir_all(parent).await?;
     }
     Ok(())
 }

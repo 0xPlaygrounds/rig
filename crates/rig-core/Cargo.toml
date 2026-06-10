@@ -42,7 +42,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 rmcp = { workspace = true, optional = true, features = ["client"] }
-tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "time"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 serenity = { workspace = true, optional = true }
@@ -64,6 +64,7 @@ reqwest-middleware = { workspace = true, optional = true, features = [
 # Native-only dependency for OpenAI Responses websocket mode.
 # Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["fs", "io-util", "net", "time"] }
 tokio-tungstenite = { workspace = true, optional = true }
 
 [dev-dependencies]
