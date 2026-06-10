@@ -22,8 +22,20 @@ use crate::{
 // ================================================================
 // Main Anthropic Client
 // ================================================================
-#[derive(Debug, Default, Clone)]
-pub struct AnthropicExt;
+#[derive(Clone)]
+pub struct AnthropicExt {
+    pub(crate) authenticator: auth::Authenticator,
+    pub(crate) oauth_request_hook: Option<OAuthRequestHook>,
+}
+
+impl fmt::Debug for AnthropicExt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AnthropicExt")
+            .field("authenticator", &self.authenticator)
+            .field("oauth_request_hook", &self.oauth_request_hook.is_some())
+            .finish()
+    }
+}
 
 impl Provider for AnthropicExt {
     type Builder = AnthropicBuilder;
@@ -130,13 +142,16 @@ impl ProviderBuilder for AnthropicBuilder {
             AnthropicKey::ApiKey(key) => auth::AuthSource::ApiKey(key.clone()),
             AnthropicKey::OAuth => auth::AuthSource::OAuth,
         };
-        let _authenticator = auth::Authenticator::new(
+        let authenticator = auth::Authenticator::new(
             source,
             ext.auth_file.clone(),
             ext.oauth_prompt_handler.clone(),
             ext.manual_code_handler.clone(),
         );
-        Ok(AnthropicExt)
+        Ok(AnthropicExt {
+            authenticator,
+            oauth_request_hook: ext.oauth_request_hook.clone(),
+        })
     }
 
     fn finish<H>(

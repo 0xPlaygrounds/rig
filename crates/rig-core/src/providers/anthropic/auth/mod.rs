@@ -130,6 +130,10 @@ pub enum AuthError {
 }
 
 impl Authenticator {
+    pub(crate) fn is_oauth(&self) -> bool {
+        matches!(self.source, AuthSource::OAuth)
+    }
+
     /// Create an Anthropic authenticator.
     pub fn new(
         source: AuthSource,

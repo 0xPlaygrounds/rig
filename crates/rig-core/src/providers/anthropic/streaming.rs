@@ -7,9 +7,9 @@ use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, CacheTtl, Content, GenericCompletionModel, Message, SystemContent,
-    ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
-    resolve_top_level_cache_control, split_system_messages_from_history,
-    supports_mid_conversation_system_messages,
+    ToolChoice, ToolNameMap, Usage, apply_prompt_cache_control, build_tool_definitions,
+    original_tool_name, prepare_anthropic_request, resolve_top_level_cache_control,
+    split_system_messages_from_history, supports_mid_conversation_system_messages,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -306,7 +306,7 @@ where
             ));
         };
 
-        let body = create_streaming_request_body(
+        let mut body = create_streaming_request_body(
             request_model,
             &mut completion_request,
             max_tokens,
@@ -323,13 +323,17 @@ where
             );
         }
 
+        let mut req = self.client.post("/v1/messages")?;
+        let tool_name_map = prepare_anthropic_request(
+            self.client.ext(),
+            &mut body,
+            req.headers_mut()
+                .ok_or_else(|| CompletionError::HttpError(http_client::Error::NoHeaders))?,
+        )
+        .await?;
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
-        let req = self
-            .client
-            .post("/v1/messages")?
-            .body(body)
-            .map_err(http_client::Error::Protocol)?;
+        let req = req.body(body).map_err(http_client::Error::Protocol)?;
 
         let stream = GenericEventSource::new(self.client.clone(), req);
 
@@ -385,6 +389,7 @@ where
                                     &mut current_tool_call,
                                     &mut server_tool_uses,
                                     &mut current_thinking,
+                                    &tool_name_map,
                                 ) {
                                     if let Ok(RawStreamingChoice::Message(ref text)) = result {
                                         text_content += text;
@@ -425,6 +430,7 @@ fn handle_event(
     current_tool_call: &mut Option<ToolCallState>,
     server_tool_uses: &mut HashMap<usize, ServerToolUseState>,
     current_thinking: &mut Option<ThinkingState>,
+    tool_name_map: &ToolNameMap,
 ) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
     match event {
         StreamingEvent::ContentBlockDelta { index, delta } => match delta {
@@ -508,6 +514,7 @@ fn handle_event(
                 })),
             })),
             Content::ToolUse { id, name, .. } => {
+                let name = original_tool_name(name, tool_name_map);
                 let internal_call_id = nanoid::nanoid!();
                 *current_tool_call = Some(ToolCallState {
                     name: name.clone(),
@@ -518,7 +525,7 @@ fn handle_event(
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
                     id: id.clone(),
                     internal_call_id,
-                    content: ToolCallDeltaContent::Name(name.clone()),
+                    content: ToolCallDeltaContent::Name(name),
                 }))
             }
             Content::Thinking { .. } => {
@@ -774,7 +781,41 @@ mod tests {
             current_tool_call,
             &mut server_tool_uses,
             current_thinking,
+            &ToolNameMap::default(),
         )
+    }
+
+    #[test]
+    fn streaming_tool_use_restores_original_tool_name() {
+        let mut tool_name_map = ToolNameMap::default();
+        tool_name_map.insert("Bash".to_string(), "bash".to_string());
+        let event = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::ToolUse {
+                id: "toolu_1".into(),
+                name: "Bash".into(),
+                input: json!({}),
+            },
+        };
+        let mut current_tool_call = None;
+        let mut server_tool_uses = HashMap::new();
+        let mut current_thinking = None;
+
+        let result = super::handle_event(
+            &event,
+            &mut current_tool_call,
+            &mut server_tool_uses,
+            &mut current_thinking,
+            &tool_name_map,
+        )
+        .expect("tool_use start should emit a name delta")
+        .expect("tool_use start should not fail");
+
+        let RawStreamingChoice::ToolCallDelta { content, .. } = result else {
+            panic!("expected tool call name delta");
+        };
+        assert_eq!(content, ToolCallDeltaContent::Name("bash".to_string()));
+        assert_eq!(current_tool_call.unwrap().name, "bash");
     }
 
     #[test]
@@ -1352,6 +1393,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             );
             assert!(
                 server_tool_use_start.is_none(),
@@ -1368,6 +1410,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             );
             assert!(
                 server_tool_use_delta.is_none(),
@@ -1379,6 +1422,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             )
             .expect("server_tool_use stop should produce completed raw metadata");
 
@@ -1398,6 +1442,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             )
             .expect("web_search_tool_result block should produce raw metadata");
 
@@ -1413,6 +1458,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             )
             .expect("text block start should produce a raw choice");
 
@@ -1426,6 +1472,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             )
             .expect("text delta should produce a raw choice");
 
@@ -1444,6 +1491,7 @@ mod tests {
                 &mut tool_call_state,
                 &mut server_tool_uses,
                 &mut thinking_state,
+                &ToolNameMap::default(),
             )
             .expect("citation delta should produce a raw choice");
 
