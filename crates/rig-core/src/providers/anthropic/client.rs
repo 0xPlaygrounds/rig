@@ -109,6 +109,26 @@ pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 
+impl<H> Client<H>
+where
+    H: HttpClientExt
+        + Clone
+        + std::fmt::Debug
+        + Default
+        + crate::wasm_compat::WasmCompatSend
+        + crate::wasm_compat::WasmCompatSync
+        + 'static,
+{
+    /// Force the Anthropic OAuth flow, caching tokens without sending a request.
+    ///
+    /// # Returns
+    ///
+    /// Returns an error if the OAuth login, refresh, or token-cache write fails.
+    pub async fn authorize(&self) -> Result<(), auth::AuthError> {
+        self.ext().authenticator.auth_context().await.map(|_| ())
+    }
+}
+
 impl Default for AnthropicBuilder {
     fn default() -> Self {
         Self {
