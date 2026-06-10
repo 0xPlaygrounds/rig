@@ -420,6 +420,29 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Clone)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ToolChoice {
+    #[default]
+    Auto,
+    None,
+    Required,
+}
+
+impl TryFrom<message::ToolChoice> for ToolChoice {
+    type Error = CompletionError;
+    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
+        match value {
+            message::ToolChoice::Specific { .. } => Err(CompletionError::ProviderError(
+                "Ollama does not support specific tool choice".to_string(),
+            )),
+            message::ToolChoice::Auto => Ok(Self::Auto),
+            message::ToolChoice::None => Ok(Self::None),
+            message::ToolChoice::Required => Ok(Self::Required),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct OllamaCompletionRequest {
     model: String,
@@ -436,6 +459,8 @@ pub(super) struct OllamaCompletionRequest {
     keep_alive: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     format: Option<schemars::Schema>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<ToolChoice>,
     options: serde_json::Value,
 }
 
@@ -444,9 +469,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        if req.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
-        }
         // Build up the order of messages (context, chat_history, prompt)
         let mut partial_history = vec![];
         if let Some(docs) = req.normalized_documents() {
@@ -519,6 +541,8 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
             json!({ "temperature": req.temperature })
         };
 
+        let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
@@ -528,6 +552,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
             think,
             keep_alive,
             format: req.output_schema,
+            tool_choice,
             tools: req
                 .tools
                 .clone()
@@ -2050,6 +2075,113 @@ mod tests {
         assert!(
             serialized.get("format").is_none(),
             "format field should be absent when output_schema is None"
+        );
+    }
+
+    #[test]
+    fn test_completion_request_with_tool_choice_required() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, ToolChoice as MessageToolChoice, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "Hello!".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(MessageToolChoice::Required),
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert_eq!(
+            serialized.get("tool_choice").and_then(|v| v.as_str()),
+            Some("required"),
+            "tool_choice should serialize to 'required'"
+        );
+    }
+
+    #[test]
+    fn test_completion_request_without_tool_choice() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "Hello!".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert!(
+            serialized.get("tool_choice").is_none(),
+            "tool_choice field should be absent when None"
+        );
+    }
+
+    #[test]
+    fn test_completion_request_with_tool_choice_auto() {
+        use crate::OneOrMany;
+        use crate::completion::Message as CompletionMessage;
+        use crate::message::{Text, ToolChoice as MessageToolChoice, UserContent};
+
+        let completion_request = CompletionRequest {
+            model: Some("llama3.1".to_string()),
+            preamble: None,
+            chat_history: OneOrMany::one(CompletionMessage::User {
+                content: OneOrMany::one(UserContent::Text(Text {
+                    text: "Hello!".to_string(),
+                })),
+            }),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(MessageToolChoice::Auto),
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
+            .expect("Failed to create Ollama request");
+
+        let serialized =
+            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+
+        assert_eq!(
+            serialized.get("tool_choice").and_then(|v| v.as_str()),
+            Some("auto"),
+            "tool_choice should serialize to 'auto'"
         );
     }
 
