@@ -385,7 +385,7 @@ where
         }
 
         request.additional_parameters.background = None;
-        request.additional_parameters.metadata.clear();
+        request.additional_parameters.metadata = None;
         request.additional_parameters.parallel_tool_calls = None;
         request.additional_parameters.service_tier = None;
         request.additional_parameters.store = Some(false);

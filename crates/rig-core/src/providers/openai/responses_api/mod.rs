@@ -1116,8 +1116,8 @@ pub struct AdditionalParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     /// Any additional metadata you'd like to add. This will additionally be returned by the response.
-    #[serde(skip_serializing_if = "Map::is_empty", default)]
-    pub metadata: serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub metadata: Option<serde_json::Map<String, serde_json::Value>>,
     /// Whether or not you want tool calls to run in parallel.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
@@ -2658,5 +2658,110 @@ mod tests {
         assert_eq!(json["content"][0]["file_id"], "file_abc");
         assert!(json["content"][0].get("file_data").is_none());
         assert!(json["content"][0].get("file_url").is_none());
+    }
+
+    fn response_with_metadata(metadata: Option<Value>) -> Value {
+        let mut base = json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [],
+        });
+        if let Some(value) = metadata {
+            base["metadata"] = value;
+        }
+        base
+    }
+
+    #[test]
+    fn completion_response_deserializes_null_metadata() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_metadata(Some(Value::Null)))
+                .expect("response with metadata: null should deserialize");
+
+        assert!(response.additional_parameters.metadata.is_none());
+    }
+
+    #[test]
+    fn completion_response_deserializes_empty_object_metadata() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_metadata(Some(json!({}))))
+                .expect("response with metadata: {} should deserialize");
+
+        assert_eq!(
+            response
+                .additional_parameters
+                .metadata
+                .as_ref()
+                .map(|m| m.len()),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn completion_response_deserializes_object_metadata() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_metadata(Some(json!({"key": "value"}))))
+                .expect("response with metadata: {\"key\": \"value\"} should deserialize");
+
+        let metadata = response
+        .additional_parameters
+        .metadata
+        .expect("metadata should be Some");
+        assert_eq!(
+            metadata.get("key").and_then(|v| v.as_str()),
+            Some("value")
+        );
+    }
+
+    #[test]
+    fn completion_response_deserializes_missing_metadata() {
+        let response: CompletionResponse =
+            serde_json::from_value(response_with_metadata(None))
+                .expect("response without metadata should deserialize");
+
+        assert!(response.additional_parameters.metadata.is_none());
+    }
+
+    #[test]
+    fn additional_parameters_skips_none_metadata_on_serialize() {
+        let params = AdditionalParameters {
+            metadata: None,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(params).expect("should serialize");
+        assert!(
+            !json.as_object().unwrap().contains_key("metadata"),
+            "metadata should not be present when None"
+        );
+    }
+
+    #[test]
+    fn additional_parameters_serializes_some_metadata() {
+        let mut map = Map::new();
+        map.insert("key".to_string(), Value::String("value".to_string()));
+        let params = AdditionalParameters {
+            metadata: Some(map),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_value(params).expect("should serialize");
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("metadata"), "metadata should be present");
+        assert_eq!(obj["metadata"]["key"], "value");
+    }
+
+    #[test]
+    fn additional_parameters_deserializes_null_metadata() {
+        let json = json!({
+            "metadata": null,
+        });
+
+        let params: AdditionalParameters =
+            serde_json::from_value(json).expect("should deserialize metadata: null");
+        assert!(params.metadata.is_none());
     }
 }
