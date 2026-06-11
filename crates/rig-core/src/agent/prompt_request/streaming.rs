@@ -921,6 +921,7 @@ where
                 {
                     let mut input_messages = history_snapshot.clone();
                     input_messages.push(current_prompt.clone());
+                    super::redact_reasoning_signatures(&mut input_messages);
                     chat_stream_span.record_model_input(&input_messages);
                 }
 
@@ -1491,7 +1492,11 @@ where
                 // fields). The previous code targeted tracing::Span::current() (the ambient
                 // invoke_agent/caller span), which silently dropped it because the field is not
                 // declared there.
-                chat_stream_span.record_model_output(&final_turn_content);
+                {
+                    let mut telemetry_choice = final_turn_content.clone();
+                    super::redact_choice_signatures(&mut telemetry_choice);
+                    chat_stream_span.record_model_output(&telemetry_choice);
+                }
                 chat_stream_span.record("gen_ai.completion", &turn_text_response);
                 // Write aggregate completion text to the agent span only when rig created it,
                 // so that caller-owned spans are never polluted with per-call data.

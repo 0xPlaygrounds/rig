@@ -10,7 +10,7 @@ use crate::{
     completion::{CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
     memory::ConversationMemory,
-    message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
+    message::{AssistantContent, ReasoningContent, ToolChoice, ToolResultContent, UserContent},
     telemetry::SpanCombinator,
     tool::server::ToolServerHandle,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
@@ -410,6 +410,32 @@ const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
+/// Strip provider reasoning signatures from messages before serializing them
+/// for telemetry. Signatures are opaque provider-issued blobs (often ~1KB of
+/// base64 per reasoning block) that must remain in the real chat history so
+/// they can be replayed to the provider, but carry no analytical value and
+/// bloat telemetry events.
+pub(crate) fn redact_reasoning_signatures(messages: &mut [Message]) {
+    for message in messages {
+        if let Message::Assistant { content, .. } = message {
+            redact_choice_signatures(content);
+        }
+    }
+}
+
+/// Same as [`redact_reasoning_signatures`], for a single assistant choice.
+pub(crate) fn redact_choice_signatures(content: &mut OneOrMany<AssistantContent>) {
+    for item in content.iter_mut() {
+        if let AssistantContent::Reasoning(reasoning) = item {
+            for reasoning_content in reasoning.content.iter_mut() {
+                if let ReasoningContent::Text { signature, .. } = reasoning_content {
+                    *signature = None;
+                }
+            }
+        }
+    }
+}
+
 /// Combine input history with new messages for building completion requests.
 fn build_history_for_request(
     chat_history: Option<&[Message]>,
@@ -714,10 +740,12 @@ where
             let history_for_request =
                 build_history_for_request(chat_history.as_deref(), history_for_current_turn);
 
-            // Record the messages sent to the model for this call.
+            // Record the messages sent to the model for this call (with
+            // provider reasoning signatures redacted for telemetry).
             {
                 let mut input_messages = history_for_request.clone();
                 input_messages.push(prompt.clone());
+                redact_reasoning_signatures(&mut input_messages);
                 chat_span.record_model_input(&input_messages);
             }
 
@@ -752,8 +780,13 @@ where
             completion_call_index += 1;
             usage += resp.usage;
 
-            // Record the model's response on the per-call chat span.
-            chat_span.record_model_output(&resp.choice);
+            // Record the model's response on the per-call chat span (with
+            // provider reasoning signatures redacted for telemetry).
+            {
+                let mut telemetry_choice = resp.choice.clone();
+                redact_choice_signatures(&mut telemetry_choice);
+                chat_span.record_model_output(&telemetry_choice);
+            }
 
             let mut response_choice = resp.choice.clone();
             let has_tool_calls = response_choice
