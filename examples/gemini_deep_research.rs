@@ -6,7 +6,7 @@ use rig::providers::gemini::{
     self,
     interactions_api::{
         AdditionalParameters, AgentConfig, Content, ContentDelta, InteractionSseEvent,
-        InteractionStatus, TextDelta, ThinkingSummaries, ThoughtSummaryContent,
+        InteractionStatus, Step, TextDelta, ThinkingSummaries, ThoughtSummaryContent,
         ThoughtSummaryDelta,
     },
 };
@@ -29,13 +29,25 @@ fn deep_research_params() -> AdditionalParameters {
     }
 }
 
-fn extract_text(outputs: &[Content]) -> String {
-    outputs
+fn extract_text(contents: &[Content]) -> String {
+    contents
         .iter()
         .filter_map(|content| match content {
             Content::Text(text) => Some(text.text.clone()),
             _ => None,
         })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn extract_text_from_steps(steps: &[Step]) -> String {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::ModelOutput { content } => Some(extract_text(content)),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -56,7 +68,7 @@ struct StreamState {
 
 fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
     match event {
-        InteractionSseEvent::InteractionStart {
+        InteractionSseEvent::InteractionCreated {
             interaction,
             event_id,
         } => {
@@ -64,16 +76,17 @@ fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
             state.interaction_id = Some(interaction.id.clone());
             println!("Interaction started: {}", interaction.id);
         }
-        InteractionSseEvent::ContentStart {
-            content, event_id, ..
-        } => {
+        InteractionSseEvent::StepStart { step, event_id, .. } => {
             track_event_id(&mut state.last_event_id, event_id);
-            if let Content::Text(text) = content {
-                print!("{}", text.text);
-                state.saw_text = true;
+            if let Step::ModelOutput { content } = step {
+                let text = extract_text(&content);
+                if !text.is_empty() {
+                    print!("{text}");
+                    state.saw_text = true;
+                }
             }
         }
-        InteractionSseEvent::ContentDelta {
+        InteractionSseEvent::StepDelta {
             delta, event_id, ..
         } => {
             track_event_id(&mut state.last_event_id, event_id);
@@ -92,14 +105,14 @@ fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
                 _ => {}
             }
         }
-        InteractionSseEvent::InteractionComplete {
+        InteractionSseEvent::InteractionCompleted {
             interaction,
             event_id,
         } => {
             track_event_id(&mut state.last_event_id, event_id);
             println!("\nResearch complete.");
             if !state.saw_text {
-                let text = extract_text(&interaction.outputs);
+                let text = extract_text_from_steps(&interaction.steps);
                 if text.is_empty() {
                     println!("No text output returned.");
                 } else {
@@ -119,7 +132,7 @@ fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
             eprintln!("Stream error: {} ({})", error.message, error.code);
             state.is_complete = true;
         }
-        InteractionSseEvent::ContentStop { event_id, .. } => {
+        InteractionSseEvent::StepStop { event_id, .. } => {
             track_event_id(&mut state.last_event_id, event_id);
         }
     }
@@ -203,7 +216,7 @@ async fn main() -> Result<()> {
                 if interaction.is_terminal() {
                     match interaction.status {
                         Some(InteractionStatus::Completed) => {
-                            let text = extract_text(&interaction.outputs);
+                            let text = extract_text_from_steps(&interaction.steps);
                             if text.is_empty() {
                                 println!("No text output returned.");
                             } else {
@@ -250,7 +263,7 @@ async fn main() -> Result<()> {
         if interaction.is_terminal() {
             match interaction.status {
                 Some(InteractionStatus::Completed) => {
-                    let text = extract_text(&interaction.outputs);
+                    let text = extract_text_from_steps(&interaction.steps);
                     if text.is_empty() {
                         println!("No text output returned.");
                     } else {
