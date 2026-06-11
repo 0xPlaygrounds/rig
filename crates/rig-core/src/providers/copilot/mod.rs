@@ -822,7 +822,8 @@ where
         async move {
             let response = self.client.send(req).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let body = http_client::text(response).await?;
                 match serde_json::from_str::<ChatApiResponse<ChatCompletionResponse>>(&body)? {
                     ChatApiResponse::Ok(response) => {
@@ -855,12 +856,19 @@ where
                     }
                     ChatApiResponse::Err(err) => {
                         let _ = err.error_message();
-                        Err(CompletionError::ProviderError(body))
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body,
+                            },
+                        ))
                     }
                 }
             } else {
                 let body = http_client::text(response).await?;
-                Err(CompletionError::ProviderError(body))
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, body),
+                ))
             }
         }
         .instrument(span)
@@ -903,7 +911,8 @@ where
 
         async move {
             let response = self.client.send(req).await?;
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let body = http_client::text(response).await?;
                 let response = serde_json::from_str::<responses_api::CompletionResponse>(&body)?;
                 let core = completion::CompletionResponse::try_from(response.clone())?;
@@ -932,7 +941,9 @@ where
                 })
             } else {
                 let body = http_client::text(response).await?;
-                Err(CompletionError::ProviderError(body))
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, body),
+                ))
             }
         }
         .instrument(span)
@@ -1330,7 +1341,8 @@ where
         .map_err(|err| EmbeddingError::HttpError(err.into()))?;
 
         let response = self.client.send(req).await?;
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             let body: Vec<u8> = response.into_body().await?;
             #[derive(Deserialize)]
             struct NestedApiError {
@@ -1347,8 +1359,11 @@ where
                 Err(parse_error) => {
                     if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {
                         let _ = err.error.message;
-                        return Err(EmbeddingError::ProviderError(
-                            String::from_utf8_lossy(&body).into_owned(),
+                        return Err(EmbeddingError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: String::from_utf8_lossy(&body).into_owned(),
+                            },
                         ));
                     }
 
@@ -1380,7 +1395,9 @@ where
                 .collect())
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(status, text),
+            ))
         }
     }
 }

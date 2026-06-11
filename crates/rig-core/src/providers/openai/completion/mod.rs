@@ -1452,7 +1452,8 @@ where
         async move {
             let response = self.client.send(req).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let text = http_client::text(response).await?;
 
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
@@ -1473,12 +1474,19 @@ where
                     }
                     ApiResponse::Err(err) => {
                         let _ = err.message;
-                        Err(CompletionError::ProviderError(text))
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: text,
+                            },
+                        ))
                     }
                 }
             } else {
                 let text = http_client::text(response).await?;
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                ))
             }
         }
         .instrument(span)
@@ -2382,9 +2390,11 @@ mod tests {
             .expect_err("completion should fail with provider error envelope");
 
         match &error {
-            CompletionError::ProviderError(stored) => {
-                assert_eq!(stored, body);
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
                 assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
                 let json = error
                     .provider_response_json()
                     .expect("raw body should be valid JSON")
@@ -2392,7 +2402,43 @@ mod tests {
                 assert_eq!(json["code"], "rate_limit_exceeded");
                 assert_eq!(json["type"], "rate_limit");
             }
-            other => panic!("expected ProviderError, got {other:?}"),
+            other => panic!("expected ProviderResponse, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::providers::openai::CompletionsClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o-mini");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let json = error
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["type"], "rate_limit_error");
     }
 }

@@ -148,7 +148,8 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             let response_body: Vec<u8> = response.into_body().await?;
             let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
@@ -197,14 +198,19 @@ where
                 }
                 ApiResponse::Err(err) => {
                     let _ = err.message;
-                    Err(EmbeddingError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(EmbeddingError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(status, text),
+            ))
         }
     }
 }
@@ -288,8 +294,9 @@ mod tests {
             .expect_err("embedding should fail with provider error envelope");
 
         match &error {
-            EmbeddingError::ProviderError(stored) => {
-                assert_eq!(stored, body);
+            EmbeddingError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
                 assert_eq!(error.provider_response_body(), Some(body));
                 let json = error
                     .provider_response_json()
@@ -297,7 +304,31 @@ mod tests {
                     .expect("parsed JSON should be present");
                 assert_eq!(json["type"], "insufficient_quota");
             }
-            other => panic!("expected ProviderError, got {other:?}"),
+            other => panic!("expected ProviderResponse, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"invalid api key","type":"invalid_request_error"}}"#;
+        let http_client = RecordingHttpClient::with_error(http::StatusCode::UNAUTHORIZED, body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("text-embedding-3-small");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

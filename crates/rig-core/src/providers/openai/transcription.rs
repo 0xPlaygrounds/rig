@@ -111,14 +111,19 @@ where
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => {
                     let _ = api_error_response.message;
-                    Err(TranscriptionError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(TranscriptionError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
         } else {
             let str = String::from_utf8_lossy(&response_body).to_string();
-            Err(TranscriptionError::ProviderError(str))
+            Err(TranscriptionError::HttpError(
+                crate::http_client::Error::InvalidStatusCodeWithMessage(status, str),
+            ))
         }
     }
 }

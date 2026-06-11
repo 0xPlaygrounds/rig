@@ -76,7 +76,8 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             let response_body: Vec<u8> = response.into_body().await?;
             let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
@@ -109,14 +110,19 @@ where
                 }
                 ApiResponse::Err(err) => {
                     let _ = err.message;
-                    Err(EmbeddingError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(EmbeddingError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(status, text),
+            ))
         }
     }
 }

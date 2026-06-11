@@ -32,6 +32,9 @@ pub enum MockHttpResponse {
     Success(Bytes),
     /// Return a status-code error with the given body text.
     Error(http::StatusCode, String),
+    /// Return an HTTP response with the given (typically non-success) status
+    /// and body, instead of a transport-level error.
+    ErrorResponse(http::StatusCode, Bytes),
 }
 
 impl MockHttpResponse {
@@ -74,6 +77,18 @@ impl RecordingHttpClient {
         Self {
             requests: Arc::new(Mutex::new(Vec::new())),
             response: Arc::new(Mutex::new(MockHttpResponse::error(status, message))),
+        }
+    }
+
+    /// Create a client that returns a non-success HTTP response (status and body)
+    /// for unary requests, instead of a transport-level error.
+    pub fn with_error_response(status: http::StatusCode, body: impl Into<Bytes>) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(Vec::new())),
+            response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponse(
+                status,
+                body.into(),
+            ))),
         }
     }
 
@@ -126,17 +141,18 @@ impl HttpClientExt for RecordingHttpClient {
         }
 
         async move {
-            let response_body = match response {
-                MockHttpResponse::Success(response_body) => response_body,
+            let (status, response_body) = match response {
+                MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body),
                 MockHttpResponse::Error(status, message) => {
                     return Err(http_client::Error::InvalidStatusCodeWithMessage(
                         status, message,
                     ));
                 }
+                MockHttpResponse::ErrorResponse(status, response_body) => (status, response_body),
             };
             let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
             Response::builder()
-                .status(http::StatusCode::OK)
+                .status(status)
                 .body(body)
                 .map_err(http_client::Error::Protocol)
         }

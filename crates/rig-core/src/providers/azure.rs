@@ -479,7 +479,8 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             let response_body: Vec<u8> = response.into_body().await?;
             let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
@@ -508,14 +509,19 @@ where
                 }
                 ApiResponse::Err(err) => {
                     let _ = err.message;
-                    Err(EmbeddingError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(EmbeddingError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(status, text),
+            ))
         }
     }
 }
@@ -756,14 +762,20 @@ where
                     }
                     ApiResponse::Err(err) => {
                         let _ = err.message;
-                        Err(CompletionError::ProviderError(
-                            String::from_utf8_lossy(&response_body).into_owned(),
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: String::from_utf8_lossy(&response_body).into_owned(),
+                            },
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        String::from_utf8_lossy(&response_body).to_string(),
+                    ),
                 ))
             }
         }
@@ -906,14 +918,20 @@ where
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => {
                     let _ = api_error_response.message;
-                    Err(TranscriptionError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(TranscriptionError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
         } else {
-            Err(TranscriptionError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
+            Err(TranscriptionError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
+                ),
             ))
         }
     }
@@ -982,18 +1000,23 @@ mod image_generation {
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(ImageGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(ImageGenerationError::HttpError(
+                    crate::http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ),
+                ));
             }
 
             match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(err) => {
                     let _ = err.message;
-                    Err(ImageGenerationError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(ImageGenerationError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
@@ -1069,10 +1092,12 @@ mod audio_generation {
             let response_body = response.into_body().into_future().await?;
 
             if !status.is_success() {
-                return Err(AudioGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(AudioGenerationError::HttpError(
+                    crate::http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
+                    ),
+                ));
             }
 
             Ok(AudioGenerationResponse {
@@ -1095,6 +1120,84 @@ mod azure_tests {
     use crate::embeddings::EmbeddingModel;
     use crate::prelude::TypedPrompt;
     use crate::providers::openai::GPT_5_MINI;
+
+    #[cfg(any(feature = "image", feature = "audio"))]
+    fn test_client(
+        http_client: crate::test_utils::RecordingHttpClient,
+    ) -> Client<crate::test_utils::RecordingHttpClient> {
+        Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client")
+    }
+
+    #[cfg(feature = "image")]
+    #[tokio::test]
+    async fn image_generation_non_success_response_preserves_status_and_body() {
+        use crate::image_generation::{
+            ImageGenerationError, ImageGenerationModel as ImageGenerationModelTrait,
+            ImageGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"invalid image request"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let model = ImageGenerationModel::make(&test_client(http_client), "dall-e-3");
+
+        let error = model
+            .image_generation(ImageGenerationRequest {
+                prompt: "draw a cat".to_string(),
+                width: 256,
+                height: 256,
+                additional_params: None,
+            })
+            .await
+            .expect_err("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[cfg(feature = "audio")]
+    #[tokio::test]
+    async fn audio_generation_non_success_response_preserves_status_and_body() {
+        use crate::audio_generation::{
+            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"invalid voice"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNPROCESSABLE_ENTITY, body);
+        let model = AudioGenerationModel::new(test_client(http_client), "tts-1");
+
+        let error = match model
+            .audio_generation(AudioGenerationRequest {
+                text: "hello".to_string(),
+                voice: "alloy".to_string(),
+                speed: 1.0,
+                additional_params: None,
+            })
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("audio generation should fail with non-success status"),
+        };
+
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNPROCESSABLE_ENTITY)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
 
     #[tokio::test]
     #[ignore]

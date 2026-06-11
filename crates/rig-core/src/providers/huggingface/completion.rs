@@ -774,7 +774,8 @@ where
         async move {
             let response = self.client.send(request).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let bytes: Vec<u8> = response.into_body().await?;
                 let text = String::from_utf8_lossy(&bytes);
 
@@ -798,20 +799,21 @@ where
                     }
                     ApiResponse::Err(err) => {
                         let _ = err;
-                        Err(CompletionError::ProviderError(
-                            String::from_utf8_lossy(&bytes).into_owned(),
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: String::from_utf8_lossy(&bytes).into_owned(),
+                            },
                         ))
                     }
                 }
             } else {
-                let status = response.status();
                 let text: Vec<u8> = response.into_body().await?;
                 let text: String = String::from_utf8_lossy(&text).into();
 
-                Err(CompletionError::ProviderError(format!(
-                    "{}: {}",
-                    status, text
-                )))
+                Err(CompletionError::HttpError(
+                    crate::http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                ))
             }
         }
         .instrument(span)

@@ -622,7 +622,8 @@ where
         async move {
             let response = self.client.send(request).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let text = http_client::text(response).await?;
                 match serde_json::from_str::<ApiResponse<CompletionResponse>>(&text)? {
                     ApiResponse::Ok(response) => {
@@ -633,12 +634,19 @@ where
                     }
                     ApiResponse::Err(err) => {
                         let _ = err.message;
-                        Err(CompletionError::ProviderError(text))
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: text,
+                            },
+                        ))
                     }
                 }
             } else {
                 let text = http_client::text(response).await?;
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                ))
             }
         }
         .instrument(span)

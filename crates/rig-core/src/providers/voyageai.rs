@@ -271,14 +271,20 @@ where
                 }
                 ApiResponse::Err(err) => {
                     let _ = err.message;
-                    Err(EmbeddingError::ProviderError(
-                        String::from_utf8_lossy(&response_body).into_owned(),
+                    Err(EmbeddingError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
                     ))
                 }
             }
         } else {
-            Err(EmbeddingError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
+            Err(EmbeddingError::HttpError(
+                crate::http_client::Error::InvalidStatusCodeWithMessage(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
+                ),
             ))
         }
     }

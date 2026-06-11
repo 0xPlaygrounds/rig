@@ -113,14 +113,13 @@ where
 
         let response = self.client.send(request).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
             let text = http_client::text(response).await?;
 
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text,
-            )));
+            return Err(ImageGenerationError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(status, text),
+            ));
         }
 
         let text = http_client::text(response).await?;
@@ -129,8 +128,81 @@ where
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => {
                 let _ = err.message;
-                Err(ImageGenerationError::ProviderError(text))
+                Err(ImageGenerationError::ProviderResponse(
+                    crate::provider_response::ProviderResponseError {
+                        status: Some(status),
+                        body: text,
+                    },
+                ))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::image_generation::ImageGenerationClient;
+    use crate::image_generation::ImageGenerationModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    fn request() -> ImageGenerationRequest {
+        ImageGenerationRequest {
+            prompt: "draw a cat".to_string(),
+            width: 256,
+            height: 256,
+            additional_params: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn image_generation_non_success_response_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"invalid image","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(DALL_E_3);
+
+        let error = model
+            .image_generation(request())
+            .await
+            .expect_err("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn image_generation_preserves_raw_provider_error_json_on_api_error_envelope() {
+        let body = r#"{"message":"quota exceeded","type":"insufficient_quota"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(DALL_E_3);
+
+        let error = model
+            .image_generation(request())
+            .await
+            .expect_err("image generation should fail with provider error envelope");
+
+        match &error {
+            ImageGenerationError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
         }
     }
 }
