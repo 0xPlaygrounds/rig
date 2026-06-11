@@ -13,7 +13,7 @@ use crate::{
 };
 use std::{
     collections::{BTreeSet, HashMap},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
@@ -300,6 +300,8 @@ where
     pub memory: Option<Arc<dyn crate::memory::ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
     pub default_conversation_id: Option<String>,
+    /// Notification messages, indexed by conversation ID, that will be consumed during multi-turn prompt requests.
+    pub pending_notifications: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
 impl<M, P> Agent<M, P>
@@ -310,6 +312,52 @@ where
     /// Returns the name of the agent.
     pub(crate) fn name(&self) -> &str {
         self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+    }
+
+    /// Notify the agent with a new message during a multi-turn prompt request.
+    ///
+    /// The message is queued and injected as a user message in the next
+    /// iteration of the agent's prompt loop, keyed by `conversation_id`.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rig_core::client::{CompletionClient, ProviderClient};
+    /// use rig_core::completion::Prompt;
+    /// use rig_core::providers::openai;
+    ///
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let some_event = tokio::time::sleep(std::time::Duration::from_secs(1));
+    /// let agent = openai::Client::from_env()?
+    ///     .agent(openai::GPT_5_2)
+    ///     .conversation_id("my-conv")
+    ///     .build();
+    ///
+    /// // Clone the agent to share access across tasks.
+    /// let agent_clone = agent.clone();
+    ///
+    /// // Prompt the agent in a background task.
+    /// tokio::spawn(async move {
+    ///     let _ = agent.prompt("Start the conversation, use some tools.").await;
+    /// });
+    ///
+    /// // Wait for some other event and notify the agent about something.
+    /// some_event.await;
+    /// agent_clone.push_notification(
+    ///     "my-conv",
+    ///     "Keep going but know that something came up: ...".to_string()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn push_notification(&self, conversation_id: &str, message: String) {
+        let mut notifications_guard = match self.pending_notifications.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        notifications_guard
+            .entry(conversation_id.to_owned())
+            .or_default()
+            .push(message);
     }
 }
 
