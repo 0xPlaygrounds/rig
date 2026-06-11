@@ -249,19 +249,21 @@ fn apply_oauth_fingerprint(
     canonicalize_tool_names(value)
 }
 
-pub(crate) async fn prepare_anthropic_request<Ext>(
+pub(crate) async fn prepare_anthropic_request<Ext, H>(
     ext: &Ext,
+    http_client: &H,
     value: &mut Value,
     headers: &mut HeaderMap,
 ) -> Result<ToolNameMap, CompletionError>
 where
     Ext: AnthropicCompatibleProvider,
+    H: HttpClientExt,
 {
     let Some(authenticator) = ext.authenticator() else {
         return Ok(ToolNameMap::default());
     };
     let auth_context = authenticator
-        .auth_context()
+        .auth_context(http_client)
         .await
         .map_err(|err| CompletionError::RequestError(err.into()))?;
     if matches!(auth_context.source, auth::AuthSource::OAuth) {
@@ -2681,6 +2683,7 @@ where
                 let mut body = serde_json::to_value(&request)?;
                 let tool_name_map = prepare_anthropic_request(
                     self.client.ext(),
+                    &self.client,
                     &mut body,
                     req.headers_mut()
                         .ok_or_else(|| CompletionError::HttpError(http_client::Error::NoHeaders))?,

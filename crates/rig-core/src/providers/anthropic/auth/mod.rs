@@ -1,5 +1,6 @@
 //! Anthropic OAuth authentication types and target-specific dispatch.
 
+use crate::http_client::{self, HttpClientExt};
 use std::{fmt, path::PathBuf, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -107,8 +108,7 @@ impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Authenticator")
             .field("source", &self.source)
-            .field("platform", &self.platform)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -124,9 +124,9 @@ pub enum AuthError {
     /// JSON serialization failure.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    /// HTTP failure during token exchange or refresh.
+    /// HTTP transport failure during token exchange or refresh.
     #[error(transparent)]
-    Http(#[from] reqwest::Error),
+    Transport(#[from] http_client::Error),
 }
 
 impl Authenticator {
@@ -153,7 +153,10 @@ impl Authenticator {
     }
 
     /// Resolve the current request authentication context, refreshing OAuth tokens if required.
-    pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
+    pub async fn auth_context<H>(&self, http_client: &H) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         match &self.source {
             AuthSource::ApiKey(key) => {
                 if key.is_empty() {
@@ -168,7 +171,7 @@ impl Authenticator {
             }
             AuthSource::OAuth => {
                 let _guard = self.state_lock.lock().await;
-                self.platform.auth_context_oauth().await
+                self.platform.auth_context_oauth(http_client).await
             }
         }
     }

@@ -326,6 +326,7 @@ where
         let mut req = self.client.post("/v1/messages")?;
         let tool_name_map = prepare_anthropic_request(
             self.client.ext(),
+            &self.client,
             &mut body,
             req.headers_mut()
                 .ok_or_else(|| CompletionError::HttpError(http_client::Error::NoHeaders))?,

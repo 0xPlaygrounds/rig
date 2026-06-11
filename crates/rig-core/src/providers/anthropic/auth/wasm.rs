@@ -1,6 +1,7 @@
 //! Wasm Anthropic OAuth placeholder.
 
 use super::{AuthContext, AuthError, ManualCodeHandler, OAuthPromptHandler};
+use crate::http_client::HttpClientExt;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -15,7 +16,13 @@ impl PlatformAuthenticator {
         Self
     }
 
-    pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
+    pub(super) async fn auth_context_oauth<H>(
+        &self,
+        _http_client: &H,
+    ) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         Err(AuthError::Message(
             "Anthropic OAuth is not supported on wasm targets".into(),
         ))

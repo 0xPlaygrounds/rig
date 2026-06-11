@@ -11,8 +11,10 @@
 use super::{
     AuthContext, AuthError, AuthSource, ManualCodeHandler, OAuthPrompt, OAuthPromptHandler,
 };
+use crate::http_client::{self, HttpClientExt};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use http::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -79,7 +81,13 @@ impl PlatformAuthenticator {
         }
     }
 
-    pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
+    pub(super) async fn auth_context_oauth<H>(
+        &self,
+        http_client: &H,
+    ) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         let record = self.read_auth_record().await?;
         if let Some(access) = record.access.clone()
             && !token_expired(record.expires)
@@ -91,7 +99,7 @@ impl PlatformAuthenticator {
         }
 
         if let Some(refresh_token) = record.refresh.clone() {
-            match self.refresh_tokens(&refresh_token).await {
+            match self.refresh_tokens(http_client, &refresh_token).await {
                 Ok(refreshed) => {
                     let access_token = auth_record_access_token(&refreshed)?;
                     self.write_auth_record(&refreshed).await?;
@@ -105,7 +113,7 @@ impl PlatformAuthenticator {
             }
         }
 
-        let fresh = self.login_browser_flow().await?;
+        let fresh = self.login_browser_flow(http_client).await?;
         let access_token = auth_record_access_token(&fresh)?;
         self.write_auth_record(&fresh).await?;
         Ok(AuthContext {
@@ -149,7 +157,10 @@ impl PlatformAuthenticator {
         Ok(())
     }
 
-    async fn login_browser_flow(&self) -> Result<AuthRecord, AuthError> {
+    async fn login_browser_flow<H>(&self, http_client: &H) -> Result<AuthRecord, AuthError>
+    where
+        H: HttpClientExt,
+    {
         let verifier = pkce_verifier()?;
         let url = authorization_url(&verifier);
         if let Some(callback) = &self.oauth_prompt_handler.0 {
@@ -172,63 +183,89 @@ impl PlatformAuthenticator {
             )));
         };
         let code = parse_callback_code(&input, &verifier)?;
-        let tokens = exchange_code(&code, &verifier).await?;
+        let tokens = exchange_code(http_client, &code, &verifier).await?;
         Ok(build_auth_record(tokens, None))
     }
 
-    async fn refresh_tokens(&self, refresh_token: &str) -> Result<AuthRecord, RefreshTokensError> {
-        let client = reqwest::Client::new();
-        let response = client
-            .post(ANTHROPIC_TOKEN_URL)
-            .json(&serde_json::json!({
-                "grant_type": "refresh_token",
-                "client_id": ANTHROPIC_OAUTH_CLIENT_ID,
-                "refresh_token": refresh_token,
-            }))
-            .send()
-            .await
-            .map_err(AuthError::from)
-            .map_err(RefreshTokensError::Auth)?;
-        let status = response.status();
-        if status.is_success() {
-            let tokens = response
-                .json::<TokenResponse>()
-                .await
-                .map_err(AuthError::from)
-                .map_err(RefreshTokensError::Auth)?;
-            return Ok(build_auth_record(tokens, Some(refresh_token.to_owned())));
+    async fn refresh_tokens<H>(
+        &self,
+        http_client: &H,
+        refresh_token: &str,
+    ) -> Result<AuthRecord, RefreshTokensError>
+    where
+        H: HttpClientExt,
+    {
+        let body = serde_json::json!({
+            "grant_type": "refresh_token",
+            "client_id": ANTHROPIC_OAUTH_CLIENT_ID,
+            "refresh_token": refresh_token,
+        });
+
+        match send_token_request(http_client, body).await {
+            Ok(tokens) => Ok(build_auth_record(tokens, Some(refresh_token.to_owned()))),
+            Err(AuthError::Transport(http_client::Error::InvalidStatusCodeWithMessage(
+                status,
+                body,
+            ))) => {
+                let oauth_error = serde_json::from_str::<OAuthErrorResponse>(&body).ok();
+                if matches!(status, StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED)
+                    && oauth_error.as_ref().and_then(|e| e.error.as_deref())
+                        == Some("invalid_grant")
+                {
+                    return Err(RefreshTokensError::Reauthenticate);
+                }
+                Err(RefreshTokensError::Auth(AuthError::Message(
+                    format_refresh_error(status, oauth_error.as_ref(), &body),
+                )))
+            }
+            Err(err) => Err(RefreshTokensError::Auth(err)),
         }
-        let body = response.text().await.unwrap_or_default();
-        let oauth_error = serde_json::from_str::<OAuthErrorResponse>(&body).ok();
-        if matches!(
-            status,
-            reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNAUTHORIZED
-        ) && oauth_error.as_ref().and_then(|e| e.error.as_deref()) == Some("invalid_grant")
-        {
-            return Err(RefreshTokensError::Reauthenticate);
-        }
-        Err(RefreshTokensError::Auth(AuthError::Message(
-            format_refresh_error(status, oauth_error.as_ref(), &body),
-        )))
     }
 }
 
-async fn exchange_code(code: &str, verifier: &str) -> Result<TokenResponse, AuthError> {
-    Ok(reqwest::Client::new()
-        .post(ANTHROPIC_TOKEN_URL)
-        .json(&serde_json::json!({
+async fn exchange_code<H>(
+    http_client: &H,
+    code: &str,
+    verifier: &str,
+) -> Result<TokenResponse, AuthError>
+where
+    H: HttpClientExt,
+{
+    send_token_request(
+        http_client,
+        serde_json::json!({
             "grant_type": "authorization_code",
             "client_id": ANTHROPIC_OAUTH_CLIENT_ID,
             "code": code,
             "state": verifier,
             "redirect_uri": ANTHROPIC_REDIRECT_URI,
             "code_verifier": verifier,
-        }))
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<TokenResponse>()
-        .await?)
+        }),
+    )
+    .await
+}
+
+async fn send_token_request<H>(
+    http_client: &H,
+    body: serde_json::Value,
+) -> Result<TokenResponse, AuthError>
+where
+    H: HttpClientExt,
+{
+    let req = http::Request::builder()
+        .method(Method::POST)
+        .uri(ANTHROPIC_TOKEN_URL)
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(serde_json::to_vec(&body)?)
+        .map_err(http_client::Error::Protocol)?;
+    let response = http_client.send::<_, Vec<u8>>(req).await?;
+    let body = response.into_body().await?;
+    serde_json::from_slice::<TokenResponse>(&body).map_err(|error| {
+        AuthError::Message(format!(
+            "Anthropic OAuth token response could not be parsed: {error}; body: {}",
+            String::from_utf8_lossy(&body)
+        ))
+    })
 }
 
 async fn capture_callback_code() -> Option<String> {
@@ -408,7 +445,7 @@ fn format_oauth_error(prefix: &str, error: &str, description: Option<&str>) -> S
 }
 
 fn format_refresh_error(
-    status: reqwest::StatusCode,
+    status: StatusCode,
     oauth_error: Option<&OAuthErrorResponse>,
     body: &str,
 ) -> String {

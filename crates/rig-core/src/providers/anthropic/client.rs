@@ -125,7 +125,11 @@ where
     ///
     /// Returns an error if the OAuth login, refresh, or token-cache write fails.
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().authenticator.auth_context().await.map(|_| ())
+        self.ext()
+            .authenticator
+            .auth_context(self)
+            .await
+            .map(|_| ())
     }
 }
 
