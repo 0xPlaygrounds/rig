@@ -8,6 +8,7 @@ use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use http::{HeaderValue, Method, StatusCode};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
 
 const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
@@ -24,6 +25,7 @@ const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
 pub(super) struct PlatformAuthenticator {
     auth_file: Option<PathBuf>,
     device_code_handler: DeviceCodeHandler,
+    cached_record: Arc<Mutex<Option<AuthRecord>>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -73,6 +75,7 @@ impl PlatformAuthenticator {
         Self {
             auth_file,
             device_code_handler,
+            cached_record: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -126,18 +129,50 @@ impl PlatformAuthenticator {
     }
 
     async fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
+        if let Some(record) = self.cached_valid_record() {
+            return Ok(record);
+        }
         let Some(path) = &self.auth_file else {
             return Ok(AuthRecord::default());
         };
 
-        match tokio::fs::read(path).await {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AuthRecord::default()),
-            Err(err) => Err(err.into()),
+        let record = match tokio::fs::read(path).await {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => AuthRecord::default(),
+            Err(err) => return Err(err.into()),
+        };
+        self.store_cached_record(record.clone());
+        Ok(record)
+    }
+
+    fn cached_valid_record(&self) -> Option<AuthRecord> {
+        let guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let record = guard.as_ref()?;
+        if record
+            .access_token
+            .as_ref()
+            .is_some_and(|access_token| !access_token.is_empty())
+            && !token_expired(record.expires_at)
+        {
+            Some(record.clone())
+        } else {
+            None
         }
     }
 
+    fn store_cached_record(&self, record: AuthRecord) {
+        let mut guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        *guard = Some(record);
+    }
+
     async fn write_auth_record(&self, record: &AuthRecord) -> Result<(), AuthError> {
+        self.store_cached_record(record.clone());
         let Some(path) = &self.auth_file else {
             return Ok(());
         };

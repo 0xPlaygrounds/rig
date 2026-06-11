@@ -18,6 +18,7 @@ use http::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -41,6 +42,12 @@ pub(super) struct PlatformAuthenticator {
     auth_file: Option<PathBuf>,
     oauth_prompt_handler: OAuthPromptHandler,
     manual_code_handler: ManualCodeHandler,
+    /// In-memory copy of the last known token record, shared across clones.
+    ///
+    /// Lets repeat requests reuse a still-valid access token without hitting
+    /// the disk on every call. Reads are populated from the on-disk record and
+    /// writes keep it consistent with the cache file.
+    cached_record: Arc<Mutex<Option<AuthRecord>>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -78,6 +85,7 @@ impl PlatformAuthenticator {
             auth_file,
             oauth_prompt_handler,
             manual_code_handler,
+            cached_record: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -122,18 +130,57 @@ impl PlatformAuthenticator {
         })
     }
 
+    /// Read the cached token record, preferring an in-memory copy with a
+    /// still-valid access token to avoid per-request disk I/O.
+    ///
+    /// Returns the cached record when its access token has not expired,
+    /// otherwise reads the on-disk record and refreshes the in-memory cache.
     async fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
+        if let Some(record) = self.cached_valid_record() {
+            return Ok(record);
+        }
         let Some(path) = &self.auth_file else {
             return Ok(AuthRecord::default());
         };
-        match tokio::fs::read(path).await {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AuthRecord::default()),
-            Err(err) => Err(err.into()),
+        let record = match tokio::fs::read(path).await {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => AuthRecord::default(),
+            Err(err) => return Err(err.into()),
+        };
+        self.store_cached_record(record.clone());
+        Ok(record)
+    }
+
+    /// Return the in-memory record when it holds a non-expired access token.
+    fn cached_valid_record(&self) -> Option<AuthRecord> {
+        let guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let record = guard.as_ref()?;
+        if record
+            .access
+            .as_ref()
+            .is_some_and(|access| !access.is_empty())
+            && !token_expired(record.expires)
+        {
+            Some(record.clone())
+        } else {
+            None
         }
     }
 
+    /// Replace the in-memory cache with the supplied record.
+    fn store_cached_record(&self, record: AuthRecord) {
+        let mut guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        *guard = Some(record);
+    }
+
     async fn write_auth_record(&self, record: &AuthRecord) -> Result<(), AuthError> {
+        self.store_cached_record(record.clone());
         let Some(path) = &self.auth_file else {
             return Ok(());
         };
