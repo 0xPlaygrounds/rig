@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"Answer with the exact token from the document only.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"Acknowledged.","type":"output_text"}],"role":"assistant","status":"completed","type":"message"},{"content":[{"text":"According to the document, what is the ordering token?","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":32,"model":"gpt-4o","temperature":0.0}'
+  body: '{"input":[{"content":[{"text":"Answer with the exact token from the document only.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","type":"input_text"}],"role":"user","type":"message"},{"content":"Acknowledged.","role":"assistant","type":"message"},{"content":[{"text":"According to the document, what is the ordering token?","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":32,"model":"gpt-4o","temperature":0.0}'
 then:
   status: 200
   header:

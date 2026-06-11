@@ -254,6 +254,10 @@ impl From<Message> for InputItem {
                     input: InputContent::Message(value),
                 }
             }
+            Message::AssistantInput { .. } => Self {
+                role: Some(Role::Assistant),
+                input: InputContent::Message(value),
+            },
             Message::System { .. } => Self {
                 role: Some(Role::System),
                 input: InputContent::Message(value),
@@ -448,15 +452,25 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             if text.is_empty() {
                                 continue;
                             }
-                            let text = AssistantContent::OutputText(Text::new(text));
-                            other_items.push(InputItem {
-                                role: Some(Role::Assistant),
-                                input: InputContent::Message(Message::Assistant {
-                                    content: OneOrMany::one(AssistantContentType::Text(text)),
-                                    id: id.clone().unwrap_or_default(),
+                            let message = if let Some(id) = id.clone() {
+                                Message::Assistant {
+                                    content: OneOrMany::one(AssistantContentType::Text(
+                                        AssistantContent::OutputText(Text::new(text)),
+                                    )),
+                                    id,
                                     name: None,
                                     status: ToolStatus::Completed,
-                                }),
+                                }
+                            } else {
+                                Message::AssistantInput {
+                                    content: text,
+                                    name: None,
+                                }
+                            };
+
+                            other_items.push(InputItem {
+                                role: Some(Role::Assistant),
+                                input: InputContent::Message(message),
                             });
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
@@ -1614,6 +1628,12 @@ pub enum Message {
         name: Option<String>,
         status: ToolStatus,
     },
+    #[serde(rename = "assistant", skip_deserializing)]
+    AssistantInput {
+        content: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
     #[serde(rename = "tool")]
     ToolResult {
         tool_call_id: String,
@@ -1894,8 +1914,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                     }])
                 }
             }
-            message::Message::Assistant { content, id } => {
-                let assistant_message_id = id.unwrap_or_default();
+            message::Message::Assistant {
+                content,
+                id: assistant_message_id,
+            } => {
                 let mut messages = Vec::new();
 
                 for assistant_content in content {
@@ -1904,16 +1926,24 @@ impl TryFrom<message::Message> for Vec<Message> {
                             if text.is_empty() {
                                 continue;
                             }
-                            let text = AssistantContent::OutputText(Text::new(text));
-                            messages.push(Message::Assistant {
-                                id: assistant_message_id.clone(),
-                                status: ToolStatus::Completed,
-                                content: OneOrMany::one(AssistantContentType::Text(text)),
-                                name: None,
-                            });
+                            if let Some(id) = assistant_message_id.clone() {
+                                messages.push(Message::Assistant {
+                                    id,
+                                    status: ToolStatus::Completed,
+                                    content: OneOrMany::one(AssistantContentType::Text(
+                                        AssistantContent::OutputText(Text::new(text)),
+                                    )),
+                                    name: None,
+                                });
+                            } else {
+                                messages.push(Message::AssistantInput {
+                                    content: text,
+                                    name: None,
+                                });
+                            }
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id,
+                            id: tool_id,
                             call_id,
                             function,
                             ..
@@ -1928,12 +1958,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                                             )
                                         })?,
                                         arguments: function.arguments,
-                                        id,
+                                        id: tool_id,
                                         name: function.name,
                                         status: ToolStatus::Completed,
                                     },
                                 )),
-                                id: assistant_message_id.clone(),
+                                id: assistant_message_id.clone().unwrap_or_default(),
                                 name: None,
                                 status: ToolStatus::Completed,
                             });
@@ -1945,7 +1975,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     content: OneOrMany::one(AssistantContentType::Reasoning(
                                         openai_reasoning,
                                     )),
-                                    id: assistant_message_id.clone(),
+                                    id: assistant_message_id.clone().unwrap_or_default(),
                                     name: None,
                                     status: ToolStatus::Completed,
                                 });
@@ -2476,7 +2506,7 @@ mod tests {
     }
 
     #[test]
-    fn idless_completion_assistant_text_replays_as_output_text() {
+    fn idless_completion_assistant_text_replays_as_easy_input_message() {
         let assistant = completion::Message::Assistant {
             id: None,
             content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
@@ -2487,24 +2517,23 @@ mod tests {
 
         assert_eq!(converted.len(), 1);
         assert!(matches!(converted[0].role, Some(Role::Assistant)));
-        let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[0].input
+        let InputContent::Message(Message::AssistantInput { content, .. }) = &converted[0].input
         else {
-            panic!("expected assistant message input item");
+            panic!("expected assistant input message item");
         };
-        assert!(id.is_empty());
-        assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
-        ));
+        assert_eq!(content, "final answer");
 
         let serialized =
             serde_json::to_value(&converted[0]).expect("input item should serialize to JSON");
-        assert_eq!(serialized["content"][0]["type"], json!("output_text"));
+        assert_eq!(serialized["type"], json!("message"));
+        assert_eq!(serialized["role"], json!("assistant"));
+        assert_eq!(serialized["content"], json!("final answer"));
         assert!(serialized.get("id").is_none());
+        assert!(serialized.get("status").is_none());
     }
 
     #[test]
-    fn idless_message_assistant_text_replays_as_output_text() {
+    fn idless_message_assistant_text_replays_as_easy_input_message() {
         let assistant = message::Message::Assistant {
             id: None,
             content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
@@ -2514,19 +2543,17 @@ mod tests {
             Vec::<Message>::try_from(assistant).expect("assistant history should convert");
 
         assert_eq!(converted.len(), 1);
-        let Message::Assistant { content, id, .. } = &converted[0] else {
-            panic!("expected assistant message");
+        let Message::AssistantInput { content, .. } = &converted[0] else {
+            panic!("expected assistant input message");
         };
-        assert!(id.is_empty());
-        assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
-        ));
+        assert_eq!(content, "final answer");
 
         let serialized = serde_json::to_value(&converted[0])
             .expect("assistant message should serialize to JSON");
-        assert_eq!(serialized["content"][0]["type"], json!("output_text"));
+        assert_eq!(serialized["role"], json!("assistant"));
+        assert_eq!(serialized["content"], json!("final answer"));
         assert!(serialized.get("id").is_none());
+        assert!(serialized.get("status").is_none());
     }
 
     #[test]

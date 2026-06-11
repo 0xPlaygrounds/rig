@@ -141,7 +141,8 @@ fn assert_responses_request_order(scenario: &str) {
         "expected second input item to contain normalized document: {body:#}"
     );
     assert_eq!(input[2]["role"], "assistant");
-    assert!(input[2].to_string().contains("Acknowledged."));
+    assert_eq!(input[2]["content"], "Acknowledged.");
+    assert!(input[2].get("status").is_none());
     assert_eq!(input[3]["role"], "user");
     assert!(input[3].to_string().contains(PROMPT));
 }
