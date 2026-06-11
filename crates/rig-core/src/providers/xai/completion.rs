@@ -287,8 +287,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::XAICompletionRequest;
+    use crate::OneOrMany;
     use crate::completion::request::Document;
-    use crate::completion::{CompletionRequestBuilder, Message};
+    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message};
     use crate::test_utils::MockCompletionModel;
 
     #[test]
@@ -315,6 +316,58 @@ mod tests {
                 .iter()
                 .any(|message| message.to_string().contains("glarb-glarb")),
             "normalized documents should be forwarded into xAI input"
+        );
+    }
+
+    #[test]
+    fn xai_direct_request_keeps_documents_after_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("What is glarb-glarb?"),
+            ])
+            .unwrap(),
+            documents: vec![Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(xai_request).expect("serialization should succeed");
+        let input = serialized["input"]
+            .as_array()
+            .expect("xAI request input should be an array");
+
+        assert_eq!(input.len(), 5);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[1]["role"], "user");
+        assert!(
+            input[1].to_string().contains("<file id: doc_1>"),
+            "document input should follow leading system input: {input:?}"
+        );
+        assert_eq!(input[2]["role"], "assistant");
+        assert_eq!(input[3]["role"], "system");
+        assert_eq!(input[4]["role"], "user");
+        assert_eq!(
+            input
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc_1>"))
+                .count(),
+            1,
+            "document input should appear exactly once: {input:?}"
         );
     }
 }

@@ -3125,36 +3125,24 @@ mod tests {
 
     #[test]
     fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
-        let docs = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: OneOrMany::one(message::Message::user("placeholder")),
-            documents: vec![completion::Document {
-                id: "doc".to_string(),
-                text: "Document context.".to_string(),
-                additional_props: Default::default(),
-            }],
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: Some(64),
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        }
-        .normalized_documents()
-        .unwrap();
-
-        let request = completion_request_with_history(
+        let mut request = completion_request_with_history(
             vec![
                 message::Message::System {
                     content: "Global history instruction.".to_string(),
                 },
-                docs,
                 message::Message::assistant("Acknowledged."),
+                message::Message::System {
+                    content: "Mid-conversation instruction.".to_string(),
+                },
                 message::Message::user("Answer from the document."),
             ],
             None,
         );
+        request.documents = vec![completion::Document {
+            id: "doc".to_string(),
+            text: "Document context.".to_string(),
+            additional_props: Default::default(),
+        }];
 
         let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
             model: CLAUDE_OPUS_4_8,
@@ -3167,12 +3155,25 @@ mod tests {
 
         let value = serde_json::to_value(request).unwrap();
         assert_eq!(value["system"][0]["text"], "Global history instruction.");
+        assert_eq!(value["system"][1]["text"], "Mid-conversation instruction.");
 
         let messages = value["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0]["role"], "user");
         assert_eq!(messages[1]["role"], "assistant");
         assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages[0].to_string().contains("<file id: doc>"),
+            "document message should follow top-level system: {messages:?}"
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
         assert!(
             messages
                 .iter()

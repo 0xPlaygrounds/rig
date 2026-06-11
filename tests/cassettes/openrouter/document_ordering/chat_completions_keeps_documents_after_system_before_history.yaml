@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Answer with the exact token from the document only.","type":"text"}],"role":"system"},{"content":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","role":"user"},{"content":[{"text":"Acknowledged.","type":"text"}],"role":"assistant"},{"content":"According to the document, what is the ordering token?","role":"user"}],"model":"openai/gpt-4o-mini","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"violet-needle","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":4,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00001155,"cost_details":{"upstream_inference_completions_cost":2.4e-6,"upstream_inference_cost":0.00001155,"upstream_inference_prompt_cost":9.15e-6},"is_byok":false,"prompt_tokens":61,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":65}}'

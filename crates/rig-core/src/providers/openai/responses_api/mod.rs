@@ -441,15 +441,6 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
             crate::completion::Message::Assistant { id, content } => {
                 let mut reasoning_items = Vec::new();
                 let mut other_items = Vec::new();
-                let content = content.into_iter().collect::<Vec<_>>();
-                let has_unreplayable_reasoning = content.iter().any(|assistant_content| {
-                    matches!(
-                        assistant_content,
-                        crate::message::AssistantContent::Reasoning(reasoning)
-                            if reasoning.id.is_none()
-                    )
-                });
-                let cannot_replay_as_provider_output = id.is_none() || has_unreplayable_reasoning;
 
                 for assistant_content in content {
                     match assistant_content {
@@ -457,11 +448,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             if text.is_empty() {
                                 continue;
                             }
-                            let text = if cannot_replay_as_provider_output {
-                                AssistantContent::InputText { text }
-                            } else {
-                                AssistantContent::OutputText(Text::new(text))
-                            };
+                            let text = AssistantContent::OutputText(Text::new(text));
                             other_items.push(InputItem {
                                 role: Some(Role::Assistant),
                                 input: InputContent::Message(Message::Assistant {
@@ -1656,7 +1643,6 @@ impl Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantContent {
-    InputText { text: String },
     OutputText(Text),
     Refusal { refusal: String },
 }
@@ -1664,9 +1650,6 @@ pub enum AssistantContent {
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
         match value {
-            AssistantContent::InputText { text } => {
-                completion::AssistantContent::Text(Text::new(text))
-            }
             AssistantContent::Refusal { refusal } => {
                 completion::AssistantContent::Text(Text::new(refusal))
             }
@@ -1912,19 +1895,8 @@ impl TryFrom<message::Message> for Vec<Message> {
                 }
             }
             message::Message::Assistant { content, id } => {
-                let cannot_replay_without_provider_id = id.is_none();
                 let assistant_message_id = id.unwrap_or_default();
                 let mut messages = Vec::new();
-                let content = content.into_iter().collect::<Vec<_>>();
-                let has_unreplayable_reasoning = content.iter().any(|assistant_content| {
-                    matches!(
-                        assistant_content,
-                        crate::message::AssistantContent::Reasoning(reasoning)
-                            if reasoning.id.is_none()
-                    )
-                });
-                let cannot_replay_as_provider_output =
-                    cannot_replay_without_provider_id || has_unreplayable_reasoning;
 
                 for assistant_content in content {
                     match assistant_content {
@@ -1932,11 +1904,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             if text.is_empty() {
                                 continue;
                             }
-                            let text = if cannot_replay_as_provider_output {
-                                AssistantContent::InputText { text }
-                            } else {
-                                AssistantContent::OutputText(Text::new(text))
-                            };
+                            let text = AssistantContent::OutputText(Text::new(text));
                             messages.push(Message::Assistant {
                                 id: assistant_message_id.clone(),
                                 status: ToolStatus::Completed,
@@ -2113,6 +2081,54 @@ mod tests {
         assert!(
             input[4].to_string().contains("Prompt"),
             "prompt should remain last: {input:?}"
+        );
+    }
+
+    #[test]
+    fn responses_direct_request_keeps_documents_after_system_messages() {
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::many(vec![
+                completion::Message::system("System prompt"),
+                completion::Message::assistant("Earlier assistant turn"),
+                completion::Message::system("Mid-conversation instruction"),
+                completion::Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
+            .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&responses_request.input).expect("input should serialize");
+        let input = serialized.as_array().expect("input should be an array");
+
+        assert_eq!(input.len(), 5);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[1]["role"], "user");
+        assert!(
+            input[1].to_string().contains("<file id: doc1>"),
+            "document input should follow leading system input: {input:?}"
+        );
+        assert_eq!(input[2]["role"], "assistant");
+        assert_eq!(input[3]["role"], "system");
+        assert_eq!(input[4]["role"], "user");
+        assert_eq!(
+            input
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc1>"))
+                .count(),
+            1,
+            "document input should appear exactly once: {input:?}"
         );
     }
 
@@ -2410,7 +2426,7 @@ mod tests {
         };
         assert!(matches!(
             content.first_ref(),
-            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
         ));
     }
 
@@ -2435,7 +2451,7 @@ mod tests {
         };
         assert!(matches!(
             content.first_ref(),
-            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
         ));
     }
 
@@ -2460,7 +2476,7 @@ mod tests {
     }
 
     #[test]
-    fn idless_completion_assistant_text_replays_as_input_text() {
+    fn idless_completion_assistant_text_replays_as_output_text() {
         let assistant = completion::Message::Assistant {
             id: None,
             content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
@@ -2478,17 +2494,17 @@ mod tests {
         assert!(id.is_empty());
         assert!(matches!(
             content.first_ref(),
-            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
         ));
 
         let serialized =
             serde_json::to_value(&converted[0]).expect("input item should serialize to JSON");
-        assert_eq!(serialized["content"][0]["type"], json!("input_text"));
+        assert_eq!(serialized["content"][0]["type"], json!("output_text"));
         assert!(serialized.get("id").is_none());
     }
 
     #[test]
-    fn idless_message_assistant_text_replays_as_input_text() {
+    fn idless_message_assistant_text_replays_as_output_text() {
         let assistant = message::Message::Assistant {
             id: None,
             content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
@@ -2504,12 +2520,12 @@ mod tests {
         assert!(id.is_empty());
         assert!(matches!(
             content.first_ref(),
-            AssistantContentType::Text(AssistantContent::InputText { text }) if text == "final answer"
+            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
         ));
 
         let serialized = serde_json::to_value(&converted[0])
             .expect("assistant message should serialize to JSON");
-        assert_eq!(serialized["content"][0]["type"], json!("input_text"));
+        assert_eq!(serialized["content"][0]["type"], json!("output_text"));
         assert!(serialized.get("id").is_none());
     }
 
@@ -2632,7 +2648,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(assistant_items.len(), 1);
-        assert_eq!(assistant_items[0]["content"][0]["type"], "input_text");
+        assert_eq!(assistant_items[0]["content"][0]["type"], "output_text");
         assert_eq!(assistant_items[0]["content"][0]["text"], "final answer");
     }
 

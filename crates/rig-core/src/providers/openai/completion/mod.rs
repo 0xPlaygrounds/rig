@@ -1627,6 +1627,59 @@ mod tests {
     }
 
     #[test]
+    fn openai_chat_direct_request_keeps_documents_after_system_messages() {
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::many(vec![
+                crate::completion::Message::system("System prompt"),
+                crate::completion::Message::assistant("Earlier assistant turn"),
+                crate::completion::Message::system("Mid-conversation instruction"),
+                crate::completion::Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&openai_request.messages).expect("messages should serialize");
+        let messages = serialized.as_array().expect("messages should be an array");
+
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+        assert!(
+            messages[1].to_string().contains("<file id: doc1>"),
+            "document message should follow leading system messages: {messages:?}"
+        );
+        assert_eq!(messages[2]["role"], "assistant");
+        assert_eq!(messages[3]["role"], "system");
+        assert_eq!(messages[4]["role"], "user");
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc1>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
+    }
+
+    #[test]
     fn assistant_reasoning_alone_is_dropped() {
         let assistant_content = OneOrMany::one(message::AssistantContent::reasoning("hidden"));
 

@@ -1199,4 +1199,70 @@ mod tests {
         assert!(matches!(history[3], Message::User { .. }));
         assert!(matches!(history[4], Message::User { .. }));
     }
+
+    #[test]
+    fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("Leading system prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 5);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "Leading system prompt"
+        ));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::Assistant { .. }));
+        assert!(matches!(
+            history[3],
+            Message::System { content } if content == "Mid-conversation instruction"
+        ));
+        assert!(matches!(history[4], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_does_not_duplicate_documents() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::user("Earlier user turn"),
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let history = request.chat_history_with_documents();
+        let document_messages = history
+            .iter()
+            .filter(|message| is_document_message(message, "doc1"))
+            .count();
+        assert_eq!(document_messages, 1);
+    }
 }
