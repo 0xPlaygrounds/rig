@@ -89,18 +89,22 @@ pub enum CompletionError {
     /// Error returned by the completion model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Raw error response preserved from the completion model provider
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(provider_response::ProviderResponseError),
 }
 
 impl CompletionError {
     /// Returns the raw provider response body when available.
     ///
     /// This is available for:
-    /// - [`CompletionError::ProviderError`] using its stored string.
+    /// - [`CompletionError::ProviderResponse`] using its preserved body.
     /// - [`CompletionError::HttpError`] when it wraps an HTTP non-success response that carries a body.
     pub fn provider_response_body(&self) -> Option<&str> {
         match self {
-            Self::ProviderError(body) => provider_response::body(Some(body.as_str()), None),
-            Self::HttpError(error) => provider_response::body(None, Some(error)),
+            Self::ProviderResponse(response) => Some(response.body.as_str()),
+            Self::HttpError(error) => error.non_success_body(),
             _ => None,
         }
     }
@@ -115,10 +119,12 @@ impl CompletionError {
         provider_response::json(self.provider_response_body())
     }
 
-    /// Returns the HTTP status code when this error comes from a non-success HTTP response.
+    /// Returns the HTTP status code when this error preserves one, either from a
+    /// non-success HTTP response or from a preserved provider response.
     pub fn provider_response_status(&self) -> Option<http::StatusCode> {
         match self {
-            Self::HttpError(error) => provider_response::status(Some(error)),
+            Self::ProviderResponse(response) => response.status,
+            Self::HttpError(error) => error.non_success_status(),
             _ => None,
         }
     }
@@ -1353,9 +1359,12 @@ mod tests {
     }
 
     #[test]
-    fn completion_error_provider_response_helpers_with_provider_json_body() {
+    fn completion_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
-        let error = CompletionError::ProviderError(body.to_string());
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: body.to_string(),
+        });
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
@@ -1373,12 +1382,46 @@ mod tests {
     }
 
     #[test]
-    fn completion_error_provider_response_helpers_with_provider_plain_text_body() {
-        let error = CompletionError::ProviderError("provider exploded".to_string());
+    fn completion_error_provider_response_helpers_with_preserved_status() {
+        let body = r#"{"error":{"message":"too many requests"}}"#;
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: Some(http::StatusCode::TOO_MANY_REQUESTS),
+            body: body.to_string(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+    }
+
+    #[test]
+    fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: "provider exploded".to_string(),
+        });
 
         assert_eq!(error.provider_response_body(), Some("provider exploded"));
         assert_eq!(error.provider_response_status(), None);
         assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn completion_error_provider_error_is_not_a_provider_response() {
+        // `ProviderError` also carries Rig-generated diagnostics, so the helpers
+        // must not report its string as a provider response body.
+        let error = CompletionError::ProviderError("stream transport failed".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
     }
 
     #[test]
@@ -1422,7 +1465,12 @@ mod tests {
     #[test]
     fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
         let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
-        let error = PromptError::CompletionError(CompletionError::ProviderError(body.to_string()));
+        let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+            provider_response::ProviderResponseError {
+                status: None,
+                body: body.to_string(),
+            },
+        ));
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);

@@ -186,6 +186,7 @@ pub use completion::message;
 pub use embeddings::Embed;
 pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
+pub use provider_response::ProviderResponseError;
 pub use schemars;
 
 #[cfg(feature = "derive")]

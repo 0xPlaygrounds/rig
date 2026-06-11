@@ -41,18 +41,22 @@ pub enum TranscriptionError {
     /// Error returned by the transcription model provider
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Raw error response preserved from the transcription model provider
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(provider_response::ProviderResponseError),
 }
 
 impl TranscriptionError {
     /// Returns the raw provider response body when available.
     ///
     /// This is available for:
-    /// - [`TranscriptionError::ProviderError`] using its stored string.
+    /// - [`TranscriptionError::ProviderResponse`] using its preserved body.
     /// - [`TranscriptionError::HttpError`] when it wraps an HTTP non-success response that carries a body.
     pub fn provider_response_body(&self) -> Option<&str> {
         match self {
-            Self::ProviderError(body) => provider_response::body(Some(body.as_str()), None),
-            Self::HttpError(error) => provider_response::body(None, Some(error)),
+            Self::ProviderResponse(response) => Some(response.body.as_str()),
+            Self::HttpError(error) => error.non_success_body(),
             _ => None,
         }
     }
@@ -67,10 +71,12 @@ impl TranscriptionError {
         provider_response::json(self.provider_response_body())
     }
 
-    /// Returns the HTTP status code when this error comes from a non-success HTTP response.
+    /// Returns the HTTP status code when this error preserves one, either from a
+    /// non-success HTTP response or from a preserved provider response.
     pub fn provider_response_status(&self) -> Option<http::StatusCode> {
         match self {
-            Self::HttpError(error) => provider_response::status(Some(error)),
+            Self::ProviderResponse(response) => response.status,
+            Self::HttpError(error) => error.non_success_status(),
             _ => None,
         }
     }
@@ -340,9 +346,13 @@ mod provider_response_tests {
     use http::StatusCode;
 
     #[test]
-    fn transcription_error_provider_response_helpers_with_provider_json_body() {
+    fn transcription_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"message":"rate limited"}}"#;
-        let error = TranscriptionError::ProviderError(body.to_string());
+        let error =
+            TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
+                status: None,
+                body: body.to_string(),
+            });
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
@@ -373,11 +383,24 @@ mod provider_response_tests {
     }
 
     #[test]
-    fn transcription_error_provider_response_helpers_with_plain_text_provider_body() {
-        let error = TranscriptionError::ProviderError("not json".to_string());
+    fn transcription_error_provider_response_helpers_with_preserved_plain_text_body() {
+        let error =
+            TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
+                status: None,
+                body: "not json".to_string(),
+            });
 
         assert_eq!(error.provider_response_body(), Some("not json"));
         assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn transcription_error_provider_error_is_not_a_provider_response() {
+        let error = TranscriptionError::ProviderError("internal diagnostic".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
     }
 
     #[test]

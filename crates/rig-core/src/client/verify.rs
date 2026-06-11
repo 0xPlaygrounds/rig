@@ -11,6 +11,9 @@ pub enum VerifyError {
     InvalidAuthentication,
     #[error("provider error: {0}")]
     ProviderError(String),
+    /// Raw error response preserved from the provider
+    #[error("provider response error: {0}")]
+    ProviderResponse(provider_response::ProviderResponseError),
     #[error("http error: {0}")]
     HttpError(
         #[from]
@@ -23,12 +26,12 @@ impl VerifyError {
     /// Returns the raw provider response body when available.
     ///
     /// This is available for:
-    /// - [`VerifyError::ProviderError`] using its stored string.
+    /// - [`VerifyError::ProviderResponse`] using its preserved body.
     /// - [`VerifyError::HttpError`] when it wraps an HTTP non-success response that carries a body.
     pub fn provider_response_body(&self) -> Option<&str> {
         match self {
-            Self::ProviderError(body) => provider_response::body(Some(body.as_str()), None),
-            Self::HttpError(error) => provider_response::body(None, Some(error)),
+            Self::ProviderResponse(response) => Some(response.body.as_str()),
+            Self::HttpError(error) => error.non_success_body(),
             _ => None,
         }
     }
@@ -43,10 +46,12 @@ impl VerifyError {
         provider_response::json(self.provider_response_body())
     }
 
-    /// Returns the HTTP status code when this error comes from a non-success HTTP response.
+    /// Returns the HTTP status code when this error preserves one, either from a
+    /// non-success HTTP response or from a preserved provider response.
     pub fn provider_response_status(&self) -> Option<http::StatusCode> {
         match self {
-            Self::HttpError(error) => provider_response::status(Some(error)),
+            Self::ProviderResponse(response) => response.status,
+            Self::HttpError(error) => error.non_success_status(),
             _ => None,
         }
     }
@@ -65,9 +70,12 @@ mod provider_response_tests {
     use http::StatusCode;
 
     #[test]
-    fn verify_error_provider_response_helpers_with_provider_json_body() {
+    fn verify_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"message":"rate limited"}}"#;
-        let error = VerifyError::ProviderError(body.to_string());
+        let error = VerifyError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: body.to_string(),
+        });
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
@@ -97,11 +105,23 @@ mod provider_response_tests {
     }
 
     #[test]
-    fn verify_error_provider_response_helpers_with_plain_text_provider_body() {
-        let error = VerifyError::ProviderError("not json".to_string());
+    fn verify_error_provider_response_helpers_with_preserved_plain_text_body() {
+        let error = VerifyError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: "not json".to_string(),
+        });
 
         assert_eq!(error.provider_response_body(), Some("not json"));
         assert!(error.provider_response_json().is_err());
+    }
+
+    #[test]
+    fn verify_error_provider_error_is_not_a_provider_response() {
+        let error = VerifyError::ProviderError("internal diagnostic".to_string());
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(error.provider_response_json().expect("no body"), None);
     }
 
     #[test]

@@ -924,10 +924,8 @@ mod tests {
             "ProviderError: Invalid content type was returned: \"application/json\""
         );
         assert!(matches!(err, CompletionError::ProviderError(_)));
-        assert_eq!(
-            err.provider_response_body(),
-            Some("Invalid content type was returned: \"application/json\"")
-        );
+        // Rig-generated transport diagnostics are not provider response bodies.
+        assert_eq!(err.provider_response_body(), None);
         assert_eq!(err.provider_response_status(), None);
     }
 
