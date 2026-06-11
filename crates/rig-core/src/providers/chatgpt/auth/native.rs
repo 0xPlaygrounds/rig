@@ -1,8 +1,11 @@
 //! Native ChatGPT OAuth and token cache implementation.
 
 use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
+use crate::http_client::{self, HttpClientExt};
+use crate::providers::internal::auth::{self as auth_http, AuthHeader};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+use http::{HeaderValue, Method, StatusCode};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
@@ -73,7 +76,13 @@ impl PlatformAuthenticator {
         }
     }
 
-    pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
+    pub(super) async fn auth_context_oauth<H>(
+        &self,
+        http_client: &H,
+    ) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         let mut record = self.read_auth_record().await?;
 
         if let Some(access_token) = record.access_token.clone()
@@ -95,7 +104,7 @@ impl PlatformAuthenticator {
         }
 
         if let Some(refresh_token) = record.refresh_token.clone() {
-            match self.refresh_tokens(&refresh_token).await {
+            match self.refresh_tokens(http_client, &refresh_token).await {
                 Ok(refreshed) => {
                     self.write_auth_record(&refreshed).await?;
                     return Ok(AuthContext {
@@ -108,7 +117,7 @@ impl PlatformAuthenticator {
             }
         }
 
-        let fresh = self.login_device_flow().await?;
+        let fresh = self.login_device_flow(http_client).await?;
         self.write_auth_record(&fresh).await?;
         Ok(AuthContext {
             access_token: fresh.access_token.unwrap_or_default(),
@@ -151,16 +160,20 @@ impl PlatformAuthenticator {
         Ok(())
     }
 
-    async fn login_device_flow(&self) -> Result<AuthRecord, AuthError> {
-        let client = reqwest::Client::new();
-        let device = client
-            .post(CHATGPT_DEVICE_CODE_URL)
-            .json(&serde_json::json!({ "client_id": CHATGPT_CLIENT_ID }))
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<DeviceCodeResponse>()
-            .await?;
+    async fn login_device_flow<H>(&self, http_client: &H) -> Result<AuthRecord, AuthError>
+    where
+        H: HttpClientExt,
+    {
+        let device: DeviceCodeResponse = auth_http::send_json_request(
+            http_client,
+            "ChatGPT",
+            Method::POST,
+            CHATGPT_DEVICE_CODE_URL,
+            Vec::new(),
+            serde_json::to_vec(&serde_json::json!({ "client_id": CHATGPT_CLIENT_ID }))?,
+            true,
+        )
+        .await?;
 
         emit_device_code_prompt(
             &self.device_code_handler,
@@ -172,38 +185,46 @@ impl PlatformAuthenticator {
 
         let interval = device.interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
         let start = std::time::Instant::now();
-        let code = loop {
-            if start.elapsed().as_secs() as i64 >= DEVICE_CODE_TIMEOUT_SECONDS {
-                return Err(AuthError::Message(
-                    "Timed out waiting for ChatGPT device authorization".into(),
-                ));
-            }
+        let code =
+            loop {
+                if start.elapsed().as_secs() as i64 >= DEVICE_CODE_TIMEOUT_SECONDS {
+                    return Err(AuthError::Message(
+                        "Timed out waiting for ChatGPT device authorization".into(),
+                    ));
+                }
 
-            let response = client
-                .post(CHATGPT_DEVICE_TOKEN_URL)
-                .json(&serde_json::json!({
-                    "device_auth_id": device.device_auth_id,
-                    "user_code": device.user_code,
-                }))
-                .send()
-                .await?;
-
-            if response.status().is_success() {
-                let token_response = response.json::<DeviceTokenResponse>().await?;
-                break token_response;
-            }
-
-            let status = response.status();
-            if status.as_u16() == 403 || status.as_u16() == 404 {
-                tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
-                continue;
-            }
-
-            let text = response.text().await.unwrap_or_default();
-            return Err(AuthError::Message(format!(
-                "ChatGPT device authorization failed: {status} {text}"
-            )));
-        };
+                match auth_http::send_json_request::<_, DeviceTokenResponse>(
+                    http_client,
+                    "ChatGPT",
+                    Method::POST,
+                    CHATGPT_DEVICE_TOKEN_URL,
+                    Vec::new(),
+                    serde_json::to_vec(&serde_json::json!({
+                        "device_auth_id": device.device_auth_id,
+                        "user_code": device.user_code,
+                    }))?,
+                    true,
+                )
+                .await
+                .map_err(AuthError::from)
+                {
+                    Ok(token_response) => break token_response,
+                    Err(AuthError::Transport(
+                        http_client::Error::InvalidStatusCodeWithMessage(status, _),
+                    )) if status.as_u16() == 403 || status.as_u16() == 404 => {
+                        tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+                        continue;
+                    }
+                    Err(AuthError::Transport(
+                        http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                    )) => {
+                        return Err(AuthError::Message(format!(
+                            "ChatGPT device authorization failed: {status} {text}"
+                        )));
+                    }
+                    Err(err) => return Err(err),
+                }
+            };
 
         let redirect_uri = format!("{CHATGPT_AUTH_BASE}/deviceauth/callback");
         let form = [
@@ -217,24 +238,31 @@ impl PlatformAuthenticator {
             .extend_pairs(form)
             .finish();
 
-        let tokens = client
-            .post(CHATGPT_OAUTH_TOKEN_URL)
-            .header(
-                reqwest::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .body(body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<OAuthTokenResponse>()
-            .await?;
+        let tokens = auth_http::send_json_request(
+            http_client,
+            "ChatGPT",
+            Method::POST,
+            CHATGPT_OAUTH_TOKEN_URL,
+            vec![auth_header(
+                http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/x-www-form-urlencoded"),
+            )],
+            body.into_bytes(),
+            true,
+        )
+        .await?;
 
         Ok(build_auth_record(tokens, None))
     }
 
-    async fn refresh_tokens(&self, refresh_token: &str) -> Result<AuthRecord, RefreshTokensError> {
-        let client = reqwest::Client::new();
+    async fn refresh_tokens<H>(
+        &self,
+        http_client: &H,
+        refresh_token: &str,
+    ) -> Result<AuthRecord, RefreshTokensError>
+    where
+        H: HttpClientExt,
+    {
         let form = [
             ("client_id", CHATGPT_CLIENT_ID),
             ("grant_type", "refresh_token"),
@@ -246,42 +274,55 @@ impl PlatformAuthenticator {
             .extend_pairs(form)
             .finish();
 
-        let response = client
-            .post(CHATGPT_OAUTH_TOKEN_URL)
-            .header(
-                reqwest::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .body(body)
-            .send()
-            .await
-            .map_err(AuthError::from)
-            .map_err(RefreshTokensError::Auth)?;
+        match auth_http::send_json_request(
+            http_client,
+            "ChatGPT",
+            Method::POST,
+            CHATGPT_OAUTH_TOKEN_URL,
+            vec![auth_header(
+                http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/x-www-form-urlencoded"),
+            )],
+            body.into_bytes(),
+            true,
+        )
+        .await
+        .map_err(AuthError::from)
+        {
+            Ok(tokens) => Ok(build_auth_record(tokens, Some(refresh_token.to_owned()))),
+            Err(AuthError::Transport(http_client::Error::InvalidStatusCodeWithMessage(
+                status,
+                body,
+            ))) => {
+                let oauth_error = serde_json::from_str::<OAuthErrorResponse>(&body).ok();
+                if should_reauthenticate_after_refresh(
+                    status,
+                    oauth_error
+                        .as_ref()
+                        .and_then(|error| error.error.as_deref()),
+                ) {
+                    return Err(RefreshTokensError::Reauthenticate);
+                }
 
-        let status = response.status();
-        if status.is_success() {
-            let tokens = response
-                .json::<OAuthTokenResponse>()
-                .await
-                .map_err(AuthError::from)
-                .map_err(RefreshTokensError::Auth)?;
-            return Ok(build_auth_record(tokens, Some(refresh_token.to_owned())));
+                Err(RefreshTokensError::Auth(AuthError::Message(
+                    format_refresh_error(status, oauth_error.as_ref(), &body),
+                )))
+            }
+            Err(err) => Err(RefreshTokensError::Auth(err)),
         }
+    }
+}
 
-        let body = response.text().await.unwrap_or_default();
-        let oauth_error = serde_json::from_str::<OAuthErrorResponse>(&body).ok();
-        if should_reauthenticate_after_refresh(
-            status,
-            oauth_error
-                .as_ref()
-                .and_then(|error| error.error.as_deref()),
-        ) {
-            return Err(RefreshTokensError::Reauthenticate);
+fn auth_header(name: http::header::HeaderName, value: HeaderValue) -> AuthHeader {
+    (name, value)
+}
+
+impl From<auth_http::JsonAuthRequestError> for AuthError {
+    fn from(err: auth_http::JsonAuthRequestError) -> Self {
+        match err {
+            auth_http::JsonAuthRequestError::Transport(err) => Self::Transport(err),
+            auth_http::JsonAuthRequestError::Parse { .. } => Self::Message(err.to_string()),
         }
-
-        Err(RefreshTokensError::Auth(AuthError::Message(
-            format_refresh_error(status, oauth_error.as_ref(), &body),
-        )))
     }
 }
 
@@ -349,18 +390,13 @@ fn decode_jwt_claims(token: &str) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
-fn should_reauthenticate_after_refresh(
-    status: reqwest::StatusCode,
-    error_code: Option<&str>,
-) -> bool {
-    matches!(
-        status,
-        reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNAUTHORIZED
-    ) && matches!(error_code, Some("invalid_grant"))
+fn should_reauthenticate_after_refresh(status: StatusCode, error_code: Option<&str>) -> bool {
+    matches!(status, StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED)
+        && matches!(error_code, Some("invalid_grant"))
 }
 
 fn format_refresh_error(
-    status: reqwest::StatusCode,
+    status: StatusCode,
     oauth_error: Option<&OAuthErrorResponse>,
     body: &str,
 ) -> String {

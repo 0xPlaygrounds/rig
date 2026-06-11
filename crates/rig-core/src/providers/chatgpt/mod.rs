@@ -425,7 +425,7 @@ where
             .client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(&self.client)
             .await
             .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
 
@@ -460,7 +460,7 @@ where
     H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().auth.auth_context().await.map(|_| ())
+        self.ext().auth.auth_context(self).await.map(|_| ())
     }
 }
 
@@ -556,7 +556,7 @@ where
             .client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(&self.client)
             .await
             .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
 
