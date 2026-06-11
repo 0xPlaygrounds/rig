@@ -1265,6 +1265,7 @@ pub mod interactions_api_types {
         InProgress,
         RequiresAction,
         Incomplete,
+        BudgetExceeded,
         Completed,
         Failed,
         Cancelled,
@@ -1277,6 +1278,7 @@ pub mod interactions_api_types {
                 self,
                 InteractionStatus::Completed
                     | InteractionStatus::Incomplete
+                    | InteractionStatus::BudgetExceeded
                     | InteractionStatus::Failed
                     | InteractionStatus::Cancelled
             )
@@ -2996,6 +2998,44 @@ mod tests {
         interaction.status = Some(InteractionStatus::Failed);
         assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
+
+        interaction.status = Some(InteractionStatus::BudgetExceeded);
+        assert!(interaction.is_terminal());
+        assert!(!interaction.is_completed());
+    }
+
+    #[test]
+    fn test_budget_exceeded_status_deserializes() {
+        let status: InteractionStatus = serde_json::from_value(json!("budget_exceeded"))
+            .expect("budget_exceeded should deserialize");
+
+        assert!(matches!(status, InteractionStatus::BudgetExceeded));
+        assert!(status.is_terminal());
+    }
+
+    #[test]
+    fn test_budget_exceeded_status_update_deserializes() {
+        let event: InteractionSseEvent = serde_json::from_value(json!({
+            "event_type": "interaction.status_update",
+            "interaction_id": "interaction-123",
+            "status": "budget_exceeded",
+            "event_id": "event-456"
+        }))
+        .expect("budget_exceeded status update should deserialize");
+
+        match event {
+            InteractionSseEvent::InteractionStatusUpdate {
+                interaction_id,
+                status,
+                event_id,
+            } => {
+                assert_eq!(interaction_id, "interaction-123");
+                assert!(matches!(status, InteractionStatus::BudgetExceeded));
+                assert!(status.is_terminal());
+                assert_eq!(event_id.as_deref(), Some("event-456"));
+            }
+            other => panic!("expected status update event, got {other:?}"),
+        }
     }
 
     #[test]
