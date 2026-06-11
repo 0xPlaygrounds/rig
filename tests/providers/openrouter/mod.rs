@@ -3,6 +3,7 @@ mod support;
 mod cassette {
     mod agent;
     mod document_file_data;
+    mod document_ordering;
     mod extractor;
     mod extractor_usage;
     mod models;

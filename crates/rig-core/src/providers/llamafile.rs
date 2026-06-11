@@ -292,25 +292,19 @@ impl TryFrom<(&str, CompletionRequest)> for LlamafileCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs may not be supported by llamafile");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
-        // Build message history: preamble -> documents -> chat history
+        // Build message history.
         let mut full_history: Vec<openai::Message> = match &req.preamble {
             Some(preamble) => vec![openai::Message::system(preamble)],
             None => vec![],
         };
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<openai::Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<openai::Message> = chat_history
             .into_iter()
             .map(|msg| msg.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?
@@ -792,37 +786,24 @@ mod tests {
 
     #[test]
     fn test_completion_request_flattens_text_only_document_arrays() {
-        use crate::OneOrMany;
-        use crate::completion::Message as CompletionMessage;
-        use crate::message::{Text, UserContent};
+        use crate::completion::CompletionRequestBuilder;
+        use crate::test_utils::MockCompletionModel;
 
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new(
-                    "What does glarb-glarb mean?".to_string(),
-                ))),
-            }),
-            documents: vec![
-                Document {
-                    id: "doc-1".into(),
-                    text: "Definition of flurbo: a green alien.".into(),
-                    additional_props: HashMap::new(),
-                },
-                Document {
-                    id: "doc-2".into(),
-                    text: "Definition of glarb-glarb: an ancient farming tool.".into(),
-                    additional_props: HashMap::new(),
-                },
-            ],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-        };
+        let completion_request = CompletionRequestBuilder::new(
+            MockCompletionModel::default(),
+            "What does glarb-glarb mean?",
+        )
+        .document(Document {
+            id: "doc-1".into(),
+            text: "Definition of flurbo: a green alien.".into(),
+            additional_props: HashMap::new(),
+        })
+        .document(Document {
+            id: "doc-2".into(),
+            text: "Definition of glarb-glarb: an ancient farming tool.".into(),
+            additional_props: HashMap::new(),
+        })
+        .build();
 
         let request = LlamafileCompletionRequest::try_from((LLAMA_CPP, completion_request))
             .expect("Failed to create request");

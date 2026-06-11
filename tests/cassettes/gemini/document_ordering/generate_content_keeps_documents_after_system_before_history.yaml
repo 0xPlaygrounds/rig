@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Acknowledged.","thought":false}],"role":"model"},{"parts":[{"text":"According to the document, what is the ordering token?","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"Answer with the exact token from the document only.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"violet-needle"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":50,"promptTokensDetails":[{"modality":"TEXT","tokenCount":50}],"serviceTier":"standard","thoughtsTokenCount":62,"totalTokenCount":115}}'

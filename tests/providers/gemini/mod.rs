@@ -3,6 +3,7 @@ mod support;
 mod cassette {
     mod agent;
     mod chat_history;
+    mod document_ordering;
     mod embeddings;
     mod extractor;
     mod image_generation;

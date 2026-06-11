@@ -1215,15 +1215,12 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             strict_tools,
             tool_result_array_content,
         } = params;
+        let chat_history = req.chat_history_with_documents();
 
-        let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
         let CoreCompletionRequest {
             model: request_model,
             preamble,
-            chat_history,
+            chat_history: _,
             tools,
             temperature,
             max_tokens,
@@ -1233,6 +1230,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
+        let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
         let mut full_history: Vec<Message> =
@@ -1512,7 +1510,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;
+    use crate::test_utils::MockCompletionModel;
+    use std::collections::HashMap;
+
+    fn test_document(id: &str, text: &str) -> crate::completion::Document {
+        crate::completion::Document {
+            id: id.to_string(),
+            text: text.to_string(),
+            additional_props: HashMap::new(),
+        }
+    }
 
     #[test]
     fn test_openai_request_uses_request_model_override() {
@@ -1568,6 +1577,106 @@ mod tests {
             serde_json::to_value(openai_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "gpt-4o-mini");
+    }
+
+    #[test]
+    fn openai_chat_request_keeps_documents_after_system_messages() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
+            .message(crate::completion::Message::system("System prompt"))
+            .message(crate::completion::Message::user("Earlier user turn"))
+            .message(crate::completion::Message::assistant(
+                "Earlier assistant turn",
+            ))
+            .document(test_document("doc1", "Document text."))
+            .build();
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&openai_request.messages).expect("messages should serialize");
+        let messages = serialized.as_array().expect("messages should be an array");
+
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+        assert!(
+            messages[1].to_string().contains("<file id: doc1>"),
+            "document message should follow system message: {messages:?}"
+        );
+        assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages[2].to_string().contains("Earlier user turn"),
+            "prior user history should follow document message: {messages:?}"
+        );
+        assert_eq!(messages[3]["role"], "assistant");
+        assert!(
+            messages[3].to_string().contains("Earlier assistant turn"),
+            "prior assistant history should follow prior user history: {messages:?}"
+        );
+        assert_eq!(messages[4]["role"], "user");
+        assert!(
+            messages[4].to_string().contains("Prompt"),
+            "prompt should remain last: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn openai_chat_direct_request_keeps_documents_after_system_messages() {
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::many(vec![
+                crate::completion::Message::system("System prompt"),
+                crate::completion::Message::assistant("Earlier assistant turn"),
+                crate::completion::Message::system("Mid-conversation instruction"),
+                crate::completion::Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+        })
+        .expect("request conversion should succeed");
+
+        let serialized =
+            serde_json::to_value(&openai_request.messages).expect("messages should serialize");
+        let messages = serialized.as_array().expect("messages should be an array");
+
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["role"], "system");
+        assert_eq!(messages[1]["role"], "user");
+        assert!(
+            messages[1].to_string().contains("<file id: doc1>"),
+            "document message should follow leading system messages: {messages:?}"
+        );
+        assert_eq!(messages[2]["role"], "assistant");
+        assert_eq!(messages[3]["role"], "system");
+        assert_eq!(messages[4]["role"], "user");
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc1>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
     }
 
     #[test]

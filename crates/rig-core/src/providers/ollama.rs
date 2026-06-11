@@ -443,16 +443,14 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
-        // Build up the order of messages (context, chat_history, prompt)
+        // Build up the order of messages.
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
+        partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {

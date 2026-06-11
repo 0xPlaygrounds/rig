@@ -589,6 +589,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("Tool choice is currently not supported in Azure OpenAI.");
@@ -599,14 +600,7 @@ impl TryFrom<(&str, CompletionRequest)> for AzureOpenAICompletionRequest {
             None => vec![],
         };
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<openai::Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<openai::Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<openai::Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<openai::Message>>, _>>()?

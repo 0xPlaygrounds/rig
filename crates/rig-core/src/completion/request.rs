@@ -563,14 +563,17 @@ impl CompletionRequest {
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     /// `Message` so that it can be incorporated into `chat_history`.
     pub fn normalized_documents(&self) -> Option<Message> {
-        if self.documents.is_empty() {
+        Self::normalized_documents_from(&self.documents)
+    }
+
+    fn normalized_documents_from(documents: &[Document]) -> Option<Message> {
+        if documents.is_empty() {
             return None;
         }
 
         // Most providers will convert documents into a text unless it can handle document messages.
         // We use `UserContent::document` for those who handle it directly!
-        let messages = self
-            .documents
+        let messages = documents
             .iter()
             .map(|doc| {
                 UserContent::document(
@@ -583,6 +586,18 @@ impl CompletionRequest {
             .collect::<Vec<_>>();
 
         OneOrMany::from_iter_optional(messages).map(|content| Message::User { content })
+    }
+
+    pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
+        let mut chat_history = self.chat_history.iter().cloned().collect::<Vec<_>>();
+        if let Some(documents) = self.normalized_documents() {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+        chat_history
     }
 
     /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
@@ -885,6 +900,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         if let Some(preamble) = self.preamble {
             chat_history.insert(0, Message::system(preamble));
         }
+
         chat_history.push(prompt.clone());
 
         let chat_history =
@@ -932,6 +948,28 @@ mod tests {
 
     use super::*;
     use crate::test_utils::MockCompletionModel;
+
+    fn test_document(id: &str, text: &str) -> Document {
+        Document {
+            id: id.to_string(),
+            text: text.to_string(),
+            additional_props: HashMap::new(),
+        }
+    }
+
+    fn is_document_message(message: &Message, expected_id: &str) -> bool {
+        let Message::User { content } = message else {
+            return false;
+        };
+
+        content.iter().any(|content| {
+            matches!(
+                content,
+                UserContent::Document(document)
+                    if document.data.to_string().contains(&format!("<file id: {expected_id}>"))
+            )
+        })
+    }
 
     #[test]
     fn test_document_display_without_metadata() {
@@ -1060,5 +1098,171 @@ mod tests {
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
         assert_eq!(history.len(), 1);
         assert!(matches!(&history[0], Message::User { .. }));
+    }
+
+    #[test]
+    fn build_places_documents_after_preamble_system_message() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .preamble("System prompt".to_string())
+                .document(test_document("doc1", "Document text."))
+                .build();
+
+        assert_eq!(request.documents.len(), 1);
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "System prompt"
+        ));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::User { .. }));
+    }
+
+    #[test]
+    fn build_places_documents_after_leading_system_messages_before_prior_history() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .message(Message::system("System one"))
+                .message(Message::system("System two"))
+                .message(Message::user("Earlier user turn"))
+                .message(Message::assistant("Earlier assistant turn"))
+                .document(test_document("doc1", "Document text."))
+                .build();
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 6);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "System one"
+        ));
+        assert!(matches!(
+            history[1],
+            Message::System { content } if content == "System two"
+        ));
+        assert!(is_document_message(history[2], "doc1"));
+        assert!(matches!(history[3], Message::User { .. }));
+        assert!(matches!(history[4], Message::Assistant { .. }));
+        assert!(matches!(history[5], Message::User { .. }));
+    }
+
+    #[test]
+    fn build_without_documents_keeps_message_order_unchanged() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
+                .message(Message::system("System prompt"))
+                .message(Message::user("Earlier user turn"))
+                .build();
+
+        let history = request.chat_history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 3);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "System prompt"
+        ));
+        assert!(matches!(history[1], Message::User { .. }));
+        assert!(matches!(history[2], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_places_documents_after_leading_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Earlier user turn"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        assert_eq!(request.documents.len(), 1);
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 5);
+        assert!(matches!(history[0], Message::System { .. }));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::Assistant { .. }));
+        assert!(matches!(history[3], Message::User { .. }));
+        assert!(matches!(history[4], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("Leading system prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let history = request.chat_history_with_documents();
+        let history = history.iter().collect::<Vec<_>>();
+        assert_eq!(history.len(), 5);
+        assert!(matches!(
+            history[0],
+            Message::System { content } if content == "Leading system prompt"
+        ));
+        assert!(is_document_message(history[1], "doc1"));
+        assert!(matches!(history[2], Message::Assistant { .. }));
+        assert!(matches!(
+            history[3],
+            Message::System { content } if content == "Mid-conversation instruction"
+        ));
+        assert!(matches!(history[4], Message::User { .. }));
+    }
+
+    #[test]
+    fn chat_history_with_documents_does_not_duplicate_documents() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::user("Earlier user turn"),
+                Message::assistant("Earlier assistant turn"),
+                Message::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![test_document("doc1", "Document text.")],
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let history = request.chat_history_with_documents();
+        let document_messages = history
+            .iter()
+            .filter(|message| is_document_message(message, "doc1"))
+            .count();
+        assert_eq!(document_messages, 1);
     }
 }

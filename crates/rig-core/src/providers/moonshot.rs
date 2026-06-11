@@ -326,16 +326,14 @@ impl TryFrom<(&str, CompletionRequest)> for MoonshotCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Moonshot");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        // Build up the order of messages (context, chat_history, prompt)
+        // Build up the order of messages.
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
+        partial_history.extend(chat_history);
 
         let mut full_history: Vec<Value> = match &req.preamble {
             Some(preamble) => vec![serde_json::to_value(openai::Message::system(preamble))?],

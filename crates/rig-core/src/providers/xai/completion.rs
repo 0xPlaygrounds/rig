@@ -51,6 +51,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for xAI");
         }
@@ -60,14 +61,9 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             .as_ref()
             .map_or_else(Vec::new, |p| vec![Message::system(p)]);
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            input.extend(docs);
-        }
-
         let mut additional_params_payload = req.additional_params.unwrap_or(Value::Null);
 
-        for msg in req.chat_history {
+        for msg in chat_history {
             let msg: Vec<Message> = msg.try_into()?;
             input.extend(msg);
         }
@@ -292,15 +288,49 @@ where
 mod tests {
     use super::XAICompletionRequest;
     use crate::OneOrMany;
-    use crate::completion::CompletionRequest;
     use crate::completion::request::Document;
+    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message};
+    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn xai_request_includes_normalized_documents() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "What is glarb-glarb?")
+                .message(Message::system("Use the provided context."))
+                .document(Document {
+                    id: "doc_1".to_string(),
+                    text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                    additional_props: Default::default(),
+                })
+                .build();
+
+        let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(xai_request).expect("serialization should succeed");
+        let input = serialized["input"]
+            .as_array()
+            .expect("xAI request input should be an array");
+
+        assert!(
+            input
+                .iter()
+                .any(|message| message.to_string().contains("glarb-glarb")),
+            "normalized documents should be forwarded into xAI input"
+        );
+    }
+
+    #[test]
+    fn xai_direct_request_keeps_documents_after_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: Some("Use the provided context.".to_string()),
-            chat_history: OneOrMany::one("What is glarb-glarb?".into()),
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                Message::system("System prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("What is glarb-glarb?"),
+            ])
+            .unwrap(),
             documents: vec![Document {
                 id: "doc_1".to_string(),
                 text: "Definition of glarb-glarb: an ancient tool.".to_string(),
@@ -321,11 +351,23 @@ mod tests {
             .as_array()
             .expect("xAI request input should be an array");
 
+        assert_eq!(input.len(), 5);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[1]["role"], "user");
         assert!(
+            input[1].to_string().contains("<file id: doc_1>"),
+            "document input should follow leading system input: {input:?}"
+        );
+        assert_eq!(input[2]["role"], "assistant");
+        assert_eq!(input[3]["role"], "system");
+        assert_eq!(input[4]["role"], "user");
+        assert_eq!(
             input
                 .iter()
-                .any(|message| message.to_string().contains("glarb-glarb")),
-            "normalized documents should be forwarded into xAI input"
+                .filter(|message| message.to_string().contains("<file id: doc_1>"))
+                .count(),
+            1,
+            "document input should appear exactly once: {input:?}"
         );
     }
 }

@@ -1,6 +1,8 @@
 //! Google Gemini Interactions API integration.
 //! From <https://ai.google.dev/api/interactions-api>
 
+use base64::{Engine, prelude::BASE64_STANDARD};
+
 use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
 use crate::http_client::HttpClientExt;
@@ -297,20 +299,19 @@ pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
     stream_override: Option<bool>,
 ) -> Result<CreateInteractionRequest, CompletionError> {
+    let chat_history = completion_request.chat_history_with_documents();
+
     let mut history = Vec::new();
-    if let Some(docs) = completion_request.normalized_documents() {
-        history.push(docs);
-    }
-    history.extend(completion_request.chat_history);
+    history.extend(chat_history);
     let (history_system, history) = split_system_messages_from_history(history);
 
-    let turns = history
+    let steps = history
         .into_iter()
-        .map(Turn::try_from)
+        .map(Step::try_from)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| CompletionError::RequestError(Box::new(err)))?;
 
-    let input = InteractionInput::Turns(turns);
+    let input = InteractionInput::Steps(steps);
 
     let raw_params = completion_request
         .additional_params
@@ -472,21 +473,20 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
-        if response.outputs.is_empty() {
-            let status = response.status.as_ref().map(|status| format!("{status:?}"));
-            let message = match status {
-                Some(status) => format!(
-                    "Interaction contained no outputs (status: {status}). Use get_interaction for background tasks."
-                ),
+        let output_contents = response.output_contents();
+        if output_contents.is_empty() {
+            let message = match response.status.as_ref() {
+                Some(InteractionStatus::InProgress) => {
+                    "Interaction contained no outputs yet (status: InProgress). Use get_interaction for background tasks.".to_string()
+                }
+                Some(status) => format!("Interaction contained no outputs (status: {status:?})."),
                 None => "Interaction contained no outputs".to_string(),
             };
             return Err(CompletionError::ResponseError(message));
         }
 
-        let content = response
-            .outputs
-            .iter()
-            .cloned()
+        let content = output_contents
+            .into_iter()
             .filter_map(|output| match assistant_content_from_output(output) {
                 Ok(Some(content)) => Some(Ok(content)),
                 Ok(None) => None,
@@ -623,12 +623,11 @@ fn split_data_uri(
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
     match src {
         message::DocumentSourceKind::Url(uri) => Ok((None, Some(uri))),
-        message::DocumentSourceKind::Base64(data) | message::DocumentSourceKind::String(data) => {
-            Ok((Some(data), None))
+        message::DocumentSourceKind::Base64(data) => Ok((Some(data), None)),
+        message::DocumentSourceKind::String(data) => {
+            Ok((Some(BASE64_STANDARD.encode(data.as_bytes())), None))
         }
-        message::DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-            "Raw content is not supported, encode as base64 first".to_string(),
-        )),
+        message::DocumentSourceKind::Raw(data) => Ok((Some(BASE64_STANDARD.encode(data)), None)),
         message::DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
             "Provider file IDs are not supported for Gemini Interactions inputs".to_string(),
         )),
@@ -644,6 +643,7 @@ pub mod interactions_api_types {
     use crate::completion::{CompletionError, GetTokenUsage, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
+    use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
@@ -727,7 +727,7 @@ pub mod interactions_api_types {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub role: Option<String>,
         #[serde(default)]
-        pub outputs: Vec<Content>,
+        pub steps: Vec<Step>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub usage: Option<InteractionUsage>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -771,12 +771,12 @@ pub mod interactions_api_types {
         }
 
         fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-            self.outputs.clone()
+            self.output_contents()
         }
 
         fn get_text_response(&self) -> Option<String> {
             let text = self
-                .outputs
+                .output_contents()
                 .iter()
                 .filter_map(|content| match content {
                     Content::Text(text) => Some(text.text.clone()),
@@ -905,6 +905,10 @@ pub mod interactions_api_types {
     }
 
     impl Interaction {
+        pub(crate) fn output_contents(&self) -> Vec<Content> {
+            self.steps.iter().flat_map(Step::output_contents).collect()
+        }
+
         /// Groups Google Search tool calls and results by call_id.
         ///
         /// When a call_id is missing, results are grouped with the most recent
@@ -912,8 +916,9 @@ pub mod interactions_api_types {
         pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
             let mut exchanges: Vec<GoogleSearchExchange> = Vec::new();
             let mut last_call_index: Option<usize> = None;
+            let output_contents = self.output_contents();
 
-            for content in &self.outputs {
+            for content in &output_contents {
                 match content {
                     Content::GoogleSearchCall(call) => {
                         let index = if let Some(call_id) = call.id.as_ref() {
@@ -1018,8 +1023,9 @@ pub mod interactions_api_types {
         pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
             let mut exchanges: Vec<UrlContextExchange> = Vec::new();
             let mut last_call_index: Option<usize> = None;
+            let output_contents = self.output_contents();
 
-            for content in &self.outputs {
+            for content in &output_contents {
                 match content {
                     Content::UrlContextCall(call) => {
                         let index = if let Some(call_id) = call.id.as_ref() {
@@ -1124,8 +1130,9 @@ pub mod interactions_api_types {
         pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
             let mut exchanges: Vec<CodeExecutionExchange> = Vec::new();
             let mut last_call_index: Option<usize> = None;
+            let output_contents = self.output_contents();
 
-            for content in &self.outputs {
+            for content in &output_contents {
                 match content {
                     Content::CodeExecutionCall(call) => {
                         let index = if let Some(call_id) = call.id.as_ref() {
@@ -1226,7 +1233,7 @@ pub mod interactions_api_types {
         /// Returns concatenated text outputs with inline citations appended.
         pub fn text_with_inline_citations(&self) -> Option<String> {
             let text = self
-                .outputs
+                .output_contents()
                 .iter()
                 .filter_map(|content| match content {
                     Content::Text(text) => Some(text.with_inline_citations()),
@@ -1257,6 +1264,8 @@ pub mod interactions_api_types {
     pub enum InteractionStatus {
         InProgress,
         RequiresAction,
+        Incomplete,
+        BudgetExceeded,
         Completed,
         Failed,
         Cancelled,
@@ -1268,6 +1277,8 @@ pub mod interactions_api_types {
             matches!(
                 self,
                 InteractionStatus::Completed
+                    | InteractionStatus::Incomplete
+                    | InteractionStatus::BudgetExceeded
                     | InteractionStatus::Failed
                     | InteractionStatus::Cancelled
             )
@@ -1304,61 +1315,91 @@ pub mod interactions_api_types {
     pub enum InteractionInput {
         Text(String),
         Content(Content),
-        Turns(Vec<Turn>),
+        Steps(Vec<Step>),
         Contents(Vec<Content>),
     }
 
-    /// Role for a conversation turn.
+    /// Single interaction step.
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "lowercase")]
-    pub enum Role {
-        User,
-        Model,
+    #[serde(tag = "type", rename_all = "snake_case")]
+    pub enum Step {
+        UserInput { content: Vec<Content> },
+        ModelOutput { content: Vec<Content> },
+        Thought(ThoughtContent),
+        FunctionCall(FunctionCallContent),
+        FunctionResult(FunctionResultContent),
+        CodeExecutionCall(CodeExecutionCallContent),
+        CodeExecutionResult(CodeExecutionResultContent),
+        UrlContextCall(UrlContextCallContent),
+        UrlContextResult(UrlContextResultContent),
+        GoogleSearchCall(GoogleSearchCallContent),
+        GoogleSearchResult(GoogleSearchResultContent),
+        McpServerToolCall(McpServerToolCallContent),
+        McpServerToolResult(McpServerToolResultContent),
+        FileSearchResult(FileSearchResultContent),
     }
 
-    /// Single conversational turn with role and content.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct Turn {
-        pub role: Role,
-        pub content: TurnContent,
+    impl Step {
+        fn output_contents(&self) -> Vec<Content> {
+            match self {
+                Step::UserInput { .. } => Vec::new(),
+                Step::ModelOutput { content } => content.clone(),
+                Step::Thought(content) => vec![Content::Thought(content.clone())],
+                Step::FunctionCall(content) => vec![Content::FunctionCall(content.clone())],
+                Step::FunctionResult(content) => vec![Content::FunctionResult(content.clone())],
+                Step::CodeExecutionCall(content) => {
+                    vec![Content::CodeExecutionCall(content.clone())]
+                }
+                Step::CodeExecutionResult(content) => {
+                    vec![Content::CodeExecutionResult(content.clone())]
+                }
+                Step::UrlContextCall(content) => vec![Content::UrlContextCall(content.clone())],
+                Step::UrlContextResult(content) => {
+                    vec![Content::UrlContextResult(content.clone())]
+                }
+                Step::GoogleSearchCall(content) => {
+                    vec![Content::GoogleSearchCall(content.clone())]
+                }
+                Step::GoogleSearchResult(content) => {
+                    vec![Content::GoogleSearchResult(content.clone())]
+                }
+                Step::McpServerToolCall(content) => {
+                    vec![Content::McpServerToolCall(content.clone())]
+                }
+                Step::McpServerToolResult(content) => {
+                    vec![Content::McpServerToolResult(content.clone())]
+                }
+                Step::FileSearchResult(content) => {
+                    vec![Content::FileSearchResult(content.clone())]
+                }
+            }
+        }
     }
 
-    /// Content for a single turn.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
-    pub enum TurnContent {
-        Text(String),
-        Contents(Vec<Content>),
-    }
-
-    impl TryFrom<crate::completion::Message> for Turn {
+    impl TryFrom<crate::completion::Message> for Step {
         type Error = message::MessageError;
 
         fn try_from(message: crate::completion::Message) -> Result<Self, Self::Error> {
             match message {
-                crate::completion::Message::System { content } => Ok(Self {
-                    role: Role::User,
-                    content: TurnContent::Text(content),
+                crate::completion::Message::System { content } => Ok(Self::UserInput {
+                    content: vec![Content::Text(TextContent {
+                        text: content,
+                        annotations: None,
+                    })],
                 }),
                 crate::completion::Message::User { content } => {
-                    let contents = content
+                    let content = content
                         .into_iter()
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Self {
-                        role: Role::User,
-                        content: TurnContent::Contents(contents),
-                    })
+                    Ok(Self::UserInput { content })
                 }
                 crate::completion::Message::Assistant { content, .. } => {
-                    let contents = content
+                    let content = content
                         .into_iter()
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Self {
-                        role: Role::Model,
-                        content: TurnContent::Contents(contents),
-                    })
+                    Ok(Self::ModelOutput { content })
                 }
             }
         }
@@ -1848,6 +1889,50 @@ pub mod interactions_api_types {
                             "Media type for document is required for Gemini".to_string(),
                         )
                     })?;
+                    if matches!(media_type, message::DocumentMediaType::TXT) {
+                        let text = match data {
+                            message::DocumentSourceKind::String(text) => text,
+                            message::DocumentSourceKind::Base64(data) => {
+                                let decoded = BASE64_STANDARD.decode(data).map_err(|error| {
+                                    message::MessageError::ConversionError(format!(
+                                        "Failed to decode text document base64 data: {error}"
+                                    ))
+                                })?;
+                                String::from_utf8(decoded).map_err(|error| {
+                                    message::MessageError::ConversionError(format!(
+                                        "Text document data must be UTF-8: {error}"
+                                    ))
+                                })?
+                            }
+                            message::DocumentSourceKind::Raw(data) => String::from_utf8(data)
+                                .map_err(|error| {
+                                    message::MessageError::ConversionError(format!(
+                                        "Text document data must be UTF-8: {error}"
+                                    ))
+                                })?,
+                            message::DocumentSourceKind::Url(_) => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Text document URLs are not supported for Gemini Interactions inputs"
+                                        .to_string(),
+                                ));
+                            }
+                            message::DocumentSourceKind::FileId(_) => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Provider file IDs are not supported for Gemini Interactions inputs"
+                                        .to_string(),
+                                ));
+                            }
+                            message::DocumentSourceKind::Unknown => {
+                                return Err(message::MessageError::ConversionError(
+                                    "Unknown content source".to_string(),
+                                ));
+                            }
+                        };
+                        return Ok(Self::Text(TextContent {
+                            text,
+                            annotations: None,
+                        }));
+                    }
                     let mime_type = media_type.to_mime_type().to_string();
                     let (data, uri) = split_data_uri(data)?;
                     Ok(Self::Document(DocumentContent {
@@ -2165,14 +2250,14 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "event_type")]
     pub enum InteractionSseEvent {
-        #[serde(rename = "interaction.start")]
-        InteractionStart {
+        #[serde(rename = "interaction.created")]
+        InteractionCreated {
             interaction: Interaction,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
-        #[serde(rename = "interaction.complete")]
-        InteractionComplete {
+        #[serde(rename = "interaction.completed")]
+        InteractionCompleted {
             interaction: Interaction,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
@@ -2184,22 +2269,22 @@ pub mod interactions_api_types {
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
-        #[serde(rename = "content.start")]
-        ContentStart {
+        #[serde(rename = "step.start")]
+        StepStart {
             index: i32,
-            content: Content,
+            step: Step,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
-        #[serde(rename = "content.delta")]
-        ContentDelta {
+        #[serde(rename = "step.delta")]
+        StepDelta {
             index: i32,
             delta: ContentDelta,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
-        #[serde(rename = "content.stop")]
-        ContentStop {
+        #[serde(rename = "step.stop")]
+        StepStop {
             index: i32,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
@@ -2479,14 +2564,12 @@ mod tests {
             Some(ToolChoice::Type(ToolChoiceType::Any))
         ));
 
-        let InteractionInput::Turns(turns) = result.input else {
-            panic!("expected turns input");
+        let InteractionInput::Steps(steps) = result.input else {
+            panic!("expected steps input");
         };
-        assert_eq!(turns.len(), 1);
-        let turn = &turns[0];
-        assert!(matches!(turn.role, Role::User));
-        let TurnContent::Contents(contents) = &turn.content else {
-            panic!("expected content array");
+        assert_eq!(steps.len(), 1);
+        let Step::UserInput { content: contents } = &steps[0] else {
+            panic!("expected user input step");
         };
         assert_eq!(contents.len(), 1);
         match &contents[0] {
@@ -2511,7 +2594,7 @@ mod tests {
     fn test_response_function_call_mapping() {
         let interaction = Interaction {
             id: "interaction-1".to_string(),
-            outputs: vec![Content::FunctionCall(FunctionCallContent {
+            steps: vec![Step::FunctionCall(FunctionCallContent {
                 name: Some("get_weather".to_string()),
                 arguments: Some(json!({"location": "Paris"})),
                 id: Some("call-123".to_string()),
@@ -2565,14 +2648,14 @@ mod tests {
     #[test]
     fn test_google_search_helpers() {
         let interaction = Interaction {
-            outputs: vec![
-                Content::GoogleSearchCall(GoogleSearchCallContent {
+            steps: vec![
+                Step::GoogleSearchCall(GoogleSearchCallContent {
                     arguments: Some(GoogleSearchCallArguments {
                         queries: Some(vec!["query-one".to_string(), "query-two".to_string()]),
                     }),
                     id: Some("call-1".to_string()),
                 }),
-                Content::GoogleSearchResult(GoogleSearchResultContent {
+                Step::GoogleSearchResult(GoogleSearchResultContent {
                     result: Some(vec![GoogleSearchResult {
                         url: Some("https://example.com".to_string()),
                         title: Some("Example One".to_string()),
@@ -2582,13 +2665,13 @@ mod tests {
                     is_error: None,
                     call_id: Some("call-1".to_string()),
                 }),
-                Content::GoogleSearchCall(GoogleSearchCallContent {
+                Step::GoogleSearchCall(GoogleSearchCallContent {
                     arguments: Some(GoogleSearchCallArguments {
                         queries: Some(vec!["query-three".to_string()]),
                     }),
                     id: Some("call-2".to_string()),
                 }),
-                Content::GoogleSearchResult(GoogleSearchResultContent {
+                Step::GoogleSearchResult(GoogleSearchResultContent {
                     result: Some(vec![GoogleSearchResult {
                         url: Some("https://example.org".to_string()),
                         title: Some("Example Two".to_string()),
@@ -2641,14 +2724,14 @@ mod tests {
     #[test]
     fn test_google_search_helpers_without_call_id() {
         let interaction = Interaction {
-            outputs: vec![
-                Content::GoogleSearchCall(GoogleSearchCallContent {
+            steps: vec![
+                Step::GoogleSearchCall(GoogleSearchCallContent {
                     arguments: Some(GoogleSearchCallArguments {
                         queries: Some(vec!["query-one".to_string()]),
                     }),
                     id: None,
                 }),
-                Content::GoogleSearchResult(GoogleSearchResultContent {
+                Step::GoogleSearchResult(GoogleSearchResultContent {
                     result: Some(vec![GoogleSearchResult {
                         url: Some("https://example.com".to_string()),
                         title: Some("Example One".to_string()),
@@ -2658,13 +2741,13 @@ mod tests {
                     is_error: None,
                     call_id: None,
                 }),
-                Content::GoogleSearchCall(GoogleSearchCallContent {
+                Step::GoogleSearchCall(GoogleSearchCallContent {
                     arguments: Some(GoogleSearchCallArguments {
                         queries: Some(vec!["query-two".to_string()]),
                     }),
                     id: Some("call-2".to_string()),
                 }),
-                Content::GoogleSearchResult(GoogleSearchResultContent {
+                Step::GoogleSearchResult(GoogleSearchResultContent {
                     result: Some(vec![GoogleSearchResult {
                         url: Some("https://example.org".to_string()),
                         title: Some("Example Two".to_string()),
@@ -2699,8 +2782,8 @@ mod tests {
     #[test]
     fn test_url_context_helpers() {
         let interaction = Interaction {
-            outputs: vec![
-                Content::UrlContextCall(UrlContextCallContent {
+            steps: vec![
+                Step::UrlContextCall(UrlContextCallContent {
                     arguments: Some(UrlContextCallArguments {
                         urls: Some(vec![
                             "https://example.com".to_string(),
@@ -2709,7 +2792,7 @@ mod tests {
                     }),
                     id: Some("call-1".to_string()),
                 }),
-                Content::UrlContextResult(UrlContextResultContent {
+                Step::UrlContextResult(UrlContextResultContent {
                     result: Some(vec![UrlContextResult {
                         url: Some("https://example.com".to_string()),
                         status: Some("success".to_string()),
@@ -2752,14 +2835,14 @@ mod tests {
     #[test]
     fn test_url_context_helpers_without_call_id() {
         let interaction = Interaction {
-            outputs: vec![
-                Content::UrlContextCall(UrlContextCallContent {
+            steps: vec![
+                Step::UrlContextCall(UrlContextCallContent {
                     arguments: Some(UrlContextCallArguments {
                         urls: Some(vec!["https://example.com".to_string()]),
                     }),
                     id: None,
                 }),
-                Content::UrlContextResult(UrlContextResultContent {
+                Step::UrlContextResult(UrlContextResultContent {
                     result: Some(vec![UrlContextResult {
                         url: Some("https://example.com".to_string()),
                         status: Some("success".to_string()),
@@ -2768,13 +2851,13 @@ mod tests {
                     is_error: None,
                     call_id: None,
                 }),
-                Content::UrlContextCall(UrlContextCallContent {
+                Step::UrlContextCall(UrlContextCallContent {
                     arguments: Some(UrlContextCallArguments {
                         urls: Some(vec!["https://example.org".to_string()]),
                     }),
                     id: Some("call-2".to_string()),
                 }),
-                Content::UrlContextResult(UrlContextResultContent {
+                Step::UrlContextResult(UrlContextResultContent {
                     result: Some(vec![UrlContextResult {
                         url: Some("https://example.org".to_string()),
                         status: Some("success".to_string()),
@@ -2808,15 +2891,15 @@ mod tests {
     #[test]
     fn test_code_execution_helpers() {
         let interaction = Interaction {
-            outputs: vec![
-                Content::CodeExecutionCall(CodeExecutionCallContent {
+            steps: vec![
+                Step::CodeExecutionCall(CodeExecutionCallContent {
                     arguments: Some(CodeExecutionCallArguments {
                         language: Some("python".to_string()),
                         code: Some("print(2 + 2)".to_string()),
                     }),
                     id: Some("call-1".to_string()),
                 }),
-                Content::CodeExecutionResult(CodeExecutionResultContent {
+                Step::CodeExecutionResult(CodeExecutionResultContent {
                     result: Some("4\n".to_string()),
                     signature: None,
                     is_error: None,
@@ -2850,28 +2933,28 @@ mod tests {
     #[test]
     fn test_code_execution_helpers_without_call_id() {
         let interaction = Interaction {
-            outputs: vec![
-                Content::CodeExecutionCall(CodeExecutionCallContent {
+            steps: vec![
+                Step::CodeExecutionCall(CodeExecutionCallContent {
                     arguments: Some(CodeExecutionCallArguments {
                         language: Some("python".to_string()),
                         code: Some("print(1 + 1)".to_string()),
                     }),
                     id: None,
                 }),
-                Content::CodeExecutionResult(CodeExecutionResultContent {
+                Step::CodeExecutionResult(CodeExecutionResultContent {
                     result: Some("2\n".to_string()),
                     signature: None,
                     is_error: None,
                     call_id: None,
                 }),
-                Content::CodeExecutionCall(CodeExecutionCallContent {
+                Step::CodeExecutionCall(CodeExecutionCallContent {
                     arguments: Some(CodeExecutionCallArguments {
                         language: Some("python".to_string()),
                         code: Some("print(2 + 2)".to_string()),
                     }),
                     id: Some("call-2".to_string()),
                 }),
-                Content::CodeExecutionResult(CodeExecutionResultContent {
+                Step::CodeExecutionResult(CodeExecutionResultContent {
                     result: Some("4\n".to_string()),
                     signature: None,
                     is_error: None,
@@ -2915,6 +2998,44 @@ mod tests {
         interaction.status = Some(InteractionStatus::Failed);
         assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
+
+        interaction.status = Some(InteractionStatus::BudgetExceeded);
+        assert!(interaction.is_terminal());
+        assert!(!interaction.is_completed());
+    }
+
+    #[test]
+    fn test_budget_exceeded_status_deserializes() {
+        let status: InteractionStatus = serde_json::from_value(json!("budget_exceeded"))
+            .expect("budget_exceeded should deserialize");
+
+        assert!(matches!(status, InteractionStatus::BudgetExceeded));
+        assert!(status.is_terminal());
+    }
+
+    #[test]
+    fn test_budget_exceeded_status_update_deserializes() {
+        let event: InteractionSseEvent = serde_json::from_value(json!({
+            "event_type": "interaction.status_update",
+            "interaction_id": "interaction-123",
+            "status": "budget_exceeded",
+            "event_id": "event-456"
+        }))
+        .expect("budget_exceeded status update should deserialize");
+
+        match event {
+            InteractionSseEvent::InteractionStatusUpdate {
+                interaction_id,
+                status,
+                event_id,
+            } => {
+                assert_eq!(interaction_id, "interaction-123");
+                assert!(matches!(status, InteractionStatus::BudgetExceeded));
+                assert!(status.is_terminal());
+                assert_eq!(event_id.as_deref(), Some("event-456"));
+            }
+            other => panic!("expected status update event, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2954,7 +3075,9 @@ mod tests {
         );
 
         let interaction = Interaction {
-            outputs: vec![Content::Text(text_content)],
+            steps: vec![Step::ModelOutput {
+                content: vec![Content::Text(text_content)],
+            }],
             ..Default::default()
         };
 
