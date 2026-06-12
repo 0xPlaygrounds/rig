@@ -406,7 +406,7 @@ impl RawChoiceAccumulator {
             Output::Message(message) => {
                 immediate.push(streaming::RawStreamingChoice::MessageId(message.id));
             }
-            Output::Unknown => {}
+            Output::Unknown(_) => {}
         }
     }
 
