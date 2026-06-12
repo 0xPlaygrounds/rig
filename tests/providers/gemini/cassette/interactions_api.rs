@@ -225,7 +225,7 @@ async fn streaming_interaction() {
                 match chunk.expect("stream chunk should succeed") {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
-                        saw_usage = response.token_usage().is_some();
+                        saw_usage = response.token_usage() != rig::completion::Usage::new();
                     }
                     _ => {}
                 }
@@ -262,7 +262,7 @@ async fn streaming_final_metadata_exposes_model_version() {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.token_usage().is_some();
+                        saw_usage = response.token_usage() != rig::completion::Usage::new();
                         final_model_version = response.model_version.clone();
                     }
                     _ => {}

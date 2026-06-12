@@ -185,7 +185,7 @@ async fn send_streaming_cache_probe(
         match item.expect("streaming prompt-cached Anthropic item should succeed") {
             StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
             StreamedAssistantContent::Final(response) => {
-                usage = response.token_usage();
+                usage = Some(response.token_usage());
             }
             _ => {}
         }

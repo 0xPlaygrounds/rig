@@ -31,16 +31,19 @@ pub struct BedrockUsage {
 }
 
 impl GetTokenUsage for BedrockStreamingResponse {
-    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
-        self.usage.as_ref().map(|u| rig_core::completion::Usage {
-            input_tokens: u.input_tokens as u64,
-            output_tokens: u.output_tokens as u64,
-            total_tokens: u.total_tokens as u64,
-            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
-            cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        })
+    fn token_usage(&self) -> rig_core::completion::Usage {
+        self.usage
+            .as_ref()
+            .map(|u| rig_core::completion::Usage {
+                input_tokens: u.input_tokens as u64,
+                output_tokens: u.output_tokens as u64,
+                total_tokens: u.total_tokens as u64,
+                cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
+                cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            })
+            .unwrap_or_default()
     }
 }
 

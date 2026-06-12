@@ -76,8 +76,8 @@ impl ProviderResponseExt for AwsConverseOutput {
 }
 
 impl GetTokenUsage for AwsConverseOutput {
-    fn token_usage(&self) -> Option<completion::Usage> {
-        self.get_usage()
+    fn token_usage(&self) -> completion::Usage {
+        self.get_usage().unwrap_or_default()
     }
 }
 

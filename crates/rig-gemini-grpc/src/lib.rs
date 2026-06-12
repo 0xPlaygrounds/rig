@@ -38,7 +38,7 @@ pub use proto::{
 
 // Implement GetTokenUsage for proto::GenerateContentResponse to support streaming
 impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
-    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
+    fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage_metadata
             .as_ref()
             .map(|u| rig_core::completion::Usage {
@@ -50,5 +50,6 @@ impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
                 tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
             })
+            .unwrap_or_default()
     }
 }
