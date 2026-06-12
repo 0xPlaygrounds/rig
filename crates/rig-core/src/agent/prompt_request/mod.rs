@@ -308,6 +308,10 @@ impl CompletionCall {
 
 /// Tolerate `null` usage from data serialized before rig dropped the
 /// `Option<Usage>` encoding of missing provider usage metrics.
+///
+/// This tolerance requires a self-describing format such as JSON; data
+/// serialized with non-self-describing formats (e.g. bincode) from before the
+/// change cannot round-trip.
 fn usage_null_as_default<'de, D>(deserializer: D) -> Result<Usage, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -408,6 +412,11 @@ impl<T> TypedPromptResponse<T> {
     /// for that request.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
+    }
+
+    /// Number of completion requests this agent run made.
+    pub fn requests(&self) -> usize {
+        self.completion_calls.len()
     }
 }
 
@@ -1306,6 +1315,7 @@ mod tests {
         )
         .expect("deserialize typed prompt response");
 
+        assert_eq!(response.requests(), 0);
         assert_eq!(response.output.value, "ok");
         assert_eq!(response.usage.input_tokens, 1);
         assert_eq!(response.usage.output_tokens, 2);

@@ -438,6 +438,14 @@ impl Usage {
             reasoning_tokens: 0,
         }
     }
+
+    /// Whether any usage values are set and non-zero.
+    ///
+    /// Zero-valued usage is this type's documented sentinel for "the provider
+    /// supplied no usage metrics", so `false` means usage was not reported.
+    pub fn has_values(&self) -> bool {
+        *self != Self::new()
+    }
 }
 
 impl Default for Usage {
@@ -947,6 +955,16 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn usage_has_values_reflects_the_zero_sentinel() {
+        use super::Usage;
+
+        assert!(!Usage::new().has_values());
+
+        let mut usage = Usage::new();
+        usage.reasoning_tokens = 1;
+        assert!(usage.has_values());
+    }
 
     use super::*;
     use crate::test_utils::MockCompletionModel;

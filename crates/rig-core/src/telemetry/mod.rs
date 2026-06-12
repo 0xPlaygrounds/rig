@@ -80,7 +80,7 @@ impl SpanCombinator for tracing::Span {
         let usage = usage.token_usage();
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
-        if usage != crate::completion::Usage::new() {
+        if usage.has_values() {
             self.record("gen_ai.usage.input_tokens", usage.input_tokens);
             self.record("gen_ai.usage.output_tokens", usage.output_tokens);
             self.record(

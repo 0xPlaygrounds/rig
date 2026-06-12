@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
                 }
                 // Zero-valued usage is Usage's documented sentinel for
                 // "the provider reported no usage metrics".
-                if completion_call.usage != Usage::new() {
+                if completion_call.usage.has_values() {
                     print_usage(
                         &format!("completion call {} usage", completion_call.call_index),
                         completion_call.usage,
@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
 
     if let Some(final_completion_call) = response.completion_calls().last().copied() {
         let usage = final_completion_call.usage;
-        if usage != Usage::new() {
+        if usage.has_values() {
             print_usage("final completion call usage", usage);
             println!("final prompt/context token length: {}", usage.input_tokens);
         } else {

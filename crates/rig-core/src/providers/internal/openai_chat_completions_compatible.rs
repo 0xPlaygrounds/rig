@@ -379,7 +379,7 @@ where
     }
 
     let usage = usage.token_usage();
-    if usage == crate::completion::Usage::new() {
+    if !usage.has_values() {
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
         return;

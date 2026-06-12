@@ -136,6 +136,11 @@ impl FinalResponse {
         &self.completion_calls
     }
 
+    /// Number of completion requests this agent run made.
+    pub fn requests(&self) -> usize {
+        self.completion_calls.len()
+    }
+
     pub fn history(&self) -> Option<&[Message]> {
         self.history.as_deref()
     }
@@ -678,7 +683,7 @@ where
                                     }
                                     StreamedTurnEvent::Completed { usage, emit_final } => {
                                         if !completion_call_emitted {
-                                            if usage != crate::completion::Usage::new() {
+                                            if usage.has_values() {
                                                 record_usage_on_span(&chat_stream_span, usage);
                                             }
                                             let completion_call =
@@ -771,9 +776,7 @@ where
                                                         }
                                                     };
                                                 if !completion_call_emitted {
-                                                    if drained_usage
-                                                        != crate::completion::Usage::new()
-                                                    {
+                                                    if drained_usage.has_values() {
                                                         record_usage_on_span(
                                                             &chat_stream_span,
                                                             drained_usage,
@@ -1825,6 +1828,10 @@ mod tests {
                 ],
                 None,
             );
+
+        if let MultiTurnStreamItem::FinalResponse(response) = &item {
+            assert_eq!(response.requests(), 2);
+        }
 
         let value = serde_json::to_value(&item).expect("serialize final response");
 

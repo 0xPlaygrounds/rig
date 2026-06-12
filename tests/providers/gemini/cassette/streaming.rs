@@ -121,9 +121,8 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected resolved Gemini model version to be surfaced"
             );
-            assert_ne!(
-                final_response.token_usage(),
-                rig::completion::Usage::new(),
+            assert!(
+                final_response.token_usage().has_values(),
                 "expected final response to expose token usage"
             );
         },
