@@ -26,7 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Contributors
 
+* @gold-silver-copper## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.38.2...rig-gemini-grpc-v0.39.0) - 2026-06-12
+
+### Added
+
+- *(agent)* [**breaking**] sans-IO AgentRun state machine; both agent loops become thin drivers ([#1899](https://github.com/0xPlaygrounds/rig/pull/1899)) (by @gold-silver-copper)
+
+### Contributors
+
 * @gold-silver-copper
+
 ## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.38.1...rig-gemini-grpc-v0.38.2) - 2026-06-09
 
 ### Other
