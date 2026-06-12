@@ -503,7 +503,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
         let usage = response
             .usage
             .as_ref()
-            .and_then(|usage| usage.token_usage())
+            .map(|usage| usage.token_usage())
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -749,8 +749,11 @@ pub mod interactions_api_types {
     }
 
     impl GetTokenUsage for Interaction {
-        fn token_usage(&self) -> Option<Usage> {
-            self.usage.as_ref().and_then(|usage| usage.token_usage())
+        fn token_usage(&self) -> Usage {
+            self.usage
+                .as_ref()
+                .map(|usage| usage.token_usage())
+                .unwrap_or_default()
         }
     }
 
@@ -1298,14 +1301,14 @@ pub mod interactions_api_types {
     }
 
     impl GetTokenUsage for InteractionUsage {
-        fn token_usage(&self) -> Option<Usage> {
+        fn token_usage(&self) -> Usage {
             let mut usage = Usage::new();
             usage.input_tokens = self.total_input_tokens.unwrap_or_default();
             usage.output_tokens = self.total_output_tokens.unwrap_or_default();
             usage.total_tokens = self
                 .total_tokens
                 .unwrap_or(usage.input_tokens + usage.output_tokens);
-            Some(usage)
+            usage
         }
     }
 

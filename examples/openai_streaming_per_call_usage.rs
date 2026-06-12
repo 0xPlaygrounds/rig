@@ -127,15 +127,18 @@ async fn main() -> Result<()> {
                     println!();
                     printed_streamed_text = false;
                 }
-                match completion_call.usage {
-                    Some(usage) => print_usage(
+                // Zero-valued usage is Usage's documented sentinel for
+                // "the provider reported no usage metrics".
+                if completion_call.usage.has_values() {
+                    print_usage(
                         &format!("completion call {} usage", completion_call.call_index),
-                        usage,
-                    ),
-                    None => println!(
+                        completion_call.usage,
+                    );
+                } else {
+                    println!(
                         "completion call {} usage: not reported",
                         completion_call.call_index
-                    ),
+                    );
                 }
             }
             MultiTurnStreamItem::FinalResponse(response) => {
@@ -151,7 +154,8 @@ async fn main() -> Result<()> {
     print_usage("aggregate agent usage", response.usage());
 
     if let Some(final_completion_call) = response.completion_calls().last().copied() {
-        if let Some(usage) = final_completion_call.usage {
+        let usage = final_completion_call.usage;
+        if usage.has_values() {
             print_usage("final completion call usage", usage);
             println!("final prompt/context token length: {}", usage.input_tokens);
         } else {

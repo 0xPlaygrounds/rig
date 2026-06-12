@@ -45,7 +45,7 @@ pub struct PartialUsage {
 }
 
 impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_token_count as u64;
@@ -55,7 +55,7 @@ impl GetTokenUsage for PartialUsage {
         usage.tool_use_prompt_tokens = self.tool_use_prompt_token_count.unwrap_or_default() as u64;
         usage.total_tokens = self.total_token_count as u64;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -82,7 +82,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage_metadata.token_usage()
     }
 }
@@ -433,7 +433,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .and_then(GetTokenUsage::token_usage)
+            .map(GetTokenUsage::token_usage)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -679,7 +679,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.input_tokens, 40);
         assert_eq!(token_usage.cached_input_tokens, 20);
         assert_eq!(token_usage.output_tokens, 30);
@@ -704,7 +704,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.input_tokens, 20);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.output_tokens, 30);
@@ -762,7 +762,7 @@ mod tests {
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
-        let token_usage = response.token_usage().unwrap();
+        let token_usage = response.token_usage();
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
         assert_eq!(token_usage.reasoning_tokens, 0);
@@ -817,7 +817,7 @@ mod tests {
             Some(TrafficType::ProvisionedThroughput)
         ));
 
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
         assert_eq!(token_usage.output_tokens, 50);

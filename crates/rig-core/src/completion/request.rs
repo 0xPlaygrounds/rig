@@ -378,13 +378,15 @@ pub struct CompletionResponse<T> {
 ///
 /// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
 pub trait GetTokenUsage {
-    /// Returns token usage when the response type carries it.
-    fn token_usage(&self) -> Option<crate::completion::Usage>;
+    /// Returns token usage for this response. Zero-valued usage is
+    /// [`Usage`]'s documented sentinel for missing provider usage metrics;
+    /// response types that carry no usage return [`Usage::new`].
+    fn token_usage(&self) -> crate::completion::Usage;
 }
 
 impl GetTokenUsage for () {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        None
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::completion::Usage::new()
     }
 }
 
@@ -392,11 +394,11 @@ impl<T> GetTokenUsage for Option<T>
 where
     T: GetTokenUsage,
 {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         if let Some(usage) = self {
             usage.token_usage()
         } else {
-            None
+            crate::completion::Usage::new()
         }
     }
 }
@@ -435,6 +437,14 @@ impl Usage {
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
+    }
+
+    /// Whether any usage values are set and non-zero.
+    ///
+    /// Zero-valued usage is this type's documented sentinel for "the provider
+    /// supplied no usage metrics", so `false` means usage was not reported.
+    pub fn has_values(&self) -> bool {
+        *self != Self::new()
     }
 }
 
@@ -945,6 +955,16 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn usage_has_values_reflects_the_zero_sentinel() {
+        use super::Usage;
+
+        assert!(!Usage::new().has_values());
+
+        let mut usage = Usage::new();
+        usage.reasoning_tokens = 1;
+        assert!(usage.has_values());
+    }
 
     use super::*;
     use crate::test_utils::MockCompletionModel;

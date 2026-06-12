@@ -711,8 +711,8 @@ impl ResponsesUsage {
 }
 
 impl GetTokenUsage for ResponsesUsage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::completion::Usage {
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::completion::Usage {
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
             total_tokens: self.total_tokens,
@@ -728,7 +728,7 @@ impl GetTokenUsage for ResponsesUsage {
                 .as_ref()
                 .map(|details| details.reasoning_tokens)
                 .unwrap_or(0),
-        })
+        }
     }
 }
 
@@ -1591,7 +1591,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .and_then(GetTokenUsage::token_usage)
+            .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -2200,7 +2200,7 @@ mod tests {
             total_tokens: 150,
         };
 
-        let token_usage = usage.token_usage().expect("usage should be present");
+        let token_usage = usage.token_usage();
 
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
@@ -2223,7 +2223,7 @@ mod tests {
 
         assert!(usage.output_tokens_details.is_none());
 
-        let token_usage = usage.token_usage().expect("usage should be present");
+        let token_usage = usage.token_usage();
 
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
@@ -2755,7 +2755,7 @@ mod tests {
         };
 
         let usage = lhs + rhs;
-        let token_usage = usage.token_usage().expect("usage should be present");
+        let token_usage = usage.token_usage();
 
         assert_eq!(token_usage.input_tokens, 13);
         assert_eq!(token_usage.cached_input_tokens, 2);

@@ -10,18 +10,21 @@ use serde::{Deserialize, Serialize};
 /// Raw mock response used by completion and streaming test utilities.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct MockResponse {
-    usage: Option<Usage>,
+    usage: Usage,
 }
 
 impl MockResponse {
-    /// Create a mock raw response without token usage.
+    /// Create a mock raw response without token usage (zero-valued usage,
+    /// [`Usage`]'s documented sentinel for missing provider metrics).
     pub fn new() -> Self {
-        Self { usage: None }
+        Self {
+            usage: Usage::new(),
+        }
     }
 
     /// Create a mock raw response carrying token usage.
     pub fn with_usage(usage: Usage) -> Self {
-        Self { usage: Some(usage) }
+        Self { usage }
     }
 
     /// Create a mock raw response whose usage has only `total_tokens` set.
@@ -33,7 +36,7 @@ impl MockResponse {
 }
 
 impl GetTokenUsage for MockResponse {
-    fn token_usage(&self) -> Option<Usage> {
+    fn token_usage(&self) -> Usage {
         self.usage
     }
 }

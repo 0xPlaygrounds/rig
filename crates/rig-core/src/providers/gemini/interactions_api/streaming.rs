@@ -41,8 +41,11 @@ pub type InteractionEventStream =
     Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        self.usage.as_ref().and_then(|usage| usage.token_usage())
+    fn token_usage(&self) -> crate::completion::Usage {
+        self.usage
+            .as_ref()
+            .map(|usage| usage.token_usage())
+            .unwrap_or_default()
     }
 }
 

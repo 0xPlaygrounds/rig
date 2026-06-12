@@ -634,7 +634,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }

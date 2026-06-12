@@ -66,7 +66,7 @@ pub(crate) fn reasoning_choices_from_done_item(
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }
@@ -582,7 +582,7 @@ pub(crate) async fn completion_response_from_sse_body(
         usage: stream
             .response
             .as_ref()
-            .and_then(GetTokenUsage::token_usage)
+            .map(GetTokenUsage::token_usage)
             .unwrap_or_else(|| usage_from_raw_response(&raw_response)),
         message_id: stream
             .message_id
@@ -613,7 +613,7 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
     response
         .usage
         .as_ref()
-        .and_then(GetTokenUsage::token_usage)
+        .map(GetTokenUsage::token_usage)
         .unwrap_or_default()
 }
 

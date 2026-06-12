@@ -131,7 +131,7 @@ impl std::fmt::Display for Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens;
@@ -143,7 +143,7 @@ impl GetTokenUsage for Usage {
             + self.cache_creation_input_tokens.unwrap_or_default()
             + self.output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 

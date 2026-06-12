@@ -31,16 +31,19 @@ pub struct BedrockUsage {
 }
 
 impl GetTokenUsage for BedrockStreamingResponse {
-    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
-        self.usage.as_ref().map(|u| rig_core::completion::Usage {
-            input_tokens: u.input_tokens as u64,
-            output_tokens: u.output_tokens as u64,
-            total_tokens: u.total_tokens as u64,
-            cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
-            cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        })
+    fn token_usage(&self) -> rig_core::completion::Usage {
+        self.usage
+            .as_ref()
+            .map(|u| rig_core::completion::Usage {
+                input_tokens: u.input_tokens as u64,
+                output_tokens: u.output_tokens as u64,
+                total_tokens: u.total_tokens as u64,
+                cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
+                cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -278,23 +281,28 @@ mod tests {
             }),
         };
 
-        let rig_usage = response.token_usage();
-        assert!(rig_usage.is_some());
-
-        let usage = rig_usage.unwrap();
-        assert_eq!(usage.input_tokens, 200);
-        assert_eq!(usage.output_tokens, 75);
-        assert_eq!(usage.total_tokens, 275);
-        assert_eq!(usage.cached_input_tokens, 40);
-        assert_eq!(usage.cache_creation_input_tokens, 10);
+        assert_eq!(
+            response.token_usage(),
+            rig_core::completion::Usage {
+                input_tokens: 200,
+                output_tokens: 75,
+                total_tokens: 275,
+                cached_input_tokens: 40,
+                cache_creation_input_tokens: 10,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            }
+        );
     }
 
     #[test]
     fn test_bedrock_streaming_response_without_usage() {
         let response = BedrockStreamingResponse { usage: None };
 
-        let rig_usage = response.token_usage();
-        assert!(rig_usage.is_none());
+        // Zero-valued usage is rig's documented sentinel for "the provider
+        // reported no usage metrics".
+        assert_eq!(response.token_usage(), rig_core::completion::Usage::new());
+        assert!(!response.token_usage().has_values());
     }
 
     #[test]
@@ -310,12 +318,18 @@ mod tests {
         };
 
         // Test that GetTokenUsage trait is properly implemented
-        let usage = response.token_usage().expect("Usage should be present");
-        assert_eq!(usage.input_tokens, 448);
-        assert_eq!(usage.output_tokens, 68);
-        assert_eq!(usage.total_tokens, 516);
-        assert_eq!(usage.cached_input_tokens, 80);
-        assert_eq!(usage.cache_creation_input_tokens, 20);
+        assert_eq!(
+            response.token_usage(),
+            rig_core::completion::Usage {
+                input_tokens: 448,
+                output_tokens: 68,
+                total_tokens: 516,
+                cached_input_tokens: 80,
+                cache_creation_input_tokens: 20,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            }
+        );
     }
 
     #[test]

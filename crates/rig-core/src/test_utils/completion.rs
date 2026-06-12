@@ -415,10 +415,10 @@ mod tests {
                 StreamedAssistantContent::Final(response) => {
                     saw_final = matches!(
                         response.token_usage(),
-                        Some(Usage {
+                        Usage {
                             total_tokens: 7,
                             ..
-                        })
+                        }
                     );
                 }
                 _ => {}
