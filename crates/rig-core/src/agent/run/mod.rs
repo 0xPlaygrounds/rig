@@ -218,8 +218,10 @@ enum RunState {
     /// The turn was accepted; ready to emit [`AgentRunStep::CallTools`] or
     /// [`AgentRunStep::Done`].
     AwaitingAdvance(Box<TurnState>),
-    /// Waiting for [`AgentRun::tool_results`].
-    ExecutingTools,
+    /// Waiting for [`AgentRun::tool_results`] for these pending tool calls.
+    /// Carrying the calls in the state keeps a serialized run self-contained:
+    /// a resumed process re-obtains them from [`AgentRun::next_step`].
+    ExecutingTools(Vec<PendingToolCall>),
     /// Terminal: the run completed successfully.
     Done(Box<PromptResponse>),
     /// Terminal: the run returned an error.
@@ -435,7 +437,7 @@ impl AgentRun {
                 }
 
                 if has_tool_calls {
-                    let calls = items
+                    let calls: Vec<PendingToolCall> = items
                         .iter()
                         .filter_map(|item| match item {
                             AssistantContent::ToolCall(tool_call) => Some(PendingToolCall {
@@ -445,7 +447,7 @@ impl AgentRun {
                             _ => None,
                         })
                         .collect();
-                    self.state = RunState::ExecutingTools;
+                    self.state = RunState::ExecutingTools(calls.clone());
                     Ok(AgentRunStep::CallTools { calls })
                 } else {
                     let response =
@@ -456,23 +458,27 @@ impl AgentRun {
                     Ok(AgentRunStep::Done(response))
                 }
             }
+            RunState::ExecutingTools(calls) => {
+                // Idempotent, like Done: a process resuming a serialized run
+                // re-obtains the pending tool calls from the state itself.
+                let step = AgentRunStep::CallTools {
+                    calls: calls.clone(),
+                };
+                self.state = RunState::ExecutingTools(calls);
+                Ok(step)
+            }
             RunState::Done(response) => {
                 let step = AgentRunStep::Done((*response).clone());
                 self.state = RunState::Done(response);
                 Ok(step)
             }
-            state @ (RunState::AwaitingModel
-            | RunState::ResolvingToolCalls(_)
-            | RunState::ExecutingTools) => {
+            state @ (RunState::AwaitingModel | RunState::ResolvingToolCalls(_)) => {
                 let reason = match &state {
                     RunState::AwaitingModel => {
                         "next_step called while a model response is pending; feed it via model_response first"
                     }
-                    RunState::ResolvingToolCalls(_) => {
-                        "next_step called while an invalid tool-call resolution is pending; answer it via resolve_invalid_tool_call first"
-                    }
                     _ => {
-                        "next_step called while tool results are pending; feed them via tool_results first"
+                        "next_step called while an invalid tool-call resolution is pending; answer it via resolve_invalid_tool_call first"
                     }
                 };
                 self.state = state;
@@ -659,12 +665,48 @@ impl AgentRun {
     /// Feed the tool results for the pending [`AgentRunStep::CallTools`].
     ///
     /// Results may be in any order; they are appended as a single user
-    /// message, matching what providers expect for parallel tool calls.
+    /// message, matching what providers expect for parallel tool calls. Each
+    /// result must be a tool result answering one of the pending calls, and
+    /// every pending call must be answered — exactly what providers require
+    /// to accept the next request.
     pub fn tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
-        if !matches!(self.state, RunState::ExecutingTools) {
+        let RunState::ExecutingTools(pending) = &self.state else {
             return Err(
                 self.protocol_violation("tool_results called without a pending CallTools step")
             );
+        };
+        // Match results against pending calls by tool call ID as a multiset,
+        // so duplicate provider IDs within one turn stay answerable.
+        let mut unanswered: Vec<String> = pending
+            .iter()
+            .map(|call| call.tool_call.id.clone())
+            .collect();
+
+        if results.is_empty() {
+            self.state = RunState::Failed;
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "tool execution produced no tool results",
+            ));
+        }
+        for result in &results {
+            let UserContent::ToolResult(tool_result) = result else {
+                return Err(self.protocol_violation(
+                    "tool_results received content that is not a tool result",
+                ));
+            };
+            let Some(index) = unanswered.iter().position(|id| *id == tool_result.id) else {
+                return Err(self.protocol_violation(&format!(
+                    "tool_results received a result for unknown or already-answered tool call id `{}`",
+                    tool_result.id
+                )));
+            };
+            unanswered.swap_remove(index);
+        }
+        if !unanswered.is_empty() {
+            return Err(self.protocol_violation(&format!(
+                "tool_results left pending tool call id(s) unanswered: {unanswered:?}"
+            )));
         }
 
         let Some(content) = OneOrMany::from_iter_optional(results) else {
@@ -1451,6 +1493,84 @@ mod tests {
         );
         assert_eq!(expect_done(&mut run).output, "hi");
         assert_eq!(expect_done(&mut run).output, "hi");
+    }
+
+    #[test]
+    fn serialized_run_alone_carries_pending_tool_calls() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+
+        // A fresh process receives only the serialized run: the pending tool
+        // calls must be recoverable from the state itself.
+        let serialized = serde_json::to_string(&run).expect("mid-run state should serialize");
+        drop(run);
+        let mut resumed: AgentRun =
+            serde_json::from_str(&serialized).expect("mid-run state should deserialize");
+
+        let calls = expect_call_tools(&mut resumed);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].tool_call.function.name, "add");
+        // Re-emission is idempotent while results are pending.
+        let calls_again = expect_call_tools(&mut resumed);
+        assert_eq!(calls_again[0].tool_call.id, calls[0].tool_call.id);
+
+        // Answer using only IDs learned from the re-emitted step.
+        let results = calls
+            .iter()
+            .map(|call| tool_result(&call.tool_call.id, "2"))
+            .collect::<Vec<_>>();
+        resumed
+            .tool_results(results)
+            .expect("tool_results should succeed");
+        expect_call_model(&mut resumed);
+        expect_continue(
+            resumed
+                .model_response(text_turn("done"))
+                .expect("model_response should succeed"),
+        );
+        assert_eq!(expect_done(&mut resumed).output, "done");
+    }
+
+    #[test]
+    fn tool_results_validates_against_pending_calls() {
+        let drive_to_pending_tools = || {
+            let mut run = AgentRun::new("add things").max_turns(2);
+            expect_call_model(&mut run);
+            expect_continue(
+                run.model_response(tool_call_turn("call_1", "add"))
+                    .expect("model_response should succeed"),
+            );
+            expect_call_tools(&mut run);
+            run
+        };
+
+        // A result for an unknown call ID is rejected without corrupting the run.
+        let mut run = drive_to_pending_tools();
+        let err = run
+            .tool_results(vec![tool_result("call_unknown", "2")])
+            .expect_err("unknown tool call id must be rejected");
+        assert!(matches!(err, PromptError::PromptCancelled { .. }));
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("valid results should still be accepted after a rejection");
+
+        // Leaving a pending call unanswered is rejected.
+        let mut run = drive_to_pending_tools();
+        let err = run
+            .tool_results(vec![tool_result("call_1", "2"), tool_result("call_1", "3")])
+            .expect_err("answering one call twice must be rejected");
+        assert!(matches!(err, PromptError::PromptCancelled { .. }));
+
+        // Non-tool-result content is rejected.
+        let mut run = drive_to_pending_tools();
+        let err = run
+            .tool_results(vec![UserContent::text("not a tool result")])
+            .expect_err("non-tool-result content must be rejected");
+        assert!(matches!(err, PromptError::PromptCancelled { .. }));
     }
 
     #[test]
