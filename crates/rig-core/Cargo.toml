@@ -37,6 +37,7 @@ rig-derive = { version = "0.38.2", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serenity = { workspace = true, optional = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -45,7 +46,6 @@ rmcp = { workspace = true, optional = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
-serenity = { workspace = true, optional = true }
 fastrand = { workspace = true }
 nanoid = { workspace = true }
 getrandom = { workspace = true }
