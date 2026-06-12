@@ -265,7 +265,7 @@ pub enum StreamedTurnEvent {
     /// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call),
     /// then apply the outcome with
     /// [`StreamedTurnAssembler::resolve_pending_invalid`].
-    InvalidToolCall(StreamedInvalidToolCall),
+    InvalidToolCall(Box<StreamedInvalidToolCall>),
     /// The provider reported the end of this completion call. Record it (see
     /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call));
     /// when `emit_final` is set, the turn streamed text and the driver should
@@ -289,7 +289,7 @@ struct ToolCallDeltaState {
 enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
-        tool_call: ToolCall,
+        tool_call: Box<ToolCall>,
         internal_call_id: String,
     },
     /// A streamed tool-name delta with a disallowed name.
@@ -399,10 +399,10 @@ impl StreamedTurnAssembler {
                         allowed_tool_names: self.allowed_tool_names.clone(),
                     };
                     self.pending_invalid = Some(PendingInvalid::FullCall {
-                        tool_call: tool_call.clone(),
+                        tool_call: Box::new(tool_call.clone()),
                         internal_call_id: internal_call_id.clone(),
                     });
-                    return Ok(vec![StreamedTurnEvent::InvalidToolCall(invalid)]);
+                    return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
                 }
 
                 self.pending_tool_calls
@@ -438,7 +438,7 @@ impl StreamedTurnAssembler {
                                 id: id.clone(),
                                 internal_call_id: internal_call_id.clone(),
                             });
-                            return Ok(vec![StreamedTurnEvent::InvalidToolCall(invalid)]);
+                            return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
                         }
 
                         Ok(self.validate_delta_name(&key, name.clone()))
@@ -494,7 +494,7 @@ impl StreamedTurnAssembler {
                 },
             ) => {
                 tool_call.function.name = tool_name.clone();
-                self.pending_tool_calls.push((tool_call, internal_call_id));
+                self.pending_tool_calls.push((*tool_call, internal_call_id));
                 Vec::new()
             }
             (
@@ -718,7 +718,7 @@ mod tests {
 
     fn expect_invalid(events: Vec<StreamedTurnEvent>) -> StreamedInvalidToolCall {
         match events.into_iter().next() {
-            Some(StreamedTurnEvent::InvalidToolCall(invalid)) => invalid,
+            Some(StreamedTurnEvent::InvalidToolCall(invalid)) => *invalid,
             other => panic!("expected InvalidToolCall, got {other:?}"),
         }
     }
