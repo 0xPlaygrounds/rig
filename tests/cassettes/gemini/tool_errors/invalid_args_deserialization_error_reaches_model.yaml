@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Register four guests for the event.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You register guests with the register_guests tool, passing the seat count spelled out as a lowercase English word. If the tool reports an error, do not retry; apologize and explain that registration failed.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Register guests for the event.","name":"register_guests","parameters":{"properties":{"seats":{"description":"Number of seats, spelled out as a lowercase English word (e.g. \"four\")","type":"string"}},"required":["seats"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"seats":"four"},"name":"register_guests"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":105,"promptTokensDetails":[{"modality":"TEXT","tokenCount":105}],"serviceTier":"standard","thoughtsTokenCount":88,"totalTokenCount":208}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Register four guests for the event.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"seats":"four"},"name":"register_guests"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"register_guests","response":{"result":"Toolset error: ToolCallError: JsonError: invalid type: string \"four\", expected u64 at line 1 column 15"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You register guests with the register_guests tool, passing the seat count spelled out as a lowercase English word. If the tool reports an error, do not retry; apologize and explain that registration failed.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Register guests for the event.","name":"register_guests","parameters":{"properties":{"seats":{"description":"Number of seats, spelled out as a lowercase English word (e.g. \"four\")","type":"string"}},"required":["seats"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"I apologize, but I was unable to register your guests. Registration failed.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":163,"promptTokensDetails":[{"modality":"TEXT","tokenCount":163}],"serviceTier":"standard","thoughtsTokenCount":251,"totalTokenCount":429}}'

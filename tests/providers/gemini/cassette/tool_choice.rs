@@ -1,7 +1,7 @@
 //! Gemini tool-choice cassette coverage.
 
 use rig::client::CompletionClient;
-use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
+use rig::completion::{AssistantContent, Chat, CompletionModel, Message, Prompt};
 use rig::message::ToolChoice;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
@@ -146,6 +146,92 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
             assert_eq!(
                 add_call.function.arguments,
                 serde_json::json!({ "x": 20, "y": 22 })
+            );
+        },
+    )
+    .await;
+}
+
+/// `ToolChoice::Required` maps to Gemini's forced function-calling mode on
+/// EVERY turn of the loop, so the model can never emit a text-only answer:
+/// the run repeats forced tool calls until `max_turns` is exhausted. These
+/// tests pin that (surprising but current) behavior.
+#[tokio::test]
+async fn required_nonstreaming_forces_tool_calls_until_max_turns() {
+    super::super::support::with_gemini_cassette(
+        "tool_choice/required_nonstreaming_forces_tool_calls_until_max_turns",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a calculator assistant. Answer arithmetic questions.")
+                .temperature(0.0)
+                .tool(Adder)
+                .tool(Subtract)
+                .tool_choice(ToolChoice::Required)
+                .build();
+
+            let error = agent
+                .prompt("What is 19 + 23?")
+                .max_turns(2)
+                .await
+                .expect_err("Required forces a tool call every turn, so max_turns is exhausted");
+
+            match error {
+                rig::completion::PromptError::MaxTurnsError {
+                    max_turns,
+                    chat_history,
+                    ..
+                } => {
+                    assert_eq!(max_turns, 2);
+                    assert_history_tool_calls(&chat_history, &[Adder::NAME], &[]);
+                }
+                other => panic!("expected MaxTurnsError, got {other:?}"),
+            }
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn required_streaming_forces_tool_calls_until_max_turns() {
+    super::super::support::with_gemini_cassette(
+        "tool_choice/required_streaming_forces_tool_calls_until_max_turns",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a calculator assistant. Answer arithmetic questions.")
+                .temperature(0.0)
+                .tool(Adder)
+                .tool(Subtract)
+                .tool_choice(ToolChoice::Required)
+                .build();
+
+            let mut stream = agent.stream_prompt("What is 19 + 23?").multi_turn(2).await;
+            let observation = collect_stream_observation(&mut stream).await;
+
+            assert!(
+                observation
+                    .tool_calls
+                    .iter()
+                    .any(|name| name == Adder::NAME),
+                "ToolChoice::Required should force a tool call, saw {:?}",
+                observation.tool_calls
+            );
+            assert!(
+                observation.tool_results >= 1,
+                "the forced call should produce a tool result"
+            );
+            assert!(
+                observation
+                    .errors
+                    .iter()
+                    .any(|error| error.contains("max turn")),
+                "the streaming run should also exhaust max_turns: {:?}",
+                observation.errors
+            );
+            assert!(
+                !observation.got_final_response,
+                "Required prevents a final text response"
             );
         },
     )

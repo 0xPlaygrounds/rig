@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Multiply 6 by 7.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the macro_calculator tool for arithmetic, then report the result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Perform basic arithmetic operations","name":"macro_calculator","parameters":{"properties":{"operation":{"description":"The operation to perform (add, subtract, multiply, divide)","type":"string"},"x":{"description":"First number in the calculation","format":"int64","type":"integer"},"y":{"description":"Second number in the calculation","format":"int64","type":"integer"}},"required":["x","y","operation"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"operation":"multiply","x":6,"y":7},"name":"macro_calculator"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":25,"promptTokenCount":103,"promptTokensDetails":[{"modality":"TEXT","tokenCount":103}],"serviceTier":"standard","thoughtsTokenCount":54,"totalTokenCount":182}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Multiply 6 by 7.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"operation":"multiply","x":6,"y":7},"name":"macro_calculator"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"macro_calculator","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the macro_calculator tool for arithmetic, then report the result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Perform basic arithmetic operations","name":"macro_calculator","parameters":{"properties":{"operation":{"description":"The operation to perform (add, subtract, multiply, divide)","type":"string"},"x":{"description":"First number in the calculation","format":"int64","type":"integer"},"y":{"description":"Second number in the calculation","format":"int64","type":"integer"}},"required":["x","y","operation"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"6 multiplied by 7 is 42."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":10,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","totalTokenCount":154}}'

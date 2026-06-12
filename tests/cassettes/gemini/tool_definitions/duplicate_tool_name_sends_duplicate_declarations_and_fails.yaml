@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Echo the word ''lantern''.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the echo tool, then report its output exactly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Echo the provided text back to the caller.","name":"echo","parameters":{"properties":{"text":{"description":"Text to echo","type":"string"}},"required":["text"],"type":"object"}},{"description":"Echo the provided text back to the caller.","name":"echo","parameters":{"properties":{"text":{"description":"Text to echo","type":"string"}},"required":["text"],"type":"object"}}]}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"error":{"code":400,"message":"Duplicate function declaration found: echo","status":"INVALID_ARGUMENT"}}'
