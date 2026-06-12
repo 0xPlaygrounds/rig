@@ -57,7 +57,10 @@ pub enum MultiTurnStreamItem<R> {
     /// ```rust,ignore
     /// match item {
     ///     MultiTurnStreamItem::CompletionCall(completion_call) => {
-    ///         let context_tokens = completion_call.usage.map(|usage| usage.input_tokens);
+    ///         // Zero-valued usage means the provider reported no metrics.
+    ///         if completion_call.usage.has_values() {
+    ///             let context_tokens = completion_call.usage.input_tokens;
+    ///         }
     ///     }
     ///     _ => {}
     /// }

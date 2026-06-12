@@ -329,16 +329,24 @@ mod tests {
     #[test]
     fn get_token_usage_delegates_to_provider_response_ext() {
         let out = make_output("x", Some(make_usage(10, 20, 30)));
-        let usage = out.token_usage().unwrap();
-        assert_eq!(usage.input_tokens, 10);
-        assert_eq!(usage.output_tokens, 20);
-        assert_eq!(usage.total_tokens, 30);
+        assert_eq!(
+            out.token_usage(),
+            completion::Usage {
+                input_tokens: 10,
+                output_tokens: 20,
+                total_tokens: 30,
+                ..completion::Usage::new()
+            }
+        );
     }
 
     #[test]
-    fn get_token_usage_none_when_no_usage() {
+    fn get_token_usage_zero_when_no_usage() {
         let out = make_output("x", None);
-        assert!(out.token_usage().is_none());
+        // Zero-valued usage is rig's documented sentinel for "the provider
+        // reported no usage metrics".
+        assert_eq!(out.token_usage(), completion::Usage::new());
+        assert!(!out.token_usage().has_values());
     }
 
     #[test]
