@@ -104,11 +104,16 @@ async fn main() -> Result<()> {
                     outcome = run.resolve_invalid_tool_call(InvalidToolCallHookAction::fail())?;
                 }
             }
-            AgentRunStep::CallTools { calls } => {
+            AgentRunStep::CallTools { .. } => {
                 // The whole run is serializable while tool calls are pending:
-                // persist it here to pause for approval and resume later.
+                // persist it here to pause for approval and resume later —
+                // even in a process that never saw this step. The resumed run
+                // re-emits the pending tool calls from its own state.
                 let suspended = serde_json::to_string(&run)?;
                 let mut run_resumed: AgentRun = serde_json::from_str(&suspended)?;
+                let AgentRunStep::CallTools { calls } = run_resumed.next_step()? else {
+                    anyhow::bail!("resumed run must re-emit the pending tool calls");
+                };
 
                 let mut results = Vec::new();
                 for call in calls {

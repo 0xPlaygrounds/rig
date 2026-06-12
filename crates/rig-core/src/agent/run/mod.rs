@@ -18,7 +18,9 @@
 //! between steps (for example while tool calls are pending), persist it, and
 //! resume it later in another process. Note that serialized run state embeds
 //! the full conversation accumulated so far — persisting it inherits whatever
-//! sensitivity the conversation content has.
+//! sensitivity the conversation content has — and the serialization format
+//! carries no cross-version stability guarantee yet: resume with the same rig
+//! version that suspended the run.
 //!
 //! [`crate::completion::Prompt::prompt`] on [`crate::agent::Agent`] drives
 //! this machine internally; the same machine can be driven by hand for custom
@@ -529,6 +531,11 @@ impl AgentRun {
                 self.protocol_violation("model_response called without a pending CallModel step")
             );
         }
+        if self.streamed_completion_call_recorded {
+            return Err(self.protocol_violation(
+                "model_response called after record_streamed_completion_call for the same turn; feed streamed turns via streamed_turn",
+            ));
+        }
 
         self.completion_calls
             .push(CompletionCall::from_reported_usage(
@@ -737,12 +744,11 @@ impl AgentRun {
             )));
         }
 
+        // `results` is non-empty (checked above), so construction succeeds.
         let Some(content) = OneOrMany::from_iter_optional(results) else {
-            self.state = RunState::Failed;
-            return Err(PromptError::prompt_cancelled(
-                self.full_history(),
-                "tool execution produced no tool results",
-            ));
+            return Err(
+                self.protocol_violation("internal: tool results vanished during validation")
+            );
         };
 
         self.new_messages.push(Message::User { content });
@@ -1006,6 +1012,16 @@ impl AgentRun {
             return Err(
                 self.protocol_violation("streamed_turn called without a pending CallModel step")
             );
+        }
+
+        // Guarantee exactly one CompletionCall per model call: drivers that
+        // never learned usage (no record before the turn completed) still get
+        // the call recorded, with no reported usage.
+        if !self.streamed_completion_call_recorded {
+            self.completion_calls
+                .push(CompletionCall::new(self.completion_call_index, None));
+            self.completion_call_index += 1;
+            self.streamed_completion_call_recorded = true;
         }
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
@@ -1517,6 +1533,21 @@ mod tests {
                 .expect("model_response should still succeed"),
         );
         assert_eq!(expect_done(&mut run).output, "hi");
+    }
+
+    #[test]
+    fn model_response_rejected_after_streamed_completion_call_record() {
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+        run.record_streamed_completion_call(None)
+            .expect("record should succeed");
+
+        let err = run
+            .model_response(text_turn("hi"))
+            .expect_err("mixed streamed/non-streamed ingestion must be rejected");
+        assert!(matches!(err, PromptError::PromptCancelled { .. }));
+        // No duplicate completion call was appended.
+        assert_eq!(run.completion_calls().len(), 1);
     }
 
     #[test]

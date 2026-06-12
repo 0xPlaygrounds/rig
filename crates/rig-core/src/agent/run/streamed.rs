@@ -1091,6 +1091,22 @@ mod tests {
     }
 
     #[test]
+    fn streamed_turn_records_the_completion_call_when_the_driver_did_not() {
+        let mut run = AgentRun::new("hello");
+        run.next_step().expect("next_step");
+
+        let asm = assembler();
+        let final_choice = OneOrMany::one(AssistantContent::text("done"));
+        run.streamed_turn(asm.finish(None, &final_choice))
+            .expect("streamed_turn should succeed");
+
+        // Exactly one CompletionCall per model call, even without an explicit
+        // record; usage is simply unreported.
+        assert_eq!(run.completion_calls().len(), 1);
+        assert_eq!(run.completion_calls()[0].usage, None);
+    }
+
+    #[test]
     fn streamed_completion_call_is_recorded_once_per_turn() {
         let mut run = AgentRun::new("hello");
         run.next_step().expect("next_step");
