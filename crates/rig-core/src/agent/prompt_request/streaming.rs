@@ -521,7 +521,6 @@ where
             let mut last_final_choice: OneOrMany<AssistantContent> =
                 OneOrMany::one(AssistantContent::text(""));
             let mut last_message_id: Option<String> = None;
-            let mut internal_call_ids: Vec<(String, String)> = Vec::new();
 
             'outer: loop {
                 let step = match run.next_step() {
@@ -843,7 +842,6 @@ where
                             assistant_text_from_choice(&final_turn_content),
                         );
 
-                        internal_call_ids = assembler.internal_call_ids();
                         last_message_id = stream.message_id.clone();
                         let streamed_turn =
                             assembler.finish(stream.message_id.clone(), &final_turn_content);
@@ -868,13 +866,8 @@ where
                                 results.push(result);
                                 continue;
                             }
-                            // Consume pairs positionally so calls stay
-                            // distinguishable even if a provider reuses a tool
-                            // call ID within one turn.
-                            let internal_call_id = internal_call_ids
-                                .iter()
-                                .position(|(id, _)| *id == tool_call.id)
-                                .map(|index| internal_call_ids.remove(index).1)
+                            let internal_call_id = pending
+                                .internal_call_id
                                 .unwrap_or_else(|| nanoid::nanoid!());
 
                             let tool_span = info_span!(

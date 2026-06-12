@@ -216,6 +216,11 @@ pub struct StreamedTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active tool choice for this turn.
     pub allowed_tool_names: BTreeSet<String>,
+    /// `(tool_call_id, internal_call_id)` pairs for this turn's tool calls,
+    /// in emission order. Carried into the run state so a resumed process
+    /// keeps the IDs consumers already saw in tool-call deltas.
+    #[serde(default)]
+    pub internal_call_ids: Vec<(String, String)>,
 }
 
 /// What the machine decided about a mid-stream invalid tool call.
@@ -562,18 +567,6 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// `(tool_call_id, internal_call_id)` pairs for this turn's validated
-    /// tool calls, in emission order. Drivers use these to correlate tool
-    /// execution stream items; pairs are returned positionally (not as a
-    /// map) so calls remain distinguishable even if a provider reuses a tool
-    /// call ID within one turn.
-    pub fn internal_call_ids(&self) -> Vec<(String, String)> {
-        self.pending_tool_calls
-            .iter()
-            .map(|(tool_call, internal_call_id)| (tool_call.id.clone(), internal_call_id.clone()))
-            .collect()
-    }
-
     /// Assemble the completed turn. `final_choice` is the provider's
     /// aggregated choice for the turn
     /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
@@ -582,6 +575,11 @@ impl StreamedTurnAssembler {
         message_id: Option<String>,
         final_choice: &OneOrMany<AssistantContent>,
     ) -> StreamedTurn {
+        let internal_call_ids: Vec<(String, String)> = self
+            .pending_tool_calls
+            .iter()
+            .map(|(tool_call, internal_call_id)| (tool_call.id.clone(), internal_call_id.clone()))
+            .collect();
         // Providers like Gemini emit thinking as incremental deltas without
         // signatures; assemble them into a single block so reasoning survives
         // into the next turn's chat history.
@@ -618,6 +616,7 @@ impl StreamedTurnAssembler {
             choice,
             executable_tool_names: self.executable_tool_names,
             allowed_tool_names: self.allowed_tool_names,
+            internal_call_ids,
         }
     }
 
@@ -851,10 +850,6 @@ mod tests {
         };
         run.record_streamed_completion_call(Some(usage))
             .expect("record should succeed");
-        assert_eq!(
-            asm.internal_call_ids(),
-            vec![("tc_1".to_string(), "internal_tc_1".to_string())]
-        );
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
             .expect("streamed_turn should succeed");
@@ -863,6 +858,7 @@ mod tests {
             panic!("expected CallTools");
         };
         assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_tc_1"));
         run.tool_results(vec![UserContent::tool_result(
             "tc_1".to_string(),
             ToolResultContent::from_tool_output("2".to_string()),
@@ -1028,6 +1024,7 @@ mod tests {
             choice: OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "unknown"))),
             executable_tool_names: tool_names(&["add"]),
             allowed_tool_names: tool_names(&["add"]),
+            internal_call_ids: Vec::new(),
         };
         let err = run
             .streamed_turn(turn)
@@ -1055,7 +1052,10 @@ mod tests {
     }
 
     #[test]
-    fn internal_call_ids_keep_duplicate_tool_call_ids_distinguishable() {
+    fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
+        let mut run = AgentRun::new("do both").max_turns(2);
+        run.next_step().expect("next_step");
+
         let mut asm = assembler();
         asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
             tool_call: tool_call("tc_1", "add"),
@@ -1067,14 +1067,41 @@ mod tests {
             internal_call_id: "internal_b".to_string(),
         })
         .expect("ingest should succeed");
+        run.record_streamed_completion_call(None)
+            .expect("record should succeed");
 
-        assert_eq!(
-            asm.internal_call_ids(),
-            vec![
-                ("tc_1".to_string(), "internal_a".to_string()),
-                ("tc_1".to_string(), "internal_b".to_string()),
-            ]
-        );
+        let final_choice = OneOrMany::many(vec![
+            AssistantContent::ToolCall(tool_call("tc_1", "add")),
+            AssistantContent::ToolCall(tool_call("tc_1", "add")),
+        ])
+        .expect("two items");
+        run.streamed_turn(asm.finish(None, &final_choice))
+            .expect("streamed_turn should succeed");
+
+        // The internal IDs survive in the run state itself: a serde round
+        // trip must keep both calls distinguishable.
+        let serialized = serde_json::to_string(&run).expect("serialize");
+        let mut restored: AgentRun = serde_json::from_str(&serialized).expect("deserialize");
+        let AgentRunStep::CallTools { calls } = restored.next_step().expect("next_step") else {
+            panic!("expected CallTools");
+        };
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_a"));
+        assert_eq!(calls[1].internal_call_id.as_deref(), Some("internal_b"));
+    }
+
+    #[test]
+    fn streamed_completion_call_is_recorded_once_per_turn() {
+        let mut run = AgentRun::new("hello");
+        run.next_step().expect("next_step");
+
+        run.record_streamed_completion_call(None)
+            .expect("first record succeeds");
+        let err = run
+            .record_streamed_completion_call(None)
+            .expect_err("second record for the same turn must be rejected");
+        assert!(matches!(err, PromptError::PromptCancelled { .. }));
+        assert_eq!(run.completion_calls().len(), 1);
     }
 
     #[test]

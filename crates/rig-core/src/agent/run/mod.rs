@@ -112,6 +112,12 @@ pub struct PendingToolCall {
     /// recovery. When set, the driver must return this content as the tool
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
+    /// Rig-generated identifier correlating this call's stream items, when
+    /// the call arrived via a streamed turn. Persisted with the run state so
+    /// a resumed process keeps emitting the IDs consumers already saw in
+    /// tool-call deltas. Drivers generate a fresh ID when absent.
+    #[serde(default)]
+    pub internal_call_id: Option<String>,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -204,6 +210,10 @@ struct TurnState {
     items: Vec<AssistantContent>,
     has_tool_calls: bool,
     skipped: BTreeMap<String, UserContent>,
+    /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
+    /// emission order; empty for non-streamed turns.
+    #[serde(default)]
+    internal_call_ids: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,6 +256,11 @@ pub struct AgentRun {
     /// see [`AgentRun::record_streamed_completion_call`].
     #[serde(default)]
     rollback_pending: bool,
+    /// Set once the current streamed model turn's completion call has been
+    /// recorded, rejecting duplicate records; reset when the next
+    /// [`AgentRunStep::CallModel`] is emitted.
+    #[serde(default)]
+    streamed_completion_call_recorded: bool,
     state: RunState,
 }
 
@@ -265,6 +280,7 @@ impl AgentRun {
             completion_call_index: 0,
             invalid_tool_call_retries: 0,
             rollback_pending: false,
+            streamed_completion_call_recorded: false,
             state: RunState::PreparingRequest,
         }
     }
@@ -408,6 +424,7 @@ impl AgentRun {
                     build_history_for_request(self.chat_history.as_deref(), history_for_turn);
                 self.current_turn += 1;
                 self.rollback_pending = false;
+                self.streamed_completion_call_recorded = false;
                 self.state = RunState::AwaitingModel;
                 Ok(AgentRunStep::CallModel {
                     prompt,
@@ -421,6 +438,7 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
+                    mut internal_call_ids,
                 } = *turn_state;
                 let Some(choice) = OneOrMany::from_iter_optional(items.clone()) else {
                     return Err(PromptError::prompt_cancelled(
@@ -440,10 +458,20 @@ impl AgentRun {
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .filter_map(|item| match item {
-                            AssistantContent::ToolCall(tool_call) => Some(PendingToolCall {
-                                tool_call: tool_call.clone(),
-                                preresolved_result: skipped.get(&tool_call.id).cloned(),
-                            }),
+                            AssistantContent::ToolCall(tool_call) => {
+                                // Consume pairs positionally so duplicate
+                                // provider IDs within one turn stay
+                                // distinguishable.
+                                let internal_call_id = internal_call_ids
+                                    .iter()
+                                    .position(|(id, _)| *id == tool_call.id)
+                                    .map(|index| internal_call_ids.remove(index).1);
+                                Some(PendingToolCall {
+                                    tool_call: tool_call.clone(),
+                                    preresolved_result: skipped.get(&tool_call.id).cloned(),
+                                    internal_call_id,
+                                })
+                            }
                             _ => None,
                         })
                         .collect();
@@ -788,6 +816,7 @@ impl AgentRun {
             items,
             has_tool_calls,
             skipped,
+            internal_call_ids: Vec::new(),
         }));
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
@@ -817,6 +846,12 @@ impl AgentRun {
                 "record_streamed_completion_call called without a pending or rolled-back CallModel step",
             ));
         }
+        if self.streamed_completion_call_recorded {
+            return Err(self.protocol_violation(
+                "record_streamed_completion_call called twice for the same model turn",
+            ));
+        }
+        self.streamed_completion_call_recorded = true;
 
         let call = CompletionCall::new(self.completion_call_index, usage);
         self.completion_call_index += 1;
@@ -1007,6 +1042,7 @@ impl AgentRun {
             items,
             has_tool_calls,
             skipped: BTreeMap::new(),
+            internal_call_ids: turn.internal_call_ids,
         }));
         Ok(())
     }

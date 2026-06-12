@@ -692,6 +692,7 @@ where
                                 let PendingToolCall {
                                     tool_call,
                                     preresolved_result,
+                                    ..
                                 } = pending;
                                 let tool_name = &tool_call.function.name;
                                 let args =
