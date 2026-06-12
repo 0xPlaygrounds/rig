@@ -1,7 +1,12 @@
+mod agent_run_support;
 mod support;
 
 mod cassette {
     mod agent;
+    mod agent_run_recovery;
+    mod agent_run_resume;
+    mod agent_run_stepping;
+    mod agent_run_streamed;
     mod chat_history;
     mod document_ordering;
     mod embeddings;
