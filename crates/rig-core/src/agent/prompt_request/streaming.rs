@@ -236,10 +236,12 @@ fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> V
     if let Some(final_turn_content) = input.final_turn_content
         && !is_empty_assistant_choice(final_turn_content)
     {
-        messages.push(Message::Assistant {
-            id: input.assistant_message_id.clone(),
-            content: final_turn_content.clone(),
-        });
+        if let Some(content) = ordered_streaming_assistant_content_from_choice(final_turn_content) {
+            messages.push(Message::Assistant {
+                id: input.assistant_message_id.clone(),
+                content,
+            });
+        }
         return build_full_history(input.chat_history, messages);
     }
 
@@ -282,16 +284,41 @@ fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> V
 fn ordered_streaming_assistant_content(
     reasoning_items: impl IntoIterator<Item = crate::message::Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
-    tool_items: impl IntoIterator<Item = AssistantContent>,
+    trailing_items: impl IntoIterator<Item = AssistantContent>,
 ) -> Option<OneOrMany<AssistantContent>> {
     let mut content_items = reasoning_items
         .into_iter()
         .map(AssistantContent::Reasoning)
         .collect::<Vec<_>>();
     content_items.extend(text_items);
-    content_items.extend(tool_items);
+    content_items.extend(trailing_items);
 
     OneOrMany::from_iter_optional(content_items)
+}
+
+fn ordered_streaming_assistant_content_from_choice(
+    choice: &OneOrMany<AssistantContent>,
+) -> Option<OneOrMany<AssistantContent>> {
+    let mut reasoning_items = Vec::new();
+    let mut text_items = Vec::new();
+    let mut trailing_items = Vec::new();
+
+    for item in choice.iter().cloned() {
+        match item {
+            AssistantContent::Reasoning(reasoning) => reasoning_items.push(reasoning),
+            AssistantContent::Text(text) => {
+                if !text.text.is_empty() || text.additional_params.is_some() {
+                    text_items.push(AssistantContent::Text(text));
+                }
+            }
+            AssistantContent::ToolCall(tool_call) => {
+                trailing_items.push(AssistantContent::ToolCall(tool_call));
+            }
+            AssistantContent::Image(image) => trailing_items.push(AssistantContent::Image(image)),
+        }
+    }
+
+    ordered_streaming_assistant_content(reasoning_items, text_items, trailing_items)
 }
 
 fn pending_tool_call_content_items(
@@ -1604,8 +1631,7 @@ where
                     }
                 }
 
-                // Add reasoning, text, and tool calls to chat history in the
-                // provider-native order expected by OpenAI Responses replay.
+                // Add assistant turn content to chat history in canonical replay order.
                 let mut assistant_turn_added_to_history = false;
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
                     let text_items = assistant_text_items_from_choice(&final_turn_content);
