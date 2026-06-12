@@ -170,10 +170,12 @@ async fn missing_tool_at_execution_time_reports_tool_not_found() {
                 .messages
                 .expect("extended details should carry the run's messages");
             let texts = all_tool_result_texts(&messages);
+            // The available list names what the turn advertised (the tool
+            // was removed only after the model emitted the call).
             assert!(
                 texts
                     .iter()
-                    .any(|text| text == "Unknown tool name: 'add'. No tools available."),
+                    .any(|text| text == "Unknown tool name: 'add'. Available tools: add"),
                 "the missing tool should be named without internal wrappers: {texts:?}"
             );
             assert_nonempty_response(&response.output);

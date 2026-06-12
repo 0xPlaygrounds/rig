@@ -525,6 +525,9 @@ where
             let mut last_final_choice: OneOrMany<AssistantContent> =
                 OneOrMany::one(AssistantContent::text(""));
             let mut last_message_id: Option<String> = None;
+            // The executable tool names advertised on the most recent model
+            // turn, used to render accurate failure text for the model.
+            let mut turn_executable_tool_names = std::collections::BTreeSet::new();
 
             'outer: loop {
                 let step = match run.next_step() {
@@ -600,6 +603,8 @@ where
                             .instrument(chat_stream_span.clone())
                             .await?;
 
+                        turn_executable_tool_names =
+                            prepared_request.executable_tool_names.clone();
                         let mut assembler = StreamedTurnAssembler::new(
                             prepared_request.executable_tool_names.clone(),
                             prepared_request.allowed_tool_names.clone(),
@@ -942,9 +947,11 @@ where
                                     Ok(result) => result,
                                     Err(err) => {
                                         tracing::warn!("Error while calling tool: {err}");
-                                        tool_server_handle
-                                            .tool_failure_text(&tool_call.function.name, &err)
-                                            .await
+                                        crate::tool::server::tool_failure_text(
+                                            &tool_call.function.name,
+                                            &err,
+                                            &turn_executable_tool_names,
+                                        )
                                     }
                                 };
 

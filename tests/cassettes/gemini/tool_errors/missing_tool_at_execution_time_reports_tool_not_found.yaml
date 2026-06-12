@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":89,"promptTokensDetails":[{"modality":"TEXT","tokenCount":89}],"serviceTier":"standard","thoughtsTokenCount":50,"totalTokenCount":159}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":89,"promptTokensDetails":[{"modality":"TEXT","tokenCount":89}],"serviceTier":"standard","thoughtsTokenCount":51,"totalTokenCount":160}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -28,10 +28,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"contents":[{"parts":[{"text":"What is 19 + 23?","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":"Unknown tool name: ''add''. No tools available."}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the add tool for arithmetic. If a tool reports an error, do not retry; explain that the tool is unavailable.","thought":false}],"role":"model"},"toolConfig":null}'
+  body: '{"contents":[{"parts":[{"text":"What is 19 + 23?","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":"Unknown tool name: ''add''. Available tools: add"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must use the add tool for arithmetic. If a tool reports an error, do not retry; explain that the tool is unavailable.","thought":false}],"role":"model"},"toolConfig":null}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"I apologize, but I was unable to perform the addition as the ''add'' tool is currently unavailable."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":21,"promptTokenCount":83,"promptTokensDetails":[{"modality":"TEXT","tokenCount":83}],"serviceTier":"standard","thoughtsTokenCount":73,"totalTokenCount":177}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"I apologize, but there was an error when I tried to use the `add` tool. It seems to be unavailable at the moment."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":28,"promptTokenCount":83,"promptTokensDetails":[{"modality":"TEXT","tokenCount":83}],"serviceTier":"standard","thoughtsTokenCount":155,"totalTokenCount":266}}'

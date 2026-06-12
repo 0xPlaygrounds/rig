@@ -318,9 +318,11 @@ impl AgentRun {
     /// The tool choice in effect for the next model turn.
     ///
     /// [`ToolChoice::Required`] applies until the first turn that produces
-    /// tool calls, then relaxes to [`ToolChoice::Auto`] so the run can
-    /// complete with a text answer. Drivers should read this per turn instead
-    /// of caching the originally configured value.
+    /// tool calls — including a streamed turn abandoned with a skipped tool
+    /// result — then relaxes to [`ToolChoice::Auto`] so the run can complete
+    /// with a text answer. Invalid-call retries keep the forced mode, since
+    /// the retried turn replaces the rejected one. Drivers should read this
+    /// per turn instead of caching the originally configured value.
     pub fn effective_tool_choice(&self) -> Option<ToolChoice> {
         self.tool_choice.clone()
     }
@@ -991,6 +993,16 @@ impl AgentRun {
                         allowed_tools: allowed_tool_names,
                         chat_history: Box::new(diagnostic_history),
                     });
+                }
+
+                // A skip synthetically answers this turn's tool call, so the
+                // forced mode relaxes exactly like the non-streamed skip path
+                // (which flows through `AwaitingAdvance`).
+                if matches!(self.tool_choice, Some(ToolChoice::Required)) {
+                    tracing::debug!(
+                        "relaxing ToolChoice::Required to Auto after a skipped streamed tool call"
+                    );
+                    self.tool_choice = Some(ToolChoice::Auto);
                 }
 
                 let skipped_tool_result = ToolResult {

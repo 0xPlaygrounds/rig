@@ -923,32 +923,37 @@ impl ToolResultContent {
 
                 if let Some(parts) = json.get("parts").and_then(|p| p.as_array()) {
                     for part in parts {
-                        let is_image = part
-                            .get("type")
-                            .and_then(|t| t.as_str())
-                            .is_some_and(|t| t == "image");
+                        match part.get("type").and_then(|t| t.as_str()) {
+                            // Text parts let multi-part outputs preserve
+                            // their original text/image interleaving.
+                            Some("text") => {
+                                if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                    results
+                                        .push(ToolResultContent::Text(Text::new(text.to_string())));
+                                }
+                            }
+                            Some("image") => {
+                                if let (Some(data), Some(mime_type)) = (
+                                    part.get("data").and_then(|v| v.as_str()),
+                                    part.get("mimeType").and_then(|v| v.as_str()),
+                                ) {
+                                    let data_kind = if data.starts_with("http://")
+                                        || data.starts_with("https://")
+                                    {
+                                        DocumentSourceKind::Url(data.to_string())
+                                    } else {
+                                        DocumentSourceKind::Base64(data.to_string())
+                                    };
 
-                        if !is_image {
-                            continue;
-                        }
-
-                        if let (Some(data), Some(mime_type)) = (
-                            part.get("data").and_then(|v| v.as_str()),
-                            part.get("mimeType").and_then(|v| v.as_str()),
-                        ) {
-                            let data_kind =
-                                if data.starts_with("http://") || data.starts_with("https://") {
-                                    DocumentSourceKind::Url(data.to_string())
-                                } else {
-                                    DocumentSourceKind::Base64(data.to_string())
-                                };
-
-                            results.push(ToolResultContent::Image(Image {
-                                data: data_kind,
-                                media_type: ImageMediaType::from_mime_type(mime_type),
-                                detail: None,
-                                additional_params: None,
-                            }));
+                                    results.push(ToolResultContent::Image(Image {
+                                        data: data_kind,
+                                        media_type: ImageMediaType::from_mime_type(mime_type),
+                                        detail: None,
+                                        additional_params: None,
+                                    }));
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }

@@ -100,18 +100,10 @@ impl ToolDyn for McpTool {
     }
 
     fn definition(&self, _prompt: String) -> WasmBoxedFuture<'_, ToolDefinition> {
-        Box::pin(async move {
-            ToolDefinition {
-                name: self.definition.name.to_string(),
-                description: self
-                    .definition
-                    .description
-                    .clone()
-                    .unwrap_or(Cow::from(""))
-                    .to_string(),
-                parameters: serde_json::to_value(&self.definition.input_schema).unwrap_or_default(),
-            }
-        })
+        // Delegate to the `From` impl so the schema has exactly one
+        // conversion path (`schema_as_json_value`), keeping wire parity with
+        // every other place an rmcp tool is rendered.
+        Box::pin(async move { ToolDefinition::from(&self.definition) })
     }
 
     fn call(&self, args: String) -> WasmBoxedFuture<'_, Result<String, ToolError>> {
@@ -148,18 +140,20 @@ impl ToolDyn for McpTool {
                 }
             };
 
+            // Content is collected as ordered parts so multi-part results
+            // keep their original text/image interleaving, mapped onto the
+            // JSON shapes `ToolResultContent::from_tool_output` converts
+            // into text and image tool-result parts.
             let mut texts: Vec<String> = Vec::new();
-            let mut images: Vec<serde_json::Value> = Vec::new();
+            let mut parts: Vec<serde_json::Value> = Vec::new();
+            let mut image_count = 0usize;
 
             for item in result.content {
                 let chunk = match item.raw {
                     rmcp::model::RawContent::Text(raw) => raw.text,
                     rmcp::model::RawContent::Image(raw) => {
-                        // Emit the image JSON shape that
-                        // `ToolResultContent::from_tool_output` converts into
-                        // a real image part, so MCP images reach the model as
-                        // images rather than base64 text.
-                        images.push(serde_json::json!({
+                        image_count += 1;
+                        parts.push(serde_json::json!({
                             "type": "image",
                             "data": raw.data,
                             "mimeType": raw.mime_type,
@@ -204,29 +198,23 @@ impl ToolDyn for McpTool {
                     }
                 };
 
+                parts.push(serde_json::json!({ "type": "text", "text": chunk.clone() }));
                 texts.push(chunk);
             }
 
-            let text = texts.concat();
-            if images.is_empty() {
+            if image_count == 0 {
                 // Text-only results stay verbatim, as before.
-                return Ok(text);
+                return Ok(texts.concat());
             }
-            if text.is_empty()
-                && images.len() == 1
-                && let Some(image) = images.pop()
+            if parts.len() == 1
+                && let Some(image) = parts.pop()
             {
                 // A lone image maps to the top-level image shape.
                 return Ok(image.to_string());
             }
-            // Mixed or multi-image results map to the hybrid shape
-            // `from_tool_output` splits into text and image parts.
-            let mut hybrid = serde_json::Map::new();
-            if !text.is_empty() {
-                hybrid.insert("response".to_string(), serde_json::Value::String(text));
-            }
-            hybrid.insert("parts".to_string(), serde_json::Value::Array(images));
-            Ok(serde_json::Value::Object(hybrid).to_string())
+            // Mixed or multi-image results map to the ordered-parts shape,
+            // preserving the original content interleaving.
+            Ok(serde_json::json!({ "parts": parts }).to_string())
         })
     }
 }
@@ -440,6 +428,11 @@ mod tests {
                     Content::text("the badge is attached"),
                     Content::image("aGVsbG8=", "image/png"),
                 ])),
+                "text_image_text" => Ok(CallToolResult::success(vec![
+                    Content::text("before the image"),
+                    Content::image("aGVsbG8=", "image/png"),
+                    Content::text("after the image"),
+                ])),
                 name => Ok(CallToolResult::success(vec![Content::text(format!(
                     "called {name}"
                 ))])),
@@ -619,7 +612,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mixed_content_maps_to_hybrid_tool_output() {
+    async fn mixed_content_maps_to_ordered_parts() {
         let tool = make_tool("text_and_image", "Returns text and an image");
         let server = DynamicToolServer::new(vec![tool.clone()]);
         let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
@@ -630,14 +623,40 @@ mod tests {
 
         let json: serde_json::Value =
             serde_json::from_str(&output).expect("mixed output should be JSON");
-        assert_eq!(json["response"], "the badge is attached");
-        assert_eq!(json["parts"][0]["type"], "image");
+        assert_eq!(
+            json["parts"][0],
+            serde_json::json!({ "type": "text", "text": "the badge is attached" })
+        );
+        assert_eq!(json["parts"][1]["type"], "image");
 
         let content = crate::completion::message::ToolResultContent::from_tool_output(output);
+        assert_eq!(content.len(), 2, "mixed output should split into two parts");
+    }
+
+    #[tokio::test]
+    async fn interleaved_content_preserves_part_order() {
+        use crate::completion::message::ToolResultContent;
+
+        let tool = make_tool("text_image_text", "Returns text, image, text");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let output = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect("interleaved tool call should succeed");
+
+        let content = ToolResultContent::from_tool_output(output);
+        let kinds: Vec<&str> = content
+            .iter()
+            .map(|part| match part {
+                ToolResultContent::Text(text) => text.text.as_str(),
+                ToolResultContent::Image(_) => "<image>",
+            })
+            .collect();
         assert_eq!(
-            content.len(),
-            2,
-            "hybrid output should split into two parts"
+            kinds,
+            vec!["before the image", "<image>", "after the image"],
+            "the original text/image interleaving should be preserved"
         );
     }
 

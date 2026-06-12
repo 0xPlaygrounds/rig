@@ -189,50 +189,6 @@ impl ToolServerHandle {
         }
     }
 
-    /// Render a tool failure as text for the model: the plain root-cause
-    /// message without internal error-type wrappers, plus retry guidance.
-    pub(crate) async fn tool_failure_text(
-        &self,
-        tool_name: &str,
-        error: &ToolServerError,
-    ) -> String {
-        use crate::tool::ToolError;
-        match error {
-            ToolServerError::ToolsetError(ToolSetError::ToolNotFoundError(name)) => {
-                let mut available = {
-                    let state = self.0.read().await;
-                    state.static_tool_names.clone()
-                };
-                available.sort();
-                if available.is_empty() {
-                    format!("Unknown tool name: '{name}'. No tools available.")
-                } else {
-                    format!(
-                        "Unknown tool name: '{name}'. Available tools: {}",
-                        available.join(", ")
-                    )
-                }
-            }
-            // ToolError::JsonError is raised for argument deserialization
-            // (which the model can fix) and, rarely, output serialization.
-            ToolServerError::ToolsetError(ToolSetError::ToolCallError(ToolError::JsonError(
-                inner,
-            ))) => {
-                format!(
-                    "Invalid arguments for tool '{tool_name}': {inner}\n\nFix the errors and try again."
-                )
-            }
-            ToolServerError::ToolsetError(ToolSetError::ToolCallError(
-                ToolError::ToolCallError(inner),
-            )) => {
-                format!("Tool '{tool_name}' failed: {inner}\n\nFix the errors and try again.")
-            }
-            other => {
-                format!("Tool '{tool_name}' failed: {other}\n\nFix the errors and try again.")
-            }
-        }
-    }
-
     /// Retrieve tool definitions, optionally using a prompt to select
     /// dynamic tools from configured vector stores.
     pub async fn get_tool_defs(
@@ -321,6 +277,22 @@ impl ToolServerHandle {
             tools.push(tool.definition(String::new()).await);
         }
 
+        // One shared toolset backs both lists, so a name appearing in the
+        // dynamic AND static lists (or retrieved by two indexes) refers to
+        // the same tool. Keep the first definition and drop exact-name
+        // repeats: providers reject duplicate function declarations.
+        let mut seen = std::collections::HashSet::new();
+        tools.retain(|def| {
+            let fresh = seen.insert(def.name.clone());
+            if !fresh {
+                tracing::debug!(
+                    tool_name = %def.name,
+                    "dropping duplicate tool definition from the request"
+                );
+            }
+            fresh
+        });
+
         Ok(tools)
     }
 }
@@ -331,6 +303,48 @@ pub enum ToolServerError {
     ToolsetError(#[from] ToolSetError),
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
+}
+
+/// Render a tool failure as text for the model: the plain root-cause message
+/// without internal error-type wrappers, plus retry guidance.
+///
+/// `available_tools` should be the executable tool names advertised on the
+/// turn that produced the call, so the message names exactly what the model
+/// was offered (including dynamically retrieved tools).
+pub(crate) fn tool_failure_text(
+    tool_name: &str,
+    error: &ToolServerError,
+    available_tools: &std::collections::BTreeSet<String>,
+) -> String {
+    use crate::tool::ToolError;
+    match error {
+        ToolServerError::ToolsetError(ToolSetError::ToolNotFoundError(name)) => {
+            if available_tools.is_empty() {
+                format!("Unknown tool name: '{name}'. No tools available.")
+            } else {
+                let available: Vec<&str> = available_tools.iter().map(String::as_str).collect();
+                format!(
+                    "Unknown tool name: '{name}'. Available tools: {}",
+                    available.join(", ")
+                )
+            }
+        }
+        // ToolError::JsonError is raised for argument deserialization
+        // (which the model can fix) and, rarely, output serialization.
+        ToolServerError::ToolsetError(ToolSetError::ToolCallError(ToolError::JsonError(inner))) => {
+            format!(
+                "Invalid arguments for tool '{tool_name}': {inner}\n\nFix the errors and try again."
+            )
+        }
+        ToolServerError::ToolsetError(ToolSetError::ToolCallError(ToolError::ToolCallError(
+            inner,
+        ))) => {
+            format!("Tool '{tool_name}' failed: {inner}\n\nFix the errors and try again.")
+        }
+        other => {
+            format!("Tool '{tool_name}' failed: {other}\n\nFix the errors and try again.")
+        }
+    }
 }
 
 #[cfg(test)]
@@ -367,6 +381,10 @@ mod tests {
         assert_eq!(res.len(), 0);
     }
 
+    fn advertised(names: &[&str]) -> std::collections::BTreeSet<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
     #[tokio::test]
     pub async fn tool_failure_text_names_unknown_tools_and_lists_available() {
         let handle = ToolServer::new().tool(MockAddTool).run();
@@ -376,8 +394,12 @@ mod tests {
             .await
             .expect_err("unknown tool should fail");
         assert_eq!(
-            handle.tool_failure_text("missing", &error).await,
-            "Unknown tool name: 'missing'. Available tools: add"
+            super::tool_failure_text("missing", &error, &advertised(&["add", "subtract"])),
+            "Unknown tool name: 'missing'. Available tools: add, subtract"
+        );
+        assert_eq!(
+            super::tool_failure_text("missing", &error, &advertised(&[])),
+            "Unknown tool name: 'missing'. No tools available."
         );
     }
 
@@ -389,7 +411,7 @@ mod tests {
             .call_tool("add", r#"{"x": "not a number"}"#)
             .await
             .expect_err("bad arguments should fail");
-        let text = handle.tool_failure_text("add", &error).await;
+        let text = super::tool_failure_text("add", &error, &advertised(&["add"]));
         assert!(
             text.starts_with("Invalid arguments for tool 'add': "),
             "got {text:?}"
@@ -402,6 +424,28 @@ mod tests {
             !text.contains("JsonError"),
             "internal error-type names must not reach the model: {text:?}"
         );
+    }
+
+    #[tokio::test]
+    pub async fn get_tool_defs_dedupes_dynamic_and_static_overlap() {
+        // One shared toolset backs both lists, so a dynamically retrieved
+        // name that is also static must yield a single definition.
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .dynamic_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
+            .run();
+
+        let defs = handle
+            .get_tool_defs(Some("add two numbers".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            defs.len(),
+            1,
+            "dynamic/static name overlap must not produce duplicate declarations: {:?}",
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(defs[0].name, "add");
     }
 
     #[tokio::test]

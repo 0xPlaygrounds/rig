@@ -562,6 +562,9 @@ where
         }
 
         let current_span_id: AtomicU64 = AtomicU64::new(0);
+        // The executable tool names advertised on the most recent model
+        // turn, used to render accurate failure text for the model.
+        let mut turn_executable_tool_names = std::collections::BTreeSet::new();
 
         loop {
             match run.next_step()? {
@@ -639,6 +642,7 @@ where
                         .instrument(chat_span.clone())
                         .await?;
 
+                    turn_executable_tool_names = prepared_request.executable_tool_names.clone();
                     let mut outcome = run.model_response(ModelTurn::new(
                         resp.message_id.clone(),
                         resp.choice.clone(),
@@ -684,6 +688,7 @@ where
                             let hook1 = hook.clone();
                             let hook2 = hook.clone();
                             let tool_server_handle = tool_server_handle.clone();
+                            let turn_executable_tool_names = turn_executable_tool_names.clone();
 
                             let tool_span = info_span!(
                                 "execute_tool",
@@ -764,16 +769,18 @@ where
                                         }
                                     }
                                 }
-                                let output = match tool_server_handle
-                                    .call_tool(tool_name, &args)
-                                    .await
-                                {
-                                    Ok(res) => res,
-                                    Err(e) => {
-                                        tracing::warn!("Error while executing tool: {e}");
-                                        tool_server_handle.tool_failure_text(tool_name, &e).await
-                                    }
-                                };
+                                let output =
+                                    match tool_server_handle.call_tool(tool_name, &args).await {
+                                        Ok(res) => res,
+                                        Err(e) => {
+                                            tracing::warn!("Error while executing tool: {e}");
+                                            crate::tool::server::tool_failure_text(
+                                                tool_name,
+                                                &e,
+                                                &turn_executable_tool_names,
+                                            )
+                                        }
+                                    };
                                 if let Some(hook) = hook2
                                     && let HookAction::Terminate { reason } = hook
                                         .on_tool_result(

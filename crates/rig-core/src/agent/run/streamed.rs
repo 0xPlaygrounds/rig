@@ -969,6 +969,36 @@ mod tests {
     }
 
     #[test]
+    fn streamed_skip_relaxes_required_tool_choice() {
+        let mut run = AgentRun::new("use the tool")
+            .max_turns(2)
+            .with_tool_choice(crate::message::ToolChoice::Required);
+        run.next_step().expect("next_step");
+
+        let mut asm = assembler();
+        let invalid = expect_invalid(
+            asm.ingest(&tool_call_item("tc_1", "default_api"))
+                .expect("ingest should succeed"),
+        );
+        let partial = asm.partial_turn(None);
+
+        run.resolve_streamed_invalid_tool_call(
+            &partial,
+            &invalid,
+            InvalidToolCallHookAction::skip("not available"),
+        )
+        .expect("skip should be accepted");
+
+        // Parity with the non-streamed skip path: a synthetically answered
+        // tool call relaxes the forced mode.
+        assert_eq!(
+            run.effective_tool_choice(),
+            Some(crate::message::ToolChoice::Auto),
+            "a skipped streamed tool call should relax Required to Auto"
+        );
+    }
+
+    #[test]
     fn streamed_invalid_name_delta_repair_replays_buffered_arguments() {
         let mut run = AgentRun::new("use the tool").max_turns(2);
         run.next_step().expect("next_step");
