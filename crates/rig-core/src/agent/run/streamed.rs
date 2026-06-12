@@ -276,9 +276,9 @@ pub enum StreamedTurnEvent {
     /// when `emit_final` is set, the turn streamed text and the driver should
     /// run its stream-finish hook and forward the final item.
     Completed {
-        /// Provider-reported usage for this call, normalized to `None` when
-        /// absent or zero-valued.
-        usage: Option<Usage>,
+        /// Provider-reported usage for this call. Zero-valued usage means the
+        /// provider reported no usage metrics.
+        usage: Usage,
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).
         emit_final: bool,
@@ -468,9 +468,7 @@ impl StreamedTurnAssembler {
                     return Err(err);
                 }
 
-                let usage = final_response
-                    .token_usage()
-                    .and_then(crate::agent::prompt_request::reported_usage);
+                let usage = final_response.token_usage();
                 let emit_final = self.saw_text;
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
@@ -848,7 +846,7 @@ mod tests {
             total_tokens: 12,
             ..Usage::new()
         };
-        run.record_streamed_completion_call(Some(usage))
+        run.record_streamed_completion_call(usage)
             .expect("record should succeed");
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
@@ -870,7 +868,7 @@ mod tests {
             panic!("expected CallModel");
         };
         let asm = assembler();
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
         let final_choice = OneOrMany::one(AssistantContent::text("done"));
         run.streamed_turn(asm.finish(None, &final_choice))
@@ -882,8 +880,8 @@ mod tests {
         assert_eq!(response.output, "done");
         assert_eq!(response.usage, usage);
         assert_eq!(response.completion_calls.len(), 2);
-        assert_eq!(response.completion_calls[0].usage, Some(usage));
-        assert_eq!(response.completion_calls[1].usage, None);
+        assert_eq!(response.completion_calls[0].usage, usage);
+        assert_eq!(response.completion_calls[1].usage, Usage::new());
         // prompt, assistant tool call, tool result, final assistant text
         assert_eq!(
             response
@@ -931,7 +929,7 @@ mod tests {
         asm.resolve_pending_invalid(&resolution);
 
         // Usage from the drained stream is recorded after the rollback.
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("record after rollback should succeed");
 
         // The rollback appended the partial assistant turn and feedback.
@@ -1041,13 +1039,13 @@ mod tests {
         // even though the machine is in its initial PreparingRequest state.
         let mut run = AgentRun::new("hello");
         let err = run
-            .record_streamed_completion_call(None)
+            .record_streamed_completion_call(Usage::new())
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
 
         // The run stays drivable.
         run.next_step().expect("next_step should still succeed");
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("recording during a pending model call succeeds");
     }
 
@@ -1067,7 +1065,7 @@ mod tests {
             internal_call_id: "internal_b".to_string(),
         })
         .expect("ingest should succeed");
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
 
         let final_choice = OneOrMany::many(vec![
@@ -1103,7 +1101,7 @@ mod tests {
         // Exactly one CompletionCall per model call, even without an explicit
         // record; usage is simply unreported.
         assert_eq!(run.completion_calls().len(), 1);
-        assert_eq!(run.completion_calls()[0].usage, None);
+        assert_eq!(run.completion_calls()[0].usage, Usage::new());
     }
 
     #[test]
@@ -1111,10 +1109,10 @@ mod tests {
         let mut run = AgentRun::new("hello");
         run.next_step().expect("next_step");
 
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("first record succeeds");
         let err = run
-            .record_streamed_completion_call(None)
+            .record_streamed_completion_call(Usage::new())
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         assert_eq!(run.completion_calls().len(), 1);
@@ -1128,7 +1126,7 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&tool_call_item("tc_1", "add"))
             .expect("ingest should succeed");
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(None, &final_choice))

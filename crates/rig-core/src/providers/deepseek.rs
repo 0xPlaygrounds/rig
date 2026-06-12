@@ -152,8 +152,8 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::providers::internal::completion_usage(
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
             self.completion_tokens as u64,
             self.total_tokens as u64,
@@ -162,7 +162,7 @@ impl GetTokenUsage for Usage {
                 .and_then(|details| details.cached_tokens)
                 .map(u64::from)
                 .unwrap_or(0),
-        ))
+        )
     }
 }
 
@@ -715,7 +715,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }

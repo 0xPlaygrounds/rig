@@ -518,7 +518,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .and_then(GetTokenUsage::token_usage)
+            .map(GetTokenUsage::token_usage)
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse {
@@ -1403,7 +1403,7 @@ pub mod gemini_api_types {
     }
 
     impl GetTokenUsage for UsageMetadata {
-        fn token_usage(&self) -> Option<crate::completion::Usage> {
+        fn token_usage(&self) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
             usage.input_tokens = self.prompt_token_count as u64;
@@ -1414,7 +1414,7 @@ pub mod gemini_api_types {
                 self.tool_use_prompt_token_count.unwrap_or_default() as u64;
             usage.total_tokens = self.total_token_count as u64;
 
-            Some(usage)
+            usage
         }
     }
 

@@ -407,14 +407,14 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_tokens as u64;
         usage.total_tokens = self.total_tokens as u64;
         usage.output_tokens = usage.total_tokens - usage.input_tokens;
 
-        Some(usage)
+        usage
     }
 }
 

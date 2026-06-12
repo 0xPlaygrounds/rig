@@ -566,7 +566,7 @@ pub enum CopilotStreamingResponse {
 }
 
 impl GetTokenUsage for CopilotStreamingResponse {
-    fn token_usage(&self) -> Option<completion::Usage> {
+    fn token_usage(&self) -> completion::Usage {
         match self {
             Self::Chat(response) => response.token_usage(),
             Self::Responses(response) => response.token_usage(),

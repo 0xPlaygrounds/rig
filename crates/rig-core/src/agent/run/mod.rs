@@ -538,10 +538,7 @@ impl AgentRun {
         }
 
         self.completion_calls
-            .push(CompletionCall::from_reported_usage(
-                self.completion_call_index,
-                turn.usage,
-            ));
+            .push(CompletionCall::new(self.completion_call_index, turn.usage));
         self.completion_call_index += 1;
         self.usage += turn.usage;
 
@@ -840,10 +837,11 @@ impl AgentRun {
     /// stream is drained for usage after the rollback — so recording is
     /// decoupled from turn ingestion. Valid while a model response is pending
     /// or between a turn rollback and the next [`AgentRunStep::CallModel`];
-    /// aggregates `usage` into the run total.
+    /// aggregates `usage` into the run total. Zero-valued usage means the
+    /// provider reported no usage metrics.
     pub fn record_streamed_completion_call(
         &mut self,
-        usage: Option<Usage>,
+        usage: Usage,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -862,9 +860,7 @@ impl AgentRun {
         let call = CompletionCall::new(self.completion_call_index, usage);
         self.completion_call_index += 1;
         self.completion_calls.push(call);
-        if let Some(usage) = usage {
-            self.usage += usage;
-        }
+        self.usage += usage;
         Ok(call)
     }
 
@@ -1018,8 +1014,10 @@ impl AgentRun {
         // never learned usage (no record before the turn completed) still get
         // the call recorded, with no reported usage.
         if !self.streamed_completion_call_recorded {
-            self.completion_calls
-                .push(CompletionCall::new(self.completion_call_index, None));
+            self.completion_calls.push(CompletionCall::new(
+                self.completion_call_index,
+                Usage::new(),
+            ));
             self.completion_call_index += 1;
             self.streamed_completion_call_recorded = true;
         }
@@ -1273,8 +1271,8 @@ mod tests {
         assert_eq!(response.usage, usage(30, 12));
         assert_eq!(response.completion_calls.len(), 2);
         assert_eq!(response.completion_calls[0].call_index, 0);
-        assert_eq!(response.completion_calls[0].usage, Some(usage(10, 5)));
-        assert_eq!(response.completion_calls[1].usage, Some(usage(20, 7)));
+        assert_eq!(response.completion_calls[0].usage, usage(10, 5));
+        assert_eq!(response.completion_calls[1].usage, usage(20, 7));
         // prompt, assistant tool call, tool result, final assistant text
         assert_eq!(
             response
@@ -1539,7 +1537,7 @@ mod tests {
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(None)
+        run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
 
         let err = run
@@ -1638,6 +1636,25 @@ mod tests {
             .tool_results(vec![UserContent::text("not a tool result")])
             .expect_err("non-tool-result content must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
+    }
+
+    #[test]
+    fn agent_run_deserializes_pre_monoid_suspended_state() {
+        // Fixture captured from rig before CompletionCall.usage dropped its
+        // Option encoding, suspended at ExecutingTools with a null-usage
+        // completion call. It must deserialize and resume.
+        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"id":"call_1","call_id":null,"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","call_id":null,"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
+
+        let mut restored: AgentRun =
+            serde_json::from_str(fixture).expect("old-format suspended run should deserialize");
+        assert_eq!(restored.completion_calls()[0].usage, Usage::new());
+
+        let calls = expect_call_tools(&mut restored);
+        assert_eq!(calls.len(), 1);
+        restored
+            .tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool_results should succeed");
+        expect_call_model(&mut restored);
     }
 
     #[test]

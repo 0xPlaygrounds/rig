@@ -378,9 +378,12 @@ where
         return;
     }
 
-    let Some(usage) = usage.token_usage() else {
+    let usage = usage.token_usage();
+    if usage == crate::completion::Usage::new() {
+        // Zero-valued usage is the documented sentinel for missing provider
+        // usage metrics; leave the span fields unset.
         return;
-    };
+    }
 
     span.record("gen_ai.usage.input_tokens", usage.input_tokens);
     span.record("gen_ai.usage.output_tokens", usage.output_tokens);

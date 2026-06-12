@@ -581,7 +581,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         let input_tokens = self.prompt_eval_count.unwrap_or_default();
         let output_tokens = self.eval_count.unwrap_or_default();
@@ -589,7 +589,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.output_tokens = output_tokens;
         usage.total_tokens = input_tokens + output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 

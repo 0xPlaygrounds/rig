@@ -469,8 +469,10 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 }
 
 impl GetTokenUsage for CompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        let api_usage = self.usage.as_ref()?;
+    fn token_usage(&self) -> crate::completion::Usage {
+        let Some(api_usage) = self.usage.as_ref() else {
+            return crate::completion::Usage::new();
+        };
 
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = api_usage.prompt_tokens as u64;
@@ -478,7 +480,7 @@ impl GetTokenUsage for CompletionResponse {
         usage.total_tokens = api_usage.total_tokens as u64;
         usage.cached_input_tokens = api_usage.cached_tokens();
 
-        Some(usage)
+        usage
     }
 }
 
@@ -799,7 +801,7 @@ mod tests {
             }
         }"#;
         let response: CompletionResponse = serde_json::from_str(json).unwrap();
-        let usage = response.token_usage().unwrap();
+        let usage = response.token_usage();
         assert_eq!(usage.input_tokens, 100);
         assert_eq!(usage.output_tokens, 20);
         assert_eq!(usage.total_tokens, 120);

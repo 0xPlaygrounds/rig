@@ -290,27 +290,29 @@ where
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
     pub call_index: usize,
-    /// Token usage reported for this completion request, when the provider supplied it.
+    /// Token usage reported for this completion request.
     ///
-    /// Rig normalizes zero-valued [`Usage`] to `None` because zero-valued usage
-    /// is the existing sentinel for missing provider usage metrics.
-    #[serde(default)]
-    pub usage: Option<Usage>,
+    /// Zero-valued usage is [`Usage`]'s documented sentinel for missing
+    /// provider usage metrics; rig does not distinguish "reported all zeros"
+    /// from "unreported".
+    #[serde(default, deserialize_with = "usage_null_as_default")]
+    pub usage: Usage,
 }
 
 impl CompletionCall {
     /// Create details for one completion request in an agent run.
-    pub fn new(call_index: usize, usage: Option<Usage>) -> Self {
+    pub fn new(call_index: usize, usage: Usage) -> Self {
         Self { call_index, usage }
-    }
-
-    pub(crate) fn from_reported_usage(call_index: usize, usage: Usage) -> Self {
-        Self::new(call_index, reported_usage(usage))
     }
 }
 
-pub(crate) fn reported_usage(usage: Usage) -> Option<Usage> {
-    (usage != Usage::new()).then_some(usage)
+/// Tolerate `null` usage from data serialized before rig dropped the
+/// `Option<Usage>` encoding of missing provider usage metrics.
+fn usage_null_as_default<'de, D>(deserializer: D) -> Result<Usage, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<Usage>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -318,12 +320,12 @@ pub(crate) fn reported_usage(usage: Usage) -> Option<Usage> {
 pub struct PromptResponse {
     pub output: String,
     pub usage: Usage,
-    /// Successfully completed completion requests made by this agent run, with token usage when available.
+    /// Successfully completed completion requests made by this agent run.
     ///
-    /// `usage` remains the aggregate across the whole run. Use the last entry's
-    /// usage, when present, to inspect the final completion request's
-    /// prompt/context length.
-    /// If a provider does not report token usage, its entry contains `None`.
+    /// `usage` remains the aggregate across the whole run. Use the last
+    /// entry's usage to inspect the final completion request's prompt/context
+    /// length. Zero-valued entry usage means the provider reported no usage
+    /// metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
     pub messages: Option<Vec<Message>>,
@@ -356,11 +358,17 @@ impl PromptResponse {
         self
     }
 
-    /// Returns successfully completed completion requests made by this agent run, with token usage when available.
+    /// Returns successfully completed completion requests made by this agent run.
     ///
-    /// If a provider does not report token usage, its entry contains `None`.
+    /// Zero-valued entry usage means the provider reported no usage metrics
+    /// for that request.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
+    }
+
+    /// Number of completion requests this agent run made.
+    pub fn requests(&self) -> usize {
+        self.completion_calls.len()
     }
 }
 
@@ -369,12 +377,12 @@ impl PromptResponse {
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
-    /// Successfully completed completion requests made by this agent run, with token usage when available.
+    /// Successfully completed completion requests made by this agent run.
     ///
-    /// `usage` remains the aggregate across the whole run. Use the last entry's
-    /// usage, when present, to inspect the final completion request's
-    /// prompt/context length.
-    /// If a provider does not report token usage, its entry contains `None`.
+    /// `usage` remains the aggregate across the whole run. Use the last
+    /// entry's usage to inspect the final completion request's prompt/context
+    /// length. Zero-valued entry usage means the provider reported no usage
+    /// metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
 }
@@ -394,9 +402,10 @@ impl<T> TypedPromptResponse<T> {
         self
     }
 
-    /// Returns successfully completed completion requests made by this agent run, with token usage when available.
+    /// Returns successfully completed completion requests made by this agent run.
     ///
-    /// If a provider does not report token usage, its entry contains `None`.
+    /// Zero-valued entry usage means the provider reported no usage metrics
+    /// for that request.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -1307,18 +1316,29 @@ mod tests {
     fn prompt_response_serializes_completion_calls_with_missing_usage() {
         let reported_usage = usage(3, 4);
         let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
-            CompletionCall::new(0, None),
-            CompletionCall::new(1, Some(reported_usage)),
+            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(1, reported_usage),
         ]);
 
         let value = serde_json::to_value(&response).expect("serialize prompt response");
 
+        // Unreported usage serializes as a plain zero-valued object: zero is
+        // Usage's documented sentinel for missing provider metrics, so there
+        // is no null encoding to keep in sync.
         assert_eq!(
             value.get("completion_calls"),
             Some(&json!([
                 {
                     "call_index": 0,
-                    "usage": null,
+                    "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
                 },
                 {
                     "call_index": 1,
@@ -1340,8 +1360,26 @@ mod tests {
         assert_eq!(
             response.completion_calls(),
             &[
-                CompletionCall::new(0, None),
-                CompletionCall::new(1, Some(reported_usage))
+                CompletionCall::new(0, Usage::new()),
+                CompletionCall::new(1, reported_usage)
+            ]
+        );
+        assert_eq!(response.requests(), 2);
+    }
+
+    #[test]
+    fn prompt_response_deserializes_pre_monoid_null_usage_format() {
+        // Fixture captured from rig before CompletionCall.usage dropped its
+        // Option encoding; `"usage": null` must map to zero-valued usage.
+        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}]}"#;
+
+        let response: PromptResponse =
+            serde_json::from_str(fixture).expect("old-format response should deserialize");
+        assert_eq!(
+            response.completion_calls(),
+            &[
+                CompletionCall::new(0, Usage::new()),
+                CompletionCall::new(1, usage(3, 4))
             ]
         );
     }
@@ -1359,7 +1397,10 @@ mod tests {
 
         assert_eq!(response.output, "ok");
         assert_eq!(response.usage, Usage::new());
-        assert_eq!(response.completion_calls(), &[CompletionCall::new(0, None)]);
+        assert_eq!(
+            response.completion_calls(),
+            &[CompletionCall::new(0, Usage::new())]
+        );
     }
 
     #[tokio::test]
@@ -1392,7 +1433,7 @@ mod tests {
         assert_eq!(response.usage, call_usage);
         assert_eq!(
             response.completion_calls(),
-            &[CompletionCall::new(0, Some(call_usage))]
+            &[CompletionCall::new(0, call_usage)]
         );
     }
 
@@ -2243,8 +2284,8 @@ mod tests {
         assert_eq!(
             response.completion_calls(),
             &[
-                CompletionCall::new(0, Some(first_call_usage)),
-                CompletionCall::new(1, Some(second_call_usage))
+                CompletionCall::new(0, first_call_usage),
+                CompletionCall::new(1, second_call_usage)
             ]
         );
 

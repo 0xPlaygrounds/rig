@@ -205,7 +205,7 @@ pub struct PartialUsage {
 }
 
 impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
@@ -216,7 +216,7 @@ impl GetTokenUsage for PartialUsage {
             + usage.cached_input_tokens
             + usage.cache_creation_input_tokens
             + usage.output_tokens;
-        Some(usage)
+        usage
     }
 }
 
@@ -247,7 +247,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
         usage.output_tokens = self.usage.output_tokens as u64;
@@ -258,7 +258,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
             + usage.cache_creation_input_tokens
             + usage.output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 

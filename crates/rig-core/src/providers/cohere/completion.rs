@@ -104,7 +104,7 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         if let Some(ref billed_units) = self.billed_units {
@@ -113,7 +113,7 @@ impl GetTokenUsage for Usage {
             usage.total_tokens = usage.input_tokens + usage.output_tokens;
         }
 
-        Some(usage)
+        usage
     }
 }
 

@@ -378,13 +378,15 @@ pub struct CompletionResponse<T> {
 ///
 /// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
 pub trait GetTokenUsage {
-    /// Returns token usage when the response type carries it.
-    fn token_usage(&self) -> Option<crate::completion::Usage>;
+    /// Returns token usage for this response. Zero-valued usage is
+    /// [`Usage`]'s documented sentinel for missing provider usage metrics;
+    /// response types that carry no usage return [`Usage::new`].
+    fn token_usage(&self) -> crate::completion::Usage;
 }
 
 impl GetTokenUsage for () {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        None
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::completion::Usage::new()
     }
 }
 
@@ -392,11 +394,11 @@ impl<T> GetTokenUsage for Option<T>
 where
     T: GetTokenUsage,
 {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         if let Some(usage) = self {
             usage.token_usage()
         } else {
-            None
+            crate::completion::Usage::new()
         }
     }
 }

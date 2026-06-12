@@ -24,7 +24,7 @@ use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
-use super::{CompletionCall, ToolCallHookAction, reported_usage};
+use super::{CompletionCall, ToolCallHookAction};
 use crate::{
     agent::Agent,
     completion::{CompletionError, CompletionModel, PromptError},
@@ -128,10 +128,10 @@ impl FinalResponse {
 
     /// Returns successfully completed completion requests made by this agent stream, with usage when available.
     ///
-    /// Each entry represents one provider completion request. When present,
-    /// usage is a whole-request provider snapshot, not incremental usage per
-    /// streamed token. Streaming providers may omit usage for some calls; those
-    /// calls have an entry with `None` usage.
+    /// Each entry represents one provider completion request. Usage is a
+    /// whole-request provider snapshot, not incremental usage per streamed
+    /// token. Streaming providers may omit usage for some calls; those calls
+    /// have an entry with zero-valued usage.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -177,25 +177,21 @@ impl<R> MultiTurnStreamItem<R> {
 /// reported usage for the recovered completion call is not lost.
 async fn drain_stream_usage<R>(
     stream: &mut crate::streaming::StreamingCompletionResponse<R>,
-) -> Result<Option<crate::completion::Usage>, StreamingError>
+) -> Result<crate::completion::Usage, StreamingError>
 where
     R: Clone + Unpin + GetTokenUsage,
 {
-    let mut usage = None;
     while let Some(content) = stream.next().await {
         match content {
             Ok(StreamedAssistantContent::Final(final_resp)) => {
-                if let Some(reported) = final_resp.token_usage() {
-                    usage = reported_usage(reported);
-                }
-                return Ok(usage);
+                return Ok(final_resp.token_usage());
             }
             Ok(_) => {}
             Err(err) => return Err(err.into()),
         }
     }
 
-    Ok(usage)
+    Ok(crate::completion::Usage::new())
 }
 
 fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
@@ -682,7 +678,7 @@ where
                                     }
                                     StreamedTurnEvent::Completed { usage, emit_final } => {
                                         if !completion_call_emitted {
-                                            if let Some(usage) = usage {
+                                            if usage != crate::completion::Usage::new() {
                                                 record_usage_on_span(&chat_stream_span, usage);
                                             }
                                             let completion_call =
@@ -775,10 +771,12 @@ where
                                                         }
                                                     };
                                                 if !completion_call_emitted {
-                                                    if let Some(usage) = drained_usage {
+                                                    if drained_usage
+                                                        != crate::completion::Usage::new()
+                                                    {
                                                         record_usage_on_span(
                                                             &chat_stream_span,
-                                                            usage,
+                                                            drained_usage,
                                                         );
                                                     }
                                                     let completion_call = match run
@@ -826,7 +824,9 @@ where
 
                         if !completion_call_emitted {
                             let completion_call =
-                                match run.record_streamed_completion_call(None) {
+                                match run
+                                    .record_streamed_completion_call(crate::completion::Usage::new())
+                                {
                                     Ok(call) => call,
                                     Err(err) => {
                                         yield Err(Box::new(err).into());
@@ -1744,7 +1744,7 @@ mod tests {
     #[test]
     fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
         let item: MultiTurnStreamItem<MockResponse> =
-            MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, Some(usage(3, 4))));
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, usage(3, 4)));
 
         let value = serde_json::to_value(&item).expect("serialize completion call event");
 
@@ -1769,23 +1769,48 @@ mod tests {
             serde_json::from_value(value).expect("deserialize completion call event");
         match item {
             MultiTurnStreamItem::CompletionCall(call_usage) => {
-                assert_eq!(call_usage, CompletionCall::new(2, Some(usage(3, 4))));
+                assert_eq!(call_usage, CompletionCall::new(2, usage(3, 4)));
             }
             other => panic!("expected completion call event, got {other:?}"),
         }
 
         let item: MultiTurnStreamItem<MockResponse> =
-            MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, None));
+            MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, Usage::new()));
         let value = serde_json::to_value(&item).expect("serialize missing usage event");
 
+        // Unreported usage serializes as a plain zero-valued object (Usage's
+        // documented sentinel for missing provider metrics).
         assert_eq!(
             value,
             serde_json::json!({
                 "type": "completionCall",
                 "call_index": 3,
-                "usage": null
+                "usage": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "tool_use_prompt_tokens": 0,
+                    "reasoning_tokens": 0,
+                }
             })
         );
+
+        // Stream items serialized before the Option encoding was dropped used
+        // `"usage": null`; they must still deserialize.
+        let legacy: MultiTurnStreamItem<MockResponse> = serde_json::from_value(serde_json::json!({
+            "type": "completionCall",
+            "call_index": 3,
+            "usage": null
+        }))
+        .expect("legacy null-usage event should deserialize");
+        match legacy {
+            MultiTurnStreamItem::CompletionCall(call) => {
+                assert_eq!(call, CompletionCall::new(3, Usage::new()));
+            }
+            other => panic!("expected completion call event, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1795,8 +1820,8 @@ mod tests {
                 OneOrMany::one(AssistantContent::text("done")),
                 usage(3, 4),
                 vec![
-                    CompletionCall::new(0, None),
-                    CompletionCall::new(1, Some(usage(3, 4))),
+                    CompletionCall::new(0, Usage::new()),
+                    CompletionCall::new(1, usage(3, 4)),
                 ],
                 None,
             );
@@ -1808,7 +1833,15 @@ mod tests {
             Some(&serde_json::json!([
                 {
                     "call_index": 0,
-                    "usage": null,
+                    "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
                 },
                 {
                     "call_index": 1,
@@ -2592,8 +2625,8 @@ mod tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, Some(first_usage)),
-            CompletionCall::new(1, Some(second_usage)),
+            CompletionCall::new(0, first_usage),
+            CompletionCall::new(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -2992,8 +3025,8 @@ mod tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, Some(first_usage)),
-            CompletionCall::new(1, Some(second_usage)),
+            CompletionCall::new(0, first_usage),
+            CompletionCall::new(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -4526,8 +4559,8 @@ mod tests {
         assert_eq!(
             completion_calls_events,
             vec![
-                CompletionCall::new(0, Some(first_call_usage)),
-                CompletionCall::new(1, Some(second_call_usage))
+                CompletionCall::new(0, first_call_usage),
+                CompletionCall::new(1, second_call_usage)
             ]
         );
 
@@ -4547,8 +4580,8 @@ mod tests {
         assert_eq!(
             final_response.completion_calls(),
             &[
-                CompletionCall::new(0, Some(first_call_usage)),
-                CompletionCall::new(1, Some(second_call_usage))
+                CompletionCall::new(0, first_call_usage),
+                CompletionCall::new(1, second_call_usage)
             ]
         );
     }
@@ -4627,10 +4660,7 @@ mod tests {
             }
         }
 
-        assert_eq!(
-            completion_calls,
-            vec![CompletionCall::new(0, Some(call_usage))]
-        );
+        assert_eq!(completion_calls, vec![CompletionCall::new(0, call_usage)]);
         assert!(saw_error);
     }
 
@@ -4677,8 +4707,8 @@ mod tests {
         }
 
         let expected_usage = vec![
-            CompletionCall::new(0, None),
-            CompletionCall::new(1, Some(second_call_usage)),
+            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(1, second_call_usage),
         ];
         assert_eq!(completion_calls_events, expected_usage);
 

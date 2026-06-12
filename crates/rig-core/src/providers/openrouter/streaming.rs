@@ -21,7 +21,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }
@@ -100,13 +100,13 @@ pub struct PromptTokensDetails {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let (cached_input, cache_creation) = self
             .prompt_tokens_details
             .as_ref()
             .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
             .unwrap_or((0, 0));
-        Some(crate::completion::Usage {
+        crate::completion::Usage {
             input_tokens: self.prompt_tokens as u64,
             output_tokens: self.completion_tokens as u64,
             total_tokens: self.total_tokens as u64,
@@ -114,7 +114,7 @@ impl GetTokenUsage for Usage {
             cache_creation_input_tokens: cache_creation,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
-        })
+        }
     }
 }
 
@@ -424,7 +424,7 @@ mod tests {
 
         let chunk: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
         let usage = chunk.usage.unwrap();
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
 
         assert_eq!(token_usage.input_tokens, 500);
         assert_eq!(token_usage.output_tokens, 20);
@@ -451,7 +451,7 @@ mod tests {
 
         let chunk: StreamingCompletionChunk = serde_json::from_value(json).unwrap();
         let usage = chunk.usage.unwrap();
-        let token_usage = usage.token_usage().unwrap();
+        let token_usage = usage.token_usage();
 
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.cache_creation_input_tokens, 0);

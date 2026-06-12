@@ -1111,8 +1111,8 @@ impl fmt::Display for Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::providers::internal::completion_usage(
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
             (self.total_tokens - self.prompt_tokens) as u64,
             self.total_tokens as u64,
@@ -1120,7 +1120,7 @@ impl GetTokenUsage for Usage {
                 .as_ref()
                 .map(|d| d.cached_tokens as u64)
                 .unwrap_or(0),
-        ))
+        )
     }
 }
 
