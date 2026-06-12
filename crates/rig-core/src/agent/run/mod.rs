@@ -16,7 +16,9 @@
 //! Because the machine never awaits anything, it is runtime-agnostic and the
 //! whole run state is `Serialize + Deserialize`: a driver can serialize a run
 //! between steps (for example while tool calls are pending), persist it, and
-//! resume it later in another process.
+//! resume it later in another process. Note that serialized run state embeds
+//! the full conversation accumulated so far — persisting it inherits whatever
+//! sensitivity the conversation content has.
 //!
 //! [`crate::completion::Prompt::prompt`] on [`crate::agent::Agent`] drives
 //! this machine internally; the same machine can be driven by hand for custom
@@ -238,6 +240,10 @@ pub struct AgentRun {
     completion_calls: Vec<CompletionCall>,
     completion_call_index: usize,
     invalid_tool_call_retries: usize,
+    /// Set while a streamed turn rollback awaits its completion-call record;
+    /// see [`AgentRun::record_streamed_completion_call`].
+    #[serde(default)]
+    rollback_pending: bool,
     state: RunState,
 }
 
@@ -256,6 +262,7 @@ impl AgentRun {
             completion_calls: Vec::new(),
             completion_call_index: 0,
             invalid_tool_call_retries: 0,
+            rollback_pending: false,
             state: RunState::PreparingRequest,
         }
     }
@@ -317,6 +324,17 @@ impl AgentRun {
     /// Whether the run reached [`AgentRunStep::Done`].
     pub fn is_done(&self) -> bool {
         matches!(self.state, RunState::Done(_))
+    }
+
+    /// The final response once the run is done, without cloning it.
+    /// [`AgentRun::next_step`] in the done state returns an owned clone
+    /// (including the full accumulated message history); prefer this when
+    /// only inspecting the result.
+    pub fn response(&self) -> Option<&PromptResponse> {
+        match &self.state {
+            RunState::Done(response) => Some(response),
+            _ => None,
+        }
     }
 
     /// Build the cancellation error a driver should return when one of its
@@ -387,6 +405,7 @@ impl AgentRun {
                 let history =
                     build_history_for_request(self.chat_history.as_deref(), history_for_turn);
                 self.current_turn += 1;
+                self.rollback_pending = false;
                 self.state = RunState::AwaitingModel;
                 Ok(AgentRunStep::CallModel {
                     prompt,
@@ -743,15 +762,15 @@ impl AgentRun {
     /// including for turns abandoned by invalid tool-call recovery, where the
     /// stream is drained for usage after the rollback — so recording is
     /// decoupled from turn ingestion. Valid while a model response is pending
-    /// or right after a turn rollback; aggregates `usage` into the run total.
+    /// or between a turn rollback and the next [`AgentRunStep::CallModel`];
+    /// aggregates `usage` into the run total.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Option<Usage>,
     ) -> Result<CompletionCall, PromptError> {
-        if !matches!(
-            self.state,
-            RunState::AwaitingModel | RunState::PreparingRequest
-        ) {
+        let recordable = matches!(self.state, RunState::AwaitingModel)
+            || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
+        if !recordable {
             return Err(self.protocol_violation(
                 "record_streamed_completion_call called without a pending or rolled-back CallModel step",
             ));
@@ -845,6 +864,7 @@ impl AgentRun {
                 };
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
+                self.rollback_pending = true;
                 self.state = RunState::PreparingRequest;
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: None,
@@ -889,6 +909,7 @@ impl AgentRun {
                 };
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
+                self.rollback_pending = true;
                 self.state = RunState::PreparingRequest;
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: Some(skipped_tool_result),

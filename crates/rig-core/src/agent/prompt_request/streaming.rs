@@ -20,11 +20,7 @@ use crate::{
 };
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, VecDeque},
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing::info_span;
 use tracing_futures::Instrument;
 
@@ -525,7 +521,7 @@ where
             let mut last_final_choice: OneOrMany<AssistantContent> =
                 OneOrMany::one(AssistantContent::text(""));
             let mut last_message_id: Option<String> = None;
-            let mut internal_call_ids: BTreeMap<String, String> = BTreeMap::new();
+            let mut internal_call_ids: Vec<(String, String)> = Vec::new();
 
             'outer: loop {
                 let step = match run.next_step() {
@@ -620,10 +616,15 @@ where
                                         break 'outer;
                                     }
                                 };
+                            // At most one event per ingested item forwards the
+                            // item itself; moving it out of the slot avoids a
+                            // clone per streamed delta.
+                            let mut item_slot = Some(item);
                             while let Some(event) = events.pop_front() {
                                 match event {
                                     StreamedTurnEvent::EmitIngested => {
-                                        if let StreamedAssistantContent::Text(text) = &item
+                                        if let Some(StreamedAssistantContent::Text(text)) =
+                                            item_slot.as_ref()
                                             && let Some(ref hook) = self.hook
                                             && let HookAction::Terminate { reason } = hook
                                                 .on_text_delta(
@@ -637,7 +638,9 @@ where
                                             )));
                                             break 'outer;
                                         }
-                                        yield Ok(MultiTurnStreamItem::stream_item(item.clone()));
+                                        if let Some(item) = item_slot.take() {
+                                            yield Ok(MultiTurnStreamItem::stream_item(item));
+                                        }
                                     }
                                     StreamedTurnEvent::EmitToolCallDelta {
                                         id,
@@ -698,8 +701,9 @@ where
                                         }
 
                                         if emit_final
-                                            && let StreamedAssistantContent::Final(final_resp) =
-                                                &item
+                                            && let Some(StreamedAssistantContent::Final(
+                                                final_resp,
+                                            )) = item_slot.as_ref()
                                         {
                                             if let Some(ref hook) = self.hook
                                                 && let HookAction::Terminate { reason } = hook
@@ -714,9 +718,9 @@ where
                                                 )));
                                                 break 'outer;
                                             }
-                                            yield Ok(MultiTurnStreamItem::stream_item(
-                                                item.clone(),
-                                            ));
+                                            if let Some(item) = item_slot.take() {
+                                                yield Ok(MultiTurnStreamItem::stream_item(item));
+                                            }
                                         }
                                     }
                                     StreamedTurnEvent::InvalidToolCall(invalid) => {
@@ -864,9 +868,13 @@ where
                                 results.push(result);
                                 continue;
                             }
+                            // Consume pairs positionally so calls stay
+                            // distinguishable even if a provider reuses a tool
+                            // call ID within one turn.
                             let internal_call_id = internal_call_ids
-                                .get(&tool_call.id)
-                                .cloned()
+                                .iter()
+                                .position(|(id, _)| *id == tool_call.id)
+                                .map(|index| internal_call_ids.remove(index).1)
                                 .unwrap_or_else(|| nanoid::nanoid!());
 
                             let tool_span = info_span!(

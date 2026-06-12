@@ -33,7 +33,7 @@
 //! internally; hand-driven runs can use it to stream any
 //! [`AgentRun`](super::AgentRun).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -562,9 +562,12 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// Internal call IDs for this turn's validated tool calls, keyed by tool
-    /// call ID. Drivers use these to correlate tool execution stream items.
-    pub fn internal_call_ids(&self) -> BTreeMap<String, String> {
+    /// `(tool_call_id, internal_call_id)` pairs for this turn's validated
+    /// tool calls, in emission order. Drivers use these to correlate tool
+    /// execution stream items; pairs are returned positionally (not as a
+    /// map) so calls remain distinguishable even if a provider reuses a tool
+    /// call ID within one turn.
+    pub fn internal_call_ids(&self) -> Vec<(String, String)> {
         self.pending_tool_calls
             .iter()
             .map(|(tool_call, internal_call_id)| (tool_call.id.clone(), internal_call_id.clone()))
@@ -849,8 +852,8 @@ mod tests {
         run.record_streamed_completion_call(Some(usage))
             .expect("record should succeed");
         assert_eq!(
-            asm.internal_call_ids().get("tc_1").map(String::as_str),
-            Some("internal_tc_1")
+            asm.internal_call_ids(),
+            vec![("tc_1".to_string(), "internal_tc_1".to_string())]
         );
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
@@ -1033,6 +1036,45 @@ mod tests {
             err,
             PromptError::UnknownToolCall { tool_name, .. } if tool_name == "unknown"
         ));
+    }
+
+    #[test]
+    fn streamed_completion_call_record_requires_a_model_call() {
+        // A fresh run has emitted no CallModel: recording must be rejected
+        // even though the machine is in its initial PreparingRequest state.
+        let mut run = AgentRun::new("hello");
+        let err = run
+            .record_streamed_completion_call(None)
+            .expect_err("recording before any model call must be rejected");
+        assert!(matches!(err, PromptError::PromptCancelled { .. }));
+
+        // The run stays drivable.
+        run.next_step().expect("next_step should still succeed");
+        run.record_streamed_completion_call(None)
+            .expect("recording during a pending model call succeeds");
+    }
+
+    #[test]
+    fn internal_call_ids_keep_duplicate_tool_call_ids_distinguishable() {
+        let mut asm = assembler();
+        asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
+            tool_call: tool_call("tc_1", "add"),
+            internal_call_id: "internal_a".to_string(),
+        })
+        .expect("ingest should succeed");
+        asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
+            tool_call: tool_call("tc_1", "add"),
+            internal_call_id: "internal_b".to_string(),
+        })
+        .expect("ingest should succeed");
+
+        assert_eq!(
+            asm.internal_call_ids(),
+            vec![
+                ("tc_1".to_string(), "internal_a".to_string()),
+                ("tc_1".to_string(), "internal_b".to_string()),
+            ]
+        );
     }
 
     #[test]
