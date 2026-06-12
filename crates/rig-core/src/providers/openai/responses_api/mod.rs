@@ -2605,6 +2605,62 @@ mod tests {
     }
 
     #[test]
+    fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
+        let assistant = completion::Message::Assistant {
+            id: Some("msg_123".to_string()),
+            content: OneOrMany::many(vec![
+                message::AssistantContent::Reasoning(message::Reasoning {
+                    id: Some("rs_123".to_string()),
+                    content: vec![message::ReasoningContent::Summary(
+                        "structured summary".to_string(),
+                    )],
+                }),
+                message::AssistantContent::Text(Text::new("final answer")),
+                message::AssistantContent::tool_call_with_call_id(
+                    "fc_123",
+                    "call_123".to_string(),
+                    "lookup",
+                    json!({"query": "rig"}),
+                ),
+            ])
+            .expect("assistant content should be non-empty"),
+        };
+
+        let converted =
+            Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+
+        assert_eq!(converted.len(), 3);
+        assert!(converted[0].role.is_none());
+        assert!(matches!(
+            &converted[0].input,
+            InputContent::Reasoning(OpenAIReasoning { id, .. }) if id == "rs_123"
+        ));
+
+        assert!(matches!(converted[1].role, Some(Role::Assistant)));
+        let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[1].input
+        else {
+            panic!("expected assistant output message");
+        };
+        assert_eq!(id, "msg_123");
+        assert!(matches!(
+            content.first_ref(),
+            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))
+                if text == "final answer"
+        ));
+
+        assert!(converted[2].role.is_none());
+        let InputContent::FunctionCall(OutputFunctionCall {
+            id, call_id, name, ..
+        }) = &converted[2].input
+        else {
+            panic!("expected function call input item");
+        };
+        assert_eq!(id, "fc_123");
+        assert_eq!(call_id, "call_123");
+        assert_eq!(name, "lookup");
+    }
+
+    #[test]
     fn mocked_second_turn_request_omits_unreplayable_reasoning() {
         let request = crate::completion::CompletionRequest {
             model: None,
