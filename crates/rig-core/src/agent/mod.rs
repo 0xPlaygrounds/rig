@@ -107,6 +107,7 @@
 mod builder;
 mod completion;
 pub(crate) mod prompt_request;
+pub mod run;
 mod tool;
 
 pub use crate::message::Text;
@@ -122,3 +123,4 @@ pub use prompt_request::streaming::{
 pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
+pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall};

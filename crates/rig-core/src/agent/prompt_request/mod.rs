@@ -4,6 +4,7 @@ pub mod streaming;
 use super::{
     Agent,
     completion::{DynamicContextStore, build_prepared_completion_request},
+    run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall},
 };
 use crate::{
     OneOrMany,
@@ -15,12 +16,9 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 use futures::{StreamExt, stream};
-use hooks::{
-    HookAction, InvalidToolCallContext, InvalidToolCallHookAction, PromptHook, ToolCallHookAction,
-};
+use hooks::{HookAction, InvalidToolCallHookAction, PromptHook, ToolCallHookAction};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
     future::IntoFuture,
     marker::PhantomData,
     sync::{
@@ -410,7 +408,7 @@ pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
 /// Combine input history with new messages for building completion requests.
-fn build_history_for_request(
+pub(crate) fn build_history_for_request(
     chat_history: Option<&[Message]>,
     new_messages: &[Message],
 ) -> Vec<Message> {
@@ -419,7 +417,7 @@ fn build_history_for_request(
 }
 
 /// Build the full history for error reporting (input + new messages).
-fn build_full_history(
+pub(crate) fn build_full_history(
     chat_history: Option<&[Message]>,
     new_messages: Vec<Message>,
 ) -> Vec<Message> {
@@ -427,7 +425,7 @@ fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
-fn tool_result_user_content(
+pub(crate) fn tool_result_user_content(
     id: String,
     call_id: Option<String>,
     tool_result: String,
@@ -439,7 +437,7 @@ fn tool_result_user_content(
     }
 }
 
-fn invalid_tool_retry_user_message(
+pub(crate) fn invalid_tool_retry_user_message(
     assistant_content: &OneOrMany<AssistantContent>,
     invalid_tool_call_id: &str,
     feedback: String,
@@ -468,97 +466,7 @@ fn invalid_tool_retry_user_message(
     })
 }
 
-pub(crate) fn validate_tool_call_name(
-    tool_name: &str,
-    executable_tool_names: &BTreeSet<String>,
-    allowed_tool_names: &BTreeSet<String>,
-    chat_history: Vec<Message>,
-) -> Result<(), PromptError> {
-    if allowed_tool_names.contains(tool_name) {
-        return Ok(());
-    }
-
-    Err(PromptError::UnknownToolCall {
-        tool_name: tool_name.to_owned(),
-        available_tools: executable_tool_names.iter().cloned().collect(),
-        allowed_tools: allowed_tool_names.iter().cloned().collect(),
-        chat_history: Box::new(chat_history),
-    })
-}
-
-enum InvalidToolCallResolution {
-    Fail(PromptError),
-    Retry(String),
-    Repair(String),
-    Skip(String),
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn resolve_invalid_tool_call<M, P>(
-    hook: Option<&P>,
-    tool_name: &str,
-    tool_call_id: Option<String>,
-    internal_call_id: Option<String>,
-    args: Option<String>,
-    executable_tool_names: &BTreeSet<String>,
-    allowed_tool_names: &BTreeSet<String>,
-    tool_choice: Option<&ToolChoice>,
-    chat_history: Vec<Message>,
-    is_streaming: bool,
-) -> InvalidToolCallResolution
-where
-    M: CompletionModel,
-    P: PromptHook<M>,
-{
-    let err = PromptError::UnknownToolCall {
-        tool_name: tool_name.to_owned(),
-        available_tools: executable_tool_names.iter().cloned().collect(),
-        allowed_tools: allowed_tool_names.iter().cloned().collect(),
-        chat_history: Box::new(chat_history.clone()),
-    };
-
-    let Some(hook) = hook else {
-        return InvalidToolCallResolution::Fail(err);
-    };
-
-    let context = InvalidToolCallContext {
-        tool_name: tool_name.to_owned(),
-        tool_call_id,
-        internal_call_id,
-        args,
-        available_tools: executable_tool_names.iter().cloned().collect(),
-        allowed_tools: allowed_tool_names.iter().cloned().collect(),
-        tool_choice: tool_choice.cloned(),
-        chat_history,
-        is_streaming,
-    };
-
-    match hook.on_invalid_tool_call(&context).await {
-        InvalidToolCallHookAction::Fail => InvalidToolCallResolution::Fail(err),
-        InvalidToolCallHookAction::Retry { feedback } => InvalidToolCallResolution::Retry(feedback),
-        InvalidToolCallHookAction::Repair { tool_name } => {
-            if allowed_tool_names.contains(&tool_name) {
-                InvalidToolCallResolution::Repair(tool_name)
-            } else {
-                InvalidToolCallResolution::Fail(PromptError::UnknownToolCall {
-                    tool_name,
-                    available_tools: executable_tool_names.iter().cloned().collect(),
-                    allowed_tools: allowed_tool_names.iter().cloned().collect(),
-                    chat_history: Box::new(context.chat_history),
-                })
-            }
-        }
-        InvalidToolCallHookAction::Skip { reason } => {
-            if matches!(tool_choice, Some(ToolChoice::None)) {
-                InvalidToolCallResolution::Fail(err)
-            } else {
-                InvalidToolCallResolution::Skip(reason)
-            }
-        }
-    }
-}
-
-fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
+pub(crate) fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
     choice.len() == 1
         && matches!(
             choice.first(),
@@ -566,7 +474,7 @@ fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
         )
 }
 
-fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
+pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -624,469 +532,307 @@ where
                 _ => (None, None),
             },
         };
-        let mut new_messages: Vec<Message> = vec![self.prompt.clone()];
 
-        let mut current_max_turns = 0;
-        let mut usage = Usage::new();
-        let mut completion_calls = Vec::new();
-        let mut completion_call_index = 0;
-        let mut invalid_tool_call_retries = 0;
+        let mut run = AgentRun::new(self.prompt.clone())
+            .max_turns(self.max_turns)
+            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries);
+        if let Some(history) = chat_history {
+            run = run.with_history(history);
+        }
+        if let Some(tool_choice) = self.tool_choice.clone() {
+            run = run.with_tool_choice(tool_choice);
+        }
+
         let current_span_id: AtomicU64 = AtomicU64::new(0);
 
-        // We need to do at least 2 loops for 1 roundtrip (user expects normal message)
-        let last_prompt = 'prompt_loop: loop {
-            // Get the last message (the current prompt)
-            let Some((prompt_ref, history_for_current_turn)) = new_messages.split_last() else {
-                return Err(PromptError::prompt_cancelled(
-                    build_full_history(chat_history.as_deref(), new_messages),
-                    "prompt loop lost its pending prompt",
-                ));
-            };
-            let prompt = prompt_ref.clone();
-
-            if current_max_turns > self.max_turns + 1 {
-                break prompt;
-            }
-
-            current_max_turns += 1;
-
-            if self.max_turns > 1 {
-                tracing::info!(
-                    "Current conversation depth: {}/{}",
-                    current_max_turns,
-                    self.max_turns
-                );
-            }
-
-            // Build history for hook callback (input + new messages except last)
-            let history_for_hook =
-                build_history_for_request(chat_history.as_deref(), history_for_current_turn);
-
-            if let Some(ref hook) = self.hook
-                && let HookAction::Terminate { reason } =
-                    hook.on_completion_call(&prompt, &history_for_hook).await
-            {
-                return Err(PromptError::prompt_cancelled(
-                    build_full_history(chat_history.as_deref(), new_messages),
-                    reason,
-                ));
-            }
-
-            let span = tracing::Span::current();
-            let chat_span = info_span!(
-                target: "rig::agent_chat",
-                parent: &span,
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                gen_ai.system_instructions = self.preamble,
-                gen_ai.provider.name = tracing::field::Empty,
-                gen_ai.request.model = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
-                gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
-                gen_ai.usage.reasoning_tokens = tracing::field::Empty,
-                gen_ai.input.messages = tracing::field::Empty,
-                gen_ai.output.messages = tracing::field::Empty,
-            );
-
-            let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
-                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                chat_span.follows_from(id).to_owned()
-            } else {
-                chat_span
-            };
-
-            if let Some(id) = chat_span.id() {
-                current_span_id.store(id.into_u64(), Ordering::SeqCst);
-            };
-
-            // Build history for completion request (input + new messages except last)
-            let history_for_request =
-                build_history_for_request(chat_history.as_deref(), history_for_current_turn);
-
-            let prepared_request = build_prepared_completion_request(
-                &self.model,
-                prompt.clone(),
-                &history_for_request,
-                self.preamble.as_deref(),
-                &self.static_context,
-                self.temperature,
-                self.max_tokens,
-                self.additional_params.as_ref(),
-                self.tool_choice.as_ref(),
-                &self.tool_server_handle,
-                &self.dynamic_context,
-                self.output_schema.as_ref(),
-            )
-            .await?;
-            let executable_tool_names = prepared_request.executable_tool_names.clone();
-            let allowed_tool_names = prepared_request.allowed_tool_names.clone();
-
-            let resp = prepared_request
-                .builder
-                .send()
-                .instrument(chat_span.clone())
-                .await?;
-
-            completion_calls.push(CompletionCall::from_reported_usage(
-                completion_call_index,
-                resp.usage,
-            ));
-            completion_call_index += 1;
-            usage += resp.usage;
-
-            let mut response_choice = resp.choice.clone();
-            let has_tool_calls = response_choice
-                .iter()
-                .any(|choice| matches!(choice, AssistantContent::ToolCall(_)));
-
-            // Some providers normalize textless terminal turns into a single empty text item
-            // because the generic completion response cannot represent an empty choice. Treat
-            // that sentinel as "no assistant output" so it does not pollute returned history.
-            let mut skipped_tool_results = BTreeMap::new();
-            let mut invalid_tool_call_recovered = false;
-            let mut invalid_tool_call_skipped = false;
-            if has_tool_calls {
-                for choice in response_choice.iter_mut() {
-                    let AssistantContent::ToolCall(tool_call) = choice else {
-                        continue;
-                    };
-
-                    if allowed_tool_names.contains(&tool_call.function.name) {
-                        continue;
+        loop {
+            match run.next_step()? {
+                AgentRunStep::CallModel {
+                    prompt,
+                    history,
+                    turn,
+                } => {
+                    if self.max_turns > 1 {
+                        tracing::info!("Current conversation depth: {}/{}", turn, self.max_turns);
                     }
 
-                    let mut diagnostic_messages = new_messages.clone();
-                    diagnostic_messages.push(Message::Assistant {
-                        id: resp.message_id.clone(),
-                        content: resp.choice.clone(),
-                    });
-                    let diagnostic_history =
-                        build_full_history(chat_history.as_deref(), diagnostic_messages);
-                    let args = json_utils::value_to_json_string(&tool_call.function.arguments);
-                    let emitted_tool_name = tool_call.function.name.clone();
-
-                    match resolve_invalid_tool_call::<M, P>(
-                        self.hook.as_ref(),
-                        &emitted_tool_name,
-                        Some(tool_call.id.clone()),
-                        None,
-                        Some(args),
-                        &executable_tool_names,
-                        &allowed_tool_names,
-                        self.tool_choice.as_ref(),
-                        diagnostic_history.clone(),
-                        false,
-                    )
-                    .await
+                    if let Some(ref hook) = self.hook
+                        && let HookAction::Terminate { reason } =
+                            hook.on_completion_call(&prompt, &history).await
                     {
-                        InvalidToolCallResolution::Fail(err) => return Err(err),
-                        InvalidToolCallResolution::Retry(feedback) => {
-                            if invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                                return Err(PromptError::UnknownToolCall {
-                                    tool_name: emitted_tool_name,
-                                    available_tools: executable_tool_names
-                                        .iter()
-                                        .cloned()
-                                        .collect(),
-                                    allowed_tools: allowed_tool_names.iter().cloned().collect(),
-                                    chat_history: Box::new(diagnostic_history.clone()),
-                                });
-                            }
-
-                            invalid_tool_call_retries += 1;
-                            new_messages.push(Message::Assistant {
-                                id: resp.message_id.clone(),
-                                content: resp.choice.clone(),
-                            });
-                            let Some(user_message) = invalid_tool_retry_user_message(
-                                &resp.choice,
-                                &tool_call.id,
-                                feedback,
-                            ) else {
-                                return Err(PromptError::prompt_cancelled(
-                                    diagnostic_history,
-                                    "invalid tool call retry produced no retry messages",
-                                ));
-                            };
-                            new_messages.push(user_message);
-                            continue 'prompt_loop;
-                        }
-                        InvalidToolCallResolution::Repair(repaired_name) => {
-                            tool_call.function.name = repaired_name;
-                            invalid_tool_call_recovered = true;
-                        }
-                        InvalidToolCallResolution::Skip(reason) => {
-                            let user_content = if let Some(call_id) = tool_call.call_id.clone() {
-                                UserContent::tool_result_with_call_id(
-                                    tool_call.id.clone(),
-                                    call_id,
-                                    OneOrMany::one(reason.into()),
-                                )
-                            } else {
-                                UserContent::tool_result(
-                                    tool_call.id.clone(),
-                                    OneOrMany::one(reason.into()),
-                                )
-                            };
-                            skipped_tool_results.insert(tool_call.id.clone(), user_content);
-                            invalid_tool_call_recovered = true;
-                            invalid_tool_call_skipped = true;
-                        }
+                        return Err(run.cancel_error(reason));
                     }
-                }
-            }
 
-            if invalid_tool_call_skipped {
-                for choice in response_choice.iter() {
-                    let AssistantContent::ToolCall(tool_call) = choice else {
-                        continue;
-                    };
-
-                    skipped_tool_results
-                        .entry(tool_call.id.clone())
-                        .or_insert_with(|| {
-                            tool_result_user_content(
-                                tool_call.id.clone(),
-                                tool_call.call_id.clone(),
-                                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                            )
-                        });
-                }
-            }
-
-            let assistant_response_message =
-                (!is_empty_assistant_turn(&response_choice)).then(|| Message::Assistant {
-                    id: resp.message_id.clone(),
-                    content: response_choice.clone(),
-                });
-
-            if !invalid_tool_call_recovered
-                && let Some(ref hook) = self.hook
-                && let HookAction::Terminate { reason } =
-                    hook.on_completion_response(&prompt, &resp).await
-            {
-                return Err(PromptError::prompt_cancelled(
-                    build_full_history(chat_history.as_deref(), new_messages),
-                    reason,
-                ));
-            }
-
-            if let Some(message) = assistant_response_message {
-                new_messages.push(message);
-            }
-
-            if !has_tool_calls {
-                let merged_texts = assistant_text_from_choice(&response_choice);
-
-                if self.max_turns > 1 {
-                    tracing::info!("Depth reached: {}/{}", current_max_turns, self.max_turns);
-                }
-
-                agent_span.record("gen_ai.completion", &merged_texts);
-                agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                agent_span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    usage.cached_input_tokens,
-                );
-                agent_span.record(
-                    "gen_ai.usage.cache_creation.input_tokens",
-                    usage.cache_creation_input_tokens,
-                );
-                agent_span.record(
-                    "gen_ai.usage.tool_use_prompt_tokens",
-                    usage.tool_use_prompt_tokens,
-                );
-                agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
-
-                if let Some((memory, id)) = memory_handle.as_ref()
-                    && let Err(err) = memory.append(id, new_messages.clone()).await
-                {
-                    tracing::warn!(
-                        error = %err,
-                        conversation_id = %id,
-                        "conversation memory append failed; returning model response anyway"
-                    );
-                }
-
-                return Ok(PromptResponse::new(merged_texts, usage)
-                    .with_messages(new_messages)
-                    .with_completion_calls(completion_calls));
-            }
-
-            let hook = self.hook.clone();
-            let tool_server_handle = self.tool_server_handle.clone();
-            let skipped_tool_results = Arc::new(skipped_tool_results);
-
-            // For error handling in concurrent tool execution, we need to build full history
-            let full_history_for_errors =
-                build_full_history(chat_history.as_deref(), new_messages.clone());
-
-            let tool_calls: Vec<AssistantContent> = response_choice
-                .iter()
-                .filter(|choice| matches!(choice, AssistantContent::ToolCall(_)))
-                .cloned()
-                .collect();
-            let tool_content = stream::iter(tool_calls)
-                .map(|choice| {
-                    let hook1 = hook.clone();
-                    let hook2 = hook.clone();
-                    let tool_server_handle = tool_server_handle.clone();
-                    let skipped_tool_results = skipped_tool_results.clone();
-
-                    let tool_span = info_span!(
-                        "execute_tool",
-                        gen_ai.operation.name = "execute_tool",
-                        gen_ai.tool.type = "function",
-                        gen_ai.tool.name = tracing::field::Empty,
-                        gen_ai.tool.call.id = tracing::field::Empty,
-                        gen_ai.tool.call.arguments = tracing::field::Empty,
-                        gen_ai.tool.call.result = tracing::field::Empty
+                    let span = tracing::Span::current();
+                    let chat_span = info_span!(
+                        target: "rig::agent_chat",
+                        parent: &span,
+                        "chat",
+                        gen_ai.operation.name = "chat",
+                        gen_ai.agent.name = agent_name_for_span.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                        gen_ai.system_instructions = self.preamble,
+                        gen_ai.provider.name = tracing::field::Empty,
+                        gen_ai.request.model = tracing::field::Empty,
+                        gen_ai.response.id = tracing::field::Empty,
+                        gen_ai.response.model = tracing::field::Empty,
+                        gen_ai.usage.output_tokens = tracing::field::Empty,
+                        gen_ai.usage.input_tokens = tracing::field::Empty,
+                        gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
+                        gen_ai.usage.cache_creation.input_tokens = tracing::field::Empty,
+                        gen_ai.usage.tool_use_prompt_tokens = tracing::field::Empty,
+                        gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+                        gen_ai.input.messages = tracing::field::Empty,
+                        gen_ai.output.messages = tracing::field::Empty,
                     );
 
-                    let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                    let chat_span = if current_span_id.load(Ordering::SeqCst) != 0 {
                         let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
-                        tool_span.follows_from(id).to_owned()
+                        chat_span.follows_from(id).to_owned()
                     } else {
-                        tool_span
+                        chat_span
                     };
 
-                    if let Some(id) = tool_span.id() {
+                    if let Some(id) = chat_span.id() {
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
-                    // Clone full history for error reporting in concurrent tool execution
-                    let cloned_history_for_error = full_history_for_errors.clone();
+                    let prepared_request = build_prepared_completion_request(
+                        &self.model,
+                        prompt.clone(),
+                        &history,
+                        self.preamble.as_deref(),
+                        &self.static_context,
+                        self.temperature,
+                        self.max_tokens,
+                        self.additional_params.as_ref(),
+                        self.tool_choice.as_ref(),
+                        &self.tool_server_handle,
+                        &self.dynamic_context,
+                        self.output_schema.as_ref(),
+                    )
+                    .await?;
 
-                    async move {
-                        if let AssistantContent::ToolCall(tool_call) = choice {
-                            let tool_name = &tool_call.function.name;
-                            let args =
-                                json_utils::value_to_json_string(&tool_call.function.arguments);
-                            let internal_call_id = nanoid::nanoid!();
-                            if let Some(result) = skipped_tool_results.get(&tool_call.id) {
-                                return Ok(result.clone());
+                    let resp = prepared_request
+                        .builder
+                        .send()
+                        .instrument(chat_span.clone())
+                        .await?;
+
+                    let mut outcome = run.model_response(ModelTurn::new(
+                        resp.message_id.clone(),
+                        resp.choice.clone(),
+                        resp.usage,
+                        prepared_request.executable_tool_names,
+                        prepared_request.allowed_tool_names,
+                    ))?;
+
+                    loop {
+                        match outcome {
+                            ModelTurnOutcome::NeedsResolution(context) => {
+                                let action = match self.hook.as_ref() {
+                                    Some(hook) => hook.on_invalid_tool_call(&context).await,
+                                    None => InvalidToolCallHookAction::fail(),
+                                };
+                                outcome = run.resolve_invalid_tool_call(action)?;
                             }
-                            let tool_span = tracing::Span::current();
-                            tool_span.record("gen_ai.tool.name", tool_name);
-                            tool_span.record("gen_ai.tool.call.id", &tool_call.id);
-                            tool_span.record("gen_ai.tool.call.arguments", &args);
-                            if let Some(hook) = hook1 {
-                                let action = hook
-                                    .on_tool_call(
-                                        tool_name,
-                                        tool_call.call_id.clone(),
-                                        &internal_call_id,
-                                        &args,
-                                    )
-                                    .await;
+                            ModelTurnOutcome::TurnRetried => break,
+                            ModelTurnOutcome::Continue {
+                                response_hook_suppressed,
+                            } => {
+                                if !response_hook_suppressed
+                                    && let Some(ref hook) = self.hook
+                                    && let HookAction::Terminate { reason } =
+                                        hook.on_completion_response(&prompt, &resp).await
+                                {
+                                    return Err(run.cancel_error(reason));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                AgentRunStep::CallTools { calls } => {
+                    let hook = self.hook.clone();
+                    let tool_server_handle = self.tool_server_handle.clone();
 
-                                if let ToolCallHookAction::Terminate { reason } = action {
+                    // For error handling in concurrent tool execution, we need to build full history
+                    let full_history_for_errors = run.full_history();
+
+                    let tool_content = stream::iter(calls)
+                        .map(|pending| {
+                            let hook1 = hook.clone();
+                            let hook2 = hook.clone();
+                            let tool_server_handle = tool_server_handle.clone();
+
+                            let tool_span = info_span!(
+                                "execute_tool",
+                                gen_ai.operation.name = "execute_tool",
+                                gen_ai.tool.type = "function",
+                                gen_ai.tool.name = tracing::field::Empty,
+                                gen_ai.tool.call.id = tracing::field::Empty,
+                                gen_ai.tool.call.arguments = tracing::field::Empty,
+                                gen_ai.tool.call.result = tracing::field::Empty
+                            );
+
+                            let tool_span = if current_span_id.load(Ordering::SeqCst) != 0 {
+                                let id = Id::from_u64(current_span_id.load(Ordering::SeqCst));
+                                tool_span.follows_from(id).to_owned()
+                            } else {
+                                tool_span
+                            };
+
+                            if let Some(id) = tool_span.id() {
+                                current_span_id.store(id.into_u64(), Ordering::SeqCst);
+                            };
+
+                            // Clone full history for error reporting in concurrent tool execution
+                            let cloned_history_for_error = full_history_for_errors.clone();
+
+                            async move {
+                                let PendingToolCall {
+                                    tool_call,
+                                    preresolved_result,
+                                } = pending;
+                                let tool_name = &tool_call.function.name;
+                                let args =
+                                    json_utils::value_to_json_string(&tool_call.function.arguments);
+                                let internal_call_id = nanoid::nanoid!();
+                                if let Some(result) = preresolved_result {
+                                    return Ok(result);
+                                }
+                                let tool_span = tracing::Span::current();
+                                tool_span.record("gen_ai.tool.name", tool_name);
+                                tool_span.record("gen_ai.tool.call.id", &tool_call.id);
+                                tool_span.record("gen_ai.tool.call.arguments", &args);
+                                if let Some(hook) = hook1 {
+                                    let action = hook
+                                        .on_tool_call(
+                                            tool_name,
+                                            tool_call.call_id.clone(),
+                                            &internal_call_id,
+                                            &args,
+                                        )
+                                        .await;
+
+                                    if let ToolCallHookAction::Terminate { reason } = action {
+                                        return Err(PromptError::prompt_cancelled(
+                                            cloned_history_for_error,
+                                            reason,
+                                        ));
+                                    }
+
+                                    if let ToolCallHookAction::Skip { reason } = action {
+                                        // Tool execution rejected, return rejection message as tool result
+                                        tracing::info!(
+                                            tool_name = tool_name,
+                                            reason = reason,
+                                            "Tool call rejected"
+                                        );
+                                        if let Some(call_id) = tool_call.call_id.clone() {
+                                            return Ok(UserContent::tool_result_with_call_id(
+                                                tool_call.id.clone(),
+                                                call_id,
+                                                OneOrMany::one(reason.into()),
+                                            ));
+                                        } else {
+                                            return Ok(UserContent::tool_result(
+                                                tool_call.id.clone(),
+                                                OneOrMany::one(reason.into()),
+                                            ));
+                                        }
+                                    }
+                                }
+                                let output =
+                                    match tool_server_handle.call_tool(tool_name, &args).await {
+                                        Ok(res) => res,
+                                        Err(e) => {
+                                            tracing::warn!("Error while executing tool: {e}");
+                                            e.to_string()
+                                        }
+                                    };
+                                if let Some(hook) = hook2
+                                    && let HookAction::Terminate { reason } = hook
+                                        .on_tool_result(
+                                            tool_name,
+                                            tool_call.call_id.clone(),
+                                            &internal_call_id,
+                                            &args,
+                                            &output.to_string(),
+                                        )
+                                        .await
+                                {
                                     return Err(PromptError::prompt_cancelled(
                                         cloned_history_for_error,
                                         reason,
                                     ));
                                 }
 
-                                if let ToolCallHookAction::Skip { reason } = action {
-                                    // Tool execution rejected, return rejection message as tool result
-                                    tracing::info!(
-                                        tool_name = tool_name,
-                                        reason = reason,
-                                        "Tool call rejected"
-                                    );
-                                    if let Some(call_id) = tool_call.call_id.clone() {
-                                        return Ok(UserContent::tool_result_with_call_id(
-                                            tool_call.id.clone(),
-                                            call_id,
-                                            OneOrMany::one(reason.into()),
-                                        ));
-                                    } else {
-                                        return Ok(UserContent::tool_result(
-                                            tool_call.id.clone(),
-                                            OneOrMany::one(reason.into()),
-                                        ));
-                                    }
+                                tool_span.record("gen_ai.tool.call.result", &output);
+                                tracing::info!(
+                                    "executed tool {tool_name} with args {args}. result: {output}"
+                                );
+                                if let Some(call_id) = tool_call.call_id.clone() {
+                                    Ok(UserContent::tool_result_with_call_id(
+                                        tool_call.id.clone(),
+                                        call_id,
+                                        ToolResultContent::from_tool_output(output),
+                                    ))
+                                } else {
+                                    Ok(UserContent::tool_result(
+                                        tool_call.id.clone(),
+                                        ToolResultContent::from_tool_output(output),
+                                    ))
                                 }
                             }
-                            let output = match tool_server_handle.call_tool(tool_name, &args).await
-                            {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    tracing::warn!("Error while executing tool: {e}");
-                                    e.to_string()
-                                }
-                            };
-                            if let Some(hook) = hook2
-                                && let HookAction::Terminate { reason } = hook
-                                    .on_tool_result(
-                                        tool_name,
-                                        tool_call.call_id.clone(),
-                                        &internal_call_id,
-                                        &args,
-                                        &output.to_string(),
-                                    )
-                                    .await
-                            {
-                                return Err(PromptError::prompt_cancelled(
-                                    cloned_history_for_error,
-                                    reason,
-                                ));
-                            }
+                            .instrument(tool_span)
+                        })
+                        .buffer_unordered(self.concurrency)
+                        .collect::<Vec<Result<UserContent, PromptError>>>()
+                        .await
+                        .into_iter()
+                        .collect::<Result<Vec<_>, _>>()?;
 
-                            tool_span.record("gen_ai.tool.call.result", &output);
-                            tracing::info!(
-                                "executed tool {tool_name} with args {args}. result: {output}"
-                            );
-                            if let Some(call_id) = tool_call.call_id.clone() {
-                                Ok(UserContent::tool_result_with_call_id(
-                                    tool_call.id.clone(),
-                                    call_id,
-                                    ToolResultContent::from_tool_output(output),
-                                ))
-                            } else {
-                                Ok(UserContent::tool_result(
-                                    tool_call.id.clone(),
-                                    ToolResultContent::from_tool_output(output),
-                                ))
-                            }
-                        } else {
-                            Err(PromptError::prompt_cancelled(
-                                Vec::new(),
-                                "tool execution received non-tool assistant content",
-                            ))
-                        }
+                    run.tool_results(tool_content)?;
+                }
+                AgentRunStep::Done(response) => {
+                    if self.max_turns > 1 {
+                        tracing::info!("Depth reached: {}/{}", run.turn(), self.max_turns);
                     }
-                    .instrument(tool_span)
-                })
-                .buffer_unordered(self.concurrency)
-                .collect::<Vec<Result<UserContent, PromptError>>>()
-                .await
-                .into_iter()
-                .collect::<Result<Vec<_>, _>>()?;
 
-            let Some(content) = OneOrMany::from_iter_optional(tool_content) else {
-                return Err(PromptError::prompt_cancelled(
-                    build_full_history(chat_history.as_deref(), new_messages),
-                    "tool execution produced no tool results",
-                ));
-            };
+                    let usage = response.usage;
+                    agent_span.record("gen_ai.completion", &response.output);
+                    agent_span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                    agent_span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                    agent_span.record(
+                        "gen_ai.usage.cache_read.input_tokens",
+                        usage.cached_input_tokens,
+                    );
+                    agent_span.record(
+                        "gen_ai.usage.cache_creation.input_tokens",
+                        usage.cache_creation_input_tokens,
+                    );
+                    agent_span.record(
+                        "gen_ai.usage.tool_use_prompt_tokens",
+                        usage.tool_use_prompt_tokens,
+                    );
+                    agent_span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 
-            new_messages.push(Message::User { content });
-        };
+                    if let Some((memory, id)) = memory_handle.as_ref()
+                        && let Err(err) = memory
+                            .append(id, response.messages.clone().unwrap_or_default())
+                            .await
+                    {
+                        tracing::warn!(
+                            error = %err,
+                            conversation_id = %id,
+                            "conversation memory append failed; returning model response anyway"
+                        );
+                    }
 
-        // If we reach here, we exceeded max turns without a final response
-        Err(PromptError::MaxTurnsError {
-            max_turns: self.max_turns,
-            chat_history: build_full_history(chat_history.as_deref(), new_messages).into(),
-            prompt: last_prompt.into(),
-        })
+                    return Ok(response);
+                }
+            }
+        }
     }
 }
 
