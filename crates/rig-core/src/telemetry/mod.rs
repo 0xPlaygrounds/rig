@@ -225,6 +225,9 @@ mod tests {
             reasoning_tokens: 5,
         });
 
+        // Scoped-subscriber tests must not run concurrently; see
+        // `test_utils::scoped_tracing_subscriber_guard`.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
             let span = tracing::info_span!(
                 "usage_recording",
