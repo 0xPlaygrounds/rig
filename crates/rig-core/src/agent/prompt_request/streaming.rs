@@ -243,37 +243,33 @@ fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> V
         return build_full_history(input.chat_history, messages);
     }
 
-    let mut content_items = Vec::new();
-    if let Some(text) = input.text_delta_response
+    let text_items = if let Some(text) = input.text_delta_response
         && !text.is_empty()
     {
-        content_items.push(AssistantContent::text(text.to_string()));
-    }
-    content_items.extend(
-        input
-            .accumulated_reasoning
-            .iter()
-            .cloned()
-            .map(AssistantContent::Reasoning),
-    );
+        vec![AssistantContent::text(text.to_string())]
+    } else {
+        Vec::new()
+    };
+    let mut reasoning_items = input.accumulated_reasoning.to_vec();
     if input.accumulated_reasoning.is_empty() && !input.pending_reasoning_delta_text.is_empty() {
         let mut reasoning = crate::message::Reasoning::new(input.pending_reasoning_delta_text);
         if let Some(id) = input.pending_reasoning_delta_id.clone() {
             reasoning = reasoning.with_id(id);
         }
-        content_items.push(AssistantContent::Reasoning(reasoning));
+        reasoning_items.push(reasoning);
     }
-    content_items.extend(
-        input
-            .pending_tool_calls
-            .iter()
-            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-    );
+    let mut tool_items = input
+        .pending_tool_calls
+        .iter()
+        .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
+        .collect::<Vec<_>>();
     if let Some(tool_call) = input.current_tool_call {
-        content_items.push(AssistantContent::ToolCall(tool_call));
+        tool_items.push(AssistantContent::ToolCall(tool_call));
     }
 
-    if let Some(content) = OneOrMany::from_iter_optional(content_items) {
+    if let Some(content) =
+        ordered_streaming_assistant_content(reasoning_items, text_items, tool_items)
+    {
         messages.push(Message::Assistant {
             id: input.assistant_message_id.clone(),
             content,
@@ -281,6 +277,30 @@ fn build_tool_call_validation_history(input: ToolCallValidationHistory<'_>) -> V
     }
 
     build_full_history(input.chat_history, messages)
+}
+
+fn ordered_streaming_assistant_content(
+    reasoning_items: impl IntoIterator<Item = crate::message::Reasoning>,
+    text_items: impl IntoIterator<Item = AssistantContent>,
+    tool_items: impl IntoIterator<Item = AssistantContent>,
+) -> Option<OneOrMany<AssistantContent>> {
+    let mut content_items = reasoning_items
+        .into_iter()
+        .map(AssistantContent::Reasoning)
+        .collect::<Vec<_>>();
+    content_items.extend(text_items);
+    content_items.extend(tool_items);
+
+    OneOrMany::from_iter_optional(content_items)
+}
+
+fn pending_tool_call_content_items(
+    pending_tool_calls: &[(ToolCall, String)],
+) -> Vec<AssistantContent> {
+    pending_tool_calls
+        .iter()
+        .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
+        .collect()
 }
 
 async fn drain_recovered_stream_usage<R>(
@@ -394,26 +414,21 @@ fn invalid_streaming_tool_retry_messages(
     invalid_tool_call: ToolCall,
     feedback: String,
 ) -> Option<(Message, Message)> {
-    let mut assistant_content = Vec::new();
-    if let Some(text) = text_delta_response
+    let text_items = if let Some(text) = text_delta_response
         && !text.is_empty()
     {
-        assistant_content.push(AssistantContent::text(text.to_string()));
-    }
-    assistant_content.extend(
-        accumulated_reasoning
-            .iter()
-            .cloned()
-            .map(AssistantContent::Reasoning),
-    );
-    assistant_content.extend(
-        pending_tool_calls
-            .iter()
-            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-    );
-    assistant_content.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
+        vec![AssistantContent::text(text.to_string())]
+    } else {
+        Vec::new()
+    };
+    let mut tool_items = pending_tool_call_content_items(pending_tool_calls);
+    tool_items.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
 
-    let assistant_content = OneOrMany::from_iter_optional(assistant_content)?;
+    let assistant_content = ordered_streaming_assistant_content(
+        accumulated_reasoning.iter().cloned(),
+        text_items,
+        tool_items,
+    )?;
     let assistant_message = Message::Assistant {
         id: assistant_message_id.clone(),
         content: assistant_content,
@@ -450,28 +465,23 @@ fn invalid_streaming_name_delta_retry_messages(
     invalid_tool_call: ToolCall,
     feedback: String,
 ) -> Option<(Message, Message)> {
-    let mut assistant_content = Vec::new();
-    if let Some(text) = text_delta_response
+    let text_items = if let Some(text) = text_delta_response
         && !text.is_empty()
     {
-        assistant_content.push(AssistantContent::text(text.to_string()));
-    }
-    assistant_content.extend(
-        accumulated_reasoning
-            .iter()
-            .cloned()
-            .map(AssistantContent::Reasoning),
-    );
-    assistant_content.extend(
-        pending_tool_calls
-            .iter()
-            .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone())),
-    );
-    assistant_content.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
+        vec![AssistantContent::text(text.to_string())]
+    } else {
+        Vec::new()
+    };
+    let mut tool_items = pending_tool_call_content_items(pending_tool_calls);
+    tool_items.push(AssistantContent::ToolCall(invalid_tool_call.clone()));
 
     let assistant_message = Message::Assistant {
         id: assistant_message_id.clone(),
-        content: OneOrMany::from_iter_optional(assistant_content)?,
+        content: ordered_streaming_assistant_content(
+            accumulated_reasoning.iter().cloned(),
+            text_items,
+            tool_items,
+        )?,
     };
     let mut retry_results = pending_tool_calls
         .iter()
@@ -1594,21 +1604,16 @@ where
                     }
                 }
 
-                // Add text, reasoning, and tool calls to chat history.
-                // OpenAI Responses API requires reasoning items to precede function_call items.
+                // Add reasoning, text, and tool calls to chat history in the
+                // provider-native order expected by OpenAI Responses replay.
                 let mut assistant_turn_added_to_history = false;
                 if !tool_calls.is_empty() || !accumulated_reasoning.is_empty() {
-                    // Text before tool calls so the model sees its own prior output.
-                    let mut content_items = assistant_text_items_from_choice(&final_turn_content);
-
-                    // Reasoning must come before tool calls (OpenAI requirement)
-                    for reasoning in accumulated_reasoning.drain(..) {
-                        content_items.push(rig::message::AssistantContent::Reasoning(reasoning));
-                    }
-
-                    content_items.extend(tool_calls.clone());
-
-                    if let Some(content) = OneOrMany::from_iter_optional(content_items) {
+                    let text_items = assistant_text_items_from_choice(&final_turn_content);
+                    if let Some(content) = ordered_streaming_assistant_content(
+                        accumulated_reasoning.drain(..),
+                        text_items,
+                        tool_calls.clone(),
+                    ) {
                         new_messages.push(Message::Assistant {
                             id: stream.message_id.clone(),
                             content,
@@ -2048,6 +2053,50 @@ mod tests {
             });
 
             matches!((reasoning_index, tool_index), (Some(reasoning), Some(tool)) if reasoning < tool)
+        })
+    }
+
+    fn assistant_reasoning_precedes_text_and_tool_call(
+        history: &[Message],
+        expected_reasoning: &str,
+        expected_text: &str,
+        tool_name: &str,
+    ) -> bool {
+        history.iter().any(|message| {
+            let Message::Assistant { content, .. } = message else {
+                return false;
+            };
+
+            let reasoning_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Reasoning(reasoning)
+                        if reasoning.content.iter().any(|content| matches!(
+                            content,
+                            ReasoningContent::Text { text, .. }
+                                if text == expected_reasoning
+                        ))
+                )
+            });
+            let text_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == expected_text
+                )
+            });
+            let tool_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.function.name == tool_name
+                )
+            });
+
+            matches!(
+                (reasoning_index, text_index, tool_index),
+                (Some(reasoning), Some(text), Some(tool))
+                    if reasoning < text && text < tool
+            )
         })
     }
 
@@ -3420,6 +3469,15 @@ mod tests {
             "reasoned step",
             "default_api"
         ));
+        assert!(
+            assistant_reasoning_precedes_text_and_tool_call(
+                &follow_up_history,
+                "reasoned step",
+                "checking ",
+                "default_api"
+            ),
+            "{follow_up_history:?}"
+        );
     }
 
     #[tokio::test]
@@ -5724,6 +5782,18 @@ mod tests {
                         ReasoningContent::Text { text, .. } if text == "reasoned step"
                     ))
         )));
+        let reasoning_index = assistant_content
+            .iter()
+            .position(|item| matches!(item, AssistantContent::Reasoning(_)))
+            .expect("assistant history should contain reasoning");
+        let text_index = assistant_content
+            .iter()
+            .position(|item| matches!(item, AssistantContent::Text(_)))
+            .expect("assistant history should contain text");
+        assert!(
+            reasoning_index < text_index,
+            "assistant reasoning must be stored before assistant text: {assistant_content:?}"
+        );
     }
 
     #[tokio::test]
