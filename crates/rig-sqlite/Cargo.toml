@@ -12,7 +12,7 @@ workspace = true
 doctest = false
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.38.2", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.39.0", default-features = false, features = [
   "derive",
 ] }
 rusqlite = { workspace = true, features = ["bundled"] }
