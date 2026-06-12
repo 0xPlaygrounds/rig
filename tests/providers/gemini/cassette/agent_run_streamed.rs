@@ -466,15 +466,20 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
     with_gemini_cassette(
         "agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message",
         |client| async move {
+            // A chained prompt keeps the model calling tools on every turn
+            // (ToolChoice::Required can't serve that purpose anymore: it
+            // relaxes to Auto after the first tool-call turn).
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .tool(Add)
-                .tool_choice(ToolChoice::Required)
+                .tool(Subtract)
                 .build();
 
             let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
+                .stream_prompt(
+                    "Calculate 12 - 5 using the subtract tool, then add 30 to that result using the add tool.",
+                )
                 .multi_turn(0)
                 .await;
 

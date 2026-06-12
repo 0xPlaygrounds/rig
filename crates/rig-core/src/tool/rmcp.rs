@@ -82,8 +82,10 @@ impl From<rmcp::model::Tool> for ToolDefinition {
     }
 }
 
+/// Error from an MCP tool call. Displays as the bare message so the text a
+/// model sees as a tool result carries no internal wrapper prefix.
 #[derive(Debug, thiserror::Error)]
-#[error("MCP tool error: {0}")]
+#[error("{0}")]
 pub struct McpToolError(String);
 
 impl From<McpToolError> for ToolError {
@@ -146,13 +148,23 @@ impl ToolDyn for McpTool {
                 }
             };
 
-            let mut content = String::new();
+            let mut texts: Vec<String> = Vec::new();
+            let mut images: Vec<serde_json::Value> = Vec::new();
 
             for item in result.content {
                 let chunk = match item.raw {
                     rmcp::model::RawContent::Text(raw) => raw.text,
                     rmcp::model::RawContent::Image(raw) => {
-                        format!("data:{};base64,{}", raw.mime_type, raw.data)
+                        // Emit the image JSON shape that
+                        // `ToolResultContent::from_tool_output` converts into
+                        // a real image part, so MCP images reach the model as
+                        // images rather than base64 text.
+                        images.push(serde_json::json!({
+                            "type": "image",
+                            "data": raw.data,
+                            "mimeType": raw.mime_type,
+                        }));
+                        continue;
                     }
                     rmcp::model::RawContent::Resource(raw) => match raw.resource {
                         rmcp::model::ResourceContents::TextResourceContents {
@@ -192,10 +204,29 @@ impl ToolDyn for McpTool {
                     }
                 };
 
-                content.push_str(&chunk);
+                texts.push(chunk);
             }
 
-            Ok(content)
+            let text = texts.concat();
+            if images.is_empty() {
+                // Text-only results stay verbatim, as before.
+                return Ok(text);
+            }
+            if text.is_empty()
+                && images.len() == 1
+                && let Some(image) = images.pop()
+            {
+                // A lone image maps to the top-level image shape.
+                return Ok(image.to_string());
+            }
+            // Mixed or multi-image results map to the hybrid shape
+            // `from_tool_output` splits into text and image parts.
+            let mut hybrid = serde_json::Map::new();
+            if !text.is_empty() {
+                hybrid.insert("response".to_string(), serde_json::Value::String(text));
+            }
+            hybrid.insert("parts".to_string(), serde_json::Value::Array(images));
+            Ok(serde_json::Value::Object(hybrid).to_string())
         })
     }
 }
@@ -400,10 +431,19 @@ mod tests {
             request: CallToolRequestParams,
             _context: RequestContext<RoleServer>,
         ) -> Result<CallToolResult, ErrorData> {
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "called {}",
-                request.name
-            ))]))
+            match request.name.as_ref() {
+                "single_image" => Ok(CallToolResult::success(vec![Content::image(
+                    "aGVsbG8=",
+                    "image/png",
+                )])),
+                "text_and_image" => Ok(CallToolResult::success(vec![
+                    Content::text("the badge is attached"),
+                    Content::image("aGVsbG8=", "image/png"),
+                ])),
+                name => Ok(CallToolResult::success(vec![Content::text(format!(
+                    "called {name}"
+                ))])),
+            }
         }
     }
 
@@ -514,6 +554,90 @@ mod tests {
         assert!(
             !names.contains(&"alpha"),
             "expected 'alpha' to be removed, found {names:?}"
+        );
+    }
+
+    /// Spawn `server` over an in-memory duplex transport and return a tool
+    /// bound to it, plus the running client service that keeps it alive.
+    async fn connect_mcp_tool(
+        server: DynamicToolServer,
+        tool: Tool,
+    ) -> (
+        super::McpTool,
+        rmcp::service::RunningService<rmcp::RoleClient, McpClientHandler>,
+    ) {
+        let tool_server_handle = ToolServer::new().run();
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        tokio::spawn(async move {
+            let service = server
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            let _ = service.waiting().await;
+        });
+
+        let handler = McpClientHandler::new(ClientInfo::default(), tool_server_handle);
+        let service = handler
+            .connect((client_from_server, client_to_server))
+            .await
+            .expect("connect failed");
+        let mcp_tool = super::McpTool::from_mcp_server(tool, service.peer().clone());
+        (mcp_tool, service)
+    }
+
+    #[tokio::test]
+    async fn image_content_maps_to_image_tool_output() {
+        let tool = make_tool("single_image", "Returns one image");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let output = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect("image tool call should succeed");
+
+        let json: serde_json::Value =
+            serde_json::from_str(&output).expect("image output should be JSON");
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "type": "image",
+                "data": "aGVsbG8=",
+                "mimeType": "image/png"
+            })
+        );
+
+        let content = crate::completion::message::ToolResultContent::from_tool_output(output);
+        assert!(
+            matches!(
+                content.first(),
+                crate::completion::message::ToolResultContent::Image(_)
+            ),
+            "the output should parse into an image tool-result part"
+        );
+    }
+
+    #[tokio::test]
+    async fn mixed_content_maps_to_hybrid_tool_output() {
+        let tool = make_tool("text_and_image", "Returns text and an image");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let output = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect("mixed tool call should succeed");
+
+        let json: serde_json::Value =
+            serde_json::from_str(&output).expect("mixed output should be JSON");
+        assert_eq!(json["response"], "the badge is attached");
+        assert_eq!(json["parts"][0]["type"], "image");
+
+        let content = crate::completion::message::ToolResultContent::from_tool_output(output);
+        assert_eq!(
+            content.len(),
+            2,
+            "hybrid output should split into two parts"
         );
     }
 

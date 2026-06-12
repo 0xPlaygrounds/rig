@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 19 + 23?","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Answer arithmetic questions.","thought":false}],"role":"model"},"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":19,\"y\":23},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":137,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":137}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":86,\"totalTokenCount\":243}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 19 + 23?","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Answer arithmetic questions.","thought":false}],"role":"model"},"toolConfig":{"functionCallingConfig":{"mode":"AUTO"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The answer\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":257,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":257}],\"serviceTier\":\"standard\",\"totalTokenCount\":259}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" is 42.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":7,\"promptTokenCount\":257,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":257}],\"serviceTier\":\"standard\",\"totalTokenCount\":264}}\r\n\r\n"

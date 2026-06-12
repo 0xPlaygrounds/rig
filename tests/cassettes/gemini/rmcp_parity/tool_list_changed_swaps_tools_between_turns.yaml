@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":104,"promptTokensDetails":[{"modality":"TEXT","tokenCount":104}],"serviceTier":"standard","thoughtsTokenCount":61,"totalTokenCount":185}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":104,"promptTokensDetails":[{"modality":"TEXT","tokenCount":104}],"serviceTier":"standard","thoughtsTokenCount":58,"totalTokenCount":182}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -72,4 +72,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"42","thoughtSignature":"signature_REDACTED_3"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_4","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","thoughtsTokenCount":24,"totalTokenCount":170}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"42"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_4","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","totalTokenCount":146}}'

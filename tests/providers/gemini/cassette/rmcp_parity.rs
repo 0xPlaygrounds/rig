@@ -334,9 +334,12 @@ async fn mcp_error_result_reaches_model_and_model_recovers() {
                 .unwrap_or_else(|| {
                     panic!("the MCP error text should reach the model: {texts:?}")
                 });
-            assert!(
-                error_text.contains("MCP tool error"),
-                "is_error results should keep the McpToolError wrapper the model currently sees: {error_text:?}"
+            assert_eq!(
+                error_text,
+                &format!(
+                    "Tool 'lookup_codeword' failed: {CODEWORD_GUIDANCE}\n\nFix the errors and try again."
+                ),
+                "is_error results should reach the model exactly like native tool failures"
             );
             assert!(
                 texts.iter().any(|text| text == BLUE_CODEWORD),
@@ -352,16 +355,18 @@ async fn mcp_error_result_reaches_model_and_model_recovers() {
 }
 
 #[tokio::test]
-async fn mcp_image_content_flattens_to_data_url_text() {
+async fn mcp_image_content_round_trips_as_image_part() {
     with_gemini_cassette(
-        "rmcp_parity/mcp_image_content_flattens_to_data_url_text",
+        "rmcp_parity/mcp_image_content_round_trips_as_image_part",
         |client| async move {
             let mcp_client = connect_in_process(ParityMcpServer::new(vec![badge_tool()])).await;
 
+            // Multimodal function responses need a Gemini 3 model; 2.5-flash
+            // rejects them with a 400.
             let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
                 .preamble(
-                    "You must call the fetch_badge_image tool, then acknowledge what it returned in one short sentence.",
+                    "You must call the fetch_badge_image tool, inspect the returned image, and describe its dominant color in one short sentence.",
                 )
                 .temperature(0.0)
                 .rmcp_tool(badge_tool(), mcp_client.peer().clone())
@@ -374,14 +379,29 @@ async fn mcp_image_content_flattens_to_data_url_text() {
                 .await
                 .expect("MCP image tool prompt should succeed");
 
-            // Divergence from native tools (which produce an image part):
-            // the rmcp adapter flattens image content into a data-URL string.
-            let expected = format!("data:image/png;base64,{RED_PIXEL_PNG_BASE64}");
-            let texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
+            // Parity with native tools: MCP image content becomes a real
+            // image tool-result part, not base64 text.
+            let image_results = history
+                .iter()
+                .filter_map(|message| match message {
+                    Message::User { content } => Some(content.iter()),
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|content| match content {
+                    rig::message::UserContent::ToolResult(tool_result) => {
+                        Some(tool_result.content.iter())
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .filter(|content| {
+                    matches!(content, rig::message::ToolResultContent::Image(_))
+                })
+                .count();
             assert_eq!(
-                texts,
-                vec![expected],
-                "MCP image content should flatten to a data-URL text tool result"
+                image_results, 1,
+                "MCP image content should round-trip as an image part: {history:?}"
             );
         },
     )

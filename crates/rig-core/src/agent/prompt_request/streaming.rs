@@ -574,6 +574,10 @@ where
                             gen_ai.output.messages = tracing::field::Empty,
                         );
 
+                        // Read the tool choice from the run each turn:
+                        // `Required` relaxes to `Auto` after the first
+                        // tool-call turn.
+                        let turn_tool_choice = run.effective_tool_choice();
                         let prepared_request = build_prepared_completion_request(
                             &model,
                             current_prompt.clone(),
@@ -583,7 +587,7 @@ where
                             temperature,
                             max_tokens,
                             additional_params.as_ref(),
-                            tool_choice.as_ref(),
+                            turn_tool_choice.as_ref(),
                             &tool_server_handle,
                             &dynamic_context,
                             output_schema.as_ref(),
@@ -938,7 +942,9 @@ where
                                     Ok(result) => result,
                                     Err(err) => {
                                         tracing::warn!("Error while calling tool: {err}");
-                                        err.to_string()
+                                        tool_server_handle
+                                            .tool_failure_text(&tool_call.function.name, &err)
+                                            .await
                                     }
                                 };
 

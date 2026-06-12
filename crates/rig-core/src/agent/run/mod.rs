@@ -315,6 +315,16 @@ impl AgentRun {
         self
     }
 
+    /// The tool choice in effect for the next model turn.
+    ///
+    /// [`ToolChoice::Required`] applies until the first turn that produces
+    /// tool calls, then relaxes to [`ToolChoice::Auto`] so the run can
+    /// complete with a text answer. Drivers should read this per turn instead
+    /// of caching the originally configured value.
+    pub fn effective_tool_choice(&self) -> Option<ToolChoice> {
+        self.tool_choice.clone()
+    }
+
     /// Aggregated token usage across all completed model calls so far.
     pub fn usage(&self) -> Usage {
         self.usage
@@ -457,6 +467,17 @@ impl AgentRun {
                 }
 
                 if has_tool_calls {
+                    // Forced function-calling applies until the first turn
+                    // that produces tool calls; afterwards the model must be
+                    // able to emit a final text answer, so `Required` relaxes
+                    // to `Auto`. Lives in serialized state so a resumed run
+                    // keeps the relaxation.
+                    if matches!(self.tool_choice, Some(ToolChoice::Required)) {
+                        tracing::debug!(
+                            "relaxing ToolChoice::Required to Auto after the first tool-call turn"
+                        );
+                        self.tool_choice = Some(ToolChoice::Auto);
+                    }
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .filter_map(|item| match item {
@@ -1467,6 +1488,71 @@ mod tests {
         assert_eq!(calls.len(), 2);
         // Both the skipped call and its valid peer carry preresolved results.
         assert!(calls.iter().all(|call| call.preresolved_result.is_some()));
+    }
+
+    #[test]
+    fn required_relaxes_to_auto_after_first_tool_call_turn() {
+        let mut run = AgentRun::new("add things")
+            .max_turns(3)
+            .with_tool_choice(ToolChoice::Required);
+        assert_eq!(run.effective_tool_choice(), Some(ToolChoice::Required));
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+
+        // Before the tool-call turn is consumed the choice is still forced;
+        // emitting CallTools applies the relaxation.
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            run.effective_tool_choice(),
+            Some(ToolChoice::Auto),
+            "Required should relax to Auto once a turn produced tool calls"
+        );
+
+        // The relaxation lives in serialized state: a process resuming from
+        // the snapshot alone must not re-force tool calls.
+        let snapshot = serde_json::to_string(&run).expect("run should serialize");
+        let resumed: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+        assert_eq!(resumed.effective_tool_choice(), Some(ToolChoice::Auto));
+
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool results should be accepted");
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("done"))
+                .expect("text turn should be accepted after relaxation"),
+        );
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "done");
+    }
+
+    #[test]
+    fn specific_tool_choice_is_not_relaxed() {
+        let mut run =
+            AgentRun::new("add things")
+                .max_turns(3)
+                .with_tool_choice(ToolChoice::Specific {
+                    function_names: vec!["add".to_string()],
+                });
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+
+        assert_eq!(
+            run.effective_tool_choice(),
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string()]
+            }),
+            "only Required relaxes; Specific stays pinned"
+        );
     }
 
     #[test]

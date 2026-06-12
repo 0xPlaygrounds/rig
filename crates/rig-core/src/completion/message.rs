@@ -1332,6 +1332,13 @@ pub enum ToolChoice {
     #[default]
     Auto,
     None,
+    /// Force the model to call a tool.
+    ///
+    /// In multi-turn agent runs this applies until the first turn that
+    /// produces tool calls, then relaxes to [`ToolChoice::Auto`]: providers
+    /// apply forced function-calling per request, so keeping it forced on
+    /// every turn would make a final text answer unreachable and exhaust
+    /// `max_turns`.
     Required,
     Specific {
         function_names: Vec<String>,

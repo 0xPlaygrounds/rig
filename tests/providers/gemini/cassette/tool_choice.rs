@@ -1,7 +1,7 @@
 //! Gemini tool-choice cassette coverage.
 
 use rig::client::CompletionClient;
-use rig::completion::{AssistantContent, Chat, CompletionModel, Message, Prompt};
+use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
 use rig::message::ToolChoice;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
@@ -152,14 +152,13 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     .await;
 }
 
-/// `ToolChoice::Required` maps to Gemini's forced function-calling mode on
-/// EVERY turn of the loop, so the model can never emit a text-only answer:
-/// the run repeats forced tool calls until `max_turns` is exhausted. These
-/// tests pin that (surprising but current) behavior.
+/// `ToolChoice::Required` forces a tool call until the first turn that
+/// produces one, then relaxes to `Auto` so the run can complete with a text
+/// answer instead of repeating forced calls until `max_turns` is exhausted.
 #[tokio::test]
-async fn required_nonstreaming_forces_tool_calls_until_max_turns() {
+async fn required_nonstreaming_forces_first_tool_call_then_completes() {
     super::super::support::with_gemini_cassette(
-        "tool_choice/required_nonstreaming_forces_tool_calls_until_max_turns",
+        "tool_choice/required_nonstreaming_forces_first_tool_call_then_completes",
         |client| async move {
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
@@ -168,34 +167,26 @@ async fn required_nonstreaming_forces_tool_calls_until_max_turns() {
                 .tool(Adder)
                 .tool(Subtract)
                 .tool_choice(ToolChoice::Required)
+                .default_max_turns(3)
                 .build();
 
-            let error = agent
-                .prompt("What is 19 + 23?")
-                .max_turns(2)
+            let mut chat_history = Vec::<Message>::new();
+            let response = agent
+                .chat("What is 19 + 23?", &mut chat_history)
                 .await
-                .expect_err("Required forces a tool call every turn, so max_turns is exhausted");
+                .expect("Required should relax after the forced call and complete");
 
-            match error {
-                rig::completion::PromptError::MaxTurnsError {
-                    max_turns,
-                    chat_history,
-                    ..
-                } => {
-                    assert_eq!(max_turns, 2);
-                    assert_history_tool_calls(&chat_history, &[Adder::NAME], &[]);
-                }
-                other => panic!("expected MaxTurnsError, got {other:?}"),
-            }
+            assert_mentions_expected_number(&response, 42);
+            assert_history_tool_calls(&chat_history, &[Adder::NAME], &[]);
         },
     )
     .await;
 }
 
 #[tokio::test]
-async fn required_streaming_forces_tool_calls_until_max_turns() {
+async fn required_streaming_forces_first_tool_call_then_completes() {
     super::super::support::with_gemini_cassette(
-        "tool_choice/required_streaming_forces_tool_calls_until_max_turns",
+        "tool_choice/required_streaming_forces_first_tool_call_then_completes",
         |client| async move {
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
@@ -206,9 +197,14 @@ async fn required_streaming_forces_tool_calls_until_max_turns() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let mut stream = agent.stream_prompt("What is 19 + 23?").multi_turn(2).await;
+            let mut stream = agent.stream_prompt("What is 19 + 23?").multi_turn(3).await;
             let observation = collect_stream_observation(&mut stream).await;
 
+            assert!(
+                observation.errors.is_empty(),
+                "stream should not emit errors: {:?}",
+                observation.errors
+            );
             assert!(
                 observation
                     .tool_calls
@@ -221,17 +217,12 @@ async fn required_streaming_forces_tool_calls_until_max_turns() {
                 observation.tool_results >= 1,
                 "the forced call should produce a tool result"
             );
-            assert!(
+            assert_mentions_expected_number(
                 observation
-                    .errors
-                    .iter()
-                    .any(|error| error.contains("max turn")),
-                "the streaming run should also exhaust max_turns: {:?}",
-                observation.errors
-            );
-            assert!(
-                !observation.got_final_response,
-                "Required prevents a final text response"
+                    .final_response_text
+                    .as_deref()
+                    .expect("the relaxed run should finish with a final text response"),
+                42,
             );
         },
     )

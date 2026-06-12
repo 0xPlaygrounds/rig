@@ -180,15 +180,14 @@ async fn rich_json_schema_survives_gemini_conversion() {
     .await;
 }
 
-/// Registering two tools under one name currently keeps BOTH definitions on
-/// the wire (`ToolServer` tracks names in a list while the `ToolSet` map
-/// dedupes implementations), and Gemini rejects the request with a 400. This
-/// pins that behavior so a migration that silently changes it (e.g. to
-/// last-one-wins dedup) is a conscious decision, not an accident.
+/// Registering two tools under one name dedupes to a single wire declaration:
+/// the last registration's implementation and definition win, keeping the
+/// first registration's position. (Previously both declarations were sent and
+/// Gemini rejected the request with a 400.)
 #[tokio::test]
-async fn duplicate_tool_name_sends_duplicate_declarations_and_fails() {
+async fn duplicate_tool_name_uses_last_registration() {
     with_gemini_cassette(
-        "tool_definitions/duplicate_tool_name_sends_duplicate_declarations_and_fails",
+        "tool_definitions/duplicate_tool_name_uses_last_registration",
         |client| async move {
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
@@ -200,16 +199,20 @@ async fn duplicate_tool_name_sends_duplicate_declarations_and_fails() {
                 .build();
 
             let mut history = Vec::<Message>::new();
-            let error = agent
+            let response = agent
                 .chat("Echo the word 'lantern'.", &mut history)
                 .await
-                .expect_err("duplicate function declarations should be rejected by Gemini");
+                .expect("the duplicated name should dedupe to one declaration");
 
+            let texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
+            assert_eq!(
+                texts,
+                vec!["modern:lantern".to_string()],
+                "the last registration of a duplicated tool name should execute"
+            );
             assert!(
-                error
-                    .to_string()
-                    .contains("Duplicate function declaration found: echo"),
-                "the provider rejection should surface to the caller: {error}"
+                response.to_ascii_lowercase().contains("lantern"),
+                "final answer should report the echoed word: {response:?}"
             );
         },
     )

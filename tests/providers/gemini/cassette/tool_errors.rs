@@ -60,9 +60,12 @@ async fn tool_error_string_reaches_model_and_model_recovers() {
                 .unwrap_or_else(|| {
                     panic!("the tool error text should reach the model verbatim: {texts:?}")
                 });
-            assert!(
-                error_text.contains("ToolCallError"),
-                "tool errors should keep the ToolSet error wrapper the model currently sees: {error_text:?}"
+            assert_eq!(
+                error_text,
+                &format!(
+                    "Tool 'lookup_codeword' failed: {CODEWORD_GUIDANCE}\n\nFix the errors and try again."
+                ),
+                "tool errors should reach the model as plain text with retry guidance"
             );
             assert!(
                 texts.iter().any(|text| text == BLUE_CODEWORD),
@@ -108,10 +111,19 @@ async fn invalid_args_deserialization_error_reaches_model() {
             );
 
             let texts = all_tool_result_texts(&history);
+            let error_text = texts
+                .iter()
+                .find(|text| text.starts_with("Invalid arguments for tool 'register_guests': "))
+                .unwrap_or_else(|| {
+                    panic!("the serde failure should reach the model as plain text: {texts:?}")
+                });
             assert!(
-                texts.iter().any(|text| text.contains("JsonError")
-                    || text.to_ascii_lowercase().contains("invalid type")),
-                "the serde failure should be stringified into the tool result: {texts:?}"
+                error_text.ends_with("\n\nFix the errors and try again."),
+                "argument failures should carry retry guidance: {error_text:?}"
+            );
+            assert!(
+                !error_text.contains("JsonError"),
+                "internal error-type names must not reach the model: {error_text:?}"
             );
             assert_nonempty_response(&response);
         },
@@ -161,8 +173,8 @@ async fn missing_tool_at_execution_time_reports_tool_not_found() {
             assert!(
                 texts
                     .iter()
-                    .any(|text| text.contains("ToolNotFoundError") || text.contains("not found")),
-                "the ToolNotFound failure should be stringified into the tool result: {texts:?}"
+                    .any(|text| text == "Unknown tool name: 'add'. No tools available."),
+                "the missing tool should be named without internal wrappers: {texts:?}"
             );
             assert_nonempty_response(&response.output);
         },

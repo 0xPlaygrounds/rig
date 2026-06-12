@@ -30,12 +30,10 @@ async fn build_tool_index(
     rig::embeddings::ToolSchema,
 > {
     let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
-    // ToolSet::schemas() iterates a HashMap, so its order is nondeterministic;
-    // sort so the recorded embedding batch replays stably.
-    let mut schemas = toolset.schemas().expect("tool schemas should build");
-    schemas.sort_by(|a, b| a.name.cmp(&b.name));
+    // ToolSet::schemas() returns registration order, so the recorded
+    // embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(schemas)
+        .documents(toolset.schemas().expect("tool schemas should build"))
         .expect("documents should be added")
         .build()
         .await

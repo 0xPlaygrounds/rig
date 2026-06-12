@@ -44,7 +44,15 @@ impl ToolServer {
     }
 
     pub(crate) fn static_tool_names(mut self, names: Vec<String>) -> Self {
-        self.static_tool_names = names;
+        // Last-wins registration replaces the implementation but keeps the
+        // original position, so the advertised list dedupes to first
+        // occurrence (duplicate declarations are rejected by providers).
+        self.static_tool_names = Vec::with_capacity(names.len());
+        for name in names {
+            if !self.static_tool_names.contains(&name) {
+                self.static_tool_names.push(name);
+            }
+        }
         self
     }
 
@@ -61,11 +69,14 @@ impl ToolServer {
         self
     }
 
-    /// Add a static tool to the agent
+    /// Add a static tool to the agent. Re-registering an existing name
+    /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
-        self.static_tool_names.push(toolname);
+        if !self.static_tool_names.contains(&toolname) {
+            self.static_tool_names.push(toolname);
+        }
         self
     }
 
@@ -74,10 +85,12 @@ impl ToolServer {
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
         use crate::tool::rmcp::McpTool;
-        let toolname = tool.name.clone();
+        let toolname = tool.name.to_string();
         self.toolset
             .add_tool(McpTool::from_mcp_server(tool, client));
-        self.static_tool_names.push(toolname.to_string());
+        if !self.static_tool_names.contains(&toolname) {
+            self.static_tool_names.push(toolname);
+        }
         self
     }
 
@@ -113,22 +126,31 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
-    /// Register a new static tool.
+    /// Register a new static tool. Re-registering an existing name replaces
+    /// the implementation (last wins) and keeps its position.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state.static_tool_names.push(tool.name());
+        let toolname = tool.name();
+        if !state.static_tool_names.contains(&toolname) {
+            state.static_tool_names.push(toolname);
+        }
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
     }
 
     /// Merge an entire toolset into the server. Tool names from `toolset`
-    /// are appended to the static-tool list, so the tools become visible
-    /// to the LLM via [`Self::get_tool_defs`].
+    /// are appended to the static-tool list in `toolset`'s registration
+    /// order, so the tools become visible to the LLM via
+    /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
+    /// keep their position.
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state
-            .static_tool_names
-            .extend(toolset.tools.keys().cloned());
+        let new_names: Vec<String> = toolset
+            .ordered_names()
+            .filter(|name| !state.static_tool_names.contains(name))
+            .cloned()
+            .collect();
+        state.static_tool_names.extend(new_names);
         state.toolset.add_tools(toolset);
         Ok(())
     }
@@ -164,6 +186,50 @@ impl ToolServerHandle {
             None => Err(ToolServerError::ToolsetError(
                 ToolSetError::ToolNotFoundError(tool_name.to_string()),
             )),
+        }
+    }
+
+    /// Render a tool failure as text for the model: the plain root-cause
+    /// message without internal error-type wrappers, plus retry guidance.
+    pub(crate) async fn tool_failure_text(
+        &self,
+        tool_name: &str,
+        error: &ToolServerError,
+    ) -> String {
+        use crate::tool::ToolError;
+        match error {
+            ToolServerError::ToolsetError(ToolSetError::ToolNotFoundError(name)) => {
+                let mut available = {
+                    let state = self.0.read().await;
+                    state.static_tool_names.clone()
+                };
+                available.sort();
+                if available.is_empty() {
+                    format!("Unknown tool name: '{name}'. No tools available.")
+                } else {
+                    format!(
+                        "Unknown tool name: '{name}'. Available tools: {}",
+                        available.join(", ")
+                    )
+                }
+            }
+            // ToolError::JsonError is raised for argument deserialization
+            // (which the model can fix) and, rarely, output serialization.
+            ToolServerError::ToolsetError(ToolSetError::ToolCallError(ToolError::JsonError(
+                inner,
+            ))) => {
+                format!(
+                    "Invalid arguments for tool '{tool_name}': {inner}\n\nFix the errors and try again."
+                )
+            }
+            ToolServerError::ToolsetError(ToolSetError::ToolCallError(
+                ToolError::ToolCallError(inner),
+            )) => {
+                format!("Tool '{tool_name}' failed: {inner}\n\nFix the errors and try again.")
+            }
+            other => {
+                format!("Tool '{tool_name}' failed: {other}\n\nFix the errors and try again.")
+            }
         }
     }
 
@@ -299,6 +365,61 @@ mod tests {
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
+    }
+
+    #[tokio::test]
+    pub async fn tool_failure_text_names_unknown_tools_and_lists_available() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+
+        let error = handle
+            .call_tool("missing", "{}")
+            .await
+            .expect_err("unknown tool should fail");
+        assert_eq!(
+            handle.tool_failure_text("missing", &error).await,
+            "Unknown tool name: 'missing'. Available tools: add"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn tool_failure_text_reports_invalid_arguments() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+
+        let error = handle
+            .call_tool("add", r#"{"x": "not a number"}"#)
+            .await
+            .expect_err("bad arguments should fail");
+        let text = handle.tool_failure_text("add", &error).await;
+        assert!(
+            text.starts_with("Invalid arguments for tool 'add': "),
+            "got {text:?}"
+        );
+        assert!(
+            text.ends_with("\n\nFix the errors and try again."),
+            "got {text:?}"
+        );
+        assert!(
+            !text.contains("JsonError"),
+            "internal error-type names must not reach the model: {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn duplicate_registration_advertises_one_definition() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        handle.add_tool(MockAddTool).await.unwrap();
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(MockAddTool);
+        handle.append_toolset(toolset).await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.len(),
+            1,
+            "re-registering a name must not advertise duplicate declarations"
+        );
+        assert_eq!(defs[0].name, "add");
     }
 
     #[tokio::test]

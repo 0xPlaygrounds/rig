@@ -614,6 +614,9 @@ where
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
+                    // Read the tool choice from the run each turn: `Required`
+                    // relaxes to `Auto` after the first tool-call turn.
+                    let turn_tool_choice = run.effective_tool_choice();
                     let prepared_request = build_prepared_completion_request(
                         &self.model,
                         prompt.clone(),
@@ -623,7 +626,7 @@ where
                         self.temperature,
                         self.max_tokens,
                         self.additional_params.as_ref(),
-                        self.tool_choice.as_ref(),
+                        turn_tool_choice.as_ref(),
                         &self.tool_server_handle,
                         &self.dynamic_context,
                         self.output_schema.as_ref(),
@@ -761,14 +764,16 @@ where
                                         }
                                     }
                                 }
-                                let output =
-                                    match tool_server_handle.call_tool(tool_name, &args).await {
-                                        Ok(res) => res,
-                                        Err(e) => {
-                                            tracing::warn!("Error while executing tool: {e}");
-                                            e.to_string()
-                                        }
-                                    };
+                                let output = match tool_server_handle
+                                    .call_tool(tool_name, &args)
+                                    .await
+                                {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        tracing::warn!("Error while executing tool: {e}");
+                                        tool_server_handle.tool_failure_text(tool_name, &e).await
+                                    }
+                                };
                                 if let Some(hook) = hook2
                                     && let HookAction::Terminate { reason } = hook
                                         .on_tool_result(

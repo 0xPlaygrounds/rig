@@ -53,7 +53,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":108,"promptTokensDetails":[{"modality":"TEXT","tokenCount":108}],"serviceTier":"standard","thoughtsTokenCount":54,"totalTokenCount":182}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":108,"promptTokensDetails":[{"modality":"TEXT","tokenCount":108}],"serviceTier":"standard","thoughtsTokenCount":76,"totalTokenCount":204}}'
 ---
 when:
   path: /v1beta/models/gemini-embedding-001:batchEmbedContents
@@ -91,4 +91,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"42"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":142,"promptTokensDetails":[{"modality":"TEXT","tokenCount":142}],"serviceTier":"standard","totalTokenCount":144}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"42","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":142,"promptTokensDetails":[{"modality":"TEXT","tokenCount":142}],"serviceTier":"standard","thoughtsTokenCount":38,"totalTokenCount":182}}'

@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":113,"promptTokensDetails":[{"modality":"TEXT","tokenCount":113}],"serviceTier":"standard","thoughtsTokenCount":42,"totalTokenCount":175}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":19,"y":23},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":113,"promptTokensDetails":[{"modality":"TEXT","tokenCount":113}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":176}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"42","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":147,"promptTokensDetails":[{"modality":"TEXT","tokenCount":147}],"serviceTier":"standard","thoughtsTokenCount":27,"totalTokenCount":176}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"42","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":147,"promptTokensDetails":[{"modality":"TEXT","tokenCount":147}],"serviceTier":"standard","thoughtsTokenCount":29,"totalTokenCount":178}}'
