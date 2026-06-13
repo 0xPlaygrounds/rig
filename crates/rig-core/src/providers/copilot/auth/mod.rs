@@ -1,3 +1,4 @@
+use crate::http_client::{self, HttpClientExt};
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -83,7 +84,7 @@ pub enum AuthError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
-    Http(#[from] reqwest::Error),
+    Transport(#[from] http_client::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -110,7 +111,10 @@ impl Authenticator {
         }
     }
 
-    pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
+    pub async fn auth_context<H>(&self, http_client: &H) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         match &self.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {
                 api_key: api_key.clone(),
@@ -119,12 +123,12 @@ impl Authenticator {
             AuthSource::GitHubAccessToken(access_token) => {
                 let _guard = self.state_lock.lock().await;
                 self.platform
-                    .auth_context_with_github_access_token(access_token)
+                    .auth_context_with_github_access_token(http_client, access_token)
                     .await
             }
             AuthSource::OAuth => {
                 let _guard = self.state_lock.lock().await;
-                self.platform.auth_context_oauth().await
+                self.platform.auth_context_oauth(http_client).await
             }
         }
     }
