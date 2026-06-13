@@ -525,7 +525,6 @@ where
             let mut last_final_choice: OneOrMany<AssistantContent> =
                 OneOrMany::one(AssistantContent::text(""));
             let mut last_message_id: Option<String> = None;
-
             'outer: loop {
                 let step = match run.next_step() {
                     Ok(step) => step,
@@ -574,6 +573,12 @@ where
                             gen_ai.output.messages = tracing::field::Empty,
                         );
 
+                        // Read the tool choice from the run each turn: the WIRE
+                        // choice relaxes to `Auto` after the first tool-call
+                        // turn, while the validation choice keeps bounding
+                        // which tools the model may call.
+                        let turn_tool_choice = run.effective_tool_choice();
+                        let validation_tool_choice = run.validation_tool_choice();
                         let prepared_request = build_prepared_completion_request(
                             &model,
                             current_prompt.clone(),
@@ -583,7 +588,8 @@ where
                             temperature,
                             max_tokens,
                             additional_params.as_ref(),
-                            tool_choice.as_ref(),
+                            turn_tool_choice.as_ref(),
+                            validation_tool_choice.as_ref(),
                             &tool_server_handle,
                             &dynamic_context,
                             output_schema.as_ref(),
@@ -858,6 +864,10 @@ where
                         last_final_choice = final_turn_content;
                     }
                     AgentRunStep::CallTools { calls } => {
+                        // From serialized machine state, so resumed runs
+                        // render the same tool-failure text the original
+                        // would have.
+                        let turn_executable_tool_names = run.advertised_tool_names().clone();
                         let full_history_for_errors = run.full_history();
                         let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
 
@@ -938,7 +948,11 @@ where
                                     Ok(result) => result,
                                     Err(err) => {
                                         tracing::warn!("Error while calling tool: {err}");
-                                        err.to_string()
+                                        crate::tool::server::tool_failure_text(
+                                            &tool_call.function.name,
+                                            &err,
+                                            &turn_executable_tool_names,
+                                        )
                                     }
                                 };
 
@@ -1594,6 +1608,12 @@ mod tests {
     struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
 
     impl CapturedSpans {
+        fn clear(&self) {
+            if let Ok(mut spans) = self.0.lock() {
+                spans.clear();
+            }
+        }
+
         fn insert(&self, id: &Id, name: &str, parent_id: Option<u64>) {
             let id = id.into_u64();
             if let Ok(mut spans) = self.0.lock() {
@@ -1663,11 +1683,43 @@ mod tests {
         max_turns: usize,
         expected_usages: &[Usage],
     ) {
+        // Scoped-subscriber tests must not run concurrently; the warm-up
+        // below explains the callsite-interest hazard this guards against.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let spans = CapturedSpans::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
             spans: spans.clone(),
         });
         let _default = tracing::subscriber::set_default(subscriber);
+
+        // Span callsites in the driver are shared with every other test in
+        // this binary. The FIRST thread to hit a callsite caches its interest
+        // from that thread's dispatcher (`Dispatchers::Rebuilder::JustOne`
+        // consults `dispatcher::get_default`), so a parallel test without a
+        // subscriber can permanently cache `Interest::never` for the very
+        // spans this harness asserts on. Defend in two steps, both under the
+        // isolation guard: (1) warm the whole driver path from THIS thread so
+        // unregistered callsites first-register against this subscriber, then
+        // (2) rebuild the interest cache to heal callsites a foreign thread
+        // already poisoned.
+        let warmup_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").multi_turn(1).await;
+        while let Some(item) = warmup_stream
+            .try_next()
+            .await
+            .expect("warmup stream should not error")
+        {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
         let empty_history: &[Message] = &[];
         let outer_span = tracing::info_span!("outer");
 

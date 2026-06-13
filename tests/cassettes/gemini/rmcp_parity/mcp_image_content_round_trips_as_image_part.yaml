@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fetch the attendee badge image.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must call the fetch_badge_image tool, inspect the returned image, and describe its dominant color in one short sentence.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Fetch the attendee badge as an image the assistant must inspect.","name":"fetch_badge_image","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{},"id":"27a0pgr0","name":"fetch_badge_image"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":12,"promptTokenCount":69,"promptTokensDetails":[{"modality":"TEXT","tokenCount":69}],"serviceTier":"standard","thoughtsTokenCount":48,"totalTokenCount":129}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fetch the attendee badge image.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"fetch_badge_image"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"fetch_badge_image","parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==","mimeType":"image/png"}}]},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You must call the fetch_badge_image tool, inspect the returned image, and describe its dominant color in one short sentence.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Fetch the attendee badge as an image the assistant must inspect.","name":"fetch_badge_image","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The dominant color of the attendee badge is red.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":10,"promptTokenCount":1228,"promptTokensDetails":[{"modality":"TEXT","tokenCount":139},{"modality":"IMAGE","tokenCount":1089}],"serviceTier":"standard","thoughtsTokenCount":28,"totalTokenCount":1266}}'

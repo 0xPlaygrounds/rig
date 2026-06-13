@@ -1,0 +1,56 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Translate ''good morning'' into French.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You delegate every translation request to the french_translator tool, then report its output to the user.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"\n            Prompt a sub-agent to do a task for you.\n\n            Agent name: french_translator\n            Agent description: Translates short English phrases into French.\n            Agent system prompt: You translate the user''s text into French. Reply with the translation only.\n            ","name":"french_translator","parameters":{"properties":{"prompt":{"description":"The prompt for the agent to call.","type":"string"}},"required":["prompt"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"prompt":"good morning"},"name":"french_translator"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":16,"promptTokenCount":128,"promptTokensDetails":[{"modality":"TEXT","tokenCount":128}],"serviceTier":"standard","thoughtsTokenCount":60,"totalTokenCount":204}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"good morning","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You translate the user''s text into French. Reply with the translation only.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Bonjour"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":20,"promptTokensDetails":[{"modality":"TEXT","tokenCount":20}],"serviceTier":"standard","thoughtsTokenCount":22,"totalTokenCount":43}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Translate ''good morning'' into French.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"prompt":"good morning"},"name":"french_translator"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"french_translator","response":{"result":"Bonjour"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You delegate every translation request to the french_translator tool, then report its output to the user.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"\n            Prompt a sub-agent to do a task for you.\n\n            Agent name: french_translator\n            Agent description: Translates short English phrases into French.\n            Agent system prompt: You translate the user''s text into French. Reply with the translation only.\n            ","name":"french_translator","parameters":{"properties":{"prompt":{"description":"The prompt for the agent to call.","type":"string"}},"required":["prompt"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The French translation of ''good morning'' is Bonjour."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_3","usageMetadata":{"candidatesTokenCount":11,"promptTokenCount":159,"promptTokensDetails":[{"modality":"TEXT","tokenCount":159}],"serviceTier":"standard","totalTokenCount":170}}'

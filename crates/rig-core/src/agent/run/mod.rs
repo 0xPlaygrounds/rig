@@ -263,6 +263,19 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
+    /// Executable tool names advertised on the most recent model turn. Lives
+    /// in serialized state so a process resuming this run can still render
+    /// accurate tool-failure text for the model.
+    #[serde(default)]
+    turn_executable_tool_names: BTreeSet<String>,
+    /// Set once a turn has produced tool calls. While set, a configured
+    /// [`ToolChoice::Required`] or [`ToolChoice::Specific`] relaxes to
+    /// [`ToolChoice::Auto`] on the WIRE so the run can finish with a text
+    /// answer, while `tool_choice` itself stays immutable so the configured
+    /// allowlist still bounds validation and is preserved in snapshots and
+    /// diagnostics.
+    #[serde(default)]
+    forced_choice_satisfied: bool,
     state: RunState,
 }
 
@@ -283,6 +296,8 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
+            turn_executable_tool_names: BTreeSet::new(),
+            forced_choice_satisfied: false,
             state: RunState::PreparingRequest,
         }
     }
@@ -313,6 +328,51 @@ impl AgentRun {
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self
+    }
+
+    /// The tool choice to send on the WIRE for the next model turn.
+    ///
+    /// [`ToolChoice::Required`] and [`ToolChoice::Specific`] force a tool call
+    /// every turn at the provider, which makes a final text answer
+    /// unreachable; so once a turn has produced tool calls — including a
+    /// streamed turn abandoned with a skipped tool result — both relax to
+    /// [`ToolChoice::Auto`] on the wire so the run can complete. Invalid-call
+    /// retries keep the forced mode, since the retried turn replaces the
+    /// rejected one. Drivers should read this per turn instead of caching the
+    /// originally configured value.
+    ///
+    /// The configured choice still bounds rig-side validation every turn — see
+    /// [`AgentRun::validation_tool_choice`] — so a relaxed wire choice never
+    /// widens the set of tools the model may actually call.
+    pub fn effective_tool_choice(&self) -> Option<ToolChoice> {
+        match &self.tool_choice {
+            Some(ToolChoice::Required | ToolChoice::Specific { .. })
+                if self.forced_choice_satisfied =>
+            {
+                Some(ToolChoice::Auto)
+            }
+            other => other.clone(),
+        }
+    }
+
+    /// The tool choice used for rig-side validation of the model's tool calls.
+    ///
+    /// Always the configured choice, regardless of wire relaxation, so a
+    /// [`ToolChoice::Specific`] allowlist keeps rejecting calls to tools the
+    /// user did not name on every turn — not just the first.
+    pub fn validation_tool_choice(&self) -> Option<ToolChoice> {
+        self.tool_choice.clone()
+    }
+
+    /// The executable tool names advertised on the most recent model turn.
+    ///
+    /// Drivers use this to render tool-failure text that names exactly what
+    /// the model was offered (including dynamically retrieved tools). It is
+    /// part of the serialized state, so a process resuming the run mid
+    /// [`AgentRunStep::CallTools`] reports the same set the original process
+    /// advertised.
+    pub fn advertised_tool_names(&self) -> &BTreeSet<String> {
+        &self.turn_executable_tool_names
     }
 
     /// Aggregated token usage across all completed model calls so far.
@@ -457,6 +517,14 @@ impl AgentRun {
                 }
 
                 if has_tool_calls {
+                    // Forced function-calling (`Required`/`Specific`) applies
+                    // until the first turn that produces tool calls;
+                    // afterwards the model must be able to emit a final text
+                    // answer, so the WIRE choice relaxes to `Auto`. The flag
+                    // lives in serialized state (so a resumed run keeps the
+                    // relaxation) and `tool_choice` stays intact so validation
+                    // still bounds which tools may be called.
+                    self.forced_choice_satisfied = true;
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .filter_map(|item| match item {
@@ -541,6 +609,7 @@ impl AgentRun {
             .push(CompletionCall::new(self.completion_call_index, turn.usage));
         self.completion_call_index += 1;
         self.usage += turn.usage;
+        self.turn_executable_tool_names = turn.executable_tool_names.clone();
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -972,6 +1041,11 @@ impl AgentRun {
                     });
                 }
 
+                // A skip synthetically answers this turn's tool call, so the
+                // forced mode relaxes exactly like the non-streamed skip path
+                // (which flows through `AwaitingAdvance`).
+                self.forced_choice_satisfied = true;
+
                 let skipped_tool_result = ToolResult {
                     id: invalid.tool_call.id.clone(),
                     call_id: invalid.tool_call.call_id.clone(),
@@ -1021,6 +1095,8 @@ impl AgentRun {
             self.completion_call_index += 1;
             self.streamed_completion_call_recorded = true;
         }
+
+        self.turn_executable_tool_names = turn.executable_tool_names.clone();
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -1467,6 +1543,97 @@ mod tests {
         assert_eq!(calls.len(), 2);
         // Both the skipped call and its valid peer carry preresolved results.
         assert!(calls.iter().all(|call| call.preresolved_result.is_some()));
+    }
+
+    #[test]
+    fn required_relaxes_to_auto_after_first_tool_call_turn() {
+        let mut run = AgentRun::new("add things")
+            .max_turns(3)
+            .with_tool_choice(ToolChoice::Required);
+        assert_eq!(run.effective_tool_choice(), Some(ToolChoice::Required));
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+
+        // Before the tool-call turn is consumed the choice is still forced;
+        // emitting CallTools applies the relaxation.
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            run.effective_tool_choice(),
+            Some(ToolChoice::Auto),
+            "Required should relax to Auto once a turn produced tool calls"
+        );
+        // tool_choice itself is never mutated, so validation keeps the
+        // configured value and snapshots/diagnostics preserve it.
+        assert_eq!(run.validation_tool_choice(), Some(ToolChoice::Required));
+
+        // The relaxation lives in serialized state: a process resuming from
+        // the snapshot alone must not re-force tool calls.
+        let snapshot = serde_json::to_string(&run).expect("run should serialize");
+        let resumed: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+        assert_eq!(resumed.effective_tool_choice(), Some(ToolChoice::Auto));
+        assert_eq!(resumed.validation_tool_choice(), Some(ToolChoice::Required));
+
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool results should be accepted");
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("done"))
+                .expect("text turn should be accepted after relaxation"),
+        );
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, "done");
+    }
+
+    #[test]
+    fn advertised_tool_names_survive_serialization() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+
+        // A process resuming from the snapshot alone must report the same
+        // advertised set when rendering tool-failure text mid-CallTools.
+        let snapshot = serde_json::to_string(&run).expect("run should serialize");
+        let resumed: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+        assert_eq!(resumed.advertised_tool_names(), &tool_names(&["add"]));
+    }
+
+    #[test]
+    fn specific_wire_relaxes_but_validation_stays_pinned() {
+        let specific = ToolChoice::Specific {
+            function_names: vec!["add".to_string()],
+        };
+        let mut run = AgentRun::new("add things")
+            .max_turns(3)
+            .with_tool_choice(specific.clone());
+        assert_eq!(run.effective_tool_choice(), Some(specific.clone()));
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+
+        // The WIRE choice relaxes to Auto so the run can finish with text,
+        // but validation keeps the configured Specific allowlist run-long.
+        assert_eq!(run.effective_tool_choice(), Some(ToolChoice::Auto));
+        assert_eq!(run.validation_tool_choice(), Some(specific.clone()));
+
+        // Both survive serialization: the flag persists and tool_choice is
+        // never mutated.
+        let snapshot = serde_json::to_string(&run).expect("run should serialize");
+        let resumed: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+        assert_eq!(resumed.effective_tool_choice(), Some(ToolChoice::Auto));
+        assert_eq!(resumed.validation_tool_choice(), Some(specific));
     }
 
     #[test]

@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::RwLock;
 
@@ -8,6 +10,46 @@ use crate::{
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
+/// An opaque, process-unique identifier for the registrant of a tool.
+///
+/// Direct registrations ([`ToolServerHandle::add_tool`], builder tools) are
+/// *unowned*. Ownership-aware registrations ([`ToolServerHandle::add_tool_owned`])
+/// carry an `OwnerId` so a registrant can later remove only its own tools
+/// ([`ToolServerHandle::remove_tool_owned`]) without evicting a tool that a
+/// different registrant has since taken over. This is what stops an MCP
+/// tool-list refresh from silently deleting a user's directly-registered tool
+/// that happens to share a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OwnerId(u64);
+
+impl OwnerId {
+    /// Allocate a fresh, process-unique owner id.
+    pub fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl Default for OwnerId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Outcome of an ownership-aware registration via
+/// [`ToolServerHandle::add_tool_owned`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnedToolRegistration {
+    /// The name was free and the tool was registered under the owner.
+    Added,
+    /// The name was already owned by the same owner; its implementation was
+    /// replaced and the ownership tag kept.
+    Replaced,
+    /// The name is owned by a different registrant, or was registered
+    /// directly (unowned); the tool was not registered.
+    SkippedConflict,
+}
+
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
     /// Static tool names that persist until explicitly removed.
@@ -16,6 +58,11 @@ struct ToolServerState {
     dynamic_tools: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The toolset where tools are registered and executed.
     toolset: ToolSet,
+    /// Provenance of ownership-tagged tools, keyed by tool name. A name is
+    /// present iff it was registered via [`ToolServerHandle::add_tool_owned`]
+    /// and has not since been taken over by a direct registration. Names in
+    /// the toolset but absent here are unowned (registered directly).
+    tool_owners: HashMap<String, OwnerId>,
 }
 
 /// Builder for constructing a [`ToolServerHandle`].
@@ -44,7 +91,15 @@ impl ToolServer {
     }
 
     pub(crate) fn static_tool_names(mut self, names: Vec<String>) -> Self {
-        self.static_tool_names = names;
+        // Last-wins registration replaces the implementation but keeps the
+        // original position, so the advertised list dedupes to first
+        // occurrence (duplicate declarations are rejected by providers).
+        self.static_tool_names = Vec::with_capacity(names.len());
+        for name in names {
+            if !self.static_tool_names.contains(&name) {
+                self.static_tool_names.push(name);
+            }
+        }
         self
     }
 
@@ -61,11 +116,14 @@ impl ToolServer {
         self
     }
 
-    /// Add a static tool to the agent
+    /// Add a static tool to the agent. Re-registering an existing name
+    /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
-        self.static_tool_names.push(toolname);
+        if !self.static_tool_names.contains(&toolname) {
+            self.static_tool_names.push(toolname);
+        }
         self
     }
 
@@ -74,10 +132,12 @@ impl ToolServer {
     #[cfg(feature = "rmcp")]
     pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
         use crate::tool::rmcp::McpTool;
-        let toolname = tool.name.clone();
+        let toolname = tool.name.to_string();
         self.toolset
             .add_tool(McpTool::from_mcp_server(tool, client));
-        self.static_tool_names.push(toolname.to_string());
+        if !self.static_tool_names.contains(&toolname) {
+            self.static_tool_names.push(toolname);
+        }
         self
     }
 
@@ -100,6 +160,8 @@ impl ToolServer {
             static_tool_names: self.static_tool_names,
             dynamic_tools: self.dynamic_tools,
             toolset: self.toolset,
+            // Builder tools are direct registrations: unowned.
+            tool_owners: HashMap::new(),
         })))
     }
 }
@@ -113,32 +175,120 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
-    /// Register a new static tool.
+    /// Register a new static tool. Re-registering an existing name replaces
+    /// the implementation (last wins) and keeps its position.
+    ///
+    /// This is a *direct* (unowned) registration: it takes over the name even
+    /// if it was previously owned (clearing the ownership tag), so a later
+    /// owned-removal can no longer evict it. Use [`Self::add_tool_owned`] for
+    /// registrations that should be removable by their registrant.
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state.static_tool_names.push(tool.name());
+        let toolname = tool.name();
+        if !state.static_tool_names.contains(&toolname) {
+            state.static_tool_names.push(toolname.clone());
+        }
+        // A direct registration is unowned; drop any prior ownership tag so
+        // an owned-removal can never delete the user's tool.
+        state.tool_owners.remove(&toolname);
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
     }
 
+    /// Register a tool under ownership tracking.
+    ///
+    /// Unlike [`Self::add_tool`] (last-wins, untracked), this refuses to
+    /// silently co-opt a name registered by anyone else: it replaces only a
+    /// slot owned by the same `owner`, and skips (with a warning) a name that
+    /// is unowned (registered directly) or owned by a different registrant.
+    /// This protects directly-registered tools from being evicted by an MCP
+    /// tool-list refresh that happens to share a name. See [`OwnedToolRegistration`].
+    pub async fn add_tool_owned(
+        &self,
+        tool: impl ToolDyn + 'static,
+        owner: OwnerId,
+    ) -> Result<OwnedToolRegistration, ToolServerError> {
+        let mut state = self.0.write().await;
+        let toolname = tool.name();
+        match state.tool_owners.get(&toolname).copied() {
+            Some(existing) if existing == owner => {
+                // We already own this name: replace the implementation.
+                state.toolset.add_tool_boxed(Box::new(tool));
+                Ok(OwnedToolRegistration::Replaced)
+            }
+            Some(_) => {
+                tracing::warn!(
+                    tool_name = %toolname,
+                    "skipping registration of MCP/owned tool {toolname:?}: the name is owned by another registrant. Use a tool prefix to avoid the collision."
+                );
+                Ok(OwnedToolRegistration::SkippedConflict)
+            }
+            None if state.toolset.contains(&toolname) => {
+                tracing::warn!(
+                    tool_name = %toolname,
+                    "skipping registration of MCP/owned tool {toolname:?}: the name is already taken by a directly-registered tool. Use a tool prefix to avoid the collision."
+                );
+                Ok(OwnedToolRegistration::SkippedConflict)
+            }
+            None => {
+                state.tool_owners.insert(toolname.clone(), owner);
+                if !state.static_tool_names.contains(&toolname) {
+                    state.static_tool_names.push(toolname);
+                }
+                state.toolset.add_tool_boxed(Box::new(tool));
+                Ok(OwnedToolRegistration::Added)
+            }
+        }
+    }
+
     /// Merge an entire toolset into the server. Tool names from `toolset`
-    /// are appended to the static-tool list, so the tools become visible
-    /// to the LLM via [`Self::get_tool_defs`].
+    /// are appended to the static-tool list in `toolset`'s registration
+    /// order, so the tools become visible to the LLM via
+    /// [`Self::get_tool_defs`]. Existing names are replaced (last wins) and
+    /// keep their position. These are direct (unowned) registrations.
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        state
-            .static_tool_names
-            .extend(toolset.tools.keys().cloned());
+        let new_names: Vec<String> = toolset
+            .ordered_names()
+            .filter(|name| !state.static_tool_names.contains(name))
+            .cloned()
+            .collect();
+        // Each merged name is now a direct registration: drop any prior
+        // ownership tag.
+        for name in toolset.ordered_names() {
+            state.tool_owners.remove(name);
+        }
+        state.static_tool_names.extend(new_names);
         state.toolset.add_tools(toolset);
         Ok(())
     }
 
-    /// Remove a tool by name from both the toolset and the static list.
+    /// Remove a tool by name from the toolset and the static list,
+    /// regardless of ownership.
     pub async fn remove_tool(&self, tool_name: &str) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
         state.static_tool_names.retain(|x| *x != tool_name);
+        state.tool_owners.remove(tool_name);
         state.toolset.delete_tool(tool_name);
         Ok(())
+    }
+
+    /// Remove a tool only if it is currently owned by `owner`.
+    ///
+    /// A name that has been taken over by a direct registration (now unowned)
+    /// or that is owned by someone else is left untouched. Returns whether a
+    /// tool was removed. This is what an MCP tool-list refresh uses, so it
+    /// never deletes a user's directly-registered tool.
+    pub async fn remove_tool_owned(&self, tool_name: &str, owner: OwnerId) -> bool {
+        let mut state = self.0.write().await;
+        if state.tool_owners.get(tool_name).copied() == Some(owner) {
+            state.tool_owners.remove(tool_name);
+            state.static_tool_names.retain(|x| *x != tool_name);
+            state.toolset.delete_tool(tool_name);
+            true
+        } else {
+            false
+        }
     }
 
     /// Look up and execute a tool by name.
@@ -255,6 +405,22 @@ impl ToolServerHandle {
             tools.push(tool.definition(String::new()).await);
         }
 
+        // One shared toolset backs both lists, so a name appearing in the
+        // dynamic AND static lists (or retrieved by two indexes) refers to
+        // the same tool. Keep the first definition and drop exact-name
+        // repeats: providers reject duplicate function declarations.
+        let mut seen = std::collections::HashSet::new();
+        tools.retain(|def| {
+            let fresh = seen.insert(def.name.clone());
+            if !fresh {
+                tracing::debug!(
+                    tool_name = %def.name,
+                    "dropping duplicate tool definition from the request"
+                );
+            }
+            fresh
+        });
+
         Ok(tools)
     }
 }
@@ -265,6 +431,53 @@ pub enum ToolServerError {
     ToolsetError(#[from] ToolSetError),
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
+}
+
+/// Render a tool failure as text for the model: the plain root-cause message
+/// without internal error-type wrappers, plus retry guidance.
+///
+/// `available_tools` should be the executable tool names advertised on the
+/// turn that produced the call, so the message names exactly what the model
+/// was offered (including dynamically retrieved tools).
+pub(crate) fn tool_failure_text(
+    tool_name: &str,
+    error: &ToolServerError,
+    available_tools: &std::collections::BTreeSet<String>,
+) -> String {
+    use crate::tool::ToolError;
+    match error {
+        ToolServerError::ToolsetError(ToolSetError::ToolNotFoundError(name)) => {
+            if available_tools.is_empty() {
+                format!("Unknown tool name: '{name}'. No tools available.")
+            } else {
+                let available: Vec<&str> = available_tools.iter().map(String::as_str).collect();
+                format!(
+                    "Unknown tool name: '{name}'. Available tools: {}",
+                    available.join(", ")
+                )
+            }
+        }
+        // ToolError::JsonError is raised for argument deserialization
+        // (which the model can fix) and, rarely, output serialization.
+        ToolServerError::ToolsetError(ToolSetError::ToolCallError(ToolError::JsonError(inner))) => {
+            format!(
+                "Invalid arguments for tool '{tool_name}': {inner}\n\nFix the errors and try again."
+            )
+        }
+        ToolServerError::ToolsetError(ToolSetError::ToolCallError(ToolError::ToolCallError(
+            inner,
+        ))) => {
+            format!("Tool '{tool_name}' failed: {inner}\n\nFix the errors and try again.")
+        }
+        // Defensive only: the remaining variants (ToolSetError::JsonError,
+        // Interrupted, ToolServerError::DefinitionError) arise during
+        // definition assembly, not from the call_tool path this renders, so
+        // they are unreachable here. Their Display may carry a wrapper
+        // prefix, which is acceptable for a fallback that never fires.
+        other => {
+            format!("Tool '{tool_name}' failed: {other}\n\nFix the errors and try again.")
+        }
+    }
 }
 
 #[cfg(test)]
@@ -299,6 +512,143 @@ mod tests {
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
+    }
+
+    fn advertised(names: &[&str]) -> std::collections::BTreeSet<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    #[tokio::test]
+    pub async fn tool_failure_text_names_unknown_tools_and_lists_available() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+
+        let error = handle
+            .call_tool("missing", "{}")
+            .await
+            .expect_err("unknown tool should fail");
+        assert_eq!(
+            super::tool_failure_text("missing", &error, &advertised(&["add", "subtract"])),
+            "Unknown tool name: 'missing'. Available tools: add, subtract"
+        );
+        assert_eq!(
+            super::tool_failure_text("missing", &error, &advertised(&[])),
+            "Unknown tool name: 'missing'. No tools available."
+        );
+    }
+
+    #[tokio::test]
+    pub async fn tool_failure_text_reports_invalid_arguments() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+
+        let error = handle
+            .call_tool("add", r#"{"x": "not a number"}"#)
+            .await
+            .expect_err("bad arguments should fail");
+        let text = super::tool_failure_text("add", &error, &advertised(&["add"]));
+        assert!(
+            text.starts_with("Invalid arguments for tool 'add': "),
+            "got {text:?}"
+        );
+        assert!(
+            text.ends_with("\n\nFix the errors and try again."),
+            "got {text:?}"
+        );
+        assert!(
+            !text.contains("JsonError"),
+            "internal error-type names must not reach the model: {text:?}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn get_tool_defs_dedupes_dynamic_and_static_overlap() {
+        // One shared toolset backs both lists, so a dynamically retrieved
+        // name that is also static must yield a single definition.
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .dynamic_tools(1, MockToolIndex::new(["add"]), ToolSet::default())
+            .run();
+
+        let defs = handle
+            .get_tool_defs(Some("add two numbers".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(
+            defs.len(),
+            1,
+            "dynamic/static name overlap must not produce duplicate declarations: {:?}",
+            defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(defs[0].name, "add");
+    }
+
+    #[tokio::test]
+    pub async fn duplicate_registration_advertises_one_definition() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        handle.add_tool(MockAddTool).await.unwrap();
+
+        let mut toolset = ToolSet::default();
+        toolset.add_tool(MockAddTool);
+        handle.append_toolset(toolset).await.unwrap();
+
+        let defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            defs.len(),
+            1,
+            "re-registering a name must not advertise duplicate declarations"
+        );
+        assert_eq!(defs[0].name, "add");
+    }
+
+    #[tokio::test]
+    pub async fn add_tool_owned_outcomes_and_tag_clearing() {
+        use crate::tool::server::{OwnedToolRegistration, OwnerId};
+
+        let handle = ToolServer::new().run();
+        let owner_a = OwnerId::new();
+        let owner_b = OwnerId::new();
+
+        // Free name -> Added.
+        assert_eq!(
+            handle.add_tool_owned(MockAddTool, owner_a).await.unwrap(),
+            OwnedToolRegistration::Added
+        );
+        // Same owner -> Replaced.
+        assert_eq!(
+            handle.add_tool_owned(MockAddTool, owner_a).await.unwrap(),
+            OwnedToolRegistration::Replaced
+        );
+        // Different owner -> SkippedConflict.
+        assert_eq!(
+            handle.add_tool_owned(MockAddTool, owner_b).await.unwrap(),
+            OwnedToolRegistration::SkippedConflict
+        );
+
+        // A direct registration takes over the name and clears the tag, so a
+        // later owned-removal by the original owner cannot evict it.
+        handle.add_tool(MockAddTool).await.unwrap();
+        assert!(
+            !handle.remove_tool_owned("add", owner_a).await,
+            "owned-removal must not delete a name taken over directly"
+        );
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    pub async fn remove_tool_owned_only_removes_matching_owner() {
+        use crate::tool::server::OwnerId;
+
+        let handle = ToolServer::new().run();
+        let owner = OwnerId::new();
+        handle.add_tool_owned(MockAddTool, owner).await.unwrap();
+
+        assert!(
+            !handle.remove_tool_owned("add", OwnerId::new()).await,
+            "a different owner must not remove the tool"
+        );
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+
+        assert!(handle.remove_tool_owned("add", owner).await);
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 0);
     }
 
     #[tokio::test]

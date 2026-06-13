@@ -152,6 +152,116 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     .await;
 }
 
+/// `ToolChoice::Required` forces a tool call until the first turn that
+/// produces one, then relaxes to `Auto` so the run can complete with a text
+/// answer instead of repeating forced calls until `max_turns` is exhausted.
+#[tokio::test]
+async fn required_nonstreaming_forces_first_tool_call_then_completes() {
+    super::super::support::with_gemini_cassette(
+        "tool_choice/required_nonstreaming_forces_first_tool_call_then_completes",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a calculator assistant. Answer arithmetic questions.")
+                .temperature(0.0)
+                .tool(Adder)
+                .tool(Subtract)
+                .tool_choice(ToolChoice::Required)
+                .default_max_turns(3)
+                .build();
+
+            let mut chat_history = Vec::<Message>::new();
+            let response = agent
+                .chat("What is 19 + 23?", &mut chat_history)
+                .await
+                .expect("Required should relax after the forced call and complete");
+
+            assert_mentions_expected_number(&response, 42);
+            assert_history_tool_calls(&chat_history, &[Adder::NAME], &[]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn required_streaming_forces_first_tool_call_then_completes() {
+    super::super::support::with_gemini_cassette(
+        "tool_choice/required_streaming_forces_first_tool_call_then_completes",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a calculator assistant. Answer arithmetic questions.")
+                .temperature(0.0)
+                .tool(Adder)
+                .tool(Subtract)
+                .tool_choice(ToolChoice::Required)
+                .build();
+
+            let mut stream = agent.stream_prompt("What is 19 + 23?").multi_turn(3).await;
+            let observation = collect_stream_observation(&mut stream).await;
+
+            assert!(
+                observation.errors.is_empty(),
+                "stream should not emit errors: {:?}",
+                observation.errors
+            );
+            assert!(
+                observation
+                    .tool_calls
+                    .iter()
+                    .any(|name| name == Adder::NAME),
+                "ToolChoice::Required should force a tool call, saw {:?}",
+                observation.tool_calls
+            );
+            assert!(
+                observation.tool_results >= 1,
+                "the forced call should produce a tool result"
+            );
+            assert_mentions_expected_number(
+                observation
+                    .final_response_text
+                    .as_deref()
+                    .expect("the relaxed run should finish with a final text response"),
+                42,
+            );
+        },
+    )
+    .await;
+}
+
+/// `ToolChoice::Specific` forces one of the named tools on the first turn,
+/// then relaxes to `Auto` on the wire so the run can finish with a text
+/// answer — exactly like `Required`, but restricted to the named set. Without
+/// the wire relaxation this multi-turn run would never complete.
+#[tokio::test]
+async fn specific_nonstreaming_forces_first_tool_call_then_completes() {
+    super::super::support::with_gemini_cassette(
+        "tool_choice/specific_nonstreaming_forces_first_tool_call_then_completes",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a calculator assistant. Answer arithmetic questions.")
+                .temperature(0.0)
+                .tool(Adder)
+                .tool(Subtract)
+                .tool_choice(specific_add_choice())
+                .default_max_turns(3)
+                .build();
+
+            let mut chat_history = Vec::<Message>::new();
+            let response = agent
+                .chat("What is 19 + 23?", &mut chat_history)
+                .await
+                .expect("Specific should relax after the forced call and complete");
+
+            assert_mentions_expected_number(&response, 42);
+            // Only the named tool was ever called.
+            assert_history_tool_calls(&chat_history, &[Adder::NAME], &[Subtract::NAME]);
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn none_streaming_does_not_emit_tool_calls() {
     super::super::support::with_gemini_cassette(

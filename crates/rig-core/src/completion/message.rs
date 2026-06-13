@@ -907,9 +907,19 @@ impl ToolResultContent {
     /// Supports three formats:
     /// 1. Simple text: Any string → `OneOrMany::one(Text)`
     /// 2. Image JSON: `{"type": "image", "data": "...", "mimeType": "..."}` → `OneOrMany::one(Image)`
-    /// 3. Hybrid JSON: `{"response": {...}, "parts": [...]}` → `OneOrMany::many([Text, Image, ...])`
+    /// 3. Hybrid JSON: an object with a `response` and/or `parts` key →
+    ///    `OneOrMany::many([Text, Image, ...])`.
+    ///    - `response` (optional): any JSON value, rendered as one leading
+    ///      text part.
+    ///    - `parts` (optional): an ordered array whose entries become parts
+    ///      in array order, preserving text/image interleaving. Each entry is
+    ///      either `{"type": "text", "text": "..."}` or
+    ///      `{"type": "image", "data": "...", "mimeType": "..."}`; image
+    ///      `data` may be base64 or an http(s) URL. Entries of other types
+    ///      are skipped.
     ///
-    /// If JSON parsing fails, treats the entire string as text.
+    /// If JSON parsing fails, or the hybrid object yields no parts, treats
+    /// the entire string as text.
     pub fn from_tool_output(output: impl Into<String>) -> OneOrMany<ToolResultContent> {
         let output_str = output.into();
 
@@ -923,32 +933,37 @@ impl ToolResultContent {
 
                 if let Some(parts) = json.get("parts").and_then(|p| p.as_array()) {
                     for part in parts {
-                        let is_image = part
-                            .get("type")
-                            .and_then(|t| t.as_str())
-                            .is_some_and(|t| t == "image");
+                        match part.get("type").and_then(|t| t.as_str()) {
+                            // Text parts let multi-part outputs preserve
+                            // their original text/image interleaving.
+                            Some("text") => {
+                                if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                    results
+                                        .push(ToolResultContent::Text(Text::new(text.to_string())));
+                                }
+                            }
+                            Some("image") => {
+                                if let (Some(data), Some(mime_type)) = (
+                                    part.get("data").and_then(|v| v.as_str()),
+                                    part.get("mimeType").and_then(|v| v.as_str()),
+                                ) {
+                                    let data_kind = if data.starts_with("http://")
+                                        || data.starts_with("https://")
+                                    {
+                                        DocumentSourceKind::Url(data.to_string())
+                                    } else {
+                                        DocumentSourceKind::Base64(data.to_string())
+                                    };
 
-                        if !is_image {
-                            continue;
-                        }
-
-                        if let (Some(data), Some(mime_type)) = (
-                            part.get("data").and_then(|v| v.as_str()),
-                            part.get("mimeType").and_then(|v| v.as_str()),
-                        ) {
-                            let data_kind =
-                                if data.starts_with("http://") || data.starts_with("https://") {
-                                    DocumentSourceKind::Url(data.to_string())
-                                } else {
-                                    DocumentSourceKind::Base64(data.to_string())
-                                };
-
-                            results.push(ToolResultContent::Image(Image {
-                                data: data_kind,
-                                media_type: ImageMediaType::from_mime_type(mime_type),
-                                detail: None,
-                                additional_params: None,
-                            }));
+                                    results.push(ToolResultContent::Image(Image {
+                                        data: data_kind,
+                                        media_type: ImageMediaType::from_mime_type(mime_type),
+                                        detail: None,
+                                        additional_params: None,
+                                    }));
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -1332,7 +1347,27 @@ pub enum ToolChoice {
     #[default]
     Auto,
     None,
+    /// Force the model to call a tool.
+    ///
+    /// In multi-turn agent runs this applies until the first turn that
+    /// produces tool calls, then relaxes to [`ToolChoice::Auto`] on the wire:
+    /// providers apply forced function-calling per request, so keeping it
+    /// forced on every turn would make a final text answer unreachable and
+    /// exhaust `max_turns`.
     Required,
+    /// Restrict the model to a specific set of tools, forcing one of them.
+    ///
+    /// On the wire this behaves like [`ToolChoice::Required`] restricted to
+    /// `function_names`, and relaxes to [`ToolChoice::Auto`] after the first
+    /// tool-call turn for the same reason. The restriction itself is *not*
+    /// relaxed: Rig keeps rejecting calls to tools outside `function_names`
+    /// on every turn, so this is a run-long allowlist even though the wire
+    /// forcing only applies to the first turn.
+    ///
+    /// Provider support varies: Gemini, Anthropic, Together, OpenRouter,
+    /// Bedrock and VertexAI map this to forced/restricted tool modes (hence
+    /// the relaxation); OpenAI and Mistral reject it outright; Gemini's
+    /// Interactions API restricts without forcing.
     Specific {
         function_names: Vec<String>,
     },
