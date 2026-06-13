@@ -1350,11 +1350,24 @@ pub enum ToolChoice {
     /// Force the model to call a tool.
     ///
     /// In multi-turn agent runs this applies until the first turn that
-    /// produces tool calls, then relaxes to [`ToolChoice::Auto`]: providers
-    /// apply forced function-calling per request, so keeping it forced on
-    /// every turn would make a final text answer unreachable and exhaust
-    /// `max_turns`.
+    /// produces tool calls, then relaxes to [`ToolChoice::Auto`] on the wire:
+    /// providers apply forced function-calling per request, so keeping it
+    /// forced on every turn would make a final text answer unreachable and
+    /// exhaust `max_turns`.
     Required,
+    /// Restrict the model to a specific set of tools, forcing one of them.
+    ///
+    /// On the wire this behaves like [`ToolChoice::Required`] restricted to
+    /// `function_names`, and relaxes to [`ToolChoice::Auto`] after the first
+    /// tool-call turn for the same reason. The restriction itself is *not*
+    /// relaxed: Rig keeps rejecting calls to tools outside `function_names`
+    /// on every turn, so this is a run-long allowlist even though the wire
+    /// forcing only applies to the first turn.
+    ///
+    /// Provider support varies: Gemini, Anthropic, Together, OpenRouter,
+    /// Bedrock and VertexAI map this to forced/restricted tool modes (hence
+    /// the relaxation); OpenAI and Mistral reject it outright; Gemini's
+    /// Interactions API restricts without forcing.
     Specific {
         function_names: Vec<String>,
     },

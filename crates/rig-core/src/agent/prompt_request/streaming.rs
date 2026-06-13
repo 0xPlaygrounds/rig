@@ -573,10 +573,12 @@ where
                             gen_ai.output.messages = tracing::field::Empty,
                         );
 
-                        // Read the tool choice from the run each turn:
-                        // `Required` relaxes to `Auto` after the first
-                        // tool-call turn.
+                        // Read the tool choice from the run each turn: the WIRE
+                        // choice relaxes to `Auto` after the first tool-call
+                        // turn, while the validation choice keeps bounding
+                        // which tools the model may call.
                         let turn_tool_choice = run.effective_tool_choice();
+                        let validation_tool_choice = run.validation_tool_choice();
                         let prepared_request = build_prepared_completion_request(
                             &model,
                             current_prompt.clone(),
@@ -587,6 +589,7 @@ where
                             max_tokens,
                             additional_params.as_ref(),
                             turn_tool_choice.as_ref(),
+                            validation_tool_choice.as_ref(),
                             &tool_server_handle,
                             &dynamic_context,
                             output_schema.as_ref(),

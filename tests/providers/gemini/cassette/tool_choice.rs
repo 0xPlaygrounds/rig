@@ -229,6 +229,39 @@ async fn required_streaming_forces_first_tool_call_then_completes() {
     .await;
 }
 
+/// `ToolChoice::Specific` forces one of the named tools on the first turn,
+/// then relaxes to `Auto` on the wire so the run can finish with a text
+/// answer — exactly like `Required`, but restricted to the named set. Without
+/// the wire relaxation this multi-turn run would never complete.
+#[tokio::test]
+async fn specific_nonstreaming_forces_first_tool_call_then_completes() {
+    super::super::support::with_gemini_cassette(
+        "tool_choice/specific_nonstreaming_forces_first_tool_call_then_completes",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a calculator assistant. Answer arithmetic questions.")
+                .temperature(0.0)
+                .tool(Adder)
+                .tool(Subtract)
+                .tool_choice(specific_add_choice())
+                .default_max_turns(3)
+                .build();
+
+            let mut chat_history = Vec::<Message>::new();
+            let response = agent
+                .chat("What is 19 + 23?", &mut chat_history)
+                .await
+                .expect("Specific should relax after the forced call and complete");
+
+            assert_mentions_expected_number(&response, 42);
+            // Only the named tool was ever called.
+            assert_history_tool_calls(&chat_history, &[Adder::NAME], &[Subtract::NAME]);
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn none_streaming_does_not_emit_tool_calls() {
     super::super::support::with_gemini_cassette(

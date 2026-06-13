@@ -996,6 +996,44 @@ mod tests {
             Some(crate::message::ToolChoice::Auto),
             "a skipped streamed tool call should relax Required to Auto"
         );
+        assert_eq!(
+            run.validation_tool_choice(),
+            Some(crate::message::ToolChoice::Required),
+            "validation keeps the configured choice"
+        );
+    }
+
+    #[test]
+    fn streamed_skip_relaxes_specific_tool_choice_wire_only() {
+        let specific = crate::message::ToolChoice::Specific {
+            function_names: vec!["add".to_string()],
+        };
+        let mut run = AgentRun::new("use the tool")
+            .max_turns(2)
+            .with_tool_choice(specific.clone());
+        run.next_step().expect("next_step");
+
+        let mut asm = assembler();
+        let invalid = expect_invalid(
+            asm.ingest(&tool_call_item("tc_1", "default_api"))
+                .expect("ingest should succeed"),
+        );
+        let partial = asm.partial_turn(None);
+
+        run.resolve_streamed_invalid_tool_call(
+            &partial,
+            &invalid,
+            InvalidToolCallHookAction::skip("not available"),
+        )
+        .expect("skip should be accepted");
+
+        // The wire relaxes so the run can finish; validation keeps the
+        // Specific allowlist.
+        assert_eq!(
+            run.effective_tool_choice(),
+            Some(crate::message::ToolChoice::Auto)
+        );
+        assert_eq!(run.validation_tool_choice(), Some(specific));
     }
 
     #[test]
