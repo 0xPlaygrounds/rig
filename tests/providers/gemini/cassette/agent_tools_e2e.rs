@@ -29,12 +29,14 @@ fn all_tool_result_texts(history: &[Message]) -> Vec<String> {
     history.iter().flat_map(tool_result_texts).collect()
 }
 
-/// The first assistant message carrying more than one tool call, paired with
-/// the message that follows it.
+/// The first assistant message carrying exactly two tool calls, paired with
+/// the message that follows it. The downstream assertions already pin the
+/// pair to `["add", "subtract"]`, so requiring exactly two here is equivalent
+/// and clearer.
 fn parallel_call_turn(history: &[Message]) -> (&Message, &Message) {
     let index = history
         .iter()
-        .position(|message| assistant_tool_call_names(message).len() >= 2)
+        .position(|message| assistant_tool_call_names(message).len() == 2)
         .unwrap_or_else(|| {
             panic!("expected an assistant message with parallel tool calls: {history:?}")
         });

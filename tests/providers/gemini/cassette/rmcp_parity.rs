@@ -505,8 +505,7 @@ async fn mcp_audio_content_degrades_to_placeholder() {
         .await
         .expect("audio content should degrade to a placeholder, not fail");
 
-    assert!(
-        output.contains("[unsupported audio content (audio/wav)]"),
-        "the output should carry an audio placeholder: {output}"
-    );
+    // The chime tool returns audio only, and the placeholder is synthesized
+    // entirely by rig (no model, no cassette), so this is exact.
+    assert_eq!(output, "[unsupported audio content (audio/wav)]");
 }

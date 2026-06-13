@@ -89,9 +89,11 @@ async fn on_tool_call_terminate_cancels_run() {
             assert_eq!(counter.count(), 0, "the vetoed tool should never execute");
             match &error {
                 PromptError::PromptCancelled { reason, .. } => {
-                    assert!(
-                        reason.contains(TERMINATE_REASON),
-                        "cancellation should carry the hook's reason, got {reason:?}"
+                    // The hook's reason passes through verbatim (no model
+                    // content), so this is exact.
+                    assert_eq!(
+                        reason, TERMINATE_REASON,
+                        "cancellation should carry the hook's reason verbatim"
                     );
                 }
                 other => panic!("expected PromptCancelled, got {other:?}"),

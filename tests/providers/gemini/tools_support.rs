@@ -3,6 +3,20 @@
 //! suites lock in the externally observable behavior of the handrolled tool
 //! plumbing (`ToolSet`, `ToolServer`, hook dispatch, result shaping) ahead of
 //! the planned migration onto `rmcp`.
+//!
+//! ## On loose assertions
+//!
+//! Many assertions in these suites are intentionally loose (`contains`,
+//! `any`, `>=`, "mentions the number") rather than exact equality. Cassette
+//! replay is deterministic, so the *recorded* values are fixed — but these
+//! cassettes are periodically re-recorded against the live provider, and any
+//! value shaped by model-generated text, model-chosen call count/ordering,
+//! provider token counts, or live embedding rankings can legitimately change
+//! at re-record time. Only values synthesized purely by rig code with no
+//! model input (a verbatim hook reason, a fixed adapter string, a
+//! code-enforced sample cap) are pinned to exact equality. Please keep that
+//! split when adding assertions: tightening a model-dependent assertion to
+//! `assert_eq!` will spuriously fail the next re-recording.
 #![allow(dead_code)]
 
 use std::sync::Arc;
