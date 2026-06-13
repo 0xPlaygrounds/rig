@@ -134,7 +134,11 @@ where
                         .collect())
                 }
                 ApiResponse::Error(err) => {
-                    let _ = (&err.error, &err.code);
+                    tracing::warn!(
+                        message = %err.error,
+                        code = %err.code,
+                        "provider returned an error response"
+                    );
                     Err(EmbeddingError::ProviderResponse(
                         crate::provider_response::ProviderResponseError {
                             status: Some(status),

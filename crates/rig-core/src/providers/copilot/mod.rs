@@ -855,7 +855,10 @@ where
                         })
                     }
                     ChatApiResponse::Err(err) => {
-                        let _ = err.error_message();
+                        tracing::warn!(
+                            message = %err.error_message(),
+                            "provider returned an error response"
+                        );
                         Err(CompletionError::ProviderResponse(
                             crate::provider_response::ProviderResponseError {
                                 status: Some(status),
