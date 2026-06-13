@@ -112,6 +112,26 @@ impl From<McpToolError> for ToolError {
     }
 }
 
+/// A human-readable name for an MCP content variant, for diagnostics.
+fn content_kind(raw: &RawContent) -> &'static str {
+    match raw {
+        RawContent::Text(_) => "text",
+        RawContent::Image(_) => "image",
+        RawContent::Resource(_) => "resource",
+        RawContent::Audio(_) => "audio",
+        _ => "unsupported",
+    }
+}
+
+/// Render an MCP resource as a labeled, separated string the model can read,
+/// e.g. `resource file:///x (text/plain):\n<body>` (mime omitted when absent).
+fn labeled_resource(uri: &str, mime_type: Option<&str>, body: &str) -> String {
+    match mime_type {
+        Some(mime) => format!("resource {uri} ({mime}):\n{body}"),
+        None => format!("resource {uri}:\n{body}"),
+    }
+}
+
 impl ToolDyn for McpTool {
     fn name(&self) -> String {
         self.advertised_name
@@ -152,19 +172,35 @@ impl ToolDyn for McpTool {
                 .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
             if let Some(true) = result.is_error {
-                let error_msg = result
-                    .content
-                    .into_iter()
-                    .map(|x| x.raw.as_text().map(|y| y.to_owned()))
-                    .map(|x| x.map(|x| x.clone().text))
-                    .collect::<Option<Vec<String>>>();
-
-                let error_message = error_msg.map(|x| x.join("\n"));
-                if let Some(error_message) = error_message {
-                    return Err(McpToolError(error_message).into());
-                } else {
-                    return Err(McpToolError("No message returned".to_string()).into());
+                if result.content.is_empty() {
+                    return Err(
+                        McpToolError("tool returned an error with no content".to_string()).into(),
+                    );
                 }
+                // Collect text parts permissively: a mixed error (text + image)
+                // must still surface its text, not collapse to a placeholder.
+                let mut texts = Vec::new();
+                let mut dropped: Vec<&'static str> = Vec::new();
+                for item in &result.content {
+                    match item.raw.as_text() {
+                        Some(text) => texts.push(text.text.clone()),
+                        None => {
+                            let kind = content_kind(&item.raw);
+                            if !dropped.contains(&kind) {
+                                dropped.push(kind);
+                            }
+                        }
+                    }
+                }
+                let message = if texts.is_empty() {
+                    format!(
+                        "tool returned an error with non-text content: {}",
+                        dropped.join(", ")
+                    )
+                } else {
+                    texts.join("\n")
+                };
+                return Err(McpToolError(message).into());
             };
 
             // Content is collected as ordered parts so multi-part results
@@ -193,29 +229,23 @@ impl ToolDyn for McpTool {
                             mime_type,
                             text,
                             ..
-                        } => {
-                            format!(
-                                "{mime_type}{uri}:{text}",
-                                mime_type =
-                                    mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
-                            )
-                        }
+                        } => labeled_resource(&uri, mime_type.as_deref(), &text),
                         rmcp::model::ResourceContents::BlobResourceContents {
                             uri,
                             mime_type,
                             blob,
                             ..
-                        } => format!(
-                            "{mime_type}{uri}:{blob}",
-                            mime_type = mime_type.map(|m| format!("data:{m};")).unwrap_or_default(),
-                        ),
+                        } => labeled_resource(&uri, mime_type.as_deref(), &blob),
                     },
-                    RawContent::Audio(_) => {
-                        return Err(McpToolError(
-                            "MCP tool returned audio content, which Rig does not support yet"
-                                .to_string(),
-                        )
-                        .into());
+                    RawContent::Audio(raw) => {
+                        // Rig has no audio tool-result part yet; degrade to a
+                        // text placeholder so co-returned content survives
+                        // instead of failing the whole call.
+                        tracing::warn!(
+                            "MCP tool returned audio content ({}); representing it as a text placeholder",
+                            raw.mime_type
+                        );
+                        format!("[unsupported audio content ({})]", raw.mime_type)
                     }
                     thing => {
                         return Err(McpToolError(format!(
@@ -548,6 +578,29 @@ mod tests {
                     Content::image("aGVsbG8=", "image/png"),
                     Content::text("after the image"),
                 ])),
+                "text_resource" => Ok(CallToolResult::success(vec![Content::embedded_text(
+                    "file:///notes.txt",
+                    "resource body",
+                )])),
+                "audio_and_text" => Ok(CallToolResult::success(vec![
+                    Annotated::new(
+                        RawContent::Audio(RawAudioContent {
+                            data: "QUJD".to_string(),
+                            mime_type: "audio/wav".to_string(),
+                        }),
+                        None,
+                    ),
+                    Content::text("transcript follows"),
+                ])),
+                "error_text_and_image" => Ok(CallToolResult::error(vec![
+                    Content::text("boom"),
+                    Content::image("aGVsbG8=", "image/png"),
+                ])),
+                "error_image_only" => Ok(CallToolResult::error(vec![Content::image(
+                    "aGVsbG8=",
+                    "image/png",
+                )])),
+                "error_empty" => Ok(CallToolResult::error(vec![])),
                 name => Ok(CallToolResult::success(vec![Content::text(format!(
                     "called {name}"
                 ))])),
@@ -773,6 +826,76 @@ mod tests {
             vec!["before the image", "<image>", "after the image"],
             "the original text/image interleaving should be preserved"
         );
+    }
+
+    #[tokio::test]
+    async fn is_error_with_text_and_image_keeps_text() {
+        let tool = make_tool("error_text_and_image", "errors with text + image");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let err = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect_err("an is_error result should surface as an error");
+        // The text must survive; the non-text part is dropped silently.
+        assert!(err.to_string().contains("boom"), "got {err}");
+    }
+
+    #[tokio::test]
+    async fn is_error_with_only_non_text_names_kinds() {
+        let tool = make_tool("error_image_only", "errors with image only");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let err = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect_err("an is_error result should surface as an error");
+        assert!(
+            err.to_string().contains("non-text content: image"),
+            "got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn is_error_with_empty_content() {
+        let tool = make_tool("error_empty", "errors with no content");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let err = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect_err("an is_error result should surface as an error");
+        assert!(err.to_string().contains("no content"), "got {err}");
+    }
+
+    #[tokio::test]
+    async fn text_resource_uses_labeled_format() {
+        let tool = make_tool("text_resource", "returns a text resource");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        let output = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect("resource tool call should succeed");
+        assert_eq!(output, "resource file:///notes.txt (text):\nresource body");
+    }
+
+    #[tokio::test]
+    async fn audio_content_degrades_to_placeholder() {
+        let tool = make_tool("audio_and_text", "returns audio + text");
+        let server = DynamicToolServer::new(vec![tool.clone()]);
+        let (mcp_tool, _service) = connect_mcp_tool(server, tool).await;
+
+        // Audio no longer fails the whole call: it degrades to a placeholder,
+        // and the co-returned text survives.
+        let output = crate::tool::ToolDyn::call(&mcp_tool, "{}".to_string())
+            .await
+            .expect("audio tool call should succeed");
+        assert!(
+            output.contains("[unsupported audio content (audio/wav)]"),
+            "got {output}"
+        );
+        assert!(output.contains("transcript follows"), "got {output}");
     }
 
     #[tokio::test]

@@ -493,19 +493,20 @@ async fn tool_list_changed_swaps_tools_between_turns() {
     .await;
 }
 
-/// No cassette: pins the adapter's hard error on audio content.
+/// No cassette: pins that audio content degrades to a text placeholder
+/// instead of failing the whole call.
 #[tokio::test]
-async fn mcp_audio_content_is_unsupported() {
+async fn mcp_audio_content_degrades_to_placeholder() {
     let mcp_client = connect_in_process(ParityMcpServer::new(vec![chime_tool()])).await;
     let tool = McpTool::from_mcp_server(chime_tool(), mcp_client.peer().clone());
 
-    let error = tool
+    let output = tool
         .call("{}".to_string())
         .await
-        .expect_err("audio content should be rejected");
+        .expect("audio content should degrade to a placeholder, not fail");
 
     assert!(
-        error.to_string().contains("audio"),
-        "the error should name the unsupported audio content: {error}"
+        output.contains("[unsupported audio content (audio/wav)]"),
+        "the output should carry an audio placeholder: {output}"
     );
 }

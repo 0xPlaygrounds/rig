@@ -469,6 +469,11 @@ pub(crate) fn tool_failure_text(
         ))) => {
             format!("Tool '{tool_name}' failed: {inner}\n\nFix the errors and try again.")
         }
+        // Defensive only: the remaining variants (ToolSetError::JsonError,
+        // Interrupted, ToolServerError::DefinitionError) arise during
+        // definition assembly, not from the call_tool path this renders, so
+        // they are unreachable here. Their Display may carry a wrapper
+        // prefix, which is acceptable for a fallback that never fires.
         other => {
             format!("Tool '{tool_name}' failed: {other}\n\nFix the errors and try again.")
         }
