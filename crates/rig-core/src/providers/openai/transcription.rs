@@ -109,13 +109,21 @@ where
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
-                    api_error_response.message,
-                )),
+                ApiResponse::Err(api_error_response) => {
+                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
+                    Err(TranscriptionError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
+                    ))
+                }
             }
         } else {
             let str = String::from_utf8_lossy(&response_body).to_string();
-            Err(TranscriptionError::ProviderError(str))
+            Err(TranscriptionError::HttpError(
+                crate::http_client::Error::InvalidStatusCodeWithMessage(status, str),
+            ))
         }
     }
 }

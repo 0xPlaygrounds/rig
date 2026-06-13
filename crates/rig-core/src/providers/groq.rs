@@ -434,11 +434,22 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: String::from_utf8_lossy(&response_body).into_owned(),
+                            },
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        String::from_utf8_lossy(&response_body).to_string(),
+                    ),
                 ))
             }
         };
@@ -589,13 +600,22 @@ where
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
-                    api_error_response.message,
-                )),
+                ApiResponse::Err(api_error_response) => {
+                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
+                    Err(TranscriptionError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
+                    ))
+                }
             }
         } else {
-            Err(TranscriptionError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
+            Err(TranscriptionError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
+                ),
             ))
         }
     }
@@ -784,5 +804,71 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"model overloaded","type":"server_error","code":"503"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama-3.3-70b-versatile");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["code"], "503");
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"service unavailable","code":"503"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama-3.3-70b-versatile");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

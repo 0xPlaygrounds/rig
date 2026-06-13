@@ -846,6 +846,7 @@ mod tests {
             output: Vec::new(),
             tools: Vec::new(),
             additional_parameters: Default::default(),
+            provider_reasoning: None,
         }
     }
 

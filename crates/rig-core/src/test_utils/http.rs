@@ -32,6 +32,9 @@ pub enum MockHttpResponse {
     Success(Bytes),
     /// Return a status-code error with the given body text.
     Error(http::StatusCode, String),
+    /// Return an HTTP response with the given (typically non-success) status
+    /// and body, instead of a transport-level error.
+    ErrorResponse(http::StatusCode, Bytes),
 }
 
 impl MockHttpResponse {
@@ -74,6 +77,18 @@ impl RecordingHttpClient {
         Self {
             requests: Arc::new(Mutex::new(Vec::new())),
             response: Arc::new(Mutex::new(MockHttpResponse::error(status, message))),
+        }
+    }
+
+    /// Create a client that returns a non-success HTTP response (status and body)
+    /// for unary requests, instead of a transport-level error.
+    pub fn with_error_response(status: http::StatusCode, body: impl Into<Bytes>) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(Vec::new())),
+            response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponse(
+                status,
+                body.into(),
+            ))),
         }
     }
 
@@ -126,17 +141,18 @@ impl HttpClientExt for RecordingHttpClient {
         }
 
         async move {
-            let response_body = match response {
-                MockHttpResponse::Success(response_body) => response_body,
+            let (status, response_body) = match response {
+                MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body),
                 MockHttpResponse::Error(status, message) => {
                     return Err(http_client::Error::InvalidStatusCodeWithMessage(
                         status, message,
                     ));
                 }
+                MockHttpResponse::ErrorResponse(status, response_body) => (status, response_body),
             };
             let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
             Response::builder()
-                .status(http::StatusCode::OK)
+                .status(status)
                 .body(body)
                 .map_err(http_client::Error::Protocol)
         }
@@ -220,6 +236,67 @@ impl HttpClientExt for MockStreamingClient {
                 .header(http::header::CONTENT_TYPE, "text/event-stream")
                 .body(boxed_stream)
                 .map_err(http_client::Error::Protocol)
+        }
+    }
+}
+
+/// An [`HttpClientExt`] implementation whose `send_streaming` fails immediately
+/// with a non-success HTTP status and response body.
+#[derive(Debug, Clone)]
+pub struct HttpErrorStreamingClient {
+    pub status: http::StatusCode,
+    pub body: String,
+}
+
+impl HttpErrorStreamingClient {
+    /// Create a streaming client that fails `send_streaming` with the given status and body.
+    pub fn new(status: http::StatusCode, body: impl Into<String>) -> Self {
+        Self {
+            status,
+            body: body.into(),
+        }
+    }
+}
+
+impl HttpClientExt for HttpErrorStreamingClient {
+    fn send<T, U>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        _req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::InvalidStatusCode(
+            http::StatusCode::NOT_IMPLEMENTED,
+        )))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let status = self.status;
+        let body = self.body.clone();
+        async move {
+            Err(http_client::Error::InvalidStatusCodeWithMessage(
+                status, body,
+            ))
         }
     }
 }
