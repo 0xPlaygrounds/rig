@@ -263,6 +263,11 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
+    /// Executable tool names advertised on the most recent model turn. Lives
+    /// in serialized state so a process resuming this run can still render
+    /// accurate tool-failure text for the model.
+    #[serde(default)]
+    turn_executable_tool_names: BTreeSet<String>,
     state: RunState,
 }
 
@@ -283,6 +288,7 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
+            turn_executable_tool_names: BTreeSet::new(),
             state: RunState::PreparingRequest,
         }
     }
@@ -325,6 +331,17 @@ impl AgentRun {
     /// per turn instead of caching the originally configured value.
     pub fn effective_tool_choice(&self) -> Option<ToolChoice> {
         self.tool_choice.clone()
+    }
+
+    /// The executable tool names advertised on the most recent model turn.
+    ///
+    /// Drivers use this to render tool-failure text that names exactly what
+    /// the model was offered (including dynamically retrieved tools). It is
+    /// part of the serialized state, so a process resuming the run mid
+    /// [`AgentRunStep::CallTools`] reports the same set the original process
+    /// advertised.
+    pub fn advertised_tool_names(&self) -> &BTreeSet<String> {
+        &self.turn_executable_tool_names
     }
 
     /// Aggregated token usage across all completed model calls so far.
@@ -564,6 +581,7 @@ impl AgentRun {
             .push(CompletionCall::new(self.completion_call_index, turn.usage));
         self.completion_call_index += 1;
         self.usage += turn.usage;
+        self.turn_executable_tool_names = turn.executable_tool_names.clone();
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -1055,6 +1073,8 @@ impl AgentRun {
             self.streamed_completion_call_recorded = true;
         }
 
+        self.turn_executable_tool_names = turn.executable_tool_names.clone();
+
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
             .iter()
@@ -1540,6 +1560,23 @@ mod tests {
         );
         let response = expect_done(&mut run);
         assert_eq!(response.output, "done");
+    }
+
+    #[test]
+    fn advertised_tool_names_survive_serialization() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+
+        // A process resuming from the snapshot alone must report the same
+        // advertised set when rendering tool-failure text mid-CallTools.
+        let snapshot = serde_json::to_string(&run).expect("run should serialize");
+        let resumed: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+        assert_eq!(resumed.advertised_tool_names(), &tool_names(&["add"]));
     }
 
     #[test]

@@ -562,9 +562,6 @@ where
         }
 
         let current_span_id: AtomicU64 = AtomicU64::new(0);
-        // The executable tool names advertised on the most recent model
-        // turn, used to render accurate failure text for the model.
-        let mut turn_executable_tool_names = std::collections::BTreeSet::new();
 
         loop {
             match run.next_step()? {
@@ -642,7 +639,6 @@ where
                         .instrument(chat_span.clone())
                         .await?;
 
-                    turn_executable_tool_names = prepared_request.executable_tool_names.clone();
                     let mut outcome = run.model_response(ModelTurn::new(
                         resp.message_id.clone(),
                         resp.choice.clone(),
@@ -679,6 +675,9 @@ where
                 AgentRunStep::CallTools { calls } => {
                     let hook = self.hook.clone();
                     let tool_server_handle = self.tool_server_handle.clone();
+                    // From serialized machine state, so resumed runs render
+                    // the same tool-failure text the original would have.
+                    let turn_executable_tool_names = run.advertised_tool_names().clone();
 
                     // For error handling in concurrent tool execution, we need to build full history
                     let full_history_for_errors = run.full_history();

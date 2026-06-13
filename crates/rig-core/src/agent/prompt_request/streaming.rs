@@ -525,10 +525,6 @@ where
             let mut last_final_choice: OneOrMany<AssistantContent> =
                 OneOrMany::one(AssistantContent::text(""));
             let mut last_message_id: Option<String> = None;
-            // The executable tool names advertised on the most recent model
-            // turn, used to render accurate failure text for the model.
-            let mut turn_executable_tool_names = std::collections::BTreeSet::new();
-
             'outer: loop {
                 let step = match run.next_step() {
                     Ok(step) => step,
@@ -603,8 +599,6 @@ where
                             .instrument(chat_stream_span.clone())
                             .await?;
 
-                        turn_executable_tool_names =
-                            prepared_request.executable_tool_names.clone();
                         let mut assembler = StreamedTurnAssembler::new(
                             prepared_request.executable_tool_names.clone(),
                             prepared_request.allowed_tool_names.clone(),
@@ -867,6 +861,10 @@ where
                         last_final_choice = final_turn_content;
                     }
                     AgentRunStep::CallTools { calls } => {
+                        // From serialized machine state, so resumed runs
+                        // render the same tool-failure text the original
+                        // would have.
+                        let turn_executable_tool_names = run.advertised_tool_names().clone();
                         let full_history_for_errors = run.full_history();
                         let mut results: Vec<UserContent> = Vec::with_capacity(calls.len());
 
@@ -1682,9 +1680,8 @@ mod tests {
         max_turns: usize,
         expected_usages: &[Usage],
     ) {
-        // Scoped-subscriber tests must not run concurrently: a dispatcher
-        // registering elsewhere rebuilds the global callsite interest cache
-        // and can silently drop this test's spans.
+        // Scoped-subscriber tests must not run concurrently; the warm-up
+        // below explains the callsite-interest hazard this guards against.
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let spans = CapturedSpans::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {

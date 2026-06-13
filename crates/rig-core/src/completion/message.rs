@@ -907,9 +907,19 @@ impl ToolResultContent {
     /// Supports three formats:
     /// 1. Simple text: Any string → `OneOrMany::one(Text)`
     /// 2. Image JSON: `{"type": "image", "data": "...", "mimeType": "..."}` → `OneOrMany::one(Image)`
-    /// 3. Hybrid JSON: `{"response": {...}, "parts": [...]}` → `OneOrMany::many([Text, Image, ...])`
+    /// 3. Hybrid JSON: an object with a `response` and/or `parts` key →
+    ///    `OneOrMany::many([Text, Image, ...])`.
+    ///    - `response` (optional): any JSON value, rendered as one leading
+    ///      text part.
+    ///    - `parts` (optional): an ordered array whose entries become parts
+    ///      in array order, preserving text/image interleaving. Each entry is
+    ///      either `{"type": "text", "text": "..."}` or
+    ///      `{"type": "image", "data": "...", "mimeType": "..."}`; image
+    ///      `data` may be base64 or an http(s) URL. Entries of other types
+    ///      are skipped.
     ///
-    /// If JSON parsing fails, treats the entire string as text.
+    /// If JSON parsing fails, or the hybrid object yields no parts, treats
+    /// the entire string as text.
     pub fn from_tool_output(output: impl Into<String>) -> OneOrMany<ToolResultContent> {
         let output_str = output.into();
 
