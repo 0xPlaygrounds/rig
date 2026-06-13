@@ -127,7 +127,7 @@ where
         match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
             ApiResponse::Err(err) => {
-                let _ = err.message;
+                tracing::warn!(message = %err.message, "provider returned an error response");
                 Err(ImageGenerationError::ProviderResponse(
                     crate::provider_response::ProviderResponseError {
                         status: Some(status),

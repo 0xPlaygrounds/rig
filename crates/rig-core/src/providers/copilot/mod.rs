@@ -1358,7 +1358,7 @@ where
                 Ok(parsed) => parsed,
                 Err(parse_error) => {
                     if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {
-                        let _ = err.error.message;
+                        tracing::warn!(message = %err.error.message, "provider returned an error response");
                         return Err(EmbeddingError::ProviderResponse(
                             crate::provider_response::ProviderResponseError {
                                 status: Some(status),

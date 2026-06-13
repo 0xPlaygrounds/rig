@@ -427,7 +427,7 @@ where
                         Ok(response.try_into()?)
                     }
                     ApiResponse::Err(error) => {
-                        let _ = error.message;
+                        tracing::warn!(message = %error.message, "provider returned an error response");
                         Err(CompletionError::ProviderResponse(
                             crate::provider_response::ProviderResponseError {
                                 status: Some(status),

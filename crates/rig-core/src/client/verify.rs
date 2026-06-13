@@ -6,6 +6,7 @@ use thiserror::Error;
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum VerifyError {
     #[error("invalid authentication")]
     InvalidAuthentication,
@@ -22,40 +23,7 @@ pub enum VerifyError {
     ),
 }
 
-impl VerifyError {
-    /// Returns the raw provider response body when available.
-    ///
-    /// This is available for:
-    /// - [`VerifyError::ProviderResponse`] using its preserved body.
-    /// - [`VerifyError::HttpError`] when it wraps an HTTP non-success response that carries a body.
-    pub fn provider_response_body(&self) -> Option<&str> {
-        match self {
-            Self::ProviderResponse(response) => Some(response.body.as_str()),
-            Self::HttpError(error) => error.non_success_body(),
-            _ => None,
-        }
-    }
-
-    /// Parses the provider response body as JSON.
-    ///
-    /// Returns:
-    /// - `Ok(Some(value))` when a body is present and valid JSON.
-    /// - `Ok(None)` when no provider response body is available.
-    /// - `Err(error)` when a body is present but isn't valid JSON.
-    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
-        provider_response::json(self.provider_response_body())
-    }
-
-    /// Returns the HTTP status code when this error preserves one, either from a
-    /// non-success HTTP response or from a preserved provider response.
-    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
-        match self {
-            Self::ProviderResponse(response) => response.status,
-            Self::HttpError(error) => error.non_success_status(),
-            _ => None,
-        }
-    }
-}
+crate::provider_response::impl_provider_response_helpers!(VerifyError);
 
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.
@@ -131,5 +99,37 @@ mod provider_response_tests {
         assert_eq!(error.provider_response_body(), None);
         assert_eq!(error.provider_response_status(), None);
         assert_eq!(error.provider_response_json().expect("no body"), None);
+    }
+
+    #[tokio::test]
+    async fn verify_preserves_status_and_body_on_provider_error_response() {
+        use crate::client::VerifyClient;
+        use crate::providers::openai::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"server exploded","type":"server_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(StatusCode::INTERNAL_SERVER_ERROR, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+
+        let error = client
+            .verify()
+            .await
+            .expect_err("verify should fail on a 500 response");
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(StatusCode::INTERNAL_SERVER_ERROR)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let json = error
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["type"], "server_error");
     }
 }

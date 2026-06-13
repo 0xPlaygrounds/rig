@@ -10,6 +10,7 @@ use thiserror::Error;
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ImageGenerationError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -36,40 +37,7 @@ pub enum ImageGenerationError {
     ProviderResponse(provider_response::ProviderResponseError),
 }
 
-impl ImageGenerationError {
-    /// Returns the raw provider response body when available.
-    ///
-    /// This is available for:
-    /// - [`ImageGenerationError::ProviderResponse`] using its preserved body.
-    /// - [`ImageGenerationError::HttpError`] when it wraps an HTTP non-success response that carries a body.
-    pub fn provider_response_body(&self) -> Option<&str> {
-        match self {
-            Self::ProviderResponse(response) => Some(response.body.as_str()),
-            Self::HttpError(error) => error.non_success_body(),
-            _ => None,
-        }
-    }
-
-    /// Parses the provider response body as JSON.
-    ///
-    /// Returns:
-    /// - `Ok(Some(value))` when a body is present and valid JSON.
-    /// - `Ok(None)` when no provider response body is available.
-    /// - `Err(error)` when a body is present but isn't valid JSON.
-    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
-        provider_response::json(self.provider_response_body())
-    }
-
-    /// Returns the HTTP status code when this error preserves one, either from a
-    /// non-success HTTP response or from a preserved provider response.
-    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
-        match self {
-            Self::ProviderResponse(response) => response.status,
-            Self::HttpError(error) => error.non_success_status(),
-            _ => None,
-        }
-    }
-}
+crate::provider_response::impl_provider_response_helpers!(ImageGenerationError);
 
 pub trait ImageGeneration<M>
 where

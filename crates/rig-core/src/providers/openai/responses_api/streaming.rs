@@ -532,12 +532,19 @@ pub(crate) fn raw_choices_from_sse_body(
                 }
             }
             Some("error") => {
-                let message = value
+                if let Some(message) = value
                     .get("error")
                     .and_then(|error| error.get("message"))
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or(data);
-                return Err(CompletionError::ProviderError(message.to_owned()));
+                {
+                    tracing::warn!(message, "provider returned a streaming error event");
+                }
+                return Err(CompletionError::ProviderResponse(
+                    crate::provider_response::ProviderResponseError {
+                        status: None,
+                        body: data.to_owned(),
+                    },
+                ));
             }
             _ => {}
         }
@@ -1308,6 +1315,23 @@ mod tests {
             stream.next().await.is_none(),
             "stream should terminate after HTTP non-success"
         );
+    }
+
+    #[test]
+    fn streaming_error_event_preserves_full_payload() {
+        let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
+        let body = format!("data: {payload}\n");
+
+        let err = super::raw_choices_from_sse_body(&body, super::ResponsesUsage::new(), "OpenAI")
+            .expect_err("error event should surface as a provider response error");
+
+        assert_eq!(err.provider_response_status(), None);
+        assert_eq!(err.provider_response_body(), Some(payload));
+        let json = err
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["code"], "server_error");
     }
 
     #[tokio::test]

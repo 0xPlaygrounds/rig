@@ -435,7 +435,7 @@ where
                         response.try_into()
                     }
                     ApiResponse::Err(err) => {
-                        let _ = err.message;
+                        tracing::warn!(message = %err.message, "provider returned an error response");
                         Err(CompletionError::ProviderResponse(
                             crate::provider_response::ProviderResponseError {
                                 status: Some(status),
@@ -601,7 +601,7 @@ where
             match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => {
-                    let _ = api_error_response.message;
+                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
                     Err(TranscriptionError::ProviderResponse(
                         crate::provider_response::ProviderResponseError {
                             status: Some(status),

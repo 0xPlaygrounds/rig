@@ -1529,8 +1529,11 @@ where
                 }
                 response.try_into()
             } else {
+                let status = response.status();
                 let text = http_client::text(response).await?;
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                ))
             }
         }
         .instrument(span)
@@ -2750,5 +2753,41 @@ mod tests {
         assert_eq!(json["content"][0]["file_id"], "file_abc");
         assert!(json["content"][0].get("file_data").is_none());
         assert!(json["content"][0].get("file_url").is_none());
+    }
+
+    #[tokio::test]
+    async fn responses_completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::providers::openai::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o-mini");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let json = error
+            .provider_response_json()
+            .expect("raw body should be valid JSON")
+            .expect("parsed JSON should be present");
+        assert_eq!(json["error"]["code"], "invalid_value");
     }
 }

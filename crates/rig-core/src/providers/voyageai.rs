@@ -270,7 +270,7 @@ where
                     Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
                 ApiResponse::Err(err) => {
-                    let _ = err.message;
+                    tracing::warn!(message = %err.message, "provider returned an error response");
                     Err(EmbeddingError::ProviderResponse(
                         crate::provider_response::ProviderResponseError {
                             status: Some(status),

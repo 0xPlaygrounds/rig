@@ -12,7 +12,14 @@ use thiserror::Error;
 ///
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
+///
+/// Note: no provider path currently constructs [`Self::ProviderResponse`] for
+/// audio generation; real audio failures surface as [`Self::HttpError`], which
+/// the helpers already read. The variant is kept for symmetry with the other
+/// capability errors and for future provider paths that preserve a 2xx error
+/// envelope.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AudioGenerationError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -39,40 +46,7 @@ pub enum AudioGenerationError {
     ProviderResponse(provider_response::ProviderResponseError),
 }
 
-impl AudioGenerationError {
-    /// Returns the raw provider response body when available.
-    ///
-    /// This is available for:
-    /// - [`AudioGenerationError::ProviderResponse`] using its preserved body.
-    /// - [`AudioGenerationError::HttpError`] when it wraps an HTTP non-success response that carries a body.
-    pub fn provider_response_body(&self) -> Option<&str> {
-        match self {
-            Self::ProviderResponse(response) => Some(response.body.as_str()),
-            Self::HttpError(error) => error.non_success_body(),
-            _ => None,
-        }
-    }
-
-    /// Parses the provider response body as JSON.
-    ///
-    /// Returns:
-    /// - `Ok(Some(value))` when a body is present and valid JSON.
-    /// - `Ok(None)` when no provider response body is available.
-    /// - `Err(error)` when a body is present but isn't valid JSON.
-    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
-        provider_response::json(self.provider_response_body())
-    }
-
-    /// Returns the HTTP status code when this error preserves one, either from a
-    /// non-success HTTP response or from a preserved provider response.
-    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
-        match self {
-            Self::ProviderResponse(response) => response.status,
-            Self::HttpError(error) => error.non_success_status(),
-            _ => None,
-        }
-    }
-}
+crate::provider_response::impl_provider_response_helpers!(AudioGenerationError);
 
 pub trait AudioGeneration<M>
 where
