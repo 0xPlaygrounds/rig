@@ -440,8 +440,14 @@ where
 
         match raw_response.clone().try_into() {
             Ok(response) => Ok(response),
+            // The ChatGPT Codex backend can stream the answer via
+            // `response.output_text.delta` events while sending a final
+            // `response.completed` event whose `output` array is empty. In that
+            // case the non-streaming `TryFrom` reports an empty response, so we
+            // reconstruct the message from the streamed deltas instead.
             Err(CompletionError::ResponseError(message))
-                if message == "Response contained no parts" =>
+                if message == "Response contained no parts"
+                    || message == "Response contained no message or tool call (empty)" =>
             {
                 responses_api::streaming::completion_response_from_sse_body(
                     &text,
