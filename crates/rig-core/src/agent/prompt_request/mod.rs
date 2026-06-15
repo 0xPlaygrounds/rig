@@ -614,12 +614,6 @@ where
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
-                    // Read the tool choice from the run each turn: the WIRE
-                    // choice relaxes to `Auto` after the first tool-call turn,
-                    // while the validation choice keeps bounding which tools
-                    // the model may call.
-                    let turn_tool_choice = run.effective_tool_choice();
-                    let validation_tool_choice = run.validation_tool_choice();
                     let prepared_request = build_prepared_completion_request(
                         &self.model,
                         prompt.clone(),
@@ -629,8 +623,7 @@ where
                         self.temperature,
                         self.max_tokens,
                         self.additional_params.as_ref(),
-                        turn_tool_choice.as_ref(),
-                        validation_tool_choice.as_ref(),
+                        self.tool_choice.as_ref(),
                         &self.tool_server_handle,
                         &self.dynamic_context,
                         self.output_schema.as_ref(),
@@ -1618,91 +1611,6 @@ mod tests {
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
-    }
-
-    #[tokio::test]
-    async fn specific_wire_relaxes_to_auto_but_validation_persists() {
-        // Turn 1 forces the allowed tool; turn 2 emits a tool the user did not
-        // allow. The wire choice has relaxed to Auto by turn 2 (so the run
-        // *could* finish with text), yet validation still rejects the
-        // disallowed call — proving Specific keeps bounding tools run-long.
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
-            MockTurn::tool_call("tool_call_2", "subtract", json!({"x": 3, "y": 1})),
-        ]);
-        let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
-            .tool(MockAddTool)
-            .tool(MockSubtractTool)
-            .tool_choice(ToolChoice::Specific {
-                function_names: vec!["add".to_string()],
-            })
-            .build();
-
-        let err = agent
-            .prompt("use the allowed tool, then misbehave")
-            .max_turns(4)
-            .await
-            .expect_err("a disallowed call must fail even after the wire relaxes");
-
-        match err {
-            PromptError::UnknownToolCall {
-                tool_name,
-                allowed_tools,
-                ..
-            } => {
-                assert_eq!(tool_name, "subtract");
-                assert_eq!(allowed_tools, vec!["add".to_string()]);
-            }
-            other => panic!("expected UnknownToolCall, got {other:?}"),
-        }
-
-        let requests = recorded.requests();
-        assert_eq!(requests.len(), 2, "turn 1 executed, turn 2 was rejected");
-        assert_eq!(
-            requests[0].tool_choice,
-            Some(ToolChoice::Specific {
-                function_names: vec!["add".to_string()]
-            }),
-            "the first turn forces the Specific set on the wire"
-        );
-        assert_eq!(
-            requests[1].tool_choice,
-            Some(ToolChoice::Auto),
-            "the second turn's wire choice relaxed to Auto"
-        );
-    }
-
-    #[tokio::test]
-    async fn specific_completes_with_text_after_relaxation() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
-            MockTurn::text("done"),
-        ]);
-        let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
-            .tool(MockAddTool)
-            .tool_choice(ToolChoice::Specific {
-                function_names: vec!["add".to_string()],
-            })
-            .build();
-
-        let response = agent
-            .prompt("use the allowed tool then answer")
-            .max_turns(4)
-            .await
-            .expect("the relaxed run should finish with text");
-
-        assert_eq!(response, "done");
-        let requests = recorded.requests();
-        assert_eq!(requests.len(), 2);
-        assert_eq!(
-            requests[0].tool_choice,
-            Some(ToolChoice::Specific {
-                function_names: vec!["add".to_string()]
-            })
-        );
-        assert_eq!(requests[1].tool_choice, Some(ToolChoice::Auto));
     }
 
     #[tokio::test]

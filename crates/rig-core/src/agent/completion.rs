@@ -48,38 +48,22 @@ pub(crate) fn allowed_tool_names_for_choice(
             }
 
             let requested = function_names.iter().cloned().collect::<BTreeSet<String>>();
-            // Validation re-runs every turn against the tools available that
-            // turn, and the available set can legitimately shift mid-run (an
-            // MCP `tools/list_changed` swap, dynamic retrieval). So only error
-            // when NONE of the requested names are available — nothing can be
-            // forced; otherwise proceed with whichever named tools are present
-            // and warn about the rest.
-            let allowed = requested
-                .intersection(executable_tool_names)
+            let missing = requested
+                .difference(executable_tool_names)
                 .cloned()
-                .collect::<BTreeSet<String>>();
+                .collect::<Vec<_>>();
 
-            if allowed.is_empty() {
+            if !missing.is_empty() {
                 return Err(CompletionError::RequestError(
                     format!(
-                        "ToolChoice::Specific requested only unavailable tool names: {requested:?}. Available tools: {:?}",
+                        "ToolChoice::Specific requested unknown tool names: {missing:?}. Available tools: {:?}",
                         executable_tool_names.iter().collect::<Vec<_>>()
                     )
                     .into(),
                 ));
             }
 
-            let missing = requested
-                .difference(executable_tool_names)
-                .cloned()
-                .collect::<Vec<_>>();
-            if !missing.is_empty() {
-                tracing::warn!(
-                    "ToolChoice::Specific names tools not currently available (proceeding with the rest): {missing:?}"
-                );
-            }
-
-            allowed
+            requested
         }
     };
 
@@ -113,7 +97,6 @@ pub(crate) async fn build_completion_request<M: CompletionModel>(
         max_tokens,
         additional_params,
         tool_choice,
-        tool_choice,
         tool_server_handle,
         dynamic_context,
         output_schema,
@@ -135,16 +118,10 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     max_tokens: Option<u64>,
     additional_params: Option<&serde_json::Value>,
     tool_choice: Option<&ToolChoice>,
-    validation_tool_choice: Option<&ToolChoice>,
     tool_server_handle: &ToolServerHandle,
     dynamic_context: &DynamicContextStore,
     output_schema: Option<&schemars::Schema>,
 ) -> Result<PreparedCompletionRequest<M>, CompletionError> {
-    // `tool_choice` is the WIRE choice (may be relaxed to Auto after the first
-    // tool-call turn); `validation_tool_choice` is the configured choice that
-    // bounds which tool calls Rig accepts. They differ only for relaxed
-    // `Required`/`Specific` runs; `build_completion_request` passes the same
-    // value for both.
     // Find the latest message in the chat history that contains RAG text
     let rag_text = prompt.rag_text();
     let rag_text = rag_text.or_else(|| {
@@ -247,8 +224,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             (completion_request.tools(tooldefs), executable_tool_names)
         }
     };
-    let allowed_tool_names =
-        allowed_tool_names_for_choice(&executable_tool_names, validation_tool_choice)?;
+    let allowed_tool_names = allowed_tool_names_for_choice(&executable_tool_names, tool_choice)?;
 
     Ok(PreparedCompletionRequest {
         builder,
@@ -625,16 +601,14 @@ mod tests {
     }
 
     #[test]
-    fn allowed_tool_names_specific_rejects_all_missing_tools() {
+    fn allowed_tool_names_specific_rejects_missing_tools() {
         let executable = tool_names(&["add"]);
         let choice = ToolChoice::Specific {
             function_names: vec!["missing".to_string()],
         };
 
-        // None of the requested names are available, so nothing can be
-        // forced: error before the provider request.
         let err = allowed_tool_names_for_choice(&executable, Some(&choice))
-            .expect_err("an all-unavailable specific choice should fail");
+            .expect_err("missing specific tool should fail before provider request");
 
         assert!(matches!(
             err,
@@ -642,22 +616,6 @@ mod tests {
                 if err.to_string().contains("missing")
                     && err.to_string().contains("add")
         ));
-    }
-
-    #[test]
-    fn allowed_tool_names_specific_proceeds_with_available_subset() {
-        let executable = tool_names(&["add", "subtract"]);
-        let choice = ToolChoice::Specific {
-            function_names: vec!["add".to_string(), "vanished".to_string()],
-        };
-
-        // "vanished" is no longer available (e.g. dropped by an MCP
-        // tools/list_changed refresh mid-run); validation proceeds with the
-        // available subset instead of failing the whole run.
-        assert_eq!(
-            allowed_tool_names_for_choice(&executable, Some(&choice)).unwrap(),
-            tool_names(&["add"])
-        );
     }
 
     #[test]
