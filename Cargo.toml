@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/*",
+    "examples/agent",
 ]
 exclude = [
     "archived"
@@ -125,6 +126,10 @@ tracing-subscriber = "0.3.19"
 uuid = "1.17.0"
 wasm-bindgen-futures = "0.4.54"
 zerocopy = "0.8.50"
+
+# Internal dependencies
+rig-core = { version = "*", path = "crates/rig-core"}
+rig = { version = "*", path = "crates/rig" }
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages

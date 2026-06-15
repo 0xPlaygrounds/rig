@@ -3515,6 +3515,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-agent"
+version = "0.38.2"
+dependencies = [
+ "anyhow",
+ "rig",
+ "rig-core",
+ "tokio",
+]
+
+[[package]]
 name = "exr"
 version = "1.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

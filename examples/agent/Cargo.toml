@@ -1,0 +1,13 @@
+[package]
+name = "example-agent"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+rig.workspace = true
+rig-core.workspace = true
+tokio = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true
