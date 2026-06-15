@@ -85,6 +85,23 @@ cd rig
 cargo test
 ```
 
+### Examples
+
+Examples should be created as standalone binary crates under the `examples/` directory:
+
+```bash
+cargo new --name example-<name> examples/<name>
+```
+
+For example, to create `examples/agent`:
+
+```bash
+cargo new --name example-agent examples/agent
+cargo run -p example-agent
+```
+
+Legacy examples that live under `crates/rig/examples/` are being gradually migrated to this standalone pattern.
+
 ### Clippy and Fmt
 
 We enforce both `clippy` and `fmt` for all pull requests.
