@@ -13,6 +13,7 @@ const PROMPT: &str = "Entertain me!";
 #[tokio::main]
 async fn main() -> Result<()> {
     let agent = openai::Client::from_env()?
+        //.completions_api() // Enable this for OpenAI compatible providers.
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)
         .build();
