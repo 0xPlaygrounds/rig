@@ -9063,6 +9063,7 @@ dependencies = [
  "glob",
  "http 1.4.0",
  "hyper-util",
+ "indexmap 2.14.0",
  "lopdf",
  "mime",
  "mime_guess",
