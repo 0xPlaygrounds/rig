@@ -1594,6 +1594,12 @@ mod tests {
     struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
 
     impl CapturedSpans {
+        fn clear(&self) {
+            if let Ok(mut spans) = self.0.lock() {
+                spans.clear();
+            }
+        }
+
         fn insert(&self, id: &Id, name: &str, parent_id: Option<u64>) {
             let id = id.into_u64();
             if let Ok(mut spans) = self.0.lock() {
@@ -1663,11 +1669,43 @@ mod tests {
         max_turns: usize,
         expected_usages: &[Usage],
     ) {
+        // Scoped-subscriber tests must not run concurrently; the warm-up
+        // below explains the callsite-interest hazard this guards against.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let spans = CapturedSpans::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {
             spans: spans.clone(),
         });
         let _default = tracing::subscriber::set_default(subscriber);
+
+        // Span callsites in the driver are shared with every other test in
+        // this binary. The FIRST thread to hit a callsite caches its interest
+        // from that thread's dispatcher (`Dispatchers::Rebuilder::JustOne`
+        // consults `dispatcher::get_default`), so a parallel test without a
+        // subscriber can permanently cache `Interest::never` for the very
+        // spans this harness asserts on. Defend in two steps, both under the
+        // isolation guard: (1) warm the whole driver path from THIS thread so
+        // unregistered callsites first-register against this subscriber, then
+        // (2) rebuild the interest cache to heal callsites a foreign thread
+        // already poisoned.
+        let warmup_model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("warmup"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
+        let mut warmup_stream = warmup_agent.stream_prompt("warmup").multi_turn(1).await;
+        while let Some(item) = warmup_stream
+            .try_next()
+            .await
+            .expect("warmup stream should not error")
+        {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+
         let empty_history: &[Message] = &[];
         let outer_span = tracing::info_span!("outer");
 
