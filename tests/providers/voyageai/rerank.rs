@@ -1,5 +1,6 @@
 //! VoyageAI reranking smoke test.
 
+use rig::client::{ProviderClient, RerankingClient};
 use rig::providers::voyageai;
 use rig::rerank::RerankModel;
 
