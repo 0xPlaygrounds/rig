@@ -594,8 +594,9 @@ mod tests {
 
     #[tokio::test]
     async fn tool_definitions_follow_registration_order() {
-        // Enough names that HashMap iteration order would almost surely
-        // differ from insertion order if ordering regressed.
+        // Enough names that any non-order-preserving storage would almost
+        // surely surface a regression: its iteration order would differ from
+        // insertion order.
         let names: Vec<String> = (0..32).map(|i| format!("tool_{i:02}")).collect();
         let mut toolset = ToolSet::default();
         for name in &names {
