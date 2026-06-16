@@ -15,6 +15,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use futures::Future;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -296,15 +297,15 @@ pub enum ToolSetError {
     Interrupted,
 }
 
-/// A struct that holds a set of tools
+/// A struct that holds a set of tools.
+///
+/// Tools are stored in an [`IndexMap`] keyed by name, so iteration
+/// (definitions, documents, schemas) follows registration order and the tool
+/// list sent to providers is deterministic across processes. Re-registering an
+/// existing name replaces the implementation but keeps its original position.
 #[derive(Default)]
 pub struct ToolSet {
-    pub(crate) tools: HashMap<String, ToolType>,
-    /// Tool names in registration order. Iteration (definitions, documents,
-    /// schemas) follows this order so the tool list sent to providers is
-    /// deterministic across processes. Re-registering an existing name
-    /// replaces the implementation but keeps its original position.
-    pub(crate) order: Vec<String>,
+    pub(crate) tools: IndexMap<String, ToolType>,
 }
 
 impl ToolSet {
@@ -348,9 +349,10 @@ impl ToolSet {
 
     pub(crate) fn insert(&mut self, tool: ToolType) {
         let name = tool.name();
-        if self.tools.insert(name.clone(), tool).is_none() {
-            self.order.push(name);
-        } else {
+        // `IndexMap::insert` replaces the value while keeping the existing
+        // slot position, and returns the previous value when the name was
+        // already registered.
+        if self.tools.insert(name.clone(), tool).is_some() {
             tracing::warn!(
                 tool_name = %name,
                 "a tool named {name:?} was already registered; replacing it with the new registration"
@@ -360,19 +362,16 @@ impl ToolSet {
 
     /// Remove a tool by name. Missing tools are ignored.
     pub fn delete_tool(&mut self, tool_name: &str) {
-        if self.tools.remove(tool_name).is_some() {
-            self.order.retain(|name| name != tool_name);
-        }
+        // `shift_remove` preserves the order of the remaining tools;
+        // `swap_remove` would not.
+        self.tools.shift_remove(tool_name);
     }
 
     /// Merge another toolset into this one. Tools keep `toolset`'s
     /// registration order; names that already exist are replaced in place.
     pub fn add_tools(&mut self, toolset: ToolSet) {
-        let ToolSet { mut tools, order } = toolset;
-        for name in order {
-            if let Some(tool) = tools.remove(&name) {
-                self.insert(tool);
-            }
+        for (_, tool) in toolset.tools {
+            self.insert(tool);
         }
     }
 
@@ -382,12 +381,12 @@ impl ToolSet {
 
     /// Tool names in registration order.
     pub(crate) fn ordered_names(&self) -> impl Iterator<Item = &String> {
-        self.order.iter()
+        self.tools.keys()
     }
 
     /// Tools in registration order.
     fn ordered_tools(&self) -> impl Iterator<Item = &ToolType> {
-        self.order.iter().filter_map(|name| self.tools.get(name))
+        self.tools.values()
     }
 
     /// Return definitions for all tools currently registered in the set, in
@@ -528,7 +527,10 @@ mod tests {
         toolset.delete_tool("add");
         assert!(!toolset.contains("add"));
         assert_eq!(toolset.tools.len(), 1);
-        assert_eq!(toolset.order, vec!["subtract".to_string()]);
+        assert_eq!(
+            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            vec!["subtract".to_string()]
+        );
     }
 
     /// A tool whose name and definition are chosen at runtime, for ordering
