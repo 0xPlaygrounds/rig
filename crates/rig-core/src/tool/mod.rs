@@ -533,6 +533,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn deleting_a_middle_tool_preserves_order_of_survivors() {
+        // Guards the `shift_remove` (not `swap_remove`) choice in `delete_tool`.
+        // `swap_remove` would move the last tool into the deleted slot, so this
+        // only catches a regression with 3+ tools and a non-last deletion: here
+        // a `swap_remove("beta")` would yield [alpha, delta, gamma].
+        let mut toolset = ToolSet::default();
+        for name in ["alpha", "beta", "gamma", "delta"] {
+            toolset.add_tool(named_tool(name, "test tool"));
+        }
+
+        toolset.delete_tool("beta");
+
+        assert_eq!(
+            toolset.ordered_names().cloned().collect::<Vec<_>>(),
+            vec![
+                "alpha".to_string(),
+                "gamma".to_string(),
+                "delta".to_string()
+            ],
+            "survivors must keep their registration order after a middle deletion"
+        );
+    }
+
     /// A tool whose name and definition are chosen at runtime, for ordering
     /// and duplicate-registration tests.
     struct NamedTool {
