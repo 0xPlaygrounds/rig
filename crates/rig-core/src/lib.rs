@@ -169,6 +169,7 @@ pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
 pub mod providers;
+pub mod rerank;
 
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]

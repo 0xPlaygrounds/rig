@@ -93,6 +93,7 @@ impl<H> Capabilities<H> for XiaomiMimoExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl<H> Capabilities<H> for XiaomiMimoAnthropicExt {
@@ -105,6 +106,7 @@ impl<H> Capabilities<H> for XiaomiMimoAnthropicExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for XiaomiMimoExt {}

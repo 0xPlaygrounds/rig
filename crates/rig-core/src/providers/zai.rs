@@ -98,6 +98,7 @@ impl<H> Capabilities<H> for ZAiExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl<H> Capabilities<H> for ZAiAnthropicExt {
@@ -110,6 +111,7 @@ impl<H> Capabilities<H> for ZAiAnthropicExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for ZAiExt {}

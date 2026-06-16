@@ -66,6 +66,7 @@ impl<H> Capabilities<H> for GaladrielExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for GaladrielExt {

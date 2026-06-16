@@ -99,6 +99,7 @@ impl<H> Capabilities<H> for MiniMaxExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl<H> Capabilities<H> for MiniMaxAnthropicExt {
@@ -111,6 +112,7 @@ impl<H> Capabilities<H> for MiniMaxAnthropicExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for MiniMaxExt {}

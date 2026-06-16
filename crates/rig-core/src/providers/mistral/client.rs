@@ -1,8 +1,6 @@
-#[cfg(any(feature = "image", feature = "audio"))]
-use crate::client::Nothing;
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
     http_client,
@@ -40,6 +38,7 @@ impl<H> Capabilities<H> for MistralExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for MistralExt {}
