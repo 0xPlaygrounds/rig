@@ -8,6 +8,17 @@ use crate::{
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter},
 };
 
+/// Append `name` to the advertised static-tool list unless already present.
+/// Registration is last-wins on the toolset, so the name list only needs
+/// first-occurrence order: a re-registered name keeps its original position
+/// while the toolset swaps in the new implementation. Providers reject
+/// duplicate function declarations, so the list must stay unique.
+fn push_unique_name(names: &mut Vec<String>, name: String) {
+    if !names.contains(&name) {
+        names.push(name);
+    }
+}
+
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
     /// Static tool names that persist until explicitly removed.
@@ -49,9 +60,7 @@ impl ToolServer {
         // occurrence (duplicate declarations are rejected by providers).
         self.static_tool_names = Vec::with_capacity(names.len());
         for name in names {
-            if !self.static_tool_names.contains(&name) {
-                self.static_tool_names.push(name);
-            }
+            push_unique_name(&mut self.static_tool_names, name);
         }
         self
     }
@@ -74,9 +83,7 @@ impl ToolServer {
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         let toolname = tool.name();
         self.toolset.add_tool(tool);
-        if !self.static_tool_names.contains(&toolname) {
-            self.static_tool_names.push(toolname);
-        }
+        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
@@ -88,9 +95,7 @@ impl ToolServer {
         let toolname = tool.name.to_string();
         self.toolset
             .add_tool(McpTool::from_mcp_server(tool, client));
-        if !self.static_tool_names.contains(&toolname) {
-            self.static_tool_names.push(toolname);
-        }
+        push_unique_name(&mut self.static_tool_names, toolname);
         self
     }
 
@@ -131,9 +136,7 @@ impl ToolServerHandle {
     pub async fn add_tool(&self, tool: impl ToolDyn + 'static) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
         let toolname = tool.name();
-        if !state.static_tool_names.contains(&toolname) {
-            state.static_tool_names.push(toolname);
-        }
+        push_unique_name(&mut state.static_tool_names, toolname);
         state.toolset.add_tool_boxed(Box::new(tool));
         Ok(())
     }
@@ -145,12 +148,9 @@ impl ToolServerHandle {
     /// keep their position.
     pub async fn append_toolset(&self, toolset: ToolSet) -> Result<(), ToolServerError> {
         let mut state = self.0.write().await;
-        let new_names: Vec<String> = toolset
-            .ordered_names()
-            .filter(|name| !state.static_tool_names.contains(name))
-            .cloned()
-            .collect();
-        state.static_tool_names.extend(new_names);
+        for name in toolset.ordered_names() {
+            push_unique_name(&mut state.static_tool_names, name.clone());
+        }
         state.toolset.add_tools(toolset);
         Ok(())
     }
