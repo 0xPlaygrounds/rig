@@ -7,9 +7,6 @@ use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, Gem
 use serde::Deserialize;
 use std::fmt::Debug;
 
-#[cfg(any(feature = "image", feature = "audio"))]
-use crate::client::Nothing;
-
 // ================================================================
 // Google Gemini Client
 // ================================================================
