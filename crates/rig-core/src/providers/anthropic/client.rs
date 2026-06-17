@@ -32,6 +32,7 @@ impl<H> Capabilities<H> for AnthropicExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 #[derive(Debug, Clone)]

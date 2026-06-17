@@ -58,6 +58,7 @@ impl<H> Capabilities<H> for PerplexityExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for PerplexityExt {}

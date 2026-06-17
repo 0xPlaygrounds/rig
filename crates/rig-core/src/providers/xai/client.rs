@@ -35,6 +35,7 @@ impl<H> Capabilities<H> for XAiExt {
     type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for XAiExt {}

@@ -106,6 +106,7 @@ impl<H> Capabilities<H> for AzureExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Capable<AudioGenerationModel<H>>;
+    type Rerank = Nothing;
 }
 
 impl ProviderBuilder for AzureExtBuilder {

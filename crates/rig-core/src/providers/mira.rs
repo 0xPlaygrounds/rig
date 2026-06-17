@@ -50,6 +50,7 @@ impl<H> Capabilities<H> for MiraExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for MiraExt {}

@@ -134,6 +134,7 @@ impl<H> Capabilities<H> for MoonshotExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl<H> Capabilities<H> for MoonshotAnthropicExt {
@@ -146,6 +147,7 @@ impl<H> Capabilities<H> for MoonshotAnthropicExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
