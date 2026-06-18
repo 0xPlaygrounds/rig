@@ -51,9 +51,29 @@ use tracing::info_span;
 use tracing_futures::Instrument as _;
 
 const GITHUB_COPILOT_API_BASE_URL: &str = "https://api.githubcopilot.com";
-const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.26.7";
-const USER_AGENT: &str = "GitHubCopilotChat/0.26.7";
+pub(crate) const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.35.0";
+pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
+pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
+
+/// Copilot conversation intent sent in the `openai-intent` request header.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CopilotIntent {
+    /// Generic chat panel conversation semantics.
+    #[default]
+    Panel,
+    /// Edit-oriented conversation semantics.
+    Edits,
+}
+
+impl CopilotIntent {
+    fn as_header(self) -> &'static str {
+        match self {
+            Self::Panel => "conversation-panel",
+            Self::Edits => "conversation-edits",
+        }
+    }
+}
 
 /// `gpt-4`
 pub const GPT_4: &str = "gpt-4";
@@ -180,6 +200,7 @@ impl<H> Capabilities<H> for CopilotExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for CopilotExt {}
@@ -348,6 +369,7 @@ fn default_headers(
     api_key: &str,
     initiator: &'static str,
     has_vision: bool,
+    intent: CopilotIntent,
 ) -> Vec<(&'static str, String)> {
     let mut headers = vec![
         (
@@ -355,10 +377,10 @@ fn default_headers(
             format!("Bearer {api_key}"),
         ),
         ("copilot-integration-id", "vscode-chat".to_string()),
-        ("editor-version", "vscode/1.95.0".to_string()),
+        ("editor-version", EDITOR_VERSION.to_string()),
         ("editor-plugin-version", EDITOR_PLUGIN_VERSION.to_string()),
         ("user-agent", USER_AGENT.to_string()),
-        ("openai-intent", "conversation-panel".to_string()),
+        ("openai-intent", intent.as_header().to_string()),
         ("x-github-api-version", API_VERSION.to_string()),
         ("x-request-id", nanoid::nanoid!()),
         (
@@ -385,14 +407,71 @@ fn apply_headers(
 }
 
 fn runtime_base_url<'a, H>(client: &'a Client<H>, auth: &'a auth::AuthContext) -> Cow<'a, str> {
-    if client.base_url() == GITHUB_COPILOT_API_BASE_URL {
-        auth.api_base
-            .as_deref()
-            .map(Cow::Borrowed)
-            .unwrap_or_else(|| Cow::Borrowed(client.base_url()))
-    } else {
-        Cow::Borrowed(client.base_url())
+    if client.base_url() != GITHUB_COPILOT_API_BASE_URL {
+        return Cow::Borrowed(client.base_url());
     }
+
+    if let Some(api_base) = auth.api_base.as_deref() {
+        return Cow::Borrowed(api_base);
+    }
+
+    if let Some(base_url) = base_url_from_token(&auth.api_key) {
+        return Cow::Owned(base_url);
+    }
+
+    Cow::Borrowed(client.base_url())
+}
+
+/// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
+///
+/// The endpoint is parsed from a credential string, not from explicit caller
+/// configuration. For that reason, token-derived routing is limited to GitHub
+/// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
+/// can still opt in explicitly with [`ClientBuilder::base_url`].
+fn base_url_from_token(token: &str) -> Option<String> {
+    let proxy_ep = token
+        .split(';')
+        .find_map(|part| part.trim().strip_prefix("proxy-ep="))?
+        .trim();
+
+    normalize_copilot_proxy_endpoint(proxy_ep)
+}
+
+fn normalize_copilot_proxy_endpoint(proxy_ep: &str) -> Option<String> {
+    if proxy_ep.is_empty() {
+        return None;
+    }
+
+    let candidate = if proxy_ep.starts_with("http://") || proxy_ep.starts_with("https://") {
+        proxy_ep.to_string()
+    } else {
+        format!("https://{proxy_ep}")
+    };
+
+    let mut url = url::Url::parse(&candidate).ok()?;
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
+
+    let host = url.host_str()?.to_ascii_lowercase();
+    if !is_allowed_token_derived_copilot_host(&host) {
+        return None;
+    }
+
+    let api_host = host
+        .strip_prefix("proxy.")
+        .map(|suffix| format!("api.{suffix}"))
+        .unwrap_or(host);
+    url.set_host(Some(&api_host)).ok()?;
+
+    Some(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn is_allowed_token_derived_copilot_host(host: &str) -> bool {
+    host == "githubcopilot.com" || host.ends_with(".githubcopilot.com")
 }
 
 fn post_with_auth_base<H>(
@@ -488,7 +567,7 @@ pub enum CopilotStreamingResponse {
 }
 
 impl GetTokenUsage for CopilotStreamingResponse {
-    fn token_usage(&self) -> Option<completion::Usage> {
+    fn token_usage(&self) -> completion::Usage {
         match self {
             Self::Chat(response) => response.token_usage(),
             Self::Responses(response) => response.token_usage(),
@@ -630,6 +709,7 @@ pub struct CompletionModel<H = reqwest::Client> {
     pub model: String,
     pub strict_tools: bool,
     pub tool_result_array_content: bool,
+    pub intent: CopilotIntent,
 }
 
 impl<H> CompletionModel<H>
@@ -643,6 +723,7 @@ where
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
+            intent: CopilotIntent::default(),
         }
     }
 
@@ -654,6 +735,22 @@ where
     pub fn with_tool_result_array_content(mut self) -> Self {
         self.tool_result_array_content = true;
         self
+    }
+
+    /// Set the Copilot `openai-intent` header for completion and streaming requests.
+    pub fn with_intent(mut self, intent: CopilotIntent) -> Self {
+        self.intent = intent;
+        self
+    }
+
+    /// Use the generic chat panel `openai-intent` header for completion and streaming requests.
+    pub fn with_panel_intent(self) -> Self {
+        self.with_intent(CopilotIntent::Panel)
+    }
+
+    /// Use the edit-oriented `openai-intent` header for completion and streaming requests.
+    pub fn with_edits_intent(self) -> Self {
+        self.with_intent(CopilotIntent::Edits)
     }
 
     fn route(&self) -> CompletionRoute {
@@ -698,7 +795,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let auth = self.auth_context().await?;
 
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Http)?,
             &headers,
@@ -779,7 +876,7 @@ where
         let request = self.responses_request(completion_request)?;
         let auth = self.auth_context().await?;
 
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/responses", Transport::Http)?,
             &headers,
@@ -850,7 +947,7 @@ where
         let has_vision = request_has_vision(&completion_request);
         let request = self.chat_request(completion_request)?;
         let auth = self.auth_context().await?;
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let mut request_json = serde_json::to_value(&request)?;
         let request_object = request_json.as_object_mut().ok_or_else(|| {
             CompletionError::ResponseError("copilot request body must be a JSON object".into())
@@ -902,7 +999,7 @@ where
         request.stream = Some(true);
         let auth = self.auth_context().await?;
 
-        let headers = default_headers(&auth.api_key, initiator, has_vision);
+        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let req = apply_headers(
             post_with_auth_base(&self.client, &auth, "/responses", Transport::Sse)?,
             &headers,
@@ -1205,7 +1302,7 @@ where
             .await
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
-        let headers = default_headers(&auth.api_key, "user", false);
+        let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let mut body = json!({
             "model": self.model,
             "input": documents,
@@ -1345,7 +1442,7 @@ where
             }
         })?;
 
-        let headers = default_headers(&auth.api_key, "user", false);
+        let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let req = apply_headers(
             get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH, Transport::Http)?,
             &headers,
@@ -1529,9 +1626,9 @@ fn config_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute,
-        TEXT_EMBEDDING_3_SMALL, env_api_key, env_base_url, env_github_access_token,
-        route_for_model,
+        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, CopilotIntent,
+        TEXT_EMBEDDING_3_SMALL, base_url_from_token, default_headers, env_api_key, env_base_url,
+        env_github_access_token, route_for_model,
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
@@ -1716,6 +1813,155 @@ mod tests {
         assert_eq!(
             route_for_model("claude-sonnet-4.5"),
             CompletionRoute::ChatCompletions
+        );
+    }
+
+    #[test]
+    fn copilot_intent_headers_use_panel_by_default_and_edits_when_requested() {
+        let panel_headers = default_headers("token", "user", false, CopilotIntent::default());
+        assert_eq!(
+            panel_headers
+                .iter()
+                .find(|(name, _)| *name == "openai-intent")
+                .map(|(_, value)| value.as_str()),
+            Some("conversation-panel")
+        );
+
+        let edits_headers = default_headers("token", "user", false, CopilotIntent::Edits);
+        assert_eq!(
+            edits_headers
+                .iter()
+                .find(|(name, _)| *name == "openai-intent")
+                .map(|(_, value)| value.as_str()),
+            Some("conversation-edits")
+        );
+    }
+
+    #[test]
+    fn copilot_completion_model_intent_builders_update_intent() {
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .build()
+            .expect("build client");
+
+        let default_model = client.completion_model("gpt-4o");
+        assert_eq!(default_model.intent.as_header(), "conversation-panel");
+
+        let edits_model = client
+            .completion_model("gpt-4o")
+            .with_intent(CopilotIntent::Edits);
+        assert_eq!(edits_model.intent.as_header(), "conversation-edits");
+
+        let panel_model = client
+            .completion_model("gpt-4o")
+            .with_edits_intent()
+            .with_panel_intent();
+        assert_eq!(panel_model.intent.as_header(), "conversation-panel");
+    }
+
+    #[test]
+    fn base_url_from_token_derives_api_endpoint() {
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+                .as_deref(),
+            Some("https://api.individual.githubcopilot.com")
+        );
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=https://proxy.individual.githubcopilot.com;exp=2")
+                .as_deref(),
+            Some("https://api.individual.githubcopilot.com")
+        );
+        assert_eq!(base_url_from_token("tid=1;exp=2"), None);
+    }
+
+    #[test]
+    fn base_url_from_token_rejects_unsafe_or_non_copilot_endpoints() {
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=http://proxy.individual.githubcopilot.com;exp=2"),
+            None
+        );
+        assert_eq!(
+            base_url_from_token("tid=1;proxy-ep=https://evil.example.com;exp=2"),
+            None
+        );
+        assert_eq!(base_url_from_token("tid=1;proxy-ep=://bad;exp=2"), None);
+        assert_eq!(base_url_from_token("tid=1;proxy-ep=;exp=2"), None);
+        assert_eq!(
+            base_url_from_token(
+                "tid=1;proxy-ep=https://proxy.individual.githubcopilot.com/base;exp=2"
+            ),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn api_key_with_proxy_endpoint_overrides_base_url() {
+        let http_client = RecordingHttpClient::new(minimal_chat_response());
+        let client = Client::builder()
+            .api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+
+        let _response = model.completion(request).await.expect("chat completion");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0]
+                .uri
+                .starts_with("https://api.individual.githubcopilot.com"),
+            "expected proxy-derived base URL, got {}",
+            requests[0].uri
+        );
+    }
+
+    #[tokio::test]
+    async fn explicit_base_url_wins_over_token_proxy_endpoint() {
+        let http_client = RecordingHttpClient::new(minimal_chat_response());
+        let client = Client::builder()
+            .api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+            .base_url("https://custom.example.com")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+
+        let _response = model.completion(request).await.expect("chat completion");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0].uri.starts_with("https://custom.example.com"),
+            "expected explicit base URL, got {}",
+            requests[0].uri
+        );
+    }
+
+    #[tokio::test]
+    async fn completion_model_edits_intent_sets_request_header() {
+        let http_client = RecordingHttpClient::new(minimal_chat_response());
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o").with_edits_intent();
+        let request = model.completion_request("hello").build();
+
+        let _response = model.completion(request).await.expect("chat completion");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0]
+                .headers
+                .get("openai-intent")
+                .and_then(|value| value.to_str().ok()),
+            Some("conversation-edits")
         );
     }
 

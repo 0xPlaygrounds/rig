@@ -86,7 +86,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }
@@ -557,7 +557,7 @@ mod tests {
         let usage = final_usage.expect("expected final usage");
         assert_eq!(usage.prompt_tokens, 4);
         assert_eq!(usage.total_tokens, 10);
-        let token_usage = usage.token_usage().expect("usage should convert");
+        let token_usage = usage.token_usage();
         assert_eq!(token_usage.output_tokens, 6);
     }
 
@@ -606,7 +606,7 @@ mod tests {
         );
 
         // Verify core Usage also has cached_input_tokens via GetTokenUsage
-        let core_usage = res.token_usage().expect("token_usage should return Some");
+        let core_usage = res.token_usage();
         assert_eq!(core_usage.cached_input_tokens, 80);
         assert_eq!(core_usage.input_tokens, 100);
         assert_eq!(core_usage.total_tokens, 110);

@@ -131,7 +131,7 @@ impl std::fmt::Display for Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens;
@@ -143,7 +143,7 @@ impl GetTokenUsage for Usage {
             + self.cache_creation_input_tokens.unwrap_or_default()
             + self.output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -2265,6 +2265,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             automatic_caching,
             automatic_caching_ttl,
         } = params;
+        let chat_history = req.chat_history_with_documents();
 
         // Check if max_tokens is set, required for Anthropic
         let Some(max_tokens) = req.max_tokens else {
@@ -2273,15 +2274,11 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             ));
         };
 
-        let docs = req.normalized_documents();
         let (history_system, chat_history) = split_system_messages_from_history(
-            req.chat_history.into_iter().collect(),
+            chat_history,
             supports_mid_conversation_system_messages(model),
         );
         let mut full_history = vec![];
-        if let Some(docs) = docs {
-            full_history.push(docs);
-        }
         full_history.extend(chat_history);
 
         let mut messages = full_history
@@ -3134,6 +3131,9 @@ mod tests {
                     content: "Global history instruction.".to_string(),
                 },
                 message::Message::assistant("Acknowledged."),
+                message::Message::System {
+                    content: "Mid-conversation instruction.".to_string(),
+                },
                 message::Message::user("Answer from the document."),
             ],
             None,
@@ -3155,12 +3155,25 @@ mod tests {
 
         let value = serde_json::to_value(request).unwrap();
         assert_eq!(value["system"][0]["text"], "Global history instruction.");
+        assert_eq!(value["system"][1]["text"], "Mid-conversation instruction.");
 
         let messages = value["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0]["role"], "user");
         assert_eq!(messages[1]["role"], "assistant");
         assert_eq!(messages[2]["role"], "user");
+        assert!(
+            messages[0].to_string().contains("<file id: doc>"),
+            "document message should follow top-level system: {messages:?}"
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
         assert!(
             messages
                 .iter()

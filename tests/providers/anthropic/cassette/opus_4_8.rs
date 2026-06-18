@@ -141,6 +141,10 @@ async fn documents_keep_leading_system_message_top_level() {
         "opus_4_8/documents_keep_leading_system_message_top_level",
         DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION,
     );
+    assert_cassette_document_request_order(
+        "opus_4_8/documents_keep_leading_system_message_top_level",
+        DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION,
+    );
 }
 
 fn server_tool_assistant_message_from_response(
@@ -316,6 +320,53 @@ fn assert_cassette_hoists_system_instruction(scenario: &str, expected_system_tex
     assert!(
         !messages_contain_system_role_instruction,
         "expected cassette {scenario} not to send the leading system instruction as messages[] role=system",
+    );
+}
+
+fn assert_cassette_document_request_order(scenario: &str, expected_system_text: &str) {
+    let request_bodies = recorded_request_bodies(scenario);
+    let body = request_bodies
+        .iter()
+        .find(|body| {
+            body.get("system")
+                .and_then(Value::as_array)
+                .is_some_and(|system| {
+                    system
+                        .iter()
+                        .any(|block| block_contains_text(block, expected_system_text))
+                })
+        })
+        .unwrap_or_else(|| {
+            panic!("expected cassette {scenario} to include document ordering request")
+        });
+
+    let messages = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("expected cassette {scenario} request to contain messages[]"));
+    let roles = messages
+        .iter()
+        .map(|message| message.get("role").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        roles,
+        [Some("user"), Some("assistant"), Some("user")],
+        "expected document request to preserve document -> assistant -> prompt order",
+    );
+    assert!(
+        message_content_has_type(&messages[0], "document"),
+        "expected first message to contain the normalized document block",
+    );
+    assert!(
+        message_contains_text(&messages[1], "Entendido."),
+        "expected second message to preserve prior assistant turn",
+    );
+    assert!(
+        message_contains_text(
+            &messages[2],
+            "According to the document, what color is the clear daytime sky?",
+        ),
+        "expected final message to remain the prompt",
     );
 }
 

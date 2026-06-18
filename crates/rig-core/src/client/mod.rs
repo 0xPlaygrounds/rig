@@ -6,6 +6,7 @@ pub mod completion;
 pub mod embeddings;
 pub mod image_generation;
 pub mod model_listing;
+pub mod rerank;
 pub mod transcription;
 pub mod verify;
 
@@ -14,6 +15,7 @@ pub use completion::CompletionClient;
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
+pub use rerank::RerankingClient;
 use std::{env::VarError, fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
 pub use verify::{VerifyClient, VerifyError};
@@ -36,6 +38,7 @@ use crate::{
     },
     markers::Missing,
     prelude::TranscriptionClient,
+    rerank::RerankModel,
     transcription::TranscriptionModel,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -286,6 +289,8 @@ pub trait Capabilities<H = reqwest::Client> {
     type Completion: Capability;
     /// Embedding model capability marker.
     type Embeddings: Capability;
+    /// Rerank model capability marker.
+    type Rerank: Capability;
     /// Audio transcription model capability marker.
     type Transcription: Capability;
     /// Model listing capability marker.
@@ -782,6 +787,18 @@ where
         ndims: usize,
     ) -> Self::EmbeddingModel {
         M::make(self, model, Some(ndims))
+    }
+}
+
+impl<M, Ext, H> RerankingClient for Client<Ext, H>
+where
+    Ext: Capabilities<H, Rerank = Capable<M>>,
+    M: RerankModel<Client = Self>,
+{
+    type RerankModel = M;
+
+    fn rerank_model(&self, model: impl Into<String>) -> Self::RerankModel {
+        M::make(self, model)
     }
 }
 

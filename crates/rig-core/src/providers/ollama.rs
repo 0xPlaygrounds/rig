@@ -127,6 +127,7 @@ impl<H> Capabilities<H> for OllamaExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for OllamaExt {}
@@ -443,16 +444,14 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
         }
-        // Build up the order of messages (context, chat_history, prompt)
+        // Build up the order of messages.
         let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
+        partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -583,7 +582,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         let input_tokens = self.prompt_eval_count.unwrap_or_default();
         let output_tokens = self.eval_count.unwrap_or_default();
@@ -591,7 +590,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
         usage.output_tokens = output_tokens;
         usage.total_tokens = input_tokens + output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 

@@ -38,8 +38,8 @@ pub struct CompletionModel {
 pub struct PlaceholderStreamingResponse;
 
 impl GetTokenUsage for PlaceholderStreamingResponse {
-    fn token_usage(&self) -> Option<rig_core::completion::Usage> {
-        None
+    fn token_usage(&self) -> rig_core::completion::Usage {
+        rig_core::completion::Usage::new()
     }
 }
 

@@ -1794,20 +1794,15 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             request: req,
             strict_tools,
         } = params;
+        let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
         let mut full_history: Vec<Message> = match &req.preamble {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
 
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<Message>>, _>>()?
@@ -2074,6 +2069,41 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "google/gemini-2.5-flash");
+    }
+
+    #[test]
+    fn openrouter_params_include_direct_request_documents() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: crate::OneOrMany::one(crate::message::Message::user(
+                "What is glarb-glarb?",
+            )),
+            documents: vec![crate::completion::request::Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request,
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(request).expect("serialization should succeed");
+
+        assert!(
+            serialized["messages"].to_string().contains("glarb-glarb"),
+            "direct request documents should be normalized through public params"
+        );
     }
 
     #[test]

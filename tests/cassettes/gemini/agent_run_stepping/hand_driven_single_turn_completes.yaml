@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Rust is a systems programming language focused on performance, reliability, and productivity, achieving memory safety without a garbage collector. Memory safety is crucial as it prevents common, severe bugs like buffer overflows and data races that lead to crashes, undefined behavior, and security vulnerabilities."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":52,"promptTokenCount":29,"promptTokensDetails":[{"modality":"TEXT","tokenCount":29}],"serviceTier":"standard","thoughtsTokenCount":172,"totalTokenCount":253}}'

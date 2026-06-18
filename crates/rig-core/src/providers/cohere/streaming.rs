@@ -67,7 +67,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let tokens = self
             .usage
             .clone()
@@ -79,14 +79,14 @@ impl GetTokenUsage for StreamingCompletionResponse {
                 )
             });
         let Some((Some(input), Some(output))) = tokens else {
-            return None;
+            return crate::completion::Usage::new();
         };
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = input;
         usage.output_tokens = output;
         usage.total_tokens = input + output;
 
-        Some(usage)
+        usage
     }
 }
 

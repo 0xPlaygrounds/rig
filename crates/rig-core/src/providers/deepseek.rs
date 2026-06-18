@@ -63,6 +63,7 @@ impl<H> Capabilities<H> for DeepSeekExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for DeepSeekExt {}
@@ -152,8 +153,8 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::providers::internal::completion_usage(
+    fn token_usage(&self) -> crate::completion::Usage {
+        crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
             self.completion_tokens as u64,
             self.total_tokens as u64,
@@ -162,7 +163,7 @@ impl GetTokenUsage for Usage {
                 .and_then(|details| details.cached_tokens)
                 .map(u64::from)
                 .unwrap_or(0),
-        ))
+        )
     }
 }
 
@@ -476,6 +477,7 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for DeepSeek");
         }
@@ -485,14 +487,7 @@ impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
             None => vec![],
         };
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<Message>>, _>>()?
@@ -721,7 +716,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         self.usage.token_usage()
     }
 }

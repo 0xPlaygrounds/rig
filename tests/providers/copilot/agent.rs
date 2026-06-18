@@ -3,23 +3,22 @@
 use rig::client::{CompletionClient, ModelListingClient};
 use rig::completion::Prompt;
 
-use crate::copilot::{LIVE_MODEL, live_client};
+use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
-#[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn completion_smoke() {
-    let agent = live_client()
-        .agent(LIVE_MODEL)
-        .preamble(BASIC_PREAMBLE)
-        .build();
+    with_copilot_cassette("agent/completion_smoke", |client| async move {
+        let agent = client.agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build();
 
-    let response = agent
-        .prompt(BASIC_PROMPT)
-        .await
-        .expect("completion should succeed");
+        let response = agent
+            .prompt(BASIC_PROMPT)
+            .await
+            .expect("completion should succeed");
 
-    assert_nonempty_response(&response);
+        assert_nonempty_response(&response);
+    })
+    .await;
 }
 
 /// Command to run

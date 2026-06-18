@@ -37,6 +37,7 @@ impl<H> Capabilities<H> for TogetherExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl ProviderBuilder for TogetherExtBuilder {

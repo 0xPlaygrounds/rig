@@ -1,0 +1,16 @@
+when:
+  path: /responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"In one short sentence, explain what refactoring is.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-5.3-codex"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":175000000000,"token_count":30,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":17500000000,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":1400000000000,"token_count":23,"token_type":"output"}],"total_nano_aiu":37450000},"created_at":0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.3-codex","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"Refactoring is the process of improving a codebase’s internal structure without changing its external behavior.","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"output_text":null,"parallel_tool_calls":true,"previous_response_id":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"medium","summary":null},"safety_identifier":"id_REDACTED_1","service_tier":"default","status":"completed","temperature":1,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":30,"input_tokens_details":{"cached_tokens":0},"output_tokens":23,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":53}}'

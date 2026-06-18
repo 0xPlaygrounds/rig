@@ -468,13 +468,13 @@ pub struct Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.prompt_tokens as u64;
         usage.output_tokens = self.completion_tokens as u64;
         usage.total_tokens = self.total_tokens as u64;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -641,6 +641,7 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Huggingface");
         }
@@ -649,14 +650,7 @@ impl TryFrom<(&str, CompletionRequest)> for HuggingfaceCompletionRequest {
             Some(preamble) => vec![Message::system(preamble)],
             None => vec![],
         };
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<Message>>, _>>()?

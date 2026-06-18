@@ -9,7 +9,7 @@ use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
 use rig::message::UserContent;
 
-use crate::copilot::{LIVE_MODEL, live_client};
+use crate::copilot::{LIVE_MODEL, with_copilot_cassette_result};
 use crate::support::assert_nonempty_response;
 
 #[derive(Clone)]
@@ -66,51 +66,56 @@ where
 }
 
 #[tokio::test]
-#[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = live_client()
-        .agent(LIVE_MODEL)
-        .preamble("You are a comedian here to entertain the user using humour and jokes.")
-        .build();
+    with_copilot_cassette_result(
+        "request_hook/request_hook_records_prompt_and_response",
+        |client| async move {
+            let agent = client
+                .agent(LIVE_MODEL)
+                .preamble("You are a comedian here to entertain the user using humour and jokes.")
+                .build();
 
-    let hook = SessionIdHook {
-        session_id: "abc123",
-        prompt_calls: Arc::new(AtomicUsize::new(0)),
-        response_calls: Arc::new(AtomicUsize::new(0)),
-        seen_prompt: Arc::new(Mutex::new(None)),
-        seen_response: Arc::new(Mutex::new(None)),
-    };
+            let hook = SessionIdHook {
+                session_id: "abc123",
+                prompt_calls: Arc::new(AtomicUsize::new(0)),
+                response_calls: Arc::new(AtomicUsize::new(0)),
+                seen_prompt: Arc::new(Mutex::new(None)),
+                seen_response: Arc::new(Mutex::new(None)),
+            };
 
-    let response = agent
-        .prompt("Entertain me!")
-        .with_hook(hook.clone())
-        .await?;
+            let response = agent
+                .prompt("Entertain me!")
+                .with_hook(hook.clone())
+                .await?;
 
-    assert_nonempty_response(&response);
-    anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);
-    anyhow::ensure!(hook.response_calls.load(Ordering::SeqCst) == 1);
+            assert_nonempty_response(&response);
+            anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);
+            anyhow::ensure!(hook.response_calls.load(Ordering::SeqCst) == 1);
 
-    let seen_prompt = hook
-        .seen_prompt
-        .lock()
-        .map_err(|_| anyhow!("prompt hook state unavailable"))?
-        .clone();
-    let seen_response = hook
-        .seen_response
-        .lock()
-        .map_err(|_| anyhow!("response hook state unavailable"))?
-        .clone();
+            let seen_prompt = hook
+                .seen_prompt
+                .lock()
+                .map_err(|_| anyhow!("prompt hook state unavailable"))?
+                .clone();
+            let seen_response = hook
+                .seen_response
+                .lock()
+                .map_err(|_| anyhow!("response hook state unavailable"))?
+                .clone();
 
-    anyhow::ensure!(
-        seen_prompt
-            .as_deref()
-            .is_some_and(|prompt| prompt.contains("Entertain me!"))
-    );
-    anyhow::ensure!(
-        seen_response
-            .as_deref()
-            .is_some_and(|captured| !captured.is_empty())
-    );
+            anyhow::ensure!(
+                seen_prompt
+                    .as_deref()
+                    .is_some_and(|prompt| prompt.contains("Entertain me!"))
+            );
+            anyhow::ensure!(
+                seen_response
+                    .as_deref()
+                    .is_some_and(|captured| !captured.is_empty())
+            );
 
-    Ok(())
+            Ok(())
+        },
+    )
+    .await
 }

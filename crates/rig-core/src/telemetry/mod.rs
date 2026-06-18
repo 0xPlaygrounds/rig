@@ -77,7 +77,10 @@ impl SpanCombinator for tracing::Span {
             return;
         }
 
-        if let Some(usage) = usage.token_usage() {
+        let usage = usage.token_usage();
+        // Zero-valued usage is the documented sentinel for missing provider
+        // usage metrics; leave the span fields unset.
+        if usage.has_values() {
             self.record("gen_ai.usage.input_tokens", usage.input_tokens);
             self.record("gen_ai.usage.output_tokens", usage.output_tokens);
             self.record(
@@ -154,8 +157,8 @@ mod tests {
     struct TestUsage(Usage);
 
     impl GetTokenUsage for TestUsage {
-        fn token_usage(&self) -> Option<Usage> {
-            Some(self.0)
+        fn token_usage(&self) -> Usage {
+            self.0
         }
     }
 
@@ -222,6 +225,9 @@ mod tests {
             reasoning_tokens: 5,
         });
 
+        // Scoped-subscriber tests must not run concurrently; see
+        // `test_utils::scoped_tracing_subscriber_guard`.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(subscriber, || {
             let span = tracing::info_span!(
                 "usage_recording",

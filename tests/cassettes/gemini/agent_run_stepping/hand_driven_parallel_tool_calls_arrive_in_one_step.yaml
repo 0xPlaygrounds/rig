@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Compute 3 + 5 and 10 - 4. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e. x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":37,"promptTokenCount":193,"promptTokensDetails":[{"modality":"TEXT","tokenCount":193}],"serviceTier":"standard","thoughtsTokenCount":99,"totalTokenCount":329}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Compute 3 + 5 and 10 - 4. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"subtract","response":{"result":6}},"thought":false},{"functionResponse":{"name":"add","response":{"result":8}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},{"description":"Subtract y from x (i.e. x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"8\n6","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":254,"promptTokensDetails":[{"modality":"TEXT","tokenCount":254}],"serviceTier":"standard","thoughtsTokenCount":53,"totalTokenCount":310}}'

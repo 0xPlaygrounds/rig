@@ -40,7 +40,7 @@ opt-level = "s"
 
 
 [workspace.package]
-version = "0.38.1"
+version = "0.38.2"
 edition = "2024"
 
 [workspace.dependencies]
@@ -56,7 +56,7 @@ aws-smithy-types = "1.3.2"
 base64 = "0.22.1"
 bytes = "1.10.1"
 chrono = "0.4"
-convert_case = "0.10.0"
+convert_case = "0.11.0"
 deluxe = "0.5.0"
 deranged = "=0.5.8"
 dotenvy = "0.15.7"
@@ -76,6 +76,7 @@ google-cloud-aiplatform-v1 = { version = "1.11.0", default-features = false, fea
 http = "1.3.1"
 httpmock = "0.8.3"
 hyper-util = "0.1.14"
+indexmap = "2.14.0"
 indoc = "2.0.6"
 lancedb = { version = "0.30", default-features = false }
 log = "0.4.27"
@@ -100,7 +101,7 @@ quote = "1.0.40"
 rayon = "1.10.0"
 redis = "1.2.1"
 reqwest = { version = "0.13", default-features = false }
-reqwest-middleware = { version = "0.5.1", default-features = false }
+reqwest-middleware = { version = "0.5.2", default-features = false }
 reqwest-retry = "0.9"
 rmcp = "1.7.0"
 url = "2.5"
@@ -128,7 +129,7 @@ tokio-tungstenite = { version = "0.28.0", default-features = false }
 tonic = "0.14.6"
 tonic-build = "0.14.6"
 tonic-prost = "0.14.5"
-tonic-prost-build = "0.14.5"
+tonic-prost-build = "0.14.6"
 prost = "0.14.3"
 tracing = "0.1.41"
 tracing-futures = "0.2.5"
@@ -146,31 +147,31 @@ exclude-members = ["crates/rig-core", "crates/rig-derive"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "crates/rig-core", version = "0.38.1", default-features = false }
-rig-bedrock = { path = "crates/rig-bedrock", version = "0.38.1", optional = true, default-features = false }
-rig-fastembed = { path = "crates/rig-fastembed", version = "0.38.1", optional = true, default-features = false }
-rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.38.1", optional = true, default-features = false }
-rig-helixdb = { path = "crates/rig-helixdb", version = "0.38.1", optional = true, default-features = false }
-rig-lancedb = { path = "crates/rig-lancedb", version = "0.38.1", optional = true, default-features = false }
-rig-memory = { path = "crates/rig-memory", version = "0.38.1", optional = true, default-features = false }
-rig-milvus = { path = "crates/rig-milvus", version = "0.38.1", optional = true, default-features = false }
-rig-mongodb = { path = "crates/rig-mongodb", version = "0.38.1", optional = true, default-features = false }
-rig-neo4j = { path = "crates/rig-neo4j", version = "0.38.1", optional = true, default-features = false }
-rig-postgres = { path = "crates/rig-postgres", version = "0.38.1", optional = true, default-features = false }
-rig-qdrant = { path = "crates/rig-qdrant", version = "0.38.1", optional = true, default-features = false }
-rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.38.1", optional = true, default-features = false }
-rig-scylladb = { path = "crates/rig-scylladb", version = "0.38.1", optional = true, default-features = false }
-rig-sqlite = { path = "crates/rig-sqlite", version = "0.38.1", optional = true, default-features = false }
-rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.38.1", optional = true, default-features = false }
-rig-vectorize = { path = "crates/rig-vectorize", version = "0.38.1", optional = true, default-features = false }
-rig-vertexai = { path = "crates/rig-vertexai", version = "0.38.1", optional = true, default-features = false }
+rig-core = { path = "crates/rig-core", version = "0.38.2", default-features = false }
+rig-bedrock = { path = "crates/rig-bedrock", version = "0.38.2", optional = true, default-features = false }
+rig-fastembed = { path = "crates/rig-fastembed", version = "0.38.2", optional = true, default-features = false }
+rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.38.2", optional = true, default-features = false }
+rig-helixdb = { path = "crates/rig-helixdb", version = "0.38.2", optional = true, default-features = false }
+rig-lancedb = { path = "crates/rig-lancedb", version = "0.38.2", optional = true, default-features = false }
+rig-memory = { path = "crates/rig-memory", version = "0.38.2", optional = true, default-features = false }
+rig-milvus = { path = "crates/rig-milvus", version = "0.38.2", optional = true, default-features = false }
+rig-mongodb = { path = "crates/rig-mongodb", version = "0.38.2", optional = true, default-features = false }
+rig-neo4j = { path = "crates/rig-neo4j", version = "0.38.2", optional = true, default-features = false }
+rig-postgres = { path = "crates/rig-postgres", version = "0.38.2", optional = true, default-features = false }
+rig-qdrant = { path = "crates/rig-qdrant", version = "0.38.2", optional = true, default-features = false }
+rig-s3vectors = { path = "crates/rig-s3vectors", version = "0.38.2", optional = true, default-features = false }
+rig-scylladb = { path = "crates/rig-scylladb", version = "0.38.2", optional = true, default-features = false }
+rig-sqlite = { path = "crates/rig-sqlite", version = "0.38.2", optional = true, default-features = false }
+rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.38.2", optional = true, default-features = false }
+rig-vectorize = { path = "crates/rig-vectorize", version = "0.38.2", optional = true, default-features = false }
+rig-vertexai = { path = "crates/rig-vertexai", version = "0.38.2", optional = true, default-features = false }
 
 [dev-dependencies]
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
-rig-core = { path = "crates/rig-core", version = "0.38.1", default-features = false, features = [
+rig-core = { path = "crates/rig-core", version = "0.38.2", default-features = false, features = [
   "test-utils",
 ] }
 tokio = { workspace = true, features = ["full"] }
@@ -330,6 +331,9 @@ required-features = ["derive"]
 [[example]]
 name = "gemini_default_api_recovery"
 required-features = ["derive"]
+
+[[example]]
+name = "gemini_stream_kill_token_count"
 
 [[example]]
 name = "vector_search_ollama"

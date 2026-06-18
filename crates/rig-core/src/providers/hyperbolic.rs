@@ -54,6 +54,7 @@ impl<H> Capabilities<H> for HyperbolicExt {
     type ImageGeneration = Capable<ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Capable<AudioGenerationModel<H>>;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for HyperbolicExt {}
@@ -272,6 +273,7 @@ impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let chat_history = req.chat_history_with_documents();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Hyperbolic");
         }
@@ -290,14 +292,7 @@ impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
             None => vec![],
         };
 
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
+        let chat_history: Vec<Message> = chat_history
             .into_iter()
             .map(|message| message.try_into())
             .collect::<Result<Vec<Vec<Message>>, _>>()?

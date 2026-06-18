@@ -27,13 +27,14 @@ bytes = { workspace = true }
 epub = { workspace = true, optional = true }
 futures = { workspace = true }
 glob = { workspace = true }
+indexmap = { workspace = true }
 lopdf = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-rig-derive = { version = "0.38.1", path = "../rig-derive", optional = true }
+rig-derive = { version = "0.38.2", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

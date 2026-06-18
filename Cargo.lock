@@ -1950,6 +1950,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "affbf0190ed2caf063e3def54ff444b449371d55c58e513a95ab98eca50adb49"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3130,7 +3139,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case",
+ "convert_case 0.10.0",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -3191,7 +3200,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3428,7 +3437,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3901,8 +3910,8 @@ dependencies = [
  "libc",
  "log",
  "rustversion",
- "windows-link 0.2.1",
- "windows-result 0.4.1",
+ "windows-link 0.1.3",
+ "windows-result 0.3.4",
 ]
 
 [[package]]
@@ -4146,7 +4155,7 @@ dependencies = [
  "hmac 0.13.0",
  "http 1.4.0",
  "jsonwebtoken",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustc_version",
  "rustls 0.23.39",
  "rustls-pki-types",
@@ -4199,7 +4208,7 @@ dependencies = [
  "opentelemetry_sdk 0.31.0",
  "percent-encoding",
  "pin-project",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustc_version",
  "serde",
  "serde_json",
@@ -4950,7 +4959,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -5411,7 +5420,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7028,7 +7037,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7319,7 +7328,7 @@ dependencies = [
  "bytes",
  "http 1.4.0",
  "opentelemetry 0.32.0",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
 ]
 
 [[package]]
@@ -7334,7 +7343,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk 0.32.1",
  "prost 0.14.3",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "thiserror 2.0.18",
 ]
 
@@ -8034,7 +8043,7 @@ version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343d3bd7056eda839b03204e68deff7d1b13aba7af2b2fd16890697274262ee7"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -8309,7 +8318,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.39",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -8347,9 +8356,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.3",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8801,9 +8810,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
+checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -8850,14 +8859,14 @@ dependencies = [
 
 [[package]]
 name = "reqwest-middleware"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "199dda04a536b532d0cc04d7979e39b1c763ea749bf91507017069c00b96056f"
+checksum = "07bc3f1384cffa4f274dad2d4ddd73aed32fed8f786d96c6be8aa4e5fd3c3b58"
 dependencies = [
  "anyhow",
  "async-trait",
  "http 1.4.0",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "thiserror 2.0.18",
  "tower-service",
@@ -8875,7 +8884,7 @@ dependencies = [
  "getrandom 0.2.17",
  "http 1.4.0",
  "hyper 1.9.0",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "reqwest-middleware",
  "retry-policies",
  "thiserror 2.0.18",
@@ -8950,7 +8959,7 @@ checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
 name = "rig"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -8969,7 +8978,7 @@ dependencies = [
  "opentelemetry_sdk 0.32.1",
  "qdrant-client",
  "redis",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "reqwest-middleware",
  "reqwest-retry",
  "rig-bedrock",
@@ -9013,7 +9022,7 @@ dependencies = [
 
 [[package]]
 name = "rig-bedrock"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9022,7 +9031,7 @@ dependencies = [
  "aws-smithy-types",
  "base64 0.22.1",
  "nanoid",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rig-core",
  "rig-derive",
  "schemars 1.2.1",
@@ -9036,7 +9045,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "as-any",
@@ -9054,6 +9063,7 @@ dependencies = [
  "glob",
  "http 1.4.0",
  "hyper-util",
+ "indexmap 2.14.0",
  "lopdf",
  "mime",
  "mime_guess",
@@ -9066,7 +9076,7 @@ dependencies = [
  "quick-xml",
  "rayon",
  "redis",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "reqwest-middleware",
  "reqwest-retry",
  "rig-derive",
@@ -9090,10 +9100,10 @@ dependencies = [
 
 [[package]]
 name = "rig-derive"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
- "convert_case",
+ "convert_case 0.11.0",
  "deluxe",
  "indoc",
  "proc-macro-crate 3.5.0",
@@ -9111,7 +9121,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -9125,7 +9135,7 @@ dependencies = [
 
 [[package]]
 name = "rig-gemini-grpc"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -9148,10 +9158,10 @@ dependencies = [
 
 [[package]]
 name = "rig-helixdb"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rig-core",
  "serde",
  "serde_json",
@@ -9161,7 +9171,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -9177,7 +9187,7 @@ dependencies = [
 
 [[package]]
 name = "rig-memory"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "rig-core",
@@ -9188,10 +9198,10 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rig-core",
  "serde",
  "serde_json",
@@ -9202,7 +9212,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "futures",
@@ -9219,7 +9229,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "futures",
@@ -9238,7 +9248,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -9259,7 +9269,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -9274,7 +9284,7 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -9291,7 +9301,7 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9310,7 +9320,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -9329,7 +9339,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "rig-core",
@@ -9344,10 +9354,10 @@ dependencies = [
 
 [[package]]
 name = "rig-vectorize"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rig-core",
  "serde",
  "serde_json",
@@ -9359,7 +9369,7 @@ dependencies = [
 
 [[package]]
 name = "rig-vertexai"
-version = "0.38.1"
+version = "0.38.2"
 dependencies = [
  "anyhow",
  "google-cloud-aiplatform-v1",
@@ -9464,7 +9474,7 @@ dependencies = [
  "pastey 0.2.2",
  "pin-project-lite",
  "rand 0.10.1",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rmcp-macros",
  "schemars 1.2.1",
  "serde",
@@ -9714,7 +9724,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -9821,7 +9831,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -10104,7 +10114,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -10545,7 +10555,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -10557,7 +10567,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f103c50866b8743da9429b8a581d81a27c2d3a9c4ac7df8f8571c1dd7896eda"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -11065,7 +11075,7 @@ dependencies = [
  "indexmap 2.14.0",
  "js-sys",
  "path-clean",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "ring",
  "rustls 0.23.39",
  "rustls-pki-types",
@@ -11392,7 +11402,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -11974,9 +11984,9 @@ dependencies = [
 
 [[package]]
 name = "tonic-prost-build"
-version = "0.14.5"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3144df636917574672e93d0f56d7edec49f90305749c668df5101751bb8f95a"
+checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -12872,7 +12882,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

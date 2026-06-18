@@ -1,8 +1,6 @@
-#[cfg(feature = "image")]
-use crate::client::Nothing;
 use crate::{
     client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Provider, ProviderBuilder,
+        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
     completion::GetTokenUsage,
@@ -44,6 +42,7 @@ impl<H> Capabilities<H> for OpenRouterExt {
 
     #[cfg(feature = "audio")]
     type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for OpenRouterExt {}
@@ -134,13 +133,13 @@ impl std::fmt::Display for Usage {
 }
 
 impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let (cached_input, cache_creation) = self
             .prompt_tokens_details
             .as_ref()
             .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
             .unwrap_or((0, 0));
-        Some(crate::completion::Usage {
+        crate::completion::Usage {
             input_tokens: self.prompt_tokens as u64,
             output_tokens: self.completion_tokens as u64,
             total_tokens: self.total_tokens as u64,
@@ -148,7 +147,7 @@ impl GetTokenUsage for Usage {
             cache_creation_input_tokens: cache_creation,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
-        })
+        }
     }
 }
 impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {

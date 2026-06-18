@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::copilot::{LIVE_LIGHT_MODEL, live_client};
+use crate::copilot::{LIVE_LIGHT_MODEL, live_client, with_copilot_cassette_result};
 use crate::support::assert_nonempty_response;
 
 const TEST_FILE: &str = "test.txt";
@@ -151,40 +151,47 @@ impl<M: CompletionModel> PromptHook<M> for PermissionHook {
 }
 
 #[tokio::test]
-#[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn permission_control_prompt_example() -> Result<()> {
-    let _cleanup = FileCleanup::new()?;
+    with_copilot_cassette_result(
+        "permission_control/permission_control_prompt_example",
+        |client| async move {
+            let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client()
-        .agent(LIVE_LIGHT_MODEL)
-        .preamble("You are a helpful assistant that can read files using different methods.")
-        .tool(ReadFileHead)
-        .tool(ReadFileTail)
-        .build();
+            let agent = client
+                .agent(LIVE_LIGHT_MODEL)
+                .preamble(
+                    "You are a helpful assistant that can read files using different methods.",
+                )
+                .tool(ReadFileHead)
+                .tool(ReadFileTail)
+                .build();
 
-    let call_count = Arc::new(AtomicUsize::new(0));
-    let last_result = Arc::new(Mutex::new(None));
-    let hook = PermissionHook {
-        call_count: call_count.clone(),
-        last_result: last_result.clone(),
-    };
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let last_result = Arc::new(Mutex::new(None));
+            let hook = PermissionHook {
+                call_count: call_count.clone(),
+                last_result: last_result.clone(),
+            };
 
-    let _response = agent
-        .prompt(
-            "Use the available tools to read test.txt now. \
-             Do not ask any follow-up questions; just read the file and report its content.",
-        )
-        .max_turns(5)
-        .with_hook(hook)
-        .await?;
+            let _response = agent
+                .prompt(
+                    "Use the available tools to read test.txt now. \
+                 Do not ask any follow-up questions; just read the file and report its content.",
+                )
+                .max_turns(5)
+                .with_hook(hook)
+                .await?;
 
-    let last = last_result.lock().expect("lock last_result").clone();
-    anyhow::ensure!(last.as_deref() == Some("hello world"));
-    anyhow::ensure!(
-        call_count.load(Ordering::SeqCst) >= 2,
-        "expected at least one skipped call followed by an allowed call"
-    );
-    Ok(())
+            let last = last_result.lock().expect("lock last_result").clone();
+            anyhow::ensure!(last.as_deref() == Some("hello world"));
+            anyhow::ensure!(
+                call_count.load(Ordering::SeqCst) >= 2,
+                "expected at least one skipped call followed by an allowed call"
+            );
+            Ok(())
+        },
+    )
+    .await
 }
 
 #[tokio::test]

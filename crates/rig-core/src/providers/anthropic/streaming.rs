@@ -6,7 +6,7 @@ use tracing::{Level, enabled, info_span};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    AnthropicCompatibleProvider, Content, GenericCompletionModel, Message, SystemContent,
+    AnthropicCompatibleProvider, CacheTtl, Content, GenericCompletionModel, Message, SystemContent,
     ToolChoice, Usage, apply_prompt_cache_control, build_tool_definitions,
     resolve_top_level_cache_control, split_system_messages_from_history,
     supports_mid_conversation_system_messages,
@@ -22,6 +22,107 @@ use crate::streaming::{
 use crate::telemetry::SpanCombinator;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
+
+fn create_streaming_request_body(
+    request_model: String,
+    completion_request: &mut CompletionRequest,
+    max_tokens: u64,
+    prompt_caching: bool,
+    automatic_caching: bool,
+    automatic_caching_ttl: Option<CacheTtl>,
+) -> Result<Value, CompletionError> {
+    let chat_history = completion_request.chat_history_with_documents();
+    let (history_system, chat_history) = split_system_messages_from_history(
+        chat_history,
+        supports_mid_conversation_system_messages(&request_model),
+    );
+    let mut full_history = vec![];
+    full_history.extend(chat_history);
+
+    let mut messages = full_history
+        .into_iter()
+        .map(Message::try_from)
+        .collect::<Result<Vec<Message>, _>>()?;
+
+    // Convert system prompt to array format for cache_control support.
+    let mut system: Vec<SystemContent> =
+        if let Some(preamble) = completion_request.preamble.as_ref() {
+            if preamble.is_empty() {
+                vec![]
+            } else {
+                vec![SystemContent::Text {
+                    text: preamble.clone(),
+                    cache_control: None,
+                }]
+            }
+        } else {
+            vec![]
+        };
+    system.extend(history_system);
+
+    let mut additional_params_payload = completion_request
+        .additional_params
+        .take()
+        .unwrap_or(Value::Null);
+    let top_level_cache_control = resolve_top_level_cache_control(
+        automatic_caching,
+        automatic_caching_ttl,
+        &mut additional_params_payload,
+    )?;
+    let mut tools = build_tool_definitions(
+        std::mem::take(&mut completion_request.tools),
+        &mut additional_params_payload,
+    )?;
+
+    apply_prompt_cache_control(
+        &mut system,
+        &mut messages,
+        &mut tools,
+        prompt_caching,
+        top_level_cache_control.as_ref(),
+    )?;
+
+    let mut body = json!({
+        "model": request_model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "stream": true,
+    });
+
+    // Automatic caching: one top-level field; the API moves the breakpoint automatically.
+    // No beta header is required.
+    if let Some(cache_control) = top_level_cache_control {
+        merge_inplace(
+            &mut body,
+            json!({ "cache_control": serde_json::to_value(&cache_control)? }),
+        );
+    }
+
+    // Add system prompt if non-empty.
+    if !system.is_empty() {
+        merge_inplace(&mut body, json!({ "system": system }));
+    }
+
+    if let Some(temperature) = completion_request.temperature {
+        merge_inplace(&mut body, json!({ "temperature": temperature }));
+    }
+
+    if !tools.is_empty() {
+        merge_inplace(
+            &mut body,
+            json!({
+                "tools": tools,
+                "tool_choice": ToolChoice::Auto,
+            }),
+        );
+    }
+
+    if !additional_params_payload.is_null() {
+        merge_inplace(&mut body, additional_params_payload)
+    }
+
+    Ok(body)
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -104,7 +205,7 @@ pub struct PartialUsage {
 }
 
 impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
@@ -115,7 +216,7 @@ impl GetTokenUsage for PartialUsage {
             + usage.cached_input_tokens
             + usage.cache_creation_input_tokens
             + usage.output_tokens;
-        Some(usage)
+        usage
     }
 }
 
@@ -146,7 +247,7 @@ pub struct StreamingCompletionResponse {
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
+    fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
         usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
         usage.output_tokens = self.usage.output_tokens as u64;
@@ -157,7 +258,7 @@ impl GetTokenUsage for StreamingCompletionResponse {
             + usage.cache_creation_input_tokens
             + usage.output_tokens;
 
-        Some(usage)
+        usage
     }
 }
 
@@ -205,96 +306,14 @@ where
             ));
         };
 
-        let docs = completion_request.normalized_documents();
-        let (history_system, chat_history) = split_system_messages_from_history(
-            completion_request.chat_history.into_iter().collect(),
-            supports_mid_conversation_system_messages(&request_model),
-        );
-        let mut full_history = vec![];
-        if let Some(docs) = docs {
-            full_history.push(docs);
-        }
-        full_history.extend(chat_history);
-
-        let mut messages = full_history
-            .into_iter()
-            .map(Message::try_from)
-            .collect::<Result<Vec<Message>, _>>()?;
-
-        // Convert system prompt to array format for cache_control support
-        let mut system: Vec<SystemContent> =
-            if let Some(preamble) = completion_request.preamble.as_ref() {
-                if preamble.is_empty() {
-                    vec![]
-                } else {
-                    vec![SystemContent::Text {
-                        text: preamble.clone(),
-                        cache_control: None,
-                    }]
-                }
-            } else {
-                vec![]
-            };
-        system.extend(history_system);
-
-        let mut additional_params_payload = completion_request
-            .additional_params
-            .take()
-            .unwrap_or(Value::Null);
-        let top_level_cache_control = resolve_top_level_cache_control(
+        let body = create_streaming_request_body(
+            request_model,
+            &mut completion_request,
+            max_tokens,
+            self.prompt_caching,
             self.automatic_caching,
             self.automatic_caching_ttl.clone(),
-            &mut additional_params_payload,
         )?;
-        let mut tools =
-            build_tool_definitions(completion_request.tools, &mut additional_params_payload)?;
-
-        apply_prompt_cache_control(
-            &mut system,
-            &mut messages,
-            &mut tools,
-            self.prompt_caching,
-            top_level_cache_control.as_ref(),
-        )?;
-
-        let mut body = json!({
-            "model": request_model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "stream": true,
-        });
-
-        // Automatic caching: one top-level field; the API moves the breakpoint automatically.
-        // No beta header is required.
-        if let Some(cache_control) = top_level_cache_control {
-            merge_inplace(
-                &mut body,
-                json!({ "cache_control": serde_json::to_value(&cache_control)? }),
-            );
-        }
-
-        // Add system prompt if non-empty
-        if !system.is_empty() {
-            merge_inplace(&mut body, json!({ "system": system }));
-        }
-
-        if let Some(temperature) = completion_request.temperature {
-            merge_inplace(&mut body, json!({ "temperature": temperature }));
-        }
-
-        if !tools.is_empty() {
-            merge_inplace(
-                &mut body,
-                json!({
-                    "tools": tools,
-                    "tool_choice": ToolChoice::Auto,
-                }),
-            );
-        }
-
-        if !additional_params_payload.is_null() {
-            merge_inplace(&mut body, additional_params_payload)
-        }
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -587,8 +606,11 @@ fn handle_event(
 
 #[cfg(test)]
 mod tests {
-    use super::super::completion::{CacheControl, CacheTtl};
+    use super::super::completion::{CLAUDE_OPUS_4_8, CacheControl, CacheTtl};
     use super::*;
+    use crate::OneOrMany;
+    use crate::completion::Message as RigMessage;
+    use crate::completion::request::Document as RigDocument;
     use async_stream::stream;
     use futures::StreamExt;
 
@@ -638,6 +660,64 @@ mod tests {
         assert!(tools[0].get("cache_control").is_none());
         assert_eq!(tools[1]["name"], "provider_tool");
         assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn streaming_request_keeps_documents_after_leading_system_messages() {
+        let mut request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                RigMessage::system("System prompt"),
+                RigMessage::assistant("Earlier assistant turn"),
+                RigMessage::system("Mid-conversation instruction"),
+                RigMessage::user("Prompt"),
+            ])
+            .unwrap(),
+            documents: vec![RigDocument {
+                id: "doc1".to_string(),
+                text: "Document text.".to_string(),
+                additional_props: Default::default(),
+            }],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_streaming_request_body(
+            CLAUDE_OPUS_4_8.to_string(),
+            &mut request,
+            64,
+            false,
+            false,
+            None,
+        )
+        .expect("streaming request body should build");
+
+        assert_eq!(body["system"][0]["text"], "System prompt");
+        assert_eq!(body["system"][1]["text"], "Mid-conversation instruction");
+        let messages = body["messages"]
+            .as_array()
+            .expect("messages should be array");
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0]["role"], "user");
+        assert!(
+            messages[0].to_string().contains("<file id: doc1>"),
+            "document message should follow top-level system: {messages:?}"
+        );
+        assert_eq!(messages[1]["role"], "assistant");
+        assert_eq!(messages[2]["role"], "user");
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc1>"))
+                .count(),
+            1,
+            "document message should appear exactly once: {messages:?}"
+        );
     }
 
     #[test]

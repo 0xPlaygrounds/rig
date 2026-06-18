@@ -9,7 +9,7 @@ use super::InteractionsCompletionModel;
 use super::create_request_body;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
-    InteractionSseEvent, InteractionUsage, TextContent, TextDelta, ThoughtSummaryContent,
+    InteractionSseEvent, InteractionUsage, Step, TextDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta,
 };
 use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
@@ -41,8 +41,11 @@ pub type InteractionEventStream =
     Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
 impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        self.usage.as_ref().and_then(|usage| usage.token_usage())
+    fn token_usage(&self) -> crate::completion::Usage {
+        self.usage
+            .as_ref()
+            .map(|usage| usage.token_usage())
+            .unwrap_or_default()
     }
 }
 
@@ -123,17 +126,17 @@ where
                         };
 
                         match data {
-                            InteractionSseEvent::ContentDelta { delta, .. } => {
+                            InteractionSseEvent::StepDelta { delta, .. } => {
                                 if let Some(choice) = content_delta_to_choice(delta) {
                                     yield Ok(choice);
                                 }
                             }
-                            InteractionSseEvent::ContentStart { content, .. } => {
-                                if let Some(choice) = content_start_to_choice(content) {
+                            InteractionSseEvent::StepStart { step, .. } => {
+                                if let Some(choice) = step_start_to_choice(step) {
                                     yield Ok(choice);
                                 }
                             }
-                            InteractionSseEvent::InteractionComplete { interaction, .. } => {
+                            InteractionSseEvent::InteractionCompleted { interaction, .. } => {
                                 let span = tracing::Span::current();
                                 span.record("gen_ai.response.id", &interaction.id);
                                 if let Some(model) = interaction.model.clone() {
@@ -225,18 +228,12 @@ where
     Box::pin(stream)
 }
 
-fn content_start_to_choice(
-    content: Content,
+fn step_start_to_choice(
+    step: Step,
 ) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
-    match content {
-        Content::Text(TextContent { text, .. }) => {
-            if text.is_empty() {
-                None
-            } else {
-                Some(streaming::RawStreamingChoice::Message(text))
-            }
-        }
-        Content::FunctionCall(FunctionCallContent {
+    match step {
+        Step::ModelOutput { content } => content.into_iter().find_map(content_to_choice),
+        Step::FunctionCall(FunctionCallContent {
             name,
             arguments,
             id,
@@ -252,6 +249,18 @@ fn content_start_to_choice(
                 .with_call_id(call_id),
             ))
         }
+        _ => None,
+    }
+}
+
+fn content_to_choice(
+    content: Content,
+) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+    match content {
+        Content::Text(text) if !text.text.is_empty() => {
+            Some(streaming::RawStreamingChoice::Message(text.text))
+        }
+        Content::FunctionCall(content) => step_start_to_choice(Step::FunctionCall(content)),
         _ => None,
     }
 }
@@ -322,7 +331,7 @@ mod tests {
     #[test]
     fn test_content_delta_text_event() {
         let event_json = json!({
-            "event_type": "content.delta",
+            "event_type": "step.delta",
             "index": 0,
             "delta": {
                 "type": "text",
@@ -331,8 +340,8 @@ mod tests {
         });
 
         let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
-        let InteractionSseEvent::ContentDelta { delta, .. } = event else {
-            panic!("expected content delta");
+        let InteractionSseEvent::StepDelta { delta, .. } = event else {
+            panic!("expected step delta");
         };
 
         let choice = content_delta_to_choice(delta).expect("choice should exist");
@@ -347,7 +356,7 @@ mod tests {
     #[test]
     fn test_content_delta_function_call_event() {
         let event_json = json!({
-            "event_type": "content.delta",
+            "event_type": "step.delta",
             "index": 0,
             "delta": {
                 "type": "function_call",
@@ -358,8 +367,8 @@ mod tests {
         });
 
         let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
-        let InteractionSseEvent::ContentDelta { delta, .. } = event else {
-            panic!("expected content delta");
+        let InteractionSseEvent::StepDelta { delta, .. } = event else {
+            panic!("expected step delta");
         };
 
         let choice = content_delta_to_choice(delta).expect("choice should exist");
