@@ -50,15 +50,53 @@ use crate::wasm_compat::WasmBoxedFuture;
 pub struct McpTool {
     definition: rmcp::model::Tool,
     client: rmcp::service::ServerSink,
+    /// Optional per-call timeout. When set, an MCP `call_tool` that does not
+    /// complete within this duration resolves to a [`ToolError`] instead of
+    /// blocking forever (see issue #1914).
+    timeout: Option<std::time::Duration>,
 }
 
 impl McpTool {
     /// Create a new `McpTool` from an MCP tool definition and server sink.
+    ///
+    /// No per-call timeout is applied: a tool call that never receives a
+    /// response will await indefinitely. Use [`McpTool::with_timeout`] or
+    /// [`McpTool::from_mcp_server_with_timeout`] to bound it (see issue #1914).
     pub fn from_mcp_server(
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> Self {
-        Self { definition, client }
+        Self {
+            definition,
+            client,
+            timeout: None,
+        }
+    }
+
+    /// Create a new `McpTool` with a per-call timeout.
+    ///
+    /// If the underlying MCP `call_tool` does not complete within `timeout`, the
+    /// call resolves to a [`ToolError`] instead of blocking forever. The agent
+    /// loop surfaces that error to the model as a tool result, so the agent can
+    /// recover rather than hang.
+    pub fn from_mcp_server_with_timeout(
+        definition: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+        timeout: std::time::Duration,
+    ) -> Self {
+        Self {
+            definition,
+            client,
+            timeout: Some(timeout),
+        }
+    }
+
+    /// Set a per-call timeout, consuming and returning the tool.
+    ///
+    /// See [`McpTool::from_mcp_server_with_timeout`].
+    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
     }
 }
 
@@ -124,11 +162,26 @@ impl ToolDyn for McpTool {
                 })
                 .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
 
-            let result = self
-                .client
-                .call_tool(request)
-                .await
-                .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
+            let result = match self.timeout {
+                // Bound the call so a never-answered request (see issue #1914)
+                // becomes a recoverable error instead of an unbounded await.
+                Some(timeout) => {
+                    crate::wasm_compat::timeout(timeout, self.client.call_tool(request))
+                        .await
+                        .map_err(|_| {
+                            McpToolError(format!(
+                                "MCP tool '{}' timed out after {timeout:?}",
+                                self.definition.name
+                            ))
+                        })?
+                        .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?
+                }
+                None => self
+                    .client
+                    .call_tool(request)
+                    .await
+                    .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?,
+            };
 
             if let Some(true) = result.is_error {
                 let error_msg = result
@@ -242,6 +295,9 @@ pub enum McpClientError {
 pub struct McpClientHandler {
     client_info: rmcp::model::ClientInfo,
     tool_server_handle: ToolServerHandle,
+    /// Optional per-call timeout applied to every MCP tool this handler
+    /// registers (see issue #1914).
+    timeout: Option<std::time::Duration>,
     /// Tracks which tool names were registered by this handler so they
     /// can be removed and replaced on list-change notifications.
     managed_tool_names: Arc<RwLock<Vec<String>>>,
@@ -256,7 +312,24 @@ impl McpClientHandler {
         Self {
             client_info,
             tool_server_handle,
+            timeout: None,
             managed_tool_names: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    /// Apply a per-call timeout to every MCP tool registered by this handler.
+    ///
+    /// See [`McpTool::from_mcp_server_with_timeout`].
+    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Build an [`McpTool`], applying this handler's configured timeout (if any).
+    fn build_tool(&self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> McpTool {
+        match self.timeout {
+            Some(timeout) => McpTool::from_mcp_server_with_timeout(tool, client, timeout),
+            None => McpTool::from_mcp_server(tool, client),
         }
     }
 
@@ -292,7 +365,7 @@ impl McpClientHandler {
 
             for tool in tools {
                 let tool_name = tool.name.to_string();
-                let mcp_tool = McpTool::from_mcp_server(tool, service.peer().clone());
+                let mcp_tool = handler.build_tool(tool, service.peer().clone());
                 handler.tool_server_handle.add_tool(mcp_tool).await?;
                 managed.push(tool_name);
             }
@@ -329,7 +402,7 @@ impl rmcp::handler::client::ClientHandler for McpClientHandler {
 
         for tool in tools {
             let tool_name = tool.name.to_string();
-            let mcp_tool = McpTool::from_mcp_server(tool, context.peer.clone());
+            let mcp_tool = self.build_tool(tool, context.peer.clone());
             match self.tool_server_handle.add_tool(mcp_tool).await {
                 Ok(()) => {
                     managed.push(tool_name);
@@ -635,6 +708,64 @@ mod tests {
              and McpTool::call has no internal timeout. If you just added a timeout \
              fix, flip this assertion to `timed.is_ok()`.",
             timed.ok(),
+        );
+
+        server_task.abort();
+    }
+
+    /// Regression test for the fix to <https://github.com/0xPlaygrounds/rig/issues/1914>.
+    ///
+    /// With a per-call timeout configured, `McpTool::call` against a server that
+    /// never responds resolves to a `ToolError` (which the agent loop surfaces
+    /// to the model) instead of hanging forever. The outer `timeout` is only a
+    /// safety net so a regression cannot wedge the test runner; the inner 200ms
+    /// timeout fires first.
+    #[tokio::test]
+    async fn mcp_tool_call_with_timeout_errors_instead_of_hanging() {
+        use super::McpTool;
+        use crate::tool::ToolDyn;
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_task = tokio::spawn(async move {
+            let running = HangingToolServer
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+
+        let tools = client
+            .peer()
+            .list_all_tools()
+            .await
+            .expect("list_tools failed");
+
+        // The fix: a per-call timeout bounds the otherwise-unbounded await.
+        let mcp_tool = McpTool::from_mcp_server_with_timeout(
+            tools[0].clone(),
+            client.peer().clone(),
+            Duration::from_millis(200),
+        );
+
+        let timed =
+            tokio::time::timeout(Duration::from_secs(5), mcp_tool.call("{}".to_string())).await;
+
+        let result = timed.expect(
+            "regression: McpTool::call hung past the safety timeout; the per-call \
+             timeout did not fire (issue #1914 fix is broken)",
+        );
+        let err =
+            result.expect_err("call should resolve to an error when the server never responds");
+        assert!(
+            err.to_string().contains("timed out"),
+            "expected a timeout error, got: {err}"
         );
 
         server_task.abort();

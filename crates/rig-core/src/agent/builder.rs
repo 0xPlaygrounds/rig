@@ -18,6 +18,27 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
+/// Build [`RmcpTool`]s from MCP tool definitions, applying an optional per-call
+/// timeout to each (see issue #1914). Returns `(tool_name, tool)` pairs.
+#[cfg(feature = "rmcp")]
+fn build_rmcp_tools(
+    tools: Vec<rmcp::model::Tool>,
+    client: rmcp::service::ServerSink,
+    timeout: Option<std::time::Duration>,
+) -> Vec<(String, RmcpTool)> {
+    tools
+        .into_iter()
+        .map(|tool| {
+            let name = tool.name.to_string();
+            let mut rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone());
+            if let Some(timeout) = timeout {
+                rmcp_tool = rmcp_tool.with_timeout(timeout);
+            }
+            (name, rmcp_tool)
+        })
+        .collect()
+}
+
 use super::Agent;
 
 /// Marker type indicating no tool configuration has been set yet.
@@ -402,31 +423,23 @@ where
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let toolname = tool.name.clone().to_string();
-        let tools = ToolSet::from_tools(vec![RmcpTool::from_mcp_server(tool, client)]);
+        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, None))
+    }
 
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hook: self.hook,
-            output_schema: self.output_schema,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                static_tools: vec![toolname],
-                tools,
-                dynamic_tools: vec![],
-            },
-        }
+    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    ///
+    /// If the tool call does not complete within `timeout`, it resolves to a
+    /// tool error the agent can recover from instead of blocking forever.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_with_timeout(
+        self,
+        tool: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+        timeout: std::time::Duration,
+    ) -> AgentBuilder<M, P, WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, Some(timeout)))
     }
 
     /// Add an array of MCP tools (from `rmcp`) to the agent.
@@ -439,18 +452,39 @@ where
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let (static_tools, tools) = tools.into_iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut toolnames, mut toolset), tool| {
-                let tool_name = tool.name.to_string();
-                let tool = RmcpTool::from_mcp_server(tool, client.clone());
-                toolnames.push(tool_name);
-                toolset.push(tool);
-                (toolnames, toolset)
-            },
-        );
+        self.with_rmcp_toolset(build_rmcp_tools(tools, client, None))
+    }
 
-        let tools = ToolSet::from_tools(tools);
+    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
+    /// issue #1914).
+    ///
+    /// If a tool call does not complete within `timeout`, it resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: std::time::Duration,
+    ) -> AgentBuilder<M, P, WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools(tools, client, Some(timeout)))
+    }
+
+    /// Transition into the `WithBuilderTools` state carrying the given built
+    /// MCP tools.
+    #[cfg(feature = "rmcp")]
+    fn with_rmcp_toolset(
+        self,
+        built: Vec<(String, RmcpTool)>,
+    ) -> AgentBuilder<M, P, WithBuilderTools> {
+        let mut static_tools = Vec::with_capacity(built.len());
+        let mut toolset = Vec::with_capacity(built.len());
+        for (name, tool) in built {
+            static_tools.push(name);
+            toolset.push(tool);
+        }
 
         AgentBuilder {
             name: self.name,
@@ -470,7 +504,7 @@ where
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
-                tools,
+                tools: ToolSet::from_tools(toolset),
                 dynamic_tools: vec![],
             },
         }
@@ -591,14 +625,33 @@ where
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
-        mut self,
+        self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> Self {
-        for tool in tools {
-            let tool_name = tool.name.to_string();
-            let tool = RmcpTool::from_mcp_server(tool, client.clone());
-            self.tool_state.static_tools.push(tool_name);
+        self.add_rmcp_tools(build_rmcp_tools(tools, client, None))
+    }
+
+    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
+    /// issue #1914).
+    ///
+    /// If a tool call does not complete within `timeout`, it resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: std::time::Duration,
+    ) -> Self {
+        self.add_rmcp_tools(build_rmcp_tools(tools, client, Some(timeout)))
+    }
+
+    #[cfg(feature = "rmcp")]
+    fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
+        for (name, tool) in built {
+            self.tool_state.static_tools.push(name);
             self.tool_state.tools.add_tool(tool);
         }
 
