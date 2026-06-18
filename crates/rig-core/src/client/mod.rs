@@ -251,13 +251,14 @@ pub trait Provider: Sized {
     /// Build a complete request URI for the given base URL, provider path, and transport.
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
         // Some providers (like Azure) have a blank base URL to allow users to input their own endpoints.
-        let base_url = if base_url.is_empty() {
+        let base_url = if base_url.is_empty() || base_url.ends_with('/') {
             base_url.to_string()
         } else {
+            // Only add a slash to the base_url when it doesn't already end with a slash
             base_url.to_string() + "/"
         };
 
-        base_url.to_string() + path.trim_start_matches('/')
+        base_url + path.trim_start_matches('/')
     }
 
     /// Apply provider-specific request customization before sending.
