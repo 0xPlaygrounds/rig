@@ -115,9 +115,14 @@ pub struct ToolCallContext {
 }
 
 impl ToolCallContext {
+    /// Shared empty instance. Lets dispatch layers that need a default
+    /// context hand out a `'static` reference instead of constructing (and
+    /// having to own) a fresh value just to borrow it.
+    pub(crate) const EMPTY: ToolCallContext = ToolCallContext { map: None };
+
     /// Create an empty context.
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self::EMPTY
     }
 
     /// Insert a typed value. Overwrites any previous value of the same type.

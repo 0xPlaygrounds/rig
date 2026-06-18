@@ -168,7 +168,7 @@ impl ToolServerHandle {
     /// The tool handle is cloned under a brief read lock so that
     /// long-running tool executions never block writers.
     pub async fn call_tool(&self, tool_name: &str, args: &str) -> Result<String, ToolServerError> {
-        self.call_tool_with_context(tool_name, args, ToolCallContext::new())
+        self.call_tool_with_context(tool_name, args, &ToolCallContext::new())
             .await
     }
 
@@ -182,7 +182,7 @@ impl ToolServerHandle {
         &self,
         tool_name: &str,
         args: &str,
-        ctx: ToolCallContext,
+        ctx: &ToolCallContext,
     ) -> Result<String, ToolServerError> {
         let tool = {
             let state = self.0.read().await;
@@ -641,7 +641,7 @@ mod tests {
         ctx.insert(SessionId("abc-123".to_string()));
 
         let result = handle
-            .call_tool_with_context("context_reader", "{}", ctx)
+            .call_tool_with_context("context_reader", "{}", &ctx)
             .await
             .unwrap();
 
@@ -667,7 +667,7 @@ mod tests {
 
         let args = serde_json::to_string(&serde_json::json!({"x": 3, "y": 7})).unwrap();
         let result = handle
-            .call_tool_with_context("add", &args, ctx)
+            .call_tool_with_context("add", &args, &ctx)
             .await
             .unwrap();
 

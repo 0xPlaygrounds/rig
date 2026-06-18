@@ -206,7 +206,7 @@ pub trait ToolDyn: WasmCompatSend + WasmCompatSync {
     fn call_with_context<'a>(
         &'a self,
         args: String,
-        _ctx: ToolCallContext,
+        _ctx: &'a ToolCallContext,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         self.call(args)
     }
@@ -229,13 +229,13 @@ impl<T: Tool> ToolDyn for T {
     }
 
     fn call<'a>(&'a self, args: String) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
-        ToolDyn::call_with_context(self, args, ToolCallContext::new())
+        ToolDyn::call_with_context(self, args, &ToolCallContext::EMPTY)
     }
 
     fn call_with_context<'a>(
         &'a self,
         args: String,
-        ctx: ToolCallContext,
+        ctx: &'a ToolCallContext,
     ) -> WasmBoxedFuture<'a, Result<String, ToolError>> {
         Box::pin(async move {
             // LLMs frequently send `null` for tools whose arguments are all optional.
@@ -250,7 +250,7 @@ impl<T: Tool> ToolDyn for T {
                 Err(err) => Err(err),
             };
             match args {
-                Ok(args) => <Self as Tool>::call_with_context(self, args, &ctx)
+                Ok(args) => <Self as Tool>::call_with_context(self, args, ctx)
                     .await
                     .map_err(|e| ToolError::ToolCallError(Box::new(e)))
                     .and_then(|output| serialize_tool_output(output).map_err(ToolError::JsonError)),
@@ -309,13 +309,13 @@ impl ToolType {
 
     #[allow(dead_code)]
     pub async fn call(&self, args: String) -> Result<String, ToolError> {
-        self.call_with_context(args, ToolCallContext::new()).await
+        self.call_with_context(args, &ToolCallContext::new()).await
     }
 
     pub async fn call_with_context(
         &self,
         args: String,
-        ctx: ToolCallContext,
+        ctx: &ToolCallContext,
     ) -> Result<String, ToolError> {
         match self {
             ToolType::Simple(tool) => tool.call_with_context(args, ctx).await,
@@ -448,7 +448,7 @@ impl ToolSet {
 
     /// Call a tool with the given name and arguments
     pub async fn call(&self, toolname: &str, args: String) -> Result<String, ToolSetError> {
-        self.call_with_context(toolname, args, ToolCallContext::new())
+        self.call_with_context(toolname, args, &ToolCallContext::new())
             .await
     }
 
@@ -460,7 +460,7 @@ impl ToolSet {
         &self,
         toolname: &str,
         args: String,
-        ctx: ToolCallContext,
+        ctx: &ToolCallContext,
     ) -> Result<String, ToolSetError> {
         if let Some(tool) = self.tools.get(toolname) {
             tracing::debug!(target: "rig",
