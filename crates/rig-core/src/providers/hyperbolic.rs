@@ -54,6 +54,7 @@ impl<H> Capabilities<H> for HyperbolicExt {
     type ImageGeneration = Capable<ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Capable<AudioGenerationModel<H>>;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for HyperbolicExt {}

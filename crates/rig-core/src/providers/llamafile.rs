@@ -71,6 +71,7 @@ impl<H> Capabilities<H> for LlamafileExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl DebugExt for LlamafileExt {}

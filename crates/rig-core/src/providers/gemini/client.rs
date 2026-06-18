@@ -1,14 +1,11 @@
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
-    Transport,
+    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
+    ProviderClient, Transport,
 };
 use crate::http_client::{self};
 use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
 use std::fmt::Debug;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-use crate::client::Nothing;
 
 // ================================================================
 // Google Gemini Client
@@ -122,6 +119,7 @@ impl<H> Capabilities<H> for GeminiExt {
     type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl<H> Capabilities<H> for GeminiInteractionsExt {
@@ -134,6 +132,7 @@ impl<H> Capabilities<H> for GeminiInteractionsExt {
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
+    type Rerank = Nothing;
 }
 
 impl ProviderBuilder for GeminiBuilder {
