@@ -415,6 +415,50 @@ mod tests {
         )
     }
 
+    /// An MCP server that advertises one tool whose `call_tool` handler never
+    /// returns, so no `CallToolResult` is ever sent back to the client.
+    ///
+    /// This models the failure in <https://github.com/0xPlaygrounds/rig/issues/1914>:
+    /// in the wild, rmcp 1.7.0's StreamableHttp transport can drop an in-flight
+    /// tool response during transparent session re-initialization (server
+    /// returns HTTP 404 -> the worker calls `streams.abort_all()`, cancelling
+    /// the SSE task carrying the outstanding response -> `JoinError::Cancelled`).
+    /// The request is then permanently orphaned: it never receives a response
+    /// and never errors. A handler that simply never returns produces the same
+    /// observable client-side behavior, deterministically and without a network.
+    #[derive(Clone)]
+    struct HangingToolServer;
+
+    impl ServerHandler for HangingToolServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_server_info(Implementation::new("hanging-server", "0.1.0"))
+        }
+
+        async fn list_tools(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, ErrorData> {
+            Ok(ListToolsResult::with_all_items(vec![make_tool(
+                "hang_forever",
+                "A tool whose handler never returns",
+            )]))
+        }
+
+        async fn call_tool(
+            &self,
+            _request: CallToolRequestParams,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<CallToolResult, ErrorData> {
+            // Never resolves: the crux of the reproduction. No response is ever
+            // sent, so the client's `call_tool` future (and therefore rig's
+            // `McpTool::call`) never completes.
+            std::future::pending::<Result<CallToolResult, ErrorData>>().await
+        }
+    }
+
     #[tokio::test]
     async fn test_mcp_client_handler_initial_tool_registration() {
         let initial_tools = vec![
@@ -530,5 +574,115 @@ mod tests {
         let returned = handler.get_info();
         assert_eq!(returned.client_info.name, "test-client");
         assert_eq!(returned.client_info.version, "1.0.0");
+    }
+
+    /// Reproduction for <https://github.com/0xPlaygrounds/rig/issues/1914>.
+    ///
+    /// `McpTool::call` (this file) awaits `self.client.call_tool(request)` with
+    /// no timeout, cancellation, or retry. When the underlying MCP request is
+    /// orphaned (no response, no error), this `.await` never completes, and the
+    /// agent loop — which awaits the tool call the same way at
+    /// `agent/prompt_request/mod.rs` and `streaming.rs` — wedges forever. The
+    /// agent loop already turns a tool *error* into a tool-result string, so a
+    /// call that never returns is the one failure mode it cannot recover from.
+    ///
+    /// We wire rig's `McpTool` to a server whose tool never responds and show
+    /// the call does not resolve within a generous window. The outer
+    /// `timeout` exists only so this test itself terminates; the timeout
+    /// *elapsing* is the bug. Once a fix adds an internal timeout/cancellation
+    /// to `McpTool::call` (returning `Err` instead of hanging), this call will
+    /// resolve quickly and the assertion below should flip to `timed.is_ok()`.
+    #[tokio::test]
+    async fn repro_issue_1914_mcp_tool_call_hangs_when_response_never_arrives() {
+        use super::McpTool;
+        use crate::tool::ToolDyn;
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_task = tokio::spawn(async move {
+            let running = HangingToolServer
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        // A bare client (`ClientInfo` implements `ClientHandler`); `.peer()` is
+        // the `ServerSink` that rig stores inside every `McpTool`.
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+
+        let tools = client
+            .peer()
+            .list_all_tools()
+            .await
+            .expect("list_tools failed");
+        assert_eq!(tools.len(), 1, "expected exactly one advertised tool");
+
+        // Build the rig tool exactly as `AgentBuilder::rmcp_tools(tools, peer)` does.
+        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
+
+        let timed =
+            tokio::time::timeout(Duration::from_millis(500), mcp_tool.call("{}".to_string())).await;
+
+        assert!(
+            timed.is_err(),
+            "issue #1914 NOT reproduced: McpTool::call returned {:?} within 500ms; \
+             it was expected to hang because the server never sends a CallToolResult \
+             and McpTool::call has no internal timeout. If you just added a timeout \
+             fix, flip this assertion to `timed.is_ok()`.",
+            timed.ok(),
+        );
+
+        server_task.abort();
+    }
+
+    /// Guard for the reproduction above: with a server that *does* respond, the
+    /// same in-process duplex harness resolves well within the timeout window.
+    /// This proves the 500ms bound in the repro is meaningful — the hang is
+    /// caused by the missing response, not by the transport being slow.
+    #[tokio::test]
+    async fn mcp_tool_call_returns_promptly_for_responsive_server() {
+        use super::McpTool;
+        use crate::tool::ToolDyn;
+
+        let server = DynamicToolServer::new(vec![make_tool("ping", "responds immediately")]);
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_clone = server.clone();
+        let server_task = tokio::spawn(async move {
+            let running = server_clone
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+
+        let tools = client
+            .peer()
+            .list_all_tools()
+            .await
+            .expect("list_tools failed");
+        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
+
+        let timed =
+            tokio::time::timeout(Duration::from_secs(2), mcp_tool.call("{}".to_string())).await;
+
+        let result = timed
+            .expect("responsive tool should resolve within 2s")
+            .expect("tool call should succeed");
+        assert!(result.contains("ping"), "unexpected tool output: {result}");
+
+        server_task.abort();
     }
 }
