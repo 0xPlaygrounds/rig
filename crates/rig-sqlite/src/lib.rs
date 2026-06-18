@@ -22,6 +22,15 @@ use tokio_rusqlite::Connection;
 use tracing::{debug, info};
 use zerocopy::IntoBytes;
 
+/// Maximum `k` accepted by a `sqlite-vec` `vec0` KNN query (`embedding MATCH ?
+/// AND k = ?`). `sqlite-vec` enforces this as a hard `#define
+/// SQLITE_VEC_VEC0_K_MAX 4096` and rejects larger values with
+/// `"k value in knn query too large, ..."`. When more candidates than this are
+/// required for an exact result, searches fall back to a brute-force scan that
+/// ranks every row with the scalar `vec_distance_*` functions instead (same
+/// exact result, no `k` cap).
+const SQLITE_VEC_MAX_K: u64 = 4096;
+
 #[derive(Debug)]
 pub enum SqliteError {
     DatabaseError(Box<dyn std::error::Error + Send + Sync>),
@@ -454,9 +463,21 @@ where
         let document_count = u64::try_from(document_count).unwrap_or(0);
 
         if exhaustive {
+            // Post-filters are applied after candidate search, so any candidate
+            // can be discarded; only an exhaustive scan guarantees the requested
+            // number of results survives filtering.
             Ok(embedding_count.max(samples))
         } else if embedding_count > document_count {
-            Ok(embedding_count)
+            // Some document owns multiple embeddings. After dedup-to-document
+            // (keeping each document's best embedding), guaranteeing the exact
+            // top-`samples` documents needs `samples + (extra embeddings)`
+            // candidates: at most `embedding_count - document_count` higher-
+            // ranked embeddings can collapse into already-seen documents. This
+            // bound is tight (one fewer can drop the last document) and never
+            // exceeds the total embedding count.
+            Ok(samples
+                .saturating_add(embedding_count - document_count)
+                .min(embedding_count))
         } else {
             Ok(samples)
         }
@@ -1806,7 +1827,19 @@ fn build_search_query(
     filters: SqliteRenderedFilters,
     candidate_limit: u64,
 ) -> Result<SqliteSearchQuery, FilterError> {
-    let mut conditions = vec!["e.embedding MATCH ?".to_string(), "k = ?".to_string()];
+    // `sqlite-vec`'s `vec0` KNN query caps `k` at `SQLITE_VEC_MAX_K`. When more
+    // candidates than that are required for an exact result, drop the
+    // `MATCH`/`k` KNN constraints and rank every row with the scalar
+    // `vec_distance_*` functions already used by the score expression. The
+    // `vec0` KNN path is itself an exact brute-force scan, so this yields the
+    // same results without the `k` cap (just without the SIMD/chunk fast path).
+    let brute_force = candidate_limit > SQLITE_VEC_MAX_K;
+
+    let mut conditions = Vec::new();
+    if !brute_force {
+        conditions.push("e.embedding MATCH ?".to_string());
+        conditions.push("k = ?".to_string());
+    }
     conditions.extend(
         filters
             .native
@@ -1814,7 +1847,13 @@ fn build_search_query(
             .map(|filter| format!("({})", filter.condition)),
     );
 
-    let vector_where_clause = format!("WHERE {}", conditions.join(" AND "));
+    // `conditions` is only empty on the brute-force path with no native
+    // filters; emitting a bare `WHERE` then would be a syntax error.
+    let vector_where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
     let document_filter_clause = if filters.post.is_empty() {
         String::new()
     } else {
@@ -1831,9 +1870,20 @@ fn build_search_query(
 
     let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
-    let candidate_limit = sqlite_limit_param(candidate_limit, "candidate limit")?;
 
-    let mut params = vec![query_vec.clone(), query_vec, candidate_limit];
+    // Parameter binding is positional. The score expression uses the explicit
+    // `?1` (bound by the first element here); the `MATCH`/`k` conditions and the
+    // filter conditions use anonymous `?`, numbered left-to-right after `?1`.
+    // On the brute-force path the `MATCH` and `k` placeholders are gone, so the
+    // second `query_vec` and the candidate limit must be dropped too, leaving a
+    // single leading `query_vec` for `?1`. Removing the tokens without removing
+    // these two values would silently misalign every downstream filter param.
+    let mut params = if brute_force {
+        vec![query_vec]
+    } else {
+        let candidate_limit = sqlite_limit_param(candidate_limit, "candidate limit")?;
+        vec![query_vec.clone(), query_vec, candidate_limit]
+    };
     params.extend(filters.native.into_iter().flat_map(|filter| filter.params));
     params.extend(filters.post.into_iter().flat_map(|filter| filter.params));
 
@@ -2504,6 +2554,107 @@ mod tests {
             "unexpected where clause: {where_clause}"
         );
         anyhow::ensure!(params.len() == 3, "unexpected params: {params:?}");
+
+        Ok(())
+    }
+
+    #[test]
+    fn candidate_limit_at_k_cap_still_uses_knn_path() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &[],
+            SQLITE_VEC_MAX_K,
+        )?;
+
+        anyhow::ensure!(
+            where_clause == "WHERE e.embedding MATCH ? AND k = ?",
+            "candidate limit at the cap should keep the KNN path: {where_clause}"
+        );
+        // ?1 (query vec) + MATCH (query vec) + k (candidate limit).
+        anyhow::ensure!(params.len() == 3, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            params.get(2) == Some(&Value::Integer(SQLITE_VEC_MAX_K as i64)),
+            "k param should be the candidate limit: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn candidate_limit_above_k_cap_falls_back_to_brute_force_scan() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &[],
+            SQLITE_VEC_MAX_K + 1,
+        )?;
+
+        // Above the sqlite-vec k cap the MATCH/k KNN constraints are dropped so
+        // the outer ORDER BY ... LIMIT ranks every row exactly. With no other
+        // predicate the vector WHERE clause must be empty, not a bare `WHERE`.
+        anyhow::ensure!(
+            !where_clause.contains("MATCH") && !where_clause.contains("k = ?"),
+            "brute-force scan should drop the KNN constraints: {where_clause}"
+        );
+        anyhow::ensure!(
+            where_clause.is_empty(),
+            "brute-force scan without filters should emit no WHERE clause: {where_clause:?}"
+        );
+        // Only ?1 (the query vector) remains; the second query vec and the k
+        // param are gone, so downstream filter params stay aligned.
+        anyhow::ensure!(params.len() == 1, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            matches!(params.first(), Some(Value::Blob(_))),
+            "remaining param should be the query vector: {params:?}"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn brute_force_scan_keeps_filter_params_aligned() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(5)
+            .threshold(0.95)
+            .build();
+
+        let (where_clause, params) = build_where_clause(
+            &req,
+            vec![1.0, 0.0],
+            SqliteDistanceMetric::Cosine,
+            &[],
+            SQLITE_VEC_MAX_K + 1,
+        )?;
+
+        // Dropping MATCH/k renumbers the threshold's anonymous `?` to index 2,
+        // so it must bind the second params element (the query vec stays ?1).
+        anyhow::ensure!(
+            where_clause == "WHERE ((1 - vec_distance_cosine(?1, e.embedding)) >= ?)",
+            "brute-force scan should keep native filters: {where_clause}"
+        );
+        anyhow::ensure!(params.len() == 2, "unexpected params: {params:?}");
+        anyhow::ensure!(
+            matches!(params.first(), Some(Value::Blob(_))),
+            "first param should be the query vector: {params:?}"
+        );
+        anyhow::ensure!(
+            params.get(1) == Some(&Value::Real(0.95)),
+            "threshold param should follow the query vector: {params:?}"
+        );
 
         Ok(())
     }
@@ -3288,6 +3439,118 @@ mod tests {
         anyhow::ensure!(
             threshold_result_ids.as_slice() == ["multi"],
             "top_n_ids threshold should include scores equal to the minimum: {threshold_id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    /// Regression test for issue #1904: a document owning many embeddings pushes
+    /// the internal candidate count past sqlite-vec's hard KNN `k = 4096` cap.
+    /// The search must fall back to a brute-force scan and still return the
+    /// exact, correctly ordered results instead of erroring with
+    /// "k value in knn query too large".
+    #[tokio::test]
+    async fn live_multivector_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<()> {
+        // Enough embeddings on one document that
+        // `samples + (embedding_count - document_count)` exceeds 4096, forcing
+        // the brute-force path. Before the fix this value bound the KNN `k`
+        // directly and sqlite-vec rejected the query.
+        let filler_chunks = (0..4100)
+            .map(|i| Embedding {
+                document: format!("filler chunk {i}"),
+                vec: vec![0.0, 1.0],
+            })
+            .collect::<Vec<_>>();
+        let filler_document = TestDocument {
+            id: "filler".to_string(),
+            category: "docs".to_string(),
+            title: "many-embedding document".to_string(),
+        };
+
+        let index = live_test_index(
+            "live_multivector_search_beyond_knn_k_cap_succeeds",
+            vec![
+                (filler_document, OneOrMany::many(filler_chunks)?),
+                row("best", "docs", "best", vec![1.0, 0.0]),
+                row("mid", "docs", "mid", vec![0.5, 0.5]),
+                row("worst", "docs", "worst", vec![-1.0, 0.0]),
+            ],
+        )
+        .await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(3)
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["best", "mid", "filler"],
+            "brute-force scan should return the exact top-n past the knn k cap: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["best", "mid", "filler"],
+            "top_n_ids should also brute-force past the knn k cap: {id_results:?}"
+        );
+
+        Ok(())
+    }
+
+    /// Regression test for issue #1904 (post-filter path): with more stored
+    /// embeddings than the sqlite-vec KNN cap, a filter on a non-indexed column
+    /// forces an exhaustive candidate scan. The brute-force fallback must both
+    /// avoid the `k` cap error and still find a match that ranks far below the
+    /// top 4096 by vector similarity.
+    #[tokio::test]
+    async fn live_post_filter_search_beyond_knn_k_cap_succeeds() -> anyhow::Result<()> {
+        let mut rows = (0..4096)
+            .map(|i| row(format!("noise-{i}"), "docs", "noise title", vec![1.0, 0.0]))
+            .collect::<Vec<_>>();
+        // The wanted document is the worst possible vector match, so it only
+        // survives if candidate retrieval is exhaustive rather than capped at
+        // the top 4096 by similarity.
+        rows.push(row("wanted", "docs", "wanted title", vec![-1.0, 0.0]));
+
+        let index =
+            live_test_index("live_post_filter_search_beyond_knn_k_cap_succeeds", rows).await?;
+
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(SqliteSearchFilter::eq(
+                "title",
+                serde_json::json!("wanted title"),
+            ))
+            .build();
+
+        let results = index.top_n::<TestDocument>(req.clone()).await?;
+        let ids = results
+            .iter()
+            .map(|(_, id, _)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            ids.as_slice() == ["wanted"],
+            "exhaustive non-indexed filter past the knn k cap should still find the match: {results:?}"
+        );
+
+        let id_results = index.top_n_ids(req).await?;
+        let result_ids = id_results
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            result_ids.as_slice() == ["wanted"],
+            "top_n_ids should also apply the exhaustive filter past the knn k cap: {id_results:?}"
         );
 
         Ok(())
