@@ -2,6 +2,7 @@
 git_release_body = """{{ changelog }}"""
 git_release_enable = false
 git_tag_enable = false
+publish = false
 release_always = false
 
 [[package]]
@@ -9,6 +10,83 @@ name = "rig"
 git_release_enable = true
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
+publish = true
+
+[[package]]
+name = "rig-bedrock"
+publish = true
+
+[[package]]
+name = "rig-core"
+publish = true
+
+[[package]]
+name = "rig-derive"
+publish = true
+
+[[package]]
+name = "rig-fastembed"
+publish = true
+
+[[package]]
+name = "rig-gemini-grpc"
+publish = true
+
+[[package]]
+name = "rig-helixdb"
+publish = true
+
+[[package]]
+name = "rig-lancedb"
+publish = true
+
+[[package]]
+name = "rig-memory"
+publish = true
+
+[[package]]
+name = "rig-milvus"
+publish = true
+
+[[package]]
+name = "rig-mongodb"
+publish = true
+
+[[package]]
+name = "rig-neo4j"
+publish = true
+
+[[package]]
+name = "rig-postgres"
+publish = true
+
+[[package]]
+name = "rig-qdrant"
+publish = true
+
+[[package]]
+name = "rig-s3vectors"
+publish = true
+
+[[package]]
+name = "rig-scylladb"
+publish = true
+
+[[package]]
+name = "rig-sqlite"
+publish = true
+
+[[package]]
+name = "rig-surrealdb"
+publish = true
+
+[[package]]
+name = "rig-vectorize"
+publish = true
+
+[[package]]
+name = "rig-vertexai"
+publish = true
 
 [changelog]
 body = """
