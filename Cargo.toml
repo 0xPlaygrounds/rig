@@ -333,5 +333,8 @@ name = "gemini_default_api_recovery"
 required-features = ["derive"]
 
 [[example]]
+name = "gemini_stream_kill_token_count"
+
+[[example]]
 name = "vector_search_ollama"
 required-features = ["derive"]
