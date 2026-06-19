@@ -193,8 +193,8 @@ impl PromptError {
         }
     }
 
-    /// Returns the HTTP status when this wraps a completion error
-    /// originating from a non-success HTTP response.
+    /// Returns the HTTP status when this wraps a completion error that preserves
+    /// one, including from non-success HTTP responses and 2xx error envelopes.
     pub fn provider_response_status(&self) -> Option<http::StatusCode> {
         match self {
             Self::CompletionError(error) => error.provider_response_status(),
@@ -214,6 +214,11 @@ impl PromptError {
 }
 
 /// Errors that can occur when using typed structured output via [`TypedPrompt::prompt_typed`].
+///
+/// When the failure wraps [`PromptError`] that in turn wraps a [`CompletionError`]
+/// exposing a provider response, [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`] forward
+/// through the chain.
 #[derive(Debug, Error)]
 pub enum StructuredOutputError {
     /// An error occurred during the prompt execution.
@@ -227,6 +232,37 @@ pub enum StructuredOutputError {
     /// The model returned an empty response.
     #[error("EmptyResponse: model returned no content")]
     EmptyResponse,
+}
+
+impl StructuredOutputError {
+    /// Returns the provider response body when this wraps a prompt error that exposes one.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::PromptError(error) => error.provider_response_body(),
+            _ => None,
+        }
+    }
+
+    /// Parses the provider response body as JSON when available through a wrapped prompt error.
+    ///
+    /// Returns:
+    /// - `Ok(Some(value))` when a body is present and valid JSON.
+    /// - `Ok(None)` when no provider response body is available.
+    /// - `Err(error)` when a body is present but isn't valid JSON.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        match self {
+            Self::PromptError(error) => error.provider_response_json(),
+            _ => Ok(None),
+        }
+    }
+
+    /// Returns the HTTP status when this wraps a prompt error that preserves one.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::PromptError(error) => error.provider_response_status(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1491,6 +1527,39 @@ mod tests {
             error
                 .provider_response_json()
                 .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn structured_output_error_provider_response_helpers_forward_prompt_error() {
+        let body = r#"{"error":{"message":"bad input"}}"#;
+        let error = StructuredOutputError::PromptError(Box::new(PromptError::CompletionError(
+            CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+                status: Some(http::StatusCode::BAD_REQUEST),
+                body: body.to_string(),
+            }),
+        )));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+    }
+
+    #[test]
+    fn provider_response_json_returns_none_for_empty_preserved_body() {
+        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
+            status: None,
+            body: String::new(),
+        });
+
+        assert_eq!(error.provider_response_body(), Some(""));
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("empty body is not a JSON parse error"),
             None
         );
     }

@@ -813,7 +813,8 @@ mod tests {
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"model overloaded","type":"server_error","code":"503"}"#;
-        let http_client = RecordingHttpClient::new(body);
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
         let client = super::Client::builder()
             .api_key("test-key")
             .http_client(http_client)
@@ -830,7 +831,7 @@ mod tests {
         match &error {
             CompletionError::ProviderResponse(stored) => {
                 assert_eq!(stored.body, body);
-                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
                 assert_eq!(error.provider_response_body(), Some(body));
                 let json = error
                     .provider_response_json()
@@ -850,7 +851,7 @@ mod tests {
 
         let body = r#"{"error":{"message":"service unavailable","code":"503"}}"#;
         let http_client =
-            RecordingHttpClient::with_error(http::StatusCode::SERVICE_UNAVAILABLE, body);
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
         let client = super::Client::builder()
             .api_key("test-key")
             .http_client(http_client)
@@ -868,6 +869,40 @@ mod tests {
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+
+        let body = r#"{"error":{"message":"bad audio","code":"400"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model("whisper-large-v3");
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
         );
         assert_eq!(error.provider_response_body(), Some(body));
     }

@@ -88,7 +88,6 @@ where
     Ok(stream_from_event_source_with_options(
         event_source,
         span,
-        "xAI",
         ResponsesStreamOptions::strict_with_immediate_tool_calls(),
     ))
 }
@@ -213,10 +212,14 @@ mod tests {
             .await
             .expect("stream should yield terminal error")
             .expect_err("stream should surface a provider error");
-        assert_eq!(
-            err.to_string(),
-            "ProviderError: server_error: response stream failed"
-        );
+        assert!(matches!(
+            err,
+            crate::completion::CompletionError::ProviderResponse(_)
+        ));
+        assert_eq!(err.provider_response_status(), None);
+        assert!(err.provider_response_body().is_some_and(|body| {
+            body.contains("response.failed") && body.contains("response stream failed")
+        }));
         assert!(
             stream.next().await.is_none(),
             "stream should terminate immediately after the first terminal error"

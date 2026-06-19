@@ -2,10 +2,7 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{
-    client::{ApiErrorResponse, ApiResponse},
-    streaming::StreamingCompletionResponse,
-};
+use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
 use crate::completion::{
     CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
 };
@@ -125,12 +122,6 @@ pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
 pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
 /// `gpt-4.1` completion model
 pub const GPT_4_1: &str = "gpt-4.1";
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
@@ -2375,7 +2366,8 @@ mod tests {
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
-        let http_client = RecordingHttpClient::new(body);
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
         let client = CompletionsClient::builder()
             .api_key("test-key")
             .http_client(http_client)
@@ -2392,9 +2384,12 @@ mod tests {
         match &error {
             CompletionError::ProviderResponse(stored) => {
                 assert_eq!(stored.body, body);
-                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
                 assert_eq!(error.provider_response_body(), Some(body));
-                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+                assert_eq!(
+                    error.provider_response_status(),
+                    Some(http::StatusCode::ACCEPTED)
+                );
                 let json = error
                     .provider_response_json()
                     .expect("raw body should be valid JSON")
@@ -2415,7 +2410,7 @@ mod tests {
 
         let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
         let http_client =
-            RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, body);
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
         let client = CompletionsClient::builder()
             .api_key("test-key")
             .http_client(http_client)

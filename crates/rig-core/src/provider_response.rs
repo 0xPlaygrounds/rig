@@ -15,6 +15,15 @@ pub struct ProviderResponseError {
     pub body: String,
 }
 
+impl ProviderResponseError {
+    pub(crate) fn without_status(body: impl Into<String>) -> Self {
+        Self {
+            status: None,
+            body: body.into(),
+        }
+    }
+}
+
 impl std::fmt::Display for ProviderResponseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.status {
@@ -33,7 +42,17 @@ impl std::error::Error for ProviderResponseError {}
 /// - `Ok(None)` when no body is present.
 /// - `Err(error)` when a body is present but isn't valid JSON.
 pub(crate) fn json(body: Option<&str>) -> Result<Option<serde_json::Value>, serde_json::Error> {
-    body.map(serde_json::from_str).transpose()
+    body.filter(|body| !body.is_empty())
+        .map(serde_json::from_str)
+        .transpose()
+}
+
+pub(crate) fn completion_error_from_body(
+    body: impl Into<String>,
+) -> crate::completion::CompletionError {
+    crate::completion::CompletionError::ProviderResponse(ProviderResponseError::without_status(
+        body,
+    ))
 }
 
 /// Implements the `provider_response_*` inspection helpers on a capability error
@@ -77,8 +96,8 @@ macro_rules! impl_provider_response_helpers {
             }
 
             /// Returns the HTTP status code when this error preserves one, either
-            /// from a non-success HTTP response or from a preserved provider
-            /// response.
+            /// from a non-success HTTP response, from a preserved provider
+            /// response, or from a 2xx error envelope.
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::ProviderResponse(response) => response.status,

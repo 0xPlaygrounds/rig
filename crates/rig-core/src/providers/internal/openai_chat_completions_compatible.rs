@@ -20,6 +20,23 @@ use crate::json_utils;
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::wasm_compat::WasmCompatSend;
 
+fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
+    let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
+    if value.get("error").is_none() || value.get("choices").is_some() {
+        return None;
+    }
+
+    if let Some(message) = value
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(serde_json::Value::as_str)
+    {
+        tracing::warn!(message, "provider returned a streaming error event");
+    }
+
+    Some(crate::provider_response::completion_error_from_body(data))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
     ToolCalls,
@@ -221,6 +238,12 @@ where
                 Ok(Event::Message(message)) => {
                     if message.data.trim().is_empty() || message.data == "[DONE]" {
                         continue;
+                    }
+
+                    if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
+                        terminated_with_error = true;
+                        yield Err(error);
+                        break;
                     }
 
                     let chunk = match profile.normalize_chunk(&message.data) {
@@ -816,6 +839,52 @@ mod tests {
         assert!(
             stream.next().await.is_none(),
             "stream should terminate after HTTP non-success"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_in_band_error_envelope_preserves_full_payload() {
+        use crate::providers::openai::send_compatible_streaming_request;
+        use crate::test_utils::MockStreamingClient;
+
+        let body = r#"{"error":{"message":"upstream unavailable","type":"server_error"}}"#;
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"partial\",\"tool_calls\":[]}}],\"usage\":null}",
+                body,
+            ]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield partial content")
+            .expect("partial content should be ok");
+        assert!(matches!(
+            first,
+            StreamedAssistantContent::Text(text) if text.text == "partial"
+        ));
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected in-band provider error after partial content"),
+            None => panic!("stream ended before in-band provider error"),
+        };
+        assert!(matches!(err, CompletionError::ProviderResponse(_)));
+        assert_eq!(err.provider_response_status(), None);
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after in-band provider error"
         );
     }
 

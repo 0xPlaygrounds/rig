@@ -5,6 +5,11 @@ use thiserror::Error;
 ///
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
+///
+/// Note: no provider path currently constructs [`Self::ProviderResponse`] for
+/// verification; real verify failures surface as [`Self::HttpError`], which
+/// the helpers read. The variant is kept for symmetry with the other capability
+/// errors and for future provider paths that preserve a 2xx error envelope.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum VerifyError {

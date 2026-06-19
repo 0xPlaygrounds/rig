@@ -11,10 +11,7 @@ use crate::{
     http_client::{self, HttpClientExt},
 };
 
-use super::{
-    Client,
-    client::together_ai_api_types::{ApiErrorResponse, ApiResponse},
-};
+use super::{Client, client::together_ai_api_types::ApiResponse};
 
 // ================================================================
 // Together AI Embedding API
@@ -34,21 +31,6 @@ pub struct EmbeddingResponse {
     pub model: String,
     pub object: String,
     pub data: Vec<EmbeddingData>,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message())
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Error(err) => Err(EmbeddingError::ProviderError(err.message())),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,7 +118,6 @@ where
                 ApiResponse::Error(err) => {
                     tracing::warn!(
                         message = %err.error,
-                        code = %err.code,
                         "provider returned an error response"
                     );
                     Err(EmbeddingError::ProviderResponse(

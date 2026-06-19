@@ -378,21 +378,6 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingData {
     pub object: String,
@@ -1195,6 +1180,40 @@ mod azure_tests {
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::UNPROCESSABLE_ENTITY)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+
+        let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = TranscriptionModel::new(client, "whisper");
+
+        let error = match model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        {
+            Err(error) => error,
+            Ok(_) => panic!("transcription should fail with non-success status"),
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
         );
         assert_eq!(error.provider_response_body(), Some(body));
     }

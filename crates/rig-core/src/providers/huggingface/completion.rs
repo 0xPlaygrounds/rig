@@ -799,7 +799,7 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(
-                            error = %err,
+                            message = %err,
                             "provider returned an error response"
                         );
                         Err(CompletionError::ProviderResponse(

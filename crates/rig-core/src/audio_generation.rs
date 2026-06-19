@@ -14,10 +14,11 @@ use thiserror::Error;
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 ///
 /// Note: no provider path currently constructs [`Self::ProviderResponse`] for
-/// audio generation; real audio failures surface as [`Self::HttpError`], which
-/// the helpers already read. The variant is kept for symmetry with the other
-/// capability errors and for future provider paths that preserve a 2xx error
-/// envelope.
+/// audio generation; coverage is limited today — only Azure audio failures
+/// surface as [`Self::HttpError`], which the helpers read, while other audio
+/// providers still emit [`Self::ProviderError`]. The variant is kept for
+/// symmetry with the other capability errors and for future provider paths that
+/// preserve a 2xx error envelope.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AudioGenerationError {

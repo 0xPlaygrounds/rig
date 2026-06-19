@@ -231,12 +231,6 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
-
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 

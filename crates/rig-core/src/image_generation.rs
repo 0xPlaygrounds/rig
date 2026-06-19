@@ -43,9 +43,9 @@ pub trait ImageGeneration<M>
 where
     M: ImageGenerationModel,
 {
-    /// Generates a transcription request builder for the given `file`.
+    /// Generates an image generation request builder for the given prompt and size.
     /// This function is meant to be called by the user to further customize the
-    /// request at transcription time before sending it.
+    /// request at image generation time before sending it.
     ///
     /// ❗IMPORTANT: The type that implements this trait might have already
     /// populated fields in the builder (the exact fields depend on the type).

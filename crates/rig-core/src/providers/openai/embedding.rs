@@ -1,7 +1,4 @@
-use super::{
-    client::{ApiErrorResponse, ApiResponse},
-    completion::Usage,
-};
+use super::{client::ApiResponse, completion::Usage};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
 use crate::{embeddings, http_client};
@@ -24,21 +21,6 @@ pub struct EmbeddingResponse {
     pub data: Vec<EmbeddingData>,
     pub model: String,
     pub usage: Usage,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -280,7 +262,8 @@ mod tests {
     #[tokio::test]
     async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {
         let body = r#"{"message":"embedding quota exceeded","type":"insufficient_quota"}"#;
-        let http_client = RecordingHttpClient::new(body);
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
         let client = CompletionsClient::builder()
             .api_key("test-key")
             .http_client(http_client)
@@ -296,7 +279,7 @@ mod tests {
         match &error {
             EmbeddingError::ProviderResponse(stored) => {
                 assert_eq!(stored.body, body);
-                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
                 assert_eq!(error.provider_response_body(), Some(body));
                 let json = error
                     .provider_response_json()
@@ -311,7 +294,8 @@ mod tests {
     #[tokio::test]
     async fn embedding_http_non_success_preserves_status_and_body() {
         let body = r#"{"error":{"message":"invalid api key","type":"invalid_request_error"}}"#;
-        let http_client = RecordingHttpClient::with_error(http::StatusCode::UNAUTHORIZED, body);
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNAUTHORIZED, body);
         let client = CompletionsClient::builder()
             .api_key("test-key")
             .http_client(http_client)
