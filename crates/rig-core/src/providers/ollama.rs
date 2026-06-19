@@ -360,6 +360,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 ..
             } => {
                 let mut assistant_contents = Vec::new();
+                // Preserve the model's reasoning so it round-trips into agent
+                // history and is echoed back to Ollama on the next turn (issue
+                // #1926). Without this, non-streaming `thinking` is kept only in
+                // `raw_response` and lost from `choice`, unlike the streaming path
+                // (see `RawStreamingChoice::ReasoningDelta` below).
+                if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
+                    assistant_contents.push(completion::AssistantContent::reasoning(thinking));
+                }
                 // Add the assistant's text content if any.
                 if !content.is_empty() {
                     assistant_contents.push(completion::AssistantContent::text(&content));
@@ -1134,13 +1142,20 @@ impl From<Message> for crate::completion::Message {
             },
             Message::Assistant {
                 content,
+                thinking,
                 tool_calls,
                 ..
             } => {
-                let mut assistant_contents =
-                    vec![crate::completion::message::AssistantContent::Text(
-                        Text::new(content),
-                    )];
+                let mut assistant_contents = Vec::new();
+                // Preserve reasoning so it survives the round-trip (issue #1926).
+                if let Some(thinking) = thinking.filter(|t| !t.is_empty()) {
+                    assistant_contents.push(
+                        crate::completion::message::AssistantContent::reasoning(thinking),
+                    );
+                }
+                assistant_contents.push(crate::completion::message::AssistantContent::Text(
+                    Text::new(content),
+                ));
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
@@ -1519,6 +1534,60 @@ mod tests {
         } else {
             panic!("Expected Assistant message with thinking");
         }
+    }
+
+    /// Regression test for issue #1926: a non-streaming `/api/chat` response that
+    /// carries `thinking` alongside `tool_calls` (the shape qwen3 thinking models
+    /// emit on a tool-call turn) must surface the reasoning as an
+    /// `AssistantContent::Reasoning` in `choice` — otherwise it never enters
+    /// agent history and is never echoed back to Ollama, degrading multi-turn
+    /// tool-call accuracy. Before the fix `choice` contained only the `ToolCall`.
+    #[tokio::test]
+    async fn nonstreaming_response_preserves_thinking_as_reasoning() {
+        let sample_response = json!({
+            "model": "qwen3:4b",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "thinking": "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
+                "images": null,
+                "tool_calls": [
+                    { "type": "function", "function": { "name": "get_weather", "arguments": { "location": "Berlin" } } }
+                ]
+            },
+            "done": true,
+            "done_reason": "stop",
+            "total_duration": 8000000000u64,
+            "load_duration": 6000000u64,
+            "prompt_eval_count": 61u64,
+            "prompt_eval_duration": 400000000u64,
+            "eval_count": 468u64,
+            "eval_duration": 7700000000u64
+        });
+
+        let raw: CompletionResponse =
+            serde_json::from_value(sample_response).expect("deserialize ollama response");
+        let completed: completion::CompletionResponse<CompletionResponse> =
+            raw.try_into().expect("convert to completion response");
+
+        let reasoning = completed.choice.iter().find_map(|c| match c {
+            completion::AssistantContent::Reasoning(r) => Some(r.clone()),
+            _ => None,
+        });
+        let has_tool_call = completed
+            .choice
+            .iter()
+            .any(|c| matches!(c, completion::AssistantContent::ToolCall(_)));
+
+        assert!(has_tool_call, "tool call should survive the conversion");
+        let reasoning = reasoning.expect(
+            "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
+        );
+        assert_eq!(
+            reasoning.display_text(),
+            "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
+        );
     }
 
     // Test empty thinking content is handled correctly
