@@ -18,8 +18,11 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
-/// Build [`RmcpTool`]s from MCP tool definitions, applying an optional per-call
-/// timeout to each (see issue #1914). Returns `(tool_name, tool)` pairs.
+use super::Agent;
+
+/// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
+/// timeout to each (`None` disables it; see issue #1914). Returns
+/// `(tool_name, tool)` pairs.
 #[cfg(feature = "rmcp")]
 fn build_rmcp_tools(
     tools: Vec<rmcp::model::Tool>,
@@ -30,16 +33,11 @@ fn build_rmcp_tools(
         .into_iter()
         .map(|tool| {
             let name = tool.name.to_string();
-            let mut rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone());
-            if let Some(timeout) = timeout {
-                rmcp_tool = rmcp_tool.with_timeout(timeout);
-            }
+            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
             (name, rmcp_tool)
         })
         .collect()
 }
-
-use super::Agent;
 
 /// Marker type indicating no tool configuration has been set yet.
 ///
@@ -413,7 +411,10 @@ where
         }
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent.
+    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
+    /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -423,13 +424,14 @@ where
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, None))
+        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
     /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
     ///
-    /// If the tool call does not complete within `timeout`, it resolves to a
-    /// tool error the agent can recover from instead of blocking forever.
+    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
+    /// disable the timeout (unbounded). On timeout the call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
@@ -437,12 +439,15 @@ where
         self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-        timeout: std::time::Duration,
+        timeout: impl Into<Option<std::time::Duration>>,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, Some(timeout)))
+        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent.
+    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -452,13 +457,14 @@ where
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(tools, client, None))
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
     /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
     /// issue #1914).
     ///
-    /// If a tool call does not complete within `timeout`, it resolves to a tool
+    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
+    /// disable the timeout (unbounded). On timeout a call resolves to a tool
     /// error the agent can recover from instead of blocking forever.
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -467,9 +473,9 @@ where
         self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-        timeout: std::time::Duration,
+        timeout: impl Into<Option<std::time::Duration>>,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(tools, client, Some(timeout)))
+        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
     }
 
     /// Transition into the `WithBuilderTools` state carrying the given built
@@ -479,12 +485,7 @@ where
         self,
         built: Vec<(String, RmcpTool)>,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let mut static_tools = Vec::with_capacity(built.len());
-        let mut toolset = Vec::with_capacity(built.len());
-        for (name, tool) in built {
-            static_tools.push(name);
-            toolset.push(tool);
-        }
+        let (static_tools, toolset): (Vec<String>, Vec<RmcpTool>) = built.into_iter().unzip();
 
         AgentBuilder {
             name: self.name,
@@ -621,7 +622,10 @@ where
         self
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent.
+    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
@@ -629,13 +633,14 @@ where
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> Self {
-        self.add_rmcp_tools(build_rmcp_tools(tools, client, None))
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
     /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
     /// issue #1914).
     ///
-    /// If a tool call does not complete within `timeout`, it resolves to a tool
+    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
+    /// disable the timeout (unbounded). On timeout a call resolves to a tool
     /// error the agent can recover from instead of blocking forever.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
@@ -643,9 +648,9 @@ where
         self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-        timeout: std::time::Duration,
+        timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
-        self.add_rmcp_tools(build_rmcp_tools(tools, client, Some(timeout)))
+        self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
     }
 
     #[cfg(feature = "rmcp")]

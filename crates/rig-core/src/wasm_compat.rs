@@ -83,8 +83,20 @@ impl std::error::Error for Elapsed {}
 /// A cross-platform (native + wasm) replacement for `tokio::time::timeout`: rig's
 /// `tokio` dependency is built without the `time` feature, and `tokio::time` does
 /// not function on wasm. This is built on [`futures_timer::Delay`], which rig
-/// already uses for SSE retry backoff and which supports wasm via its
-/// `wasm-bindgen` feature (enabled by rig's `wasm` feature).
+/// already uses for SSE retry backoff.
+///
+/// On elapse the pending `future` is **dropped** (cancelled by drop); it gets no
+/// chance to run cleanup beyond its own `Drop`. A zero or already-elapsed
+/// `duration` still polls `future` once before electing `Elapsed`, and an absurdly
+/// large `duration` may panic when added to `Instant::now()` inside the timer.
+///
+/// # Wasm
+/// On `wasm32` the underlying timer only fires when the `futures-timer/wasm-bindgen`
+/// backend is active, which rig enables through its `wasm` feature. Building for
+/// `wasm32` **without** rig's `wasm` feature leaves the native (thread/park) timer
+/// backend in place — it cannot drive timers on wasm, so the timeout would never
+/// fire. Enable rig's `wasm` feature when targeting wasm. (This is the same
+/// `futures_timer::Delay` contract the existing SSE retry backoff relies on.)
 pub async fn timeout<F>(duration: std::time::Duration, future: F) -> Result<F::Output, Elapsed>
 where
     F: Future,
@@ -116,4 +128,22 @@ macro_rules! if_not_wasm {
         $($tokens)*
 
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Elapsed, timeout};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn timeout_returns_ok_for_a_future_that_completes_in_time() {
+        let result = timeout(Duration::from_secs(5), async { 42 }).await;
+        assert_eq!(result, Ok(42));
+    }
+
+    #[tokio::test]
+    async fn timeout_returns_elapsed_for_a_future_that_never_completes() {
+        let result = timeout(Duration::from_millis(20), std::future::pending::<()>()).await;
+        assert_eq!(result, Err(Elapsed));
+    }
 }

@@ -31,6 +31,7 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::Duration;
 
 use rmcp::ServiceExt;
 use rmcp::model::RawContent;
@@ -42,6 +43,16 @@ use crate::tool::ToolError;
 use crate::tool::server::{ToolServerError, ToolServerHandle};
 use crate::wasm_compat::WasmBoxedFuture;
 
+/// Default per-call timeout applied to MCP tools (see issue #1914).
+///
+/// MCP tool calls await a response that can be silently lost by the transport
+/// (e.g. an rmcp StreamableHttp session re-init dropping an in-flight request),
+/// which would otherwise hang the agent forever. A generous default bounds that
+/// without disrupting normal, long-running tools. Override per tool with
+/// [`McpTool::with_timeout`] (pass `None` to disable, e.g. for tools that may
+/// legitimately run longer than this).
+pub const DEFAULT_MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// A Rig tool adapter wrapping an `rmcp` MCP tool.
 ///
 /// Bridges between the MCP tool protocol and Rig's [`ToolDyn`] trait,
@@ -50,18 +61,23 @@ use crate::wasm_compat::WasmBoxedFuture;
 pub struct McpTool {
     definition: rmcp::model::Tool,
     client: rmcp::service::ServerSink,
-    /// Optional per-call timeout. When set, an MCP `call_tool` that does not
-    /// complete within this duration resolves to a [`ToolError`] instead of
-    /// blocking forever (see issue #1914).
-    timeout: Option<std::time::Duration>,
+    /// Per-call timeout. When `Some`, an MCP `call_tool` that does not complete
+    /// within this duration resolves to a [`ToolError`] instead of blocking
+    /// forever (see issue #1914). When `None`, the call is unbounded.
+    ///
+    /// On elapse the call is abandoned **locally** (the future is dropped); the
+    /// server is not sent a cancellation, so a still-running tool keeps running
+    /// server-side, and rmcp reclaims the request slot when the session closes.
+    timeout: Option<Duration>,
 }
 
 impl McpTool {
     /// Create a new `McpTool` from an MCP tool definition and server sink.
     ///
-    /// No per-call timeout is applied: a tool call that never receives a
-    /// response will await indefinitely. Use [`McpTool::with_timeout`] or
-    /// [`McpTool::from_mcp_server_with_timeout`] to bound it (see issue #1914).
+    /// Applies [`DEFAULT_MCP_TOOL_TIMEOUT`] so a lost/never-answered response
+    /// cannot hang the agent forever (issue #1914). Use [`McpTool::with_timeout`]
+    /// to change it, or `with_timeout(None)` to disable it for tools that may
+    /// legitimately run longer.
     pub fn from_mcp_server(
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
@@ -69,34 +85,26 @@ impl McpTool {
         Self {
             definition,
             client,
-            timeout: None,
+            timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
         }
     }
 
-    /// Create a new `McpTool` with a per-call timeout.
+    /// Set (or clear) the per-call timeout, consuming and returning the tool.
     ///
-    /// If the underlying MCP `call_tool` does not complete within `timeout`, the
-    /// call resolves to a [`ToolError`] instead of blocking forever. The agent
-    /// loop surfaces that error to the model as a tool result, so the agent can
-    /// recover rather than hang.
-    pub fn from_mcp_server_with_timeout(
-        definition: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-        timeout: std::time::Duration,
-    ) -> Self {
-        Self {
-            definition,
-            client,
-            timeout: Some(timeout),
-        }
-    }
-
-    /// Set a per-call timeout, consuming and returning the tool.
-    ///
-    /// See [`McpTool::from_mcp_server_with_timeout`].
-    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
-        self.timeout = Some(timeout);
+    /// Pass a [`Duration`] to bound calls, or `None` to make them unbounded.
+    /// On timeout the call resolves to a [`ToolError`] (which the agent loop
+    /// surfaces to the model as a tool result, so the agent can recover rather
+    /// than hang). Note the timeout abandons the call locally and does **not**
+    /// send a cancellation to the MCP server — see the [`McpTool::timeout`]
+    /// field docs.
+    pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
+        self.timeout = timeout.into();
         self
+    }
+
+    /// The per-call timeout, if any.
+    pub fn timeout(&self) -> Option<Duration> {
+        self.timeout
     }
 }
 
@@ -162,11 +170,12 @@ impl ToolDyn for McpTool {
                 })
                 .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
 
-            let result = match self.timeout {
-                // Bound the call so a never-answered request (see issue #1914)
-                // becomes a recoverable error instead of an unbounded await.
+            let call = self.client.call_tool(request);
+            // Bound the call so a never-answered request (see issue #1914)
+            // becomes a recoverable error instead of an unbounded await.
+            let call_result = match self.timeout {
                 Some(timeout) => {
-                    crate::wasm_compat::timeout(timeout, self.client.call_tool(request))
+                    crate::wasm_compat::timeout(timeout, call)
                         .await
                         .map_err(|_| {
                             McpToolError(format!(
@@ -174,14 +183,11 @@ impl ToolDyn for McpTool {
                                 self.definition.name
                             ))
                         })?
-                        .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?
                 }
-                None => self
-                    .client
-                    .call_tool(request)
-                    .await
-                    .map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?,
+                None => call.await,
             };
+            let result =
+                call_result.map_err(|e| McpToolError(format!("Tool returned an error: {e}")))?;
 
             if let Some(true) = result.is_error {
                 let error_msg = result
@@ -295,9 +301,9 @@ pub enum McpClientError {
 pub struct McpClientHandler {
     client_info: rmcp::model::ClientInfo,
     tool_server_handle: ToolServerHandle,
-    /// Optional per-call timeout applied to every MCP tool this handler
-    /// registers (see issue #1914).
-    timeout: Option<std::time::Duration>,
+    /// Per-call timeout applied to every MCP tool this handler registers
+    /// (see issue #1914). Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
+    timeout: Option<Duration>,
     /// Tracks which tool names were registered by this handler so they
     /// can be removed and replaced on list-change notifications.
     managed_tool_names: Arc<RwLock<Vec<String>>>,
@@ -307,30 +313,29 @@ impl McpClientHandler {
     /// Create a new handler with the given client info and tool server handle.
     ///
     /// The `tool_server_handle` should be a clone of the handle used by the agent,
-    /// so that tool updates are reflected in agent requests.
+    /// so that tool updates are reflected in agent requests. Registered tools get
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`]; change it with [`McpClientHandler::with_timeout`].
     pub fn new(client_info: rmcp::model::ClientInfo, tool_server_handle: ToolServerHandle) -> Self {
         Self {
             client_info,
             tool_server_handle,
-            timeout: None,
+            timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
             managed_tool_names: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    /// Apply a per-call timeout to every MCP tool registered by this handler.
+    /// Set (or clear) the per-call timeout applied to every MCP tool this handler
+    /// registers. Pass a [`Duration`] to bound calls, or `None` to disable.
     ///
-    /// See [`McpTool::from_mcp_server_with_timeout`].
-    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
-        self.timeout = Some(timeout);
+    /// See [`McpTool::with_timeout`].
+    pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
+        self.timeout = timeout.into();
         self
     }
 
-    /// Build an [`McpTool`], applying this handler's configured timeout (if any).
+    /// Build an [`McpTool`], applying this handler's configured timeout.
     fn build_tool(&self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> McpTool {
-        match self.timeout {
-            Some(timeout) => McpTool::from_mcp_server_with_timeout(tool, client, timeout),
-            None => McpTool::from_mcp_server(tool, client),
-        }
+        McpTool::from_mcp_server(tool, client).with_timeout(self.timeout)
     }
 
     /// Connect to an MCP server, fetch the initial tool list, and register
@@ -649,24 +654,22 @@ mod tests {
         assert_eq!(returned.client_info.version, "1.0.0");
     }
 
-    /// Reproduction for <https://github.com/0xPlaygrounds/rig/issues/1914>.
+    /// Documents the unbounded escape hatch and the underlying issue #1914 hazard.
     ///
-    /// `McpTool::call` (this file) awaits `self.client.call_tool(request)` with
-    /// no timeout, cancellation, or retry. When the underlying MCP request is
-    /// orphaned (no response, no error), this `.await` never completes, and the
-    /// agent loop — which awaits the tool call the same way at
-    /// `agent/prompt_request/mod.rs` and `streaming.rs` — wedges forever. The
-    /// agent loop already turns a tool *error* into a tool-result string, so a
-    /// call that never returns is the one failure mode it cannot recover from.
+    /// `McpTool::call` awaits `self.client.call_tool(request)`; if the MCP request
+    /// is orphaned (no response, no error — e.g. an rmcp StreamableHttp session
+    /// re-init dropping an in-flight request), that `.await` never completes and
+    /// the agent loop wedges (the loop turns a tool *error* into a tool result,
+    /// but cannot recover from a call that never returns). That is exactly why
+    /// the default now applies [`DEFAULT_MCP_TOOL_TIMEOUT`].
     ///
-    /// We wire rig's `McpTool` to a server whose tool never responds and show
-    /// the call does not resolve within a generous window. The outer
-    /// `timeout` exists only so this test itself terminates; the timeout
-    /// *elapsing* is the bug. Once a fix adds an internal timeout/cancellation
-    /// to `McpTool::call` (returning `Err` instead of hanging), this call will
-    /// resolve quickly and the assertion below should flip to `timed.is_ok()`.
+    /// Here we opt **out** with `with_timeout(None)` and show the call stays
+    /// unbounded (does not resolve within the window). The outer `timeout` exists
+    /// only so this test terminates; it elapsing is the *intended* unbounded
+    /// behavior of the disabled-timeout path, not a bug. The bounded paths are
+    /// covered by `mcp_tool_call_with_timeout_errors_instead_of_hanging`.
     #[tokio::test]
-    async fn repro_issue_1914_mcp_tool_call_hangs_when_response_never_arrives() {
+    async fn mcp_tool_call_without_timeout_is_unbounded() {
         use super::McpTool;
         use crate::tool::ToolDyn;
 
@@ -695,18 +698,19 @@ mod tests {
             .expect("list_tools failed");
         assert_eq!(tools.len(), 1, "expected exactly one advertised tool");
 
-        // Build the rig tool exactly as `AgentBuilder::rmcp_tools(tools, peer)` does.
+        // `from_mcp_server` applies the generous default out of the box...
         let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
+        assert_eq!(mcp_tool.timeout(), Some(super::DEFAULT_MCP_TOOL_TIMEOUT));
+        // ...and callers can explicitly disable it to opt into unbounded behavior.
+        let mcp_tool = mcp_tool.with_timeout(None);
+        assert_eq!(mcp_tool.timeout(), None);
 
         let timed =
-            tokio::time::timeout(Duration::from_millis(500), mcp_tool.call("{}".to_string())).await;
+            tokio::time::timeout(Duration::from_millis(150), mcp_tool.call("{}".to_string())).await;
 
         assert!(
             timed.is_err(),
-            "issue #1914 NOT reproduced: McpTool::call returned {:?} within 500ms; \
-             it was expected to hang because the server never sends a CallToolResult \
-             and McpTool::call has no internal timeout. If you just added a timeout \
-             fix, flip this assertion to `timed.is_ok()`.",
+            "with the timeout disabled, McpTool::call must stay unbounded; got {:?}",
             timed.ok(),
         );
 
@@ -748,11 +752,8 @@ mod tests {
             .expect("list_tools failed");
 
         // The fix: a per-call timeout bounds the otherwise-unbounded await.
-        let mcp_tool = McpTool::from_mcp_server_with_timeout(
-            tools[0].clone(),
-            client.peer().clone(),
-            Duration::from_millis(200),
-        );
+        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone())
+            .with_timeout(Duration::from_millis(200));
 
         let timed =
             tokio::time::timeout(Duration::from_secs(5), mcp_tool.call("{}".to_string())).await;
@@ -763,6 +764,7 @@ mod tests {
         );
         let err =
             result.expect_err("call should resolve to an error when the server never responds");
+        // "timed out" mirrors the McpToolError format string in McpTool::call.
         assert!(
             err.to_string().contains("timed out"),
             "expected a timeout error, got: {err}"
@@ -771,10 +773,11 @@ mod tests {
         server_task.abort();
     }
 
-    /// Guard for the reproduction above: with a server that *does* respond, the
-    /// same in-process duplex harness resolves well within the timeout window.
-    /// This proves the 500ms bound in the repro is meaningful — the hang is
-    /// caused by the missing response, not by the transport being slow.
+    /// Success path with a timeout *configured*: a responsive tool resolves with
+    /// its result (exercising the `Some(timeout)` arm of `McpTool::call` and the
+    /// `wasm_compat::timeout` "completed" branch, with a real `CallToolResult`
+    /// flowing through content parsing). Also guards that the bound in the
+    /// hanging-server tests is meaningful — a healthy call returns well inside it.
     #[tokio::test]
     async fn mcp_tool_call_returns_promptly_for_responsive_server() {
         use super::McpTool;
@@ -804,15 +807,58 @@ mod tests {
             .list_all_tools()
             .await
             .expect("list_tools failed");
-        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone());
+        let mcp_tool = McpTool::from_mcp_server(tools[0].clone(), client.peer().clone())
+            .with_timeout(Duration::from_secs(2));
 
         let timed =
-            tokio::time::timeout(Duration::from_secs(2), mcp_tool.call("{}".to_string())).await;
+            tokio::time::timeout(Duration::from_secs(5), mcp_tool.call("{}".to_string())).await;
 
         let result = timed
-            .expect("responsive tool should resolve within 2s")
+            .expect("responsive tool should resolve within the safety window")
             .expect("tool call should succeed");
         assert!(result.contains("ping"), "unexpected tool output: {result}");
+
+        server_task.abort();
+    }
+
+    /// `McpClientHandler::with_timeout` is applied to every tool it registers:
+    /// calling a registered tool from the shared `ToolServerHandle` (the path the
+    /// agent loop uses) surfaces a timeout error instead of hanging.
+    #[tokio::test]
+    async fn mcp_client_handler_with_timeout_bounds_registered_tools() {
+        let tool_server_handle = ToolServer::new().run();
+
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_task = tokio::spawn(async move {
+            let running = HangingToolServer
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let handler = McpClientHandler::new(ClientInfo::default(), tool_server_handle.clone())
+            .with_timeout(Duration::from_millis(200));
+        let _mcp_service = handler
+            .connect((client_from_server, client_to_server))
+            .await
+            .expect("connect failed");
+
+        // Call through the shared handle exactly as the agent loop does.
+        let timed = tokio::time::timeout(
+            Duration::from_secs(5),
+            tool_server_handle.call_tool("hang_forever", "{}"),
+        )
+        .await;
+
+        let result = timed.expect("handler-registered tool hung past the safety timeout");
+        let err = result.expect_err("call should time out when the server never responds");
+        assert!(
+            err.to_string().contains("timed out"),
+            "expected a timeout error, got: {err}"
+        );
 
         server_task.abort();
     }
