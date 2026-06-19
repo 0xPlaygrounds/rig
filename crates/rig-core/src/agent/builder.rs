@@ -727,4 +727,89 @@ mod tests {
             .hook(BuilderHook)
             .build();
     }
+
+    /// The builder's shared MCP helper threads the configured timeout (default,
+    /// explicit, or `None`/disabled) onto every built tool, and the threaded
+    /// timeout actually bounds a hanging call. This covers the plumbing behind
+    /// `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
+    #[cfg(feature = "rmcp")]
+    #[tokio::test]
+    async fn build_rmcp_tools_threads_timeout_into_built_tools() {
+        use crate::tool::ToolDyn;
+        use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
+        use rmcp::model::{
+            CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
+            ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+        };
+        use rmcp::service::RequestContext;
+        use rmcp::{RoleServer, ServerHandler, ServiceExt};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        #[derive(Clone)]
+        struct HangingServer;
+        impl ServerHandler for HangingServer {
+            fn get_info(&self) -> ServerInfo {
+                ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                    .with_protocol_version(ProtocolVersion::LATEST)
+                    .with_server_info(Implementation::new("builder-timeout-test", "0.1.0"))
+            }
+            async fn call_tool(
+                &self,
+                _request: CallToolRequestParams,
+                _context: RequestContext<RoleServer>,
+            ) -> Result<CallToolResult, ErrorData> {
+                std::future::pending::<Result<CallToolResult, ErrorData>>().await
+            }
+        }
+
+        fn tool(name: &str) -> Tool {
+            Tool::new(
+                name.to_string(),
+                String::new(),
+                Arc::new(serde_json::Map::new()),
+            )
+        }
+
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let server_task = tokio::spawn(async move {
+            let running = HangingServer.serve((sfc, s2c)).await.expect("server start");
+            running.waiting().await.expect("server error");
+        });
+        let client = ClientInfo::default()
+            .serve((cfs, c2s))
+            .await
+            .expect("client connect");
+        let peer = client.peer().clone();
+
+        // The configured timeout (default, explicit, or disabled) is threaded
+        // onto each built tool.
+        let built_default = build_rmcp_tools(
+            vec![tool("a")],
+            peer.clone(),
+            Some(DEFAULT_MCP_TOOL_TIMEOUT),
+        );
+        assert_eq!(built_default[0].1.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
+        let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
+        assert_eq!(built_none[0].1.timeout(), None);
+
+        // ...and the threaded timeout actually bounds a hanging call.
+        let built = build_rmcp_tools(
+            vec![tool("hang_forever")],
+            peer,
+            Some(Duration::from_millis(200)),
+        );
+        assert_eq!(built.len(), 1);
+        assert_eq!(built[0].0, "hang_forever");
+        let timed =
+            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
+        let err = timed
+            .expect("built tool hung past the safety timeout")
+            .expect_err("call should time out");
+        assert!(err.to_string().contains("timed out"), "got: {err}");
+
+        drop(client);
+        server_task.abort();
+    }
 }

@@ -862,4 +862,50 @@ mod tests {
 
         server_task.abort();
     }
+
+    /// `ToolServer::rmcp_tool_with_timeout` bounds the registered tool: calling it
+    /// through the `ToolServerHandle` surfaces a timeout error instead of hanging.
+    #[tokio::test]
+    async fn tool_server_rmcp_tool_with_timeout_bounds_calls() {
+        let (client_to_server, server_from_client) = tokio::io::duplex(8192);
+        let (server_to_client, client_from_server) = tokio::io::duplex(8192);
+
+        let server_task = tokio::spawn(async move {
+            let running = HangingToolServer
+                .serve((server_from_client, server_to_client))
+                .await
+                .expect("server failed to start");
+            running.waiting().await.expect("server error");
+        });
+
+        let client = ClientInfo::default()
+            .serve((client_from_server, client_to_server))
+            .await
+            .expect("client connect failed");
+
+        // The tool definition is constructed directly; the peer routes the call
+        // to the hanging server, which never responds.
+        let handle = ToolServer::new()
+            .rmcp_tool_with_timeout(
+                make_tool("hang_forever", "never returns"),
+                client.peer().clone(),
+                Duration::from_millis(200),
+            )
+            .run();
+
+        let timed = tokio::time::timeout(
+            Duration::from_secs(5),
+            handle.call_tool("hang_forever", "{}"),
+        )
+        .await;
+
+        let result = timed.expect("ToolServer-registered tool hung past the safety timeout");
+        let err = result.expect_err("call should time out when the server never responds");
+        assert!(
+            err.to_string().contains("timed out"),
+            "expected a timeout error, got: {err}"
+        );
+
+        server_task.abort();
+    }
 }

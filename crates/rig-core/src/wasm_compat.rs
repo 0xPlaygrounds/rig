@@ -146,4 +146,12 @@ mod tests {
         let result = timeout(Duration::from_millis(20), std::future::pending::<()>()).await;
         assert_eq!(result, Err(Elapsed));
     }
+
+    #[tokio::test]
+    async fn timeout_zero_duration_still_polls_a_ready_future_once() {
+        // Documented contract: a zero/already-elapsed duration still polls the
+        // future once before electing `Elapsed`, so a ready future wins.
+        let result = timeout(Duration::ZERO, async { 7 }).await;
+        assert_eq!(result, Ok(7));
+    }
 }
