@@ -66,6 +66,16 @@ reqwest-middleware = { workspace = true, optional = true, features = [
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio-tungstenite = { workspace = true, optional = true }
 
+# futures-timer's default backend uses a background timer thread, which cannot
+# drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
+# the target is browser wasm — regardless of feature flags — so
+# `wasm_compat::timeout` and the SSE retry backoff actually fire instead of
+# hanging. Scoped to `target_os = "unknown"` (browser) rather than the whole
+# `wasm` family because the gloo-timers/setTimeout backend needs a JS host and
+# would be wrong-by-construction on WASI.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+
 [dev-dependencies]
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
@@ -119,7 +129,6 @@ rayon = ["dep:rayon"]
 wasm = [
   "dep:getrandom",
   "dep:wasm-bindgen-futures",
-  "futures-timer/wasm-bindgen",
   "getrandom/js",
 ]
 rmcp = ["dep:rmcp"]

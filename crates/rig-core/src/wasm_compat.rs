@@ -91,12 +91,10 @@ impl std::error::Error for Elapsed {}
 /// large `duration` may panic when added to `Instant::now()` inside the timer.
 ///
 /// # Wasm
-/// On `wasm32` the underlying timer only fires when the `futures-timer/wasm-bindgen`
-/// backend is active, which rig enables through its `wasm` feature. Building for
-/// `wasm32` **without** rig's `wasm` feature leaves the native (thread/park) timer
-/// backend in place — it cannot drive timers on wasm, so the timeout would never
-/// fire. Enable rig's `wasm` feature when targeting wasm. (This is the same
-/// `futures_timer::Delay` contract the existing SSE retry backoff relies on.)
+/// On browser wasm (`wasm32-unknown-unknown`) the `futures-timer` `wasm-bindgen`
+/// (`setTimeout`) backend is selected automatically via a target-scoped
+/// dependency, so the timer fires without depending on any cargo feature. (The
+/// `futures_timer::Delay` SSE retry backoff relies on the same backend.)
 pub async fn timeout<F>(duration: std::time::Duration, future: F) -> Result<F::Output, Elapsed>
 where
     F: Future,
