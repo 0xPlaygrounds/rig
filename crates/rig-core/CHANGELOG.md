@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.38.2...rig-core-v0.39.0) - 2026-06-19
+
+### Added
+
+- *(providers)* add VoyageAI rerank support ([#1917](https://github.com/0xPlaygrounds/rig/pull/1917)) (by @sergiomeneses)
+- *(agent)* [**breaking**] sans-IO AgentRun state machine; both agent loops become thin drivers ([#1899](https://github.com/0xPlaygrounds/rig/pull/1899)) (by @gold-silver-copper)
+
+### Fixed
+
+- *(rmcp)* bound MCP tool calls with a default, configurable, wasm-friendly timeout ([#1914](https://github.com/0xPlaygrounds/rig/pull/1914)) ([#1921](https://github.com/0xPlaygrounds/rig/pull/1921)) (by @gold-silver-copper)
+- *(tool)* [**breaking**] deterministic, duplicate-safe tool registration + cassette tests ([#1913](https://github.com/0xPlaygrounds/rig/pull/1913)) (by @gold-silver-copper)
+
+### Other
+
+- Only append a slash to base_urls of api providers when they don't already end with a slash. ([#1903](https://github.com/0xPlaygrounds/rig/pull/1903)) (by @eriktews) - #1903
+- *(tool)* back ToolSet with an IndexMap instead of HashMap + order Vec ([#1916](https://github.com/0xPlaygrounds/rig/pull/1916)) (by @gold-silver-copper)
+- de-flake tracing span tests and deepseek permission_control race ([#1915](https://github.com/0xPlaygrounds/rig/pull/1915)) (by @gold-silver-copper) - #1915
+- Fix streaming reasoning history order ([#1898](https://github.com/0xPlaygrounds/rig/pull/1898)) (by @gold-silver-copper) - #1898
+- Fix context document ordering ([#1893](https://github.com/0xPlaygrounds/rig/pull/1893)) (by @gold-silver-copper) - #1893
+- Add Gemini Nano Banana image generation ([#1889](https://github.com/0xPlaygrounds/rig/pull/1889)) (by @gold-silver-copper) - #1889
+
+### Contributors
+
+* @gold-silver-copper
+* @eriktews
+* @sergiomeneses
 ## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.38.1...rig-core-v0.38.2) - 2026-06-09
 
 ### Fixed
