@@ -48,7 +48,6 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 serenity = { workspace = true, optional = true }
 fastrand = { workspace = true }
 nanoid = { workspace = true }
-getrandom = { workspace = true, optional = true }
 eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
@@ -75,6 +74,20 @@ tokio-tungstenite = { workspace = true, optional = true }
 # would be wrong-by-construction on WASI.
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+# `nanoid` (via `rand` 0.9) pulls `getrandom` 0.3, which has no default RNG
+# backend on `wasm32-unknown-unknown`. getrandom >= 0.3.4 selects its Web Crypto
+# backend from this `wasm_js` feature ALONE — no `getrandom_backend="wasm_js"`
+# cfg/RUSTFLAGS is needed (that was only required on <= 0.3.3; getrandom 0.3.4's
+# `compile_error!` claiming otherwise is stale and only fires when the feature
+# is absent). Because it's a plain feature, it also unifies onto downstream
+# browser-wasm builds automatically. The `0.3.4` requirement is a `^0.3.4` floor
+# (not an exact pin) — that's the release where the feature-only backend landed.
+# Scoped to the browser target (`target_os = "unknown"`) because getrandom warns
+# enabling `wasm_js` breaks non-web WASM (WASI/emscripten). This is the sole
+# getrandom backend on rig-core's wasm path (nanoid 0.5 is no longer on 0.2).
+# `default-features = false` is a no-op on 0.3.4 (it declares no default feature)
+# but is kept defensively so only `wasm_js` is ever pulled if a future 0.3.x adds one.
+getrandom_wasm = { package = "getrandom", version = "0.3.4", default-features = false, features = ["wasm_js"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -127,9 +140,7 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 wasm = [
-  "dep:getrandom",
   "dep:wasm-bindgen-futures",
-  "getrandom/js",
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
