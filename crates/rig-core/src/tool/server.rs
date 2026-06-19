@@ -87,14 +87,32 @@ impl ToolServer {
         self
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent
+    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
+    /// to change or disable it.
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(feature = "rmcp")]
-    pub fn rmcp_tool(mut self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
+    pub fn rmcp_tool(self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
+        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
+
+    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
+    /// disable the timeout (unbounded).
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    #[cfg(feature = "rmcp")]
+    pub fn rmcp_tool_with_timeout(
+        mut self,
+        tool: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> Self {
         use crate::tool::rmcp::McpTool;
         let toolname = tool.name.to_string();
         self.toolset
-            .add_tool(McpTool::from_mcp_server(tool, client));
+            .add_tool(McpTool::from_mcp_server(tool, client).with_timeout(timeout));
         push_unique_name(&mut self.static_tool_names, toolname);
         self
     }

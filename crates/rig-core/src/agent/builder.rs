@@ -20,6 +20,25 @@ use crate::tool::rmcp::McpTool as RmcpTool;
 
 use super::Agent;
 
+/// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
+/// timeout to each (`None` disables it; see issue #1914). Returns
+/// `(tool_name, tool)` pairs.
+#[cfg(feature = "rmcp")]
+fn build_rmcp_tools(
+    tools: Vec<rmcp::model::Tool>,
+    client: rmcp::service::ServerSink,
+    timeout: Option<std::time::Duration>,
+) -> Vec<(String, RmcpTool)> {
+    tools
+        .into_iter()
+        .map(|tool| {
+            let name = tool.name.to_string();
+            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
+            (name, rmcp_tool)
+        })
+        .collect()
+}
+
 /// Marker type indicating no tool configuration has been set yet.
 ///
 /// This is the default state for a new `AgentBuilder`. From this state,
@@ -392,7 +411,10 @@ where
         }
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent.
+    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
+    /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -402,34 +424,30 @@ where
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let toolname = tool.name.clone().to_string();
-        let tools = ToolSet::from_tools(vec![RmcpTool::from_mcp_server(tool, client)]);
-
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            max_tokens: self.max_tokens,
-            dynamic_context: self.dynamic_context,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hook: self.hook,
-            output_schema: self.output_schema,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                static_tools: vec![toolname],
-                tools,
-                dynamic_tools: vec![],
-            },
-        }
+        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent.
+    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
+    /// disable the timeout (unbounded). On timeout the call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_with_timeout(
+        self,
+        tool: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> AgentBuilder<M, P, WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
+    }
+
+    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(feature = "rmcp")]
@@ -439,18 +457,35 @@ where
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> AgentBuilder<M, P, WithBuilderTools> {
-        let (static_tools, tools) = tools.into_iter().fold(
-            (Vec::new(), Vec::new()),
-            |(mut toolnames, mut toolset), tool| {
-                let tool_name = tool.name.to_string();
-                let tool = RmcpTool::from_mcp_server(tool, client.clone());
-                toolnames.push(tool_name);
-                toolset.push(tool);
-                (toolnames, toolset)
-            },
-        );
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
 
-        let tools = ToolSet::from_tools(tools);
+    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
+    /// issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
+    /// disable the timeout (unbounded). On timeout a call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> AgentBuilder<M, P, WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
+    }
+
+    /// Transition into the `WithBuilderTools` state carrying the given built
+    /// MCP tools.
+    #[cfg(feature = "rmcp")]
+    fn with_rmcp_toolset(
+        self,
+        built: Vec<(String, RmcpTool)>,
+    ) -> AgentBuilder<M, P, WithBuilderTools> {
+        let (static_tools, toolset): (Vec<String>, Vec<RmcpTool>) = built.into_iter().unzip();
 
         AgentBuilder {
             name: self.name,
@@ -470,7 +505,7 @@ where
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
                 static_tools,
-                tools,
+                tools: ToolSet::from_tools(toolset),
                 dynamic_tools: vec![],
             },
         }
@@ -587,18 +622,41 @@ where
         self
     }
 
-    /// Add an array of MCP tools (from `rmcp`) to the agent.
+    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
     #[cfg(feature = "rmcp")]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub fn rmcp_tools(
-        mut self,
+        self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
     ) -> Self {
-        for tool in tools {
-            let tool_name = tool.name.to_string();
-            let tool = RmcpTool::from_mcp_server(tool, client.clone());
-            self.tool_state.static_tools.push(tool_name);
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
+
+    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
+    /// issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
+    /// disable the timeout (unbounded). On timeout a call resolves to a tool
+    /// error the agent can recover from instead of blocking forever.
+    #[cfg(feature = "rmcp")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> Self {
+        self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
+    }
+
+    #[cfg(feature = "rmcp")]
+    fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
+        for (name, tool) in built {
+            self.tool_state.static_tools.push(name);
             self.tool_state.tools.add_tool(tool);
         }
 
@@ -668,5 +726,90 @@ mod tests {
             .tool(MockAddTool)
             .hook(BuilderHook)
             .build();
+    }
+
+    /// The builder's shared MCP helper threads the configured timeout (default,
+    /// explicit, or `None`/disabled) onto every built tool, and the threaded
+    /// timeout actually bounds a hanging call. This covers the plumbing behind
+    /// `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
+    #[cfg(feature = "rmcp")]
+    #[tokio::test]
+    async fn build_rmcp_tools_threads_timeout_into_built_tools() {
+        use crate::tool::ToolDyn;
+        use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
+        use rmcp::model::{
+            CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
+            ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+        };
+        use rmcp::service::RequestContext;
+        use rmcp::{RoleServer, ServerHandler, ServiceExt};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        #[derive(Clone)]
+        struct HangingServer;
+        impl ServerHandler for HangingServer {
+            fn get_info(&self) -> ServerInfo {
+                ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+                    .with_protocol_version(ProtocolVersion::LATEST)
+                    .with_server_info(Implementation::new("builder-timeout-test", "0.1.0"))
+            }
+            async fn call_tool(
+                &self,
+                _request: CallToolRequestParams,
+                _context: RequestContext<RoleServer>,
+            ) -> Result<CallToolResult, ErrorData> {
+                std::future::pending::<Result<CallToolResult, ErrorData>>().await
+            }
+        }
+
+        fn tool(name: &str) -> Tool {
+            Tool::new(
+                name.to_string(),
+                String::new(),
+                Arc::new(serde_json::Map::new()),
+            )
+        }
+
+        let (c2s, sfc) = tokio::io::duplex(8192);
+        let (s2c, cfs) = tokio::io::duplex(8192);
+        let server_task = tokio::spawn(async move {
+            let running = HangingServer.serve((sfc, s2c)).await.expect("server start");
+            running.waiting().await.expect("server error");
+        });
+        let client = ClientInfo::default()
+            .serve((cfs, c2s))
+            .await
+            .expect("client connect");
+        let peer = client.peer().clone();
+
+        // The configured timeout (default, explicit, or disabled) is threaded
+        // onto each built tool.
+        let built_default = build_rmcp_tools(
+            vec![tool("a")],
+            peer.clone(),
+            Some(DEFAULT_MCP_TOOL_TIMEOUT),
+        );
+        assert_eq!(built_default[0].1.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
+        let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
+        assert_eq!(built_none[0].1.timeout(), None);
+
+        // ...and the threaded timeout actually bounds a hanging call.
+        let built = build_rmcp_tools(
+            vec![tool("hang_forever")],
+            peer,
+            Some(Duration::from_millis(200)),
+        );
+        assert_eq!(built.len(), 1);
+        assert_eq!(built[0].0, "hang_forever");
+        let timed =
+            tokio::time::timeout(Duration::from_secs(5), built[0].1.call("{}".to_string())).await;
+        let err = timed
+            .expect("built tool hung past the safety timeout")
+            .expect_err("call should time out");
+        assert!(err.to_string().contains("timed out"), "got: {err}");
+
+        drop(client);
+        server_task.abort();
     }
 }
