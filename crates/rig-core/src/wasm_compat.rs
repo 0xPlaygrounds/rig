@@ -57,12 +57,17 @@ impl<T> WasmCompatSync for T where T: Sync {}
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 impl<T> WasmCompatSync for T {}
 
-#[cfg(not(target_family = "wasm"))]
-/// Boxed future type that includes `Send` on non-wasm targets.
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+/// Boxed future type that includes `Send`, except on wasm32 with the `wasm` feature.
+///
+/// Gated to match [`WasmCompatSend`]/[`WasmCompatSync`] (and the streaming `Box`
+/// selection) — a `WasmBoxedFuture` returned by a `WasmCompatSend` bound (e.g.
+/// [`ToolDyn::call`](crate::tool::ToolDyn)) must drop `Send` under the same
+/// condition the marker relaxes it, or the two disagree on wasm.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-#[cfg(target_family = "wasm")]
-/// Boxed future type without `Send` on wasm targets.
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+/// Boxed future type without `Send`, on wasm32 with the `wasm` feature.
 pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /// Error returned by [`timeout`] when the future does not complete in time.
