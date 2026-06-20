@@ -1321,10 +1321,43 @@ pub enum Include {
 }
 
 /// A currently non-exhaustive list of output types.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(tag = "type")]
-#[serde(rename_all = "snake_case")]
+///
+/// Unrecognized output items — notably provider-native hosted tools such as
+/// `web_search_call`, `file_search_call`, `computer_use_call`, and
+/// `code_interpreter_call` — decode to [`Output::Unknown`], which preserves
+/// the verbatim item object so callers can inspect or forward it. This keeps
+/// unknown item types from breaking deserialization of the entire
+/// `CompletionResponse` (the invariant that previously caused streaming token
+/// usage to be silently dropped) without discarding the payload along the way.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Output {
+    Message(OutputMessage),
+    FunctionCall(OutputFunctionCall),
+    Reasoning {
+        id: String,
+        summary: Vec<ReasoningSummary>,
+        encrypted_content: Option<String>,
+        status: Option<ToolStatus>,
+    },
+    /// Catch-all for output item types this version does not model. Holds the
+    /// raw item object exactly as it appeared in the provider's `output[]`
+    /// array, so hosted-tool payloads survive the typed decode.
+    Unknown(Value),
+}
+
+/// Serde deserialize mirror of the modeled [`Output`] variants.
+///
+/// `Output`'s (de)serialization is hand-written so [`Output::Unknown`] can
+/// carry a raw [`Value`]; `#[serde(other)]` only applies to a unit variant and
+/// would otherwise force the payload to be dropped. Deserialization dispatches
+/// through this owned helper, while serialization uses the borrowed
+/// [`KnownOutputRef`]; both carry the internally tagged (`type`) wire shape so
+/// the known variants stay byte-for-byte identical to the previous derived
+/// behavior.
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum KnownOutput {
     Message(OutputMessage),
     #[serde(alias = "function_call")]
     FunctionCall(OutputFunctionCall),
@@ -1336,12 +1369,96 @@ pub enum Output {
         #[serde(default)]
         status: Option<ToolStatus>,
     },
-    /// Catch-all variant for unknown output types (e.g., `web_search_call`,
-    /// `file_search_call`, `computer_use_call`). This prevents unknown types
-    /// from breaking deserialization of the entire `CompletionResponse`,
-    /// which previously caused streaming token usage to be silently dropped.
-    #[serde(other)]
-    Unknown,
+}
+
+impl From<KnownOutput> for Output {
+    fn from(value: KnownOutput) -> Self {
+        match value {
+            KnownOutput::Message(message) => Output::Message(message),
+            KnownOutput::FunctionCall(call) => Output::FunctionCall(call),
+            KnownOutput::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                status,
+            } => Output::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                status,
+            },
+        }
+    }
+}
+
+/// Borrowed serialize mirror of the modeled [`Output`] variants.
+///
+/// Holds references to the live `Output` fields so serialization does not clone
+/// the payload. Like [`KnownOutput`], it carries the internally tagged (`type`)
+/// wire shape so known variants round-trip byte-for-byte.
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum KnownOutputRef<'a> {
+    Message(&'a OutputMessage),
+    FunctionCall(&'a OutputFunctionCall),
+    Reasoning {
+        id: &'a str,
+        summary: &'a [ReasoningSummary],
+        encrypted_content: &'a Option<String>,
+        status: &'a Option<ToolStatus>,
+    },
+}
+
+impl Serialize for Output {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let known = match self {
+            Output::Message(message) => KnownOutputRef::Message(message),
+            Output::FunctionCall(call) => KnownOutputRef::FunctionCall(call),
+            Output::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                status,
+            } => KnownOutputRef::Reasoning {
+                id,
+                summary,
+                encrypted_content,
+                status,
+            },
+            Output::Unknown(value) => return value.serialize(serializer),
+        };
+        known.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Output {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Decode to a `Value` first so an unrecognized `type` tag can be
+        // captured verbatim. A *known* tag with a malformed body still errors
+        // (rather than silently falling through to `Unknown`), preserving the
+        // original strictness of the internally tagged derive.
+        let value = Value::deserialize(deserializer)?;
+        match value.get("type") {
+            Some(Value::String(r#type)) => match r#type.as_str() {
+                "message" | "function_call" | "reasoning" => {
+                    serde_json::from_value::<KnownOutput>(value)
+                        .map(Output::from)
+                        .map_err(serde::de::Error::custom)
+                }
+                _ => Ok(Output::Unknown(value)),
+            },
+            Some(_) => Err(serde::de::Error::custom(
+                "invalid type: non-string value, expected output `type` to be a string",
+            )),
+            None => Err(serde::de::Error::missing_field("type")),
+        }
+    }
 }
 
 impl From<Output> for Vec<completion::AssistantContent> {
@@ -1384,7 +1501,7 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     },
                 )]
             }
-            Output::Unknown => Vec::new(),
+            Output::Unknown(_) => Vec::new(),
         };
 
         res
@@ -2806,5 +2923,117 @@ mod tests {
         assert_eq!(json["content"][0]["file_id"], "file_abc");
         assert!(json["content"][0].get("file_data").is_none());
         assert!(json["content"][0].get("file_url").is_none());
+    }
+
+    #[test]
+    fn output_unknown_preserves_hosted_tool_payload() {
+        let item = json!({
+            "type": "web_search_call",
+            "id": "ws_001",
+            "status": "completed",
+            "action": { "type": "search", "queries": ["rig framework"] },
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("unknown output should deserialize");
+
+        let Output::Unknown(value) = output else {
+            panic!("expected Output::Unknown for an unmodeled item type");
+        };
+        assert_eq!(value, item);
+    }
+
+    #[test]
+    fn output_unknown_round_trips_value_equal() {
+        let item = json!({
+            "type": "file_search_call",
+            "id": "fs_007",
+            "status": "in_progress",
+            "queries": ["lifecycle"],
+        });
+
+        let output: Output =
+            serde_json::from_value(item.clone()).expect("unknown output should deserialize");
+        let serialized = serde_json::to_value(&output).expect("unknown output should serialize");
+
+        assert_eq!(serialized, item);
+    }
+
+    #[test]
+    fn output_known_variant_with_bad_body_errors() {
+        // A recognized `type` tag with a malformed body must still error rather
+        // than silently degrading to `Output::Unknown`.
+        let malformed = json!({
+            "type": "function_call",
+            "id": "call_1",
+            // missing `arguments`, `call_id`, `name`
+        });
+
+        let result: Result<Output, _> = serde_json::from_value(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn output_missing_type_errors() {
+        let malformed = json!({
+            "id": "item_1",
+            "status": "completed",
+        });
+
+        let result: Result<Output, _> = serde_json::from_value(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn output_non_string_type_errors() {
+        let malformed = json!({
+            "type": 123,
+            "id": "item_1",
+            "status": "completed",
+        });
+
+        let result: Result<Output, _> = serde_json::from_value(malformed);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn completion_response_with_unknown_output_keeps_usage() {
+        // Guards the original reason the catch-all exists: an unknown item must
+        // not break decoding of the whole response or drop token usage.
+        let response = json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [
+                {
+                    "type": "web_search_call",
+                    "id": "ws_001",
+                    "status": "completed",
+                },
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [ { "type": "output_text", "text": "hi", "annotations": [] } ],
+                },
+            ],
+            "usage": {
+                "input_tokens": 100,
+                "input_tokens_details": { "cached_tokens": 25 },
+                "output_tokens": 50,
+                "output_tokens_details": { "reasoning_tokens": 15 },
+                "total_tokens": 150,
+            },
+        });
+
+        let response: CompletionResponse =
+            serde_json::from_value(response).expect("response should deserialize");
+
+        assert!(matches!(response.output.first(), Some(Output::Unknown(_))));
+        let usage = response.usage.expect("usage should be present");
+        assert_eq!(usage.total_tokens, 150);
     }
 }
