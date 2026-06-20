@@ -925,12 +925,13 @@ where
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.output_schema = Some(schema_for!(T));
-        // Typed prompts flow through the agent's `OutputMode` like untyped ones
-        // (#1928): with the default `Auto` and tools present, the schema is
-        // offered as the output tool on providers that need it (so tool calls
-        // aren't suppressed), and `send()` deserializes the output-tool JSON into
-        // `T`. Without tools (or on providers that compose native output), `Auto`
-        // resolves to native structured output, unchanged.
+        // Typed prompts deserialize the model's final string, so they pin
+        // `Native` structured output to keep the typed API's behavior unchanged
+        // across all providers (#1928). Routing the typed path through `Tool`
+        // output mode for tool-using agents on non-composing providers is a
+        // follow-up; use the untyped `output_schema`/`output_mode` API for
+        // tool-composing structured output today.
+        inner.output_mode = OutputMode::Native;
         Self {
             inner,
             _phantom: std::marker::PhantomData,
@@ -2191,16 +2192,9 @@ mod tests {
 
     #[tokio::test]
     async fn typed_prompt_invalid_tool_call_hook_can_repair_tool_name() {
-        // Typed + tools now flows through Tool output mode on a provider that does
-        // not compose native output with tools (#1928, #5), so the final answer
-        // arrives as the `final_result` output-tool call and is deserialized.
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
-            MockTurn::tool_call(
-                "output_call_1",
-                "final_result",
-                json!({"value": "repaired"}),
-            ),
+            MockTurn::text(r#"{"value":"repaired"}"#),
         ]);
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
@@ -2223,7 +2217,7 @@ mod tests {
     async fn typed_prompt_invalid_tool_call_hook_can_retry_and_parse_response() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
-            MockTurn::tool_call("output_call_1", "final_result", json!({"value": "retried"})),
+            MockTurn::text(r#"{"value":"retried"}"#),
         ]);
         let recorded = model.clone();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
