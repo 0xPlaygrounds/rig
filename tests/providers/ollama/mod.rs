@@ -8,6 +8,11 @@ mod structured_output;
 mod support;
 
 mod cassette {
+    mod agent;
+    mod models;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod streaming;
+    mod streaming_tools;
+    mod structured_output;
 }

@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"qwen3:4b","options":{"temperature":null},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"stop","eval_count":162,"eval_duration":2043980711,"load_duration":4204914125,"message":{"content":"We are to explain Rust in one or two sentences, focusing on what it is and why memory safety matters.\n Rust is a systems programming language that emphasizes memory safety without a garbage collector, achieved through compile-time checks with ownership and borrowing.\n Memory safety matters because it prevents common bugs like buffer overflows, use-after-free errors, and data races that lead to security vulnerabilities and crashes, especially critical in systems programming where such errors can have severe consequences.\n</think>\n\nRust is a systems programming language that ensures memory safety through compile-time checks using ownership, borrowing, and lifetimes, eliminating common bugs like buffer overflows and data races. Memory safety matters because it prevents critical security vulnerabilities and crashes in systems software, where unsafe code can lead to catastrophic failures in high-stakes environments like operating systems or embedded devices.","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":42,"prompt_eval_duration":2220589458,"total_duration":8759227292}'
