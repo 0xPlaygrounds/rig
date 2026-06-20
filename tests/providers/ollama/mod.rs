@@ -16,4 +16,5 @@ mod cassette {
     mod streaming;
     mod streaming_tools;
     mod structured_output;
+    mod tools;
 }
