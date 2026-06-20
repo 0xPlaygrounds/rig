@@ -332,7 +332,10 @@ where
                     Be sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.
                 ")
                 .tool(SubmitTool::<T> {_t: PhantomData})
-                .tool_choice(ToolChoice::Required),
+                .tool_choice(ToolChoice::Required)
+                // The extractor already implements its own tool-based output via
+                // `SubmitTool`; opt out of the agent's OutputMode routing (#1928).
+                .output_mode(crate::agent::OutputMode::Native),
             retries: None,
             _t: PhantomData,
         }

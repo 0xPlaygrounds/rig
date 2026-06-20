@@ -7,7 +7,7 @@ use crate::{
         is_empty_assistant_turn, tool_result_user_content,
     },
     agent::run::{
-        AgentRun, AgentRunStep,
+        AgentRun, AgentRunStep, OutputMode,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     completion::{Document, GetTokenUsage},
@@ -284,6 +284,7 @@ where
     tool_choice: Option<ToolChoice>,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    output_mode: OutputMode,
     /// Optional per-request hook for events
     hook: Option<P>,
     /// Maximum number of invalid tool-call retries for this request.
@@ -318,6 +319,7 @@ where
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
+            output_mode: agent.output_mode.clone(),
             hook: None,
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
@@ -348,6 +350,7 @@ where
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
+            output_mode: agent.output_mode.clone(),
             hook: agent.hook.clone(),
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
@@ -408,6 +411,7 @@ where
             dynamic_context: self.dynamic_context,
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             hook: Some(hook),
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             memory: self.memory,
@@ -481,6 +485,7 @@ where
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
         let output_schema = self.output_schema;
+        let output_mode = self.output_mode.clone();
         // When the caller passes explicit history, memory is fully bypassed for
         // this request (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history; if either is
@@ -574,6 +579,9 @@ where
                             gen_ai.output.messages = tracing::field::Empty,
                         );
 
+                        // Pin Tool output mode once committed so later turns stay
+                        // consistent even if the per-turn tool set changes (#1928).
+                        let committed_output_tool = run.output_tool_name().map(str::to_owned);
                         let prepared_request = build_prepared_completion_request(
                             &model,
                             current_prompt.clone(),
@@ -587,8 +595,12 @@ where
                             &tool_server_handle,
                             &dynamic_context,
                             output_schema.as_ref(),
+                            &output_mode,
+                            committed_output_tool.as_deref(),
                         )
                         .await?;
+
+                        run.set_output_tool_name(prepared_request.output_tool_name.clone());
 
                         let mut stream = prepared_request
                             .builder
@@ -1000,13 +1012,38 @@ where
                         }
                     }
                     AgentRunStep::Done(response) => {
-                        if is_empty_assistant_turn(&last_final_choice) {
-                            tracing::warn!(
-                                agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                                message_id = ?last_message_id,
-                                "Streaming turn completed without assistant text; final response will be empty"
-                            );
-                        }
+                        // Tool output mode (#1928) finalizes via the output-tool
+                        // call, so the final streamed turn carries the tool call
+                        // (not assistant text). Surface the run's output string as
+                        // the final content whenever the turn has no text but the
+                        // run produced output — covering both the Tool-mode tool
+                        // call and a genuinely empty turn. Any reasoning on the
+                        // turn is preserved (only the tool calls are dropped) so
+                        // `content()` stays consistent with the saved history.
+                        let final_choice = if assistant_text_from_choice(&last_final_choice)
+                            .is_empty()
+                            && !response.output.is_empty()
+                        {
+                            let mut items: Vec<AssistantContent> = last_final_choice
+                                .iter()
+                                .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
+                                .cloned()
+                                .collect();
+                            items.push(AssistantContent::text(response.output.clone()));
+                            OneOrMany::from_iter_optional(items).unwrap_or_else(|| {
+                                OneOrMany::one(AssistantContent::text(response.output.clone()))
+                            })
+                        } else {
+                            if is_empty_assistant_turn(&last_final_choice) {
+                                tracing::warn!(
+                                    agent_name =
+                                        agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                                    message_id = ?last_message_id,
+                                    "Streaming turn completed without assistant text; final response will be empty"
+                                );
+                            }
+                            last_final_choice.clone()
+                        };
 
                         if created_agent_span {
                             let current_span = tracing::Span::current();
@@ -1030,7 +1067,7 @@ where
                             None
                         };
                         yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
-                            last_final_choice.clone(),
+                            final_choice,
                             response.usage,
                             response.completion_calls.clone(),
                             final_messages,

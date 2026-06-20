@@ -18,7 +18,7 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
-use super::Agent;
+use super::{Agent, OutputMode};
 
 /// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
 /// timeout to each (`None` disables it; see issue #1914). Returns
@@ -126,6 +126,8 @@ where
     hook: Option<P>,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    /// How `output_schema` is enforced (tool vs native vs prompted; see #1928)
+    output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional default conversation id used when none is set per-request.
@@ -235,6 +237,15 @@ where
         self
     }
 
+    /// Set how `output_schema` is enforced — [`OutputMode::Tool`] (output as a
+    /// tool call, the default when the agent has tools), [`OutputMode::Native`]
+    /// (provider structured output), or [`OutputMode::Prompted`] (see #1928).
+    /// Has no effect unless `output_schema`/`output_schema_raw` is also set.
+    pub fn output_mode(mut self, mode: OutputMode) -> Self {
+        self.output_mode = mode;
+        self
+    }
+
     /// Attach a [`ConversationMemory`] backend.
     ///
     /// When set, the agent will automatically load prior conversation history before
@@ -282,6 +293,7 @@ where
             tool_state: self.tool_state,
             hook: Some(hook),
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -309,6 +321,7 @@ where
             tool_state: NoToolConfig,
             hook: None,
             output_schema: None,
+            output_mode: OutputMode::default(),
             memory: None,
             default_conversation_id: None,
         }
@@ -344,6 +357,7 @@ where
             tool_state: WithToolServerHandle { handle },
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -374,6 +388,7 @@ where
             },
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -401,6 +416,7 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
@@ -501,6 +517,7 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
@@ -535,6 +552,7 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
             tool_state: WithBuilderTools {
@@ -566,6 +584,7 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -594,6 +613,7 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }
@@ -704,6 +724,7 @@ where
             default_max_turns: self.default_max_turns,
             hook: self.hook,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             default_conversation_id: self.default_conversation_id,
         }

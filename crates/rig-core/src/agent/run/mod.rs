@@ -53,7 +53,10 @@
 //! # }
 //! ```
 
+pub mod output_mode;
 pub mod streamed;
+
+pub use output_mode::OutputMode;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -247,6 +250,11 @@ pub struct AgentRun {
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
     tool_choice: Option<ToolChoice>,
+    /// Name of the synthetic output tool when the agent uses Tool output mode
+    /// (see #1928). A model turn calling this tool finalizes the run with the
+    /// call's arguments as the response, instead of executing it as a tool.
+    #[serde(default)]
+    output_tool_name: Option<String>,
     chat_history: Option<Vec<Message>>,
     new_messages: Vec<Message>,
     current_turn: usize,
@@ -274,6 +282,7 @@ impl AgentRun {
             max_turns: 0,
             max_invalid_tool_call_retries: 0,
             tool_choice: None,
+            output_tool_name: None,
             chat_history: None,
             new_messages: vec![prompt.into()],
             current_turn: 0,
@@ -313,6 +322,33 @@ impl AgentRun {
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self
+    }
+
+    /// Set the synthetic output-tool name for Tool output mode (see #1928).
+    /// When a model turn calls this tool, the run finalizes with the call's
+    /// arguments (serialized JSON) as the response.
+    pub fn with_output_tool_name(mut self, name: impl Into<String>) -> Self {
+        self.output_tool_name = Some(name.into());
+        self
+    }
+
+    /// Set (or clear) the output-tool name in place. The driver resolves the
+    /// name from the prepared request inside the run loop, where the agent's
+    /// tool set (and thus the resolved output mode) is known.
+    pub(crate) fn set_output_tool_name(&mut self, name: Option<String>) {
+        // The name is committed once and pinned for the whole run, so the
+        // request the driver builds each turn stays consistent with the
+        // intercept (and a tool set that shifts mid-run cannot flip the mode).
+        if self.output_tool_name.is_none() {
+            self.output_tool_name = name;
+        }
+    }
+
+    /// The synthetic output-tool name committed for this run, if any. The driver
+    /// passes this back when preparing later turns so Tool output mode stays
+    /// pinned even if the per-turn tool set changes (see #1928).
+    pub(crate) fn output_tool_name(&self) -> Option<&str> {
+        self.output_tool_name.as_deref()
     }
 
     /// Aggregated token usage across all completed model calls so far.
@@ -448,6 +484,47 @@ impl AgentRun {
                         "model turn lost its assistant content",
                     ));
                 };
+
+                // Tool output mode (#1928): a call to the synthetic output tool
+                // finalizes the run with the call's arguments as the response,
+                // instead of executing it as a tool. First match wins; any
+                // sibling tool calls in the same turn are dropped.
+                //
+                // The finalizing turn is persisted as the assistant's final
+                // *text* (keeping any reasoning, dropping every tool call) rather
+                // than the raw output-tool call. Otherwise the saved history
+                // would carry an unanswered tool_use, which providers reject when
+                // the conversation is replayed on a later turn.
+                if has_tool_calls
+                    && let Some(output_tool_name) = self.output_tool_name.clone()
+                    && let Some(tool_call) = items.iter().find_map(|item| match item {
+                        AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
+                            Some(tc)
+                        }
+                        _ => None,
+                    })
+                {
+                    let output = json_utils::value_to_json_string(&tool_call.function.arguments);
+
+                    let mut final_items: Vec<AssistantContent> = items
+                        .iter()
+                        .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
+                        .cloned()
+                        .collect();
+                    final_items.push(AssistantContent::text(output.clone()));
+                    if let Some(content) = OneOrMany::from_iter_optional(final_items) {
+                        self.new_messages.push(Message::Assistant {
+                            id: message_id,
+                            content,
+                        });
+                    }
+
+                    let response = PromptResponse::new(output, self.usage)
+                        .with_messages(self.new_messages.clone())
+                        .with_completion_calls(self.completion_calls.clone());
+                    self.state = RunState::Done(Box::new(response.clone()));
+                    return Ok(AgentRunStep::Done(response));
+                }
 
                 if !is_empty_assistant_turn(&choice) {
                     self.new_messages.push(Message::Assistant {
@@ -1723,6 +1800,152 @@ mod tests {
             restored_context.chat_history.len(),
             context.chat_history.len()
         );
+    }
+
+    /// A turn calling `name`, advertising it as an allowed-but-not-executable
+    /// tool (the shape Tool output mode produces — see #1928).
+    fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
+        ModelTurn::new(
+            None,
+            OneOrMany::one(tool_call(id, name)),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add", name]),
+        )
+    }
+
+    /// Every assistant tool call in `messages` must have a matching user tool
+    /// result — an unanswered tool_use is rejected by providers on replay.
+    fn assert_no_orphan_tool_use(messages: &[Message]) {
+        let mut answered = BTreeSet::new();
+        for message in messages {
+            if let Message::User { content } = message {
+                for item in content.iter() {
+                    if let UserContent::ToolResult(result) = item {
+                        answered.insert(result.id.clone());
+                    }
+                }
+            }
+        }
+        for message in messages {
+            if let Message::Assistant { content, .. } = message {
+                for item in content.iter() {
+                    if let AssistantContent::ToolCall(call) = item {
+                        assert!(
+                            answered.contains(&call.id),
+                            "assistant tool_call {:?} has no matching tool_result in history",
+                            call.id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn output_tool_call_finalizes_run_with_arguments() {
+        let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(output_tool_turn("call_1", "final_result"))
+                .expect("model_response should succeed"),
+        );
+
+        // The output tool is not executed; its arguments become the run output.
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, r#"{"x":1}"#);
+        assert!(run.is_done());
+
+        // The finalizing turn is persisted as assistant text, not as the raw
+        // output-tool call, so the saved history has no dangling tool_use.
+        let messages = response.messages.expect("messages should be recorded");
+        assert_no_orphan_tool_use(&messages);
+        assert!(matches!(
+            messages.last(),
+            Some(Message::Assistant { content, .. })
+                if assistant_text_from_choice(content) == r#"{"x":1}"#
+        ));
+    }
+
+    #[test]
+    fn output_tool_call_wins_over_sibling_real_tool_calls() {
+        let mut run = AgentRun::new("do it")
+            .max_turns(2)
+            .with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        // The model emits a real tool call *and* the output tool in one turn;
+        // the output-tool intercept wins and the real call is never executed.
+        let turn = ModelTurn::new(
+            None,
+            OneOrMany::many(vec![
+                tool_call("call_1", "add"),
+                tool_call("call_2", "final_result"),
+            ])
+            .expect("two items"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add", "final_result"]),
+        );
+        expect_continue(
+            run.model_response(turn)
+                .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, r#"{"x":1}"#);
+        assert!(run.is_done());
+
+        // Both the sibling `add` call and the output-tool call are dropped from
+        // the persisted assistant message, leaving no unanswered tool_use.
+        let messages = response.messages.expect("messages should be recorded");
+        assert_no_orphan_tool_use(&messages);
+        assert!(
+            messages.iter().all(|message| match message {
+                Message::Assistant { content, .. } => !content
+                    .iter()
+                    .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+                _ => true,
+            }),
+            "no assistant tool calls should survive in the finalized history"
+        );
+    }
+
+    #[test]
+    fn real_tool_calls_still_execute_when_output_tool_unused() {
+        // With an output tool configured but only real tools called, the run
+        // proceeds to tool execution as normal (the intercept must not fire).
+        let mut run = AgentRun::new("add things")
+            .max_turns(2)
+            .with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].tool_call.function.name, "add");
+    }
+
+    #[test]
+    fn set_output_tool_name_is_idempotent_and_only_fills_when_unset() {
+        // A pre-set name (e.g. via `with_output_tool_name`) is never overwritten,
+        // keeping a resumed run deterministic.
+        let mut run = AgentRun::new("x").with_output_tool_name("first");
+        run.set_output_tool_name(Some("second".to_string()));
+        run.set_output_tool_name(None);
+        assert_eq!(run.output_tool_name.as_deref(), Some("first"));
+
+        // When unset, the first non-None value fills it.
+        let mut run = AgentRun::new("x");
+        run.set_output_tool_name(None);
+        assert_eq!(run.output_tool_name, None);
+        run.set_output_tool_name(Some("filled".to_string()));
+        assert_eq!(run.output_tool_name.as_deref(), Some("filled"));
     }
 
     impl ModelTurn {

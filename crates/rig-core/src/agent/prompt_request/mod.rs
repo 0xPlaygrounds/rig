@@ -4,7 +4,7 @@ pub mod streaming;
 use super::{
     Agent,
     completion::{DynamicContextStore, build_prepared_completion_request},
-    run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall},
+    run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall},
 };
 use crate::{
     OneOrMany,
@@ -89,6 +89,7 @@ where
     concurrency: usize,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    output_mode: OutputMode,
     /// Optional conversation memory backend cloned from the agent.
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional conversation id used for loading and saving memory.
@@ -121,6 +122,7 @@ where
             max_invalid_tool_call_retries: 0,
             concurrency: 1,
             output_schema: agent.output_schema.clone(),
+            output_mode: agent.output_mode.clone(),
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
         }
@@ -159,6 +161,7 @@ where
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             conversation_id: self.conversation_id,
         }
@@ -231,6 +234,7 @@ where
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             conversation_id: self.conversation_id,
         }
@@ -614,6 +618,9 @@ where
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
+                    // Pin Tool output mode once committed so later turns stay
+                    // consistent even if the per-turn tool set changes (#1928).
+                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let prepared_request = build_prepared_completion_request(
                         &self.model,
                         prompt.clone(),
@@ -627,6 +634,8 @@ where
                         &self.tool_server_handle,
                         &self.dynamic_context,
                         self.output_schema.as_ref(),
+                        &self.output_mode,
+                        committed_output_tool.as_deref(),
                     )
                     .await?;
 
@@ -635,6 +644,8 @@ where
                         .send()
                         .instrument(chat_span.clone())
                         .await?;
+
+                    run.set_output_tool_name(prepared_request.output_tool_name.clone());
 
                     let mut outcome = run.model_response(ModelTurn::new(
                         resp.message_id.clone(),
@@ -903,6 +914,10 @@ where
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.output_schema = Some(schema_for!(T));
+        // Typed prompts deserialize the model's final string; keep native
+        // structured output here so the typed API is unchanged (#1928). Use the
+        // untyped `output_schema`/`output_mode` API for tool-composing output.
+        inner.output_mode = OutputMode::Native;
         Self {
             inner,
             _phantom: std::marker::PhantomData,
