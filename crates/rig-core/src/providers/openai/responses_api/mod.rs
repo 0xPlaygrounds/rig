@@ -1459,6 +1459,13 @@ where
         Self::new(client.clone(), model)
     }
 
+    // The OpenAI Responses API constrains only the final assistant message via
+    // `text.format`; tools are still called across turns, so native structured
+    // output composes with tool calls. See issue #1928.
+    fn composes_native_output_with_tools(&self) -> bool {
+        true
+    }
+
     async fn completion(
         &self,
         completion_request: crate::completion::CompletionRequest,

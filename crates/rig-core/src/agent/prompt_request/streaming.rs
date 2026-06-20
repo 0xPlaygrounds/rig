@@ -7,7 +7,7 @@ use crate::{
         is_empty_assistant_turn, tool_result_user_content,
     },
     agent::run::{
-        AgentRun, AgentRunStep, OutputMode,
+        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, OutputMode,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     completion::{Document, GetTokenUsage},
@@ -509,7 +509,13 @@ where
 
         let mut run = AgentRun::new(prompt.clone())
             .max_turns(self.max_turns)
-            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries);
+            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries)
+            .with_output_validation(
+                output_schema
+                    .as_ref()
+                    .map(|schema| schema.as_value().clone()),
+                DEFAULT_OUTPUT_RETRIES,
+            );
         if let Some(history) = chat_history {
             run = run.with_history(history);
         }
@@ -581,6 +587,8 @@ where
 
                         // Pin Tool output mode once committed so later turns stay
                         // consistent even if the per-turn tool set changes (#1928).
+                        // The pin rides on `output_tool_name`, which is persisted
+                        // on the run, so it also survives a serialize/resume.
                         let committed_output_tool = run.output_tool_name().map(str::to_owned);
                         let prepared_request = build_prepared_completion_request(
                             &model,

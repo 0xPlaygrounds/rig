@@ -55,17 +55,21 @@ fn tool_choice_permits_output_tool(tool_choice: Option<&ToolChoice>) -> bool {
 ///
 /// With no schema there is nothing to enforce, so the result is always `Native`
 /// (the synthetic tool and prompt injection only make sense with a schema).
-/// `Auto` becomes `Tool` when a real executable tool is present (so the schema
-/// is offered as a tool the model may call *after* using its tools), otherwise
-/// `Native`. `Tool` (explicit or via `Auto`) requires that the active
-/// [`ToolChoice`] permit the output-tool call; when it does not, it degrades to
-/// `Native` so structured output is still enforced rather than silently dropped.
-/// Explicit `Prompted`/`Native` are honored when a schema is present. The
-/// returned mode is never `Auto`. See issue #1928.
+/// `Auto` becomes `Tool` only when a real executable tool is present, the tool
+/// choice permits the output-tool call, AND the provider does *not* compose
+/// native structured output with tools — i.e. only where the native constraint
+/// would actually suppress tool calls (#1928). On providers that compose them
+/// (OpenAI, Anthropic), `Auto` keeps guaranteed native structured output.
+/// `Tool` (explicit or via `Auto`) requires that the active [`ToolChoice`]
+/// permit the output-tool call; when it does not, it degrades to `Native` so
+/// structured output is still enforced rather than silently dropped. Explicit
+/// `Prompted`/`Native` are honored when a schema is present. The returned mode is
+/// never `Auto`.
 fn resolve_output_mode(
     has_schema: bool,
     has_executable_tools: bool,
     output_tool_callable: bool,
+    provider_composes_native: bool,
     requested: &OutputMode,
 ) -> OutputMode {
     if !has_schema {
@@ -76,7 +80,11 @@ fn resolve_output_mode(
         OutputMode::Prompted => OutputMode::Prompted,
         OutputMode::Tool if output_tool_callable => OutputMode::Tool,
         OutputMode::Tool => OutputMode::Native,
-        OutputMode::Auto if has_executable_tools && output_tool_callable => OutputMode::Tool,
+        OutputMode::Auto
+            if has_executable_tools && output_tool_callable && !provider_composes_native =>
+        {
+            OutputMode::Tool
+        }
         OutputMode::Auto => OutputMode::Native,
     }
 }
@@ -265,21 +273,23 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
         tooldefs.iter().map(|tool| tool.name.clone()).collect();
 
     // Resolve the effective output mode (#1928). Once the run has committed to a
-    // Tool-mode output tool on an earlier turn, stay in Tool mode and reuse that
-    // name — so a later turn whose tool set differs (e.g. RAG retrieved no tools)
-    // can't flip to Native and re-apply the native constraint that suppressed
-    // tools in the first place. Otherwise resolve from the request, the schema,
-    // the tool set, and whether the tool choice permits the output-tool call.
+    // Tool-mode output tool on an earlier turn (signaled by `committed_output_
+    // tool`, which is persisted on the run via `output_tool_name`), stay in Tool
+    // mode and reuse that name — so a later turn whose tool set differs (e.g. RAG
+    // retrieved no tools) can't flip Tool -> Native and re-apply the native
+    // constraint that suppressed tools in the first place. Only Tool mode is
+    // pinned; Native/Prompted re-resolve, so a tool-less first turn can still
+    // become Tool once tools appear. Otherwise resolve from the request, the
+    // schema, the tool set, whether the tool choice permits the output-tool call,
+    // and whether the provider composes native structured output with tools.
     let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
-        // `output_schema` is the agent's and is invariant across a run, so a
-        // committed name always coincides with a schema; the `is_some` guard
-        // just keeps Tool mode from being forced without one.
         OutputMode::Tool
     } else {
         resolve_output_mode(
             output_schema.is_some(),
             !executable_tool_names.is_empty(),
             tool_choice_permits_output_tool(tool_choice),
+            model.composes_native_output_with_tools(),
             output_mode,
         )
     };
@@ -290,6 +300,20 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             .map(str::to_owned)
             .unwrap_or_else(|| pick_output_tool_name(&executable_tool_names))
     });
+
+    // A freshly picked name never collides, but a name pinned on turn 1 can if a
+    // real tool with that name is added mid-run (e.g. via dynamic/RAG tools).
+    // The output-tool intercept matches by name, so surface the conflict — a
+    // call to the real tool would otherwise finalize the run (see #1928, #3).
+    if let Some(name) = &output_tool_name
+        && executable_tool_names.contains(name)
+    {
+        tracing::warn!(
+            output_tool = %name,
+            "a real tool now shares the synthetic output-tool name; a call to it \
+             will finalize the run instead of being dispatched"
+        );
+    }
 
     // Augment the preamble for Tool/Prompted modes, then prepend it as a system
     // message (deferred from the original position so it can reference the tool).
@@ -800,12 +824,12 @@ mod tests {
             OutputMode::Prompted,
         ] {
             assert_eq!(
-                resolve_output_mode(false, true, true, &requested),
+                resolve_output_mode(false, true, true, false, &requested),
                 OutputMode::Native,
                 "no schema should force Native for {requested:?}"
             );
             assert_eq!(
-                resolve_output_mode(false, false, true, &requested),
+                resolve_output_mode(false, false, true, false, &requested),
                 OutputMode::Native,
             );
         }
@@ -813,15 +837,26 @@ mod tests {
 
     #[test]
     fn resolve_output_mode_auto_picks_tool_only_when_tools_present() {
-        // This is the #1928 fix: with tools, the schema must not be a native
-        // `format` constraint on every turn, so Auto routes to Tool.
+        // This is the #1928 fix: with tools on a provider that does NOT compose
+        // native output with tools, the schema must not be a native `format`
+        // constraint on every turn, so Auto routes to Tool.
         assert_eq!(
-            resolve_output_mode(true, true, true, &OutputMode::Auto),
+            resolve_output_mode(true, true, true, false, &OutputMode::Auto),
             OutputMode::Tool,
         );
         // No tools => native structured output is safe and preferred.
         assert_eq!(
-            resolve_output_mode(true, false, true, &OutputMode::Auto),
+            resolve_output_mode(true, false, true, false, &OutputMode::Auto),
+            OutputMode::Native,
+        );
+    }
+
+    #[test]
+    fn resolve_output_mode_auto_keeps_native_when_provider_composes() {
+        // On providers that compose native structured output with tools (OpenAI,
+        // Anthropic), Auto keeps guaranteed native output even with tools present.
+        assert_eq!(
+            resolve_output_mode(true, true, true, true, &OutputMode::Auto),
             OutputMode::Native,
         );
     }
@@ -833,9 +868,15 @@ mod tests {
             (OutputMode::Native, OutputMode::Native),
             (OutputMode::Prompted, OutputMode::Prompted),
         ] {
-            // Explicit modes are honored whether or not tools are present.
-            assert_eq!(resolve_output_mode(true, true, true, &requested), expected);
-            assert_eq!(resolve_output_mode(true, false, true, &requested), expected);
+            // Explicit modes are honored regardless of tools or provider support.
+            assert_eq!(
+                resolve_output_mode(true, true, true, false, &requested),
+                expected
+            );
+            assert_eq!(
+                resolve_output_mode(true, false, true, true, &requested),
+                expected
+            );
         }
     }
 
@@ -845,16 +886,16 @@ mod tests {
         // forbids it (None / Specific), structured output must still be enforced
         // via Native rather than silently dropped (#1928 regression guard).
         assert_eq!(
-            resolve_output_mode(true, true, false, &OutputMode::Auto),
+            resolve_output_mode(true, true, false, false, &OutputMode::Auto),
             OutputMode::Native,
         );
         assert_eq!(
-            resolve_output_mode(true, true, false, &OutputMode::Tool),
+            resolve_output_mode(true, true, false, false, &OutputMode::Tool),
             OutputMode::Native,
         );
         // Prompted does not rely on tools, so it is unaffected.
         assert_eq!(
-            resolve_output_mode(true, true, false, &OutputMode::Prompted),
+            resolve_output_mode(true, true, false, false, &OutputMode::Prompted),
             OutputMode::Prompted,
         );
     }

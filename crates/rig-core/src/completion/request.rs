@@ -523,6 +523,20 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
+
+    /// Whether this provider's native structured output (`output_schema` ->
+    /// `format`/`response_format`) composes with tool calls in the same
+    /// multi-turn request without suppressing them.
+    ///
+    /// Defaults to `false` (the safe assumption: the native constraint may make
+    /// the model emit schema JSON instead of calling its tools — see issue
+    /// #1928). Providers that enforce structured output *and* tool use together
+    /// (e.g. OpenAI, Anthropic) override this to `true`, which lets the agent's
+    /// [`OutputMode::Auto`](crate::agent::OutputMode::Auto) keep using guaranteed
+    /// native structured output even when the agent has tools.
+    fn composes_native_output_with_tools(&self) -> bool {
+        false
+    }
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.

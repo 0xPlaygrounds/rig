@@ -2402,6 +2402,13 @@ where
         Self::new(client.clone(), model.into())
     }
 
+    // Anthropic's native structured outputs (constrained decoding) are designed
+    // to compose with strict tool use, so the schema constraint does not suppress
+    // tool calls. See issue #1928.
+    fn composes_native_output_with_tools(&self) -> bool {
+        true
+    }
+
     async fn completion(
         &self,
         mut completion_request: completion::CompletionRequest,

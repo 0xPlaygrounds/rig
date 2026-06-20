@@ -4,7 +4,10 @@ pub mod streaming;
 use super::{
     Agent,
     completion::{DynamicContextStore, build_prepared_completion_request},
-    run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall},
+    run::{
+        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
+        PendingToolCall,
+    },
 };
 use crate::{
     OneOrMany,
@@ -557,7 +560,13 @@ where
 
         let mut run = AgentRun::new(self.prompt.clone())
             .max_turns(self.max_turns)
-            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries);
+            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries)
+            .with_output_validation(
+                self.output_schema
+                    .as_ref()
+                    .map(|schema| schema.as_value().clone()),
+                DEFAULT_OUTPUT_RETRIES,
+            );
         if let Some(history) = chat_history {
             run = run.with_history(history);
         }
@@ -620,6 +629,8 @@ where
 
                     // Pin Tool output mode once committed so later turns stay
                     // consistent even if the per-turn tool set changes (#1928).
+                    // The pin rides on `output_tool_name`, which is persisted on
+                    // the run, so it also survives a serialize/resume.
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let prepared_request = build_prepared_completion_request(
                         &self.model,
@@ -914,10 +925,12 @@ where
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.output_schema = Some(schema_for!(T));
-        // Typed prompts deserialize the model's final string; keep native
-        // structured output here so the typed API is unchanged (#1928). Use the
-        // untyped `output_schema`/`output_mode` API for tool-composing output.
-        inner.output_mode = OutputMode::Native;
+        // Typed prompts flow through the agent's `OutputMode` like untyped ones
+        // (#1928): with the default `Auto` and tools present, the schema is
+        // offered as the output tool on providers that need it (so tool calls
+        // aren't suppressed), and `send()` deserializes the output-tool JSON into
+        // `T`. Without tools (or on providers that compose native output), `Auto`
+        // resolves to native structured output, unchanged.
         Self {
             inner,
             _phantom: std::marker::PhantomData,
@@ -1011,6 +1024,28 @@ where
     }
 }
 
+/// Deserialize a typed structured response from the model's final text.
+///
+/// Tries a direct parse first (the common path — native and tool-call output is
+/// already clean JSON), then falls back to the first balanced JSON value in the
+/// text so prose or markdown code fences around the JSON don't break weaker
+/// `Prompted`/best-effort output (#1928).
+fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, serde_json::Error> {
+    let trimmed = text.trim();
+    match serde_json::from_str::<T>(trimmed) {
+        Ok(value) => Ok(value),
+        Err(direct_err) => {
+            let Some(start) = trimmed.find(['{', '[']) else {
+                return Err(direct_err);
+            };
+            serde_json::Deserializer::from_str(&trimmed[start..])
+                .into_iter::<T>()
+                .next()
+                .unwrap_or(Err(direct_err))
+        }
+    }
+}
+
 impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
@@ -1025,7 +1060,7 @@ where
             return Err(StructuredOutputError::EmptyResponse);
         }
 
-        let parsed: T = serde_json::from_str(&response)?;
+        let parsed: T = deserialize_structured_output(&response)?;
         Ok(parsed)
     }
 }
@@ -1044,7 +1079,7 @@ where
             return Err(StructuredOutputError::EmptyResponse);
         }
 
-        let parsed: T = serde_json::from_str(&response.output)?;
+        let parsed: T = deserialize_structured_output(&response.output)?;
         Ok(TypedPromptResponse::new(parsed, response.usage)
             .with_completion_calls(response.completion_calls))
     }
@@ -1121,6 +1156,31 @@ mod tests {
     #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
     struct TypedAnswer {
         value: String,
+    }
+
+    #[test]
+    fn deserialize_structured_output_tolerates_fences_and_prose() {
+        // Clean JSON (native / output-tool path).
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
+            TypedAnswer { value: "x".into() }
+        );
+        // Markdown-fenced JSON (weak Prompted-mode models).
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```")
+                .unwrap(),
+            TypedAnswer { value: "y".into() }
+        );
+        // Prose around the JSON object.
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>(
+                "Here you go: {\"value\":\"z\"} — hope that helps!"
+            )
+            .unwrap(),
+            TypedAnswer { value: "z".into() }
+        );
+        // No JSON at all still errors.
+        assert!(super::deserialize_structured_output::<TypedAnswer>("no json here").is_err());
     }
 
     #[derive(Clone)]
@@ -2131,9 +2191,16 @@ mod tests {
 
     #[tokio::test]
     async fn typed_prompt_invalid_tool_call_hook_can_repair_tool_name() {
+        // Typed + tools now flows through Tool output mode on a provider that does
+        // not compose native output with tools (#1928, #5), so the final answer
+        // arrives as the `final_result` output-tool call and is deserialized.
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
-            MockTurn::text(r#"{"value":"repaired"}"#),
+            MockTurn::tool_call(
+                "output_call_1",
+                "final_result",
+                json!({"value": "repaired"}),
+            ),
         ]);
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
@@ -2156,7 +2223,7 @@ mod tests {
     async fn typed_prompt_invalid_tool_call_hook_can_retry_and_parse_response() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
-            MockTurn::text(r#"{"value":"retried"}"#),
+            MockTurn::tool_call("output_call_1", "final_result", json!({"value": "retried"})),
         ]);
         let recorded = model.clone();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
