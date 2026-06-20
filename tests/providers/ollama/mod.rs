@@ -9,6 +9,7 @@ mod support;
 
 mod cassette {
     mod agent;
+    mod agentic;
     mod models;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
