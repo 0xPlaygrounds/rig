@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"format":{"properties":{"city":{"type":"string"},"summary":{"type":"string"}},"required":["city","summary"],"type":"object"},"messages":[{"content":"You are a weather assistant. Use the get_weather tool to look up weather, then answer.","role":"system"},{"content":"What is the current weather in Tokyo? Use the get_weather tool, then return the city and a one-sentence summary of the conditions.","role":"user"}],"model":"qwen3:4b","options":{"temperature":null},"stream":false,"think":true,"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"stop","eval_count":34,"eval_duration":422241878,"load_duration":57753292,"message":{"content":"{\n  \"city\": \"Tokyo\"\n  ,\n  \"summary\": \"The current weather in Tokyo is clear with a temperature of 22°C.\"\n}","role":"assistant","thinking":"Okay, the user is asking for the current weather in Tokyo. I need to use the get_weather tool for this. Let me check the tools provided. The function is called get_weather, and it requires the city name as a parameter.\n\nSo, the city here is Tokyo. I should call the function with city set to \"Tokyo\". The response should then give the city and a one-sentence summary. Wait, the user wants me to first use the tool, then return the answer. But since I can''t actually call the tool in this environment, I need to simulate the tool call.\n\nWait, the instructions say: \"Use the get_weather tool to look up weather, then answer.\" But in this case, as an assistant, I''m supposed to generate the tool call first. The user said to use the tool then return the answer. But in the context of this problem, I think I need to output the tool_call first.\n\nWait, the problem says: \"For each function call, return a json object with function name and arguments within tool_call XML tags.\" So the user wants me to generate the tool call for get_weather with city Tokyo.\n\nSo the correct response here is to create a tool_call with the function name \"get_weather\" and arguments {\"city\": \"Tokyo\"}.\n\nI don''t need to make up the actual weather data because the tool call is just to trigger the lookup. The user then expects the answer after the tool call, but in this case, since it''s a simulation, the assistant should first output the tool call.\n\nSo the answer here is the tool_call block with the specified JSON.\n"},"model":"qwen3:4b","prompt_eval_count":527,"prompt_eval_duration":610445667,"total_duration":6643617250}'

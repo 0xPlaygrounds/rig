@@ -52,6 +52,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
     },
     ProviderCassetteSuite {
+        provider: "ollama",
+        source_dir: "tests/providers/ollama/cassette",
+        wrapper_names: &["with_ollama_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "xai",
         source_dir: "tests/providers/xai",
         wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],
