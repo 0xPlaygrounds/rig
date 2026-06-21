@@ -427,11 +427,22 @@ where
                         }
                         Ok(response.try_into()?)
                     }
-                    ApiResponse::Err(error) => Err(CompletionError::ProviderError(error.message)),
+                    ApiResponse::Err(error) => {
+                        tracing::warn!(message = %error.message, "provider returned an error response");
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: String::from_utf8_lossy(&response_body).into_owned(),
+                            },
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        String::from_utf8_lossy(&response_body).to_string(),
+                    ),
                 ))
             }
         };

@@ -444,12 +444,8 @@ where
             Err(CompletionError::ResponseError(message))
                 if message == "Response contained no parts" =>
             {
-                responses_api::streaming::completion_response_from_sse_body(
-                    &text,
-                    raw_response,
-                    "ChatGPT",
-                )
-                .await
+                responses_api::streaming::completion_response_from_sse_body(&text, raw_response)
+                    .await
             }
             Err(error) => Err(error),
         }
@@ -590,7 +586,6 @@ where
         Ok(responses_api::streaming::stream_from_event_source(
             event_source,
             span,
-            "ChatGPT",
         ))
     }
 }
@@ -778,13 +773,10 @@ data: [DONE]"#;
 
         let raw_response = responses_api::streaming::parse_sse_completion_body(body, "ChatGPT")
             .expect("expected response");
-        let response = responses_api::streaming::completion_response_from_sse_body(
-            body,
-            raw_response,
-            "ChatGPT",
-        )
-        .await
-        .expect("fallback response");
+        let response =
+            responses_api::streaming::completion_response_from_sse_body(body, raw_response)
+                .await
+                .expect("fallback response");
 
         let text: String = response
             .choice

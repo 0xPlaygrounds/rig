@@ -1,7 +1,4 @@
-use super::{
-    client::{ApiErrorResponse, ApiResponse},
-    completion::Usage,
-};
+use super::{client::ApiResponse, completion::Usage};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
 use crate::{embeddings, http_client};
@@ -24,21 +21,6 @@ pub struct EmbeddingResponse {
     pub data: Vec<EmbeddingData>,
     pub model: String,
     pub usage: Usage,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -148,11 +130,12 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&body)?;
+        let status = response.status();
+        if status.is_success() {
+            let response_body: Vec<u8> = response.into_body().await?;
+            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
 
-            match body {
+            match parsed {
                 ApiResponse::Ok(response) => {
                     tracing::info!(target: "rig",
                         "OpenAI embedding token usage: {:?}",
@@ -195,11 +178,21 @@ where
 
                     Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
-                ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(EmbeddingError::ProviderResponse(
+                        crate::provider_response::ProviderResponseError {
+                            status: Some(status),
+                            body: String::from_utf8_lossy(&response_body).into_owned(),
+                        },
+                    ))
+                }
             }
         } else {
             let text = http_client::text(response).await?;
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::HttpError(
+                http_client::Error::InvalidStatusCodeWithMessage(status, text),
+            ))
         }
     }
 }
@@ -255,5 +248,71 @@ where
     pub fn user(mut self, user: impl Into<String>) -> Self {
         self.user = Some(user.into());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::EmbeddingsClient;
+    use crate::embeddings::EmbeddingModel as _;
+    use crate::providers::openai::CompletionsClient;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {
+        let body = r#"{"message":"embedding quota exceeded","type":"insufficient_quota"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("text-embedding-3-small");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with provider error envelope");
+
+        match &error {
+            EmbeddingError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
+                assert_eq!(error.provider_response_body(), Some(body));
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["type"], "insufficient_quota");
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn embedding_http_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"invalid api key","type":"invalid_request_error"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::UNAUTHORIZED, body);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model("text-embedding-3-small");
+
+        let error = model
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect_err("embedding should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

@@ -168,6 +168,7 @@ pub mod model;
 pub mod one_or_many;
 pub mod pipeline;
 pub mod prelude;
+pub(crate) mod provider_response;
 pub mod providers;
 pub mod rerank;
 
@@ -186,6 +187,7 @@ pub use completion::message;
 pub use embeddings::Embed;
 pub use extractor::ExtractionResponse;
 pub use one_or_many::{EmptyListError, OneOrMany};
+pub use provider_response::ProviderResponseError;
 pub use schemars;
 
 #[cfg(feature = "derive")]

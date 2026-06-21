@@ -232,12 +232,6 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
-
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
     type Error = CompletionError;
 
@@ -589,7 +583,8 @@ where
         async move {
             let response = self.client.send(req).await?;
 
-            if response.status().is_success() {
+            let status = response.status();
+            if status.is_success() {
                 let t = http_client::text(response).await?;
 
                 if enabled!(tracing::Level::TRACE) {
@@ -613,12 +608,22 @@ where
                         }
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::ProviderResponse(
+                            crate::provider_response::ProviderResponseError {
+                                status: Some(status),
+                                body: t,
+                            },
+                        ))
+                    }
                 }
             } else {
                 let text = http_client::text(response).await?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::HttpError(
+                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                ))
             }
         }
         .instrument(span)

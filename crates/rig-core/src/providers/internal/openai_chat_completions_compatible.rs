@@ -20,6 +20,23 @@ use crate::json_utils;
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::wasm_compat::WasmCompatSend;
 
+fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
+    let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
+    if value.get("error").is_none() || value.get("choices").is_some() {
+        return None;
+    }
+
+    if let Some(message) = value
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(serde_json::Value::as_str)
+    {
+        tracing::warn!(message, "provider returned a streaming error event");
+    }
+
+    Some(crate::provider_response::completion_error_from_body(data))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
     ToolCalls,
@@ -223,6 +240,12 @@ where
                         continue;
                     }
 
+                    if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
+                        terminated_with_error = true;
+                        yield Err(error);
+                        break;
+                    }
+
                     let chunk = match profile.normalize_chunk(&message.data) {
                         Ok(Some(chunk)) => chunk,
                         Ok(None) => continue,
@@ -339,7 +362,7 @@ where
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
                     terminated_with_error = true;
-                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
@@ -601,6 +624,8 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
     use super::{finalize_pending_tool_call, send_compatible_streaming_request};
+    use crate::completion::CompletionError;
+    use crate::http_client;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
@@ -769,6 +794,211 @@ mod tests {
             collected_tool_calls[1].function.arguments,
             serde_json::json!({"query":"two"})
         );
+    }
+
+    #[tokio::test]
+    async fn streaming_http_non_success_preserves_status_and_body() {
+        use crate::test_utils::HttpErrorStreamingClient;
+
+        let body = r#"{"error":{"type":"rate_limit","message":"slow down"}}"#;
+        let client = HttpErrorStreamingClient::new(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield transport error")
+            .expect_err("HTTP non-success should surface as a stream error");
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "HttpError: Invalid status code {} with message: {}",
+                http::StatusCode::TOO_MANY_REQUESTS,
+                body
+            )
+        );
+        assert_eq!(
+            err.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert_eq!(
+            err.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "type": "rate_limit",
+                    "message": "slow down"
+                }
+            }))
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after HTTP non-success"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_in_band_error_envelope_preserves_full_payload() {
+        use crate::providers::openai::send_compatible_streaming_request;
+        use crate::test_utils::MockStreamingClient;
+
+        let body = r#"{"error":{"message":"upstream unavailable","type":"server_error"}}"#;
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"partial\",\"tool_calls\":[]}}],\"usage\":null}",
+                body,
+            ]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield partial content")
+            .expect("partial content should be ok");
+        assert!(matches!(
+            first,
+            StreamedAssistantContent::Text(text) if text.text == "partial"
+        ));
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected in-band provider error after partial content"),
+            None => panic!("stream ended before in-band provider error"),
+        };
+        assert!(matches!(err, CompletionError::ProviderResponse(_)));
+        assert_eq!(err.provider_response_status(), None);
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after in-band provider error"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
+        use crate::providers::openai::send_compatible_streaming_request;
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        let body = r#"{"error":{"message":"upstream unavailable"}}"#;
+        let chunks = vec![
+            Ok(sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"partial\",\"tool_calls\":[]}}],\"usage\":null}",
+            ])),
+            Err(http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::BAD_GATEWAY,
+                body.to_string(),
+            )),
+        ];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let first = stream
+            .next()
+            .await
+            .expect("stream should yield partial content")
+            .expect("partial content should be ok");
+        assert!(matches!(
+            first,
+            StreamedAssistantContent::Text(text) if text.text == "partial"
+        ));
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected HTTP transport error after partial content"),
+            None => panic!("stream ended before HTTP transport error"),
+        };
+        assert_eq!(
+            err.provider_response_status(),
+            Some(http::StatusCode::BAD_GATEWAY)
+        );
+        assert_eq!(err.provider_response_body(), Some(body));
+        assert!(
+            stream.next().await.is_none(),
+            "stream should terminate after mid-stream HTTP non-success"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_http_non_success_json_parse_error_is_visible() {
+        use crate::test_utils::HttpErrorStreamingClient;
+
+        let client = HttpErrorStreamingClient::new(http::StatusCode::BAD_REQUEST, "not json");
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            _ => panic!("expected HTTP transport error"),
+        };
+        assert_eq!(err.provider_response_body(), Some("not json"));
+        assert!(err.provider_response_json().is_err());
+    }
+
+    #[tokio::test]
+    async fn streaming_non_http_transport_error_stays_provider_error() {
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        use crate::providers::openai::send_compatible_streaming_request;
+
+        let chunks = vec![Err(http_client::Error::InvalidContentType(
+            http::HeaderValue::from_static("application/json"),
+        ))];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+
+        let err = match stream.next().await {
+            Some(Err(err)) => err,
+            Some(Ok(_)) => panic!("expected non-HTTP transport error"),
+            None => panic!("stream ended before transport error"),
+        };
+        assert_eq!(
+            err.to_string(),
+            "ProviderError: Invalid content type was returned: \"application/json\""
+        );
+        assert!(matches!(err, CompletionError::ProviderError(_)));
+        // Rig-generated transport diagnostics are not provider response bodies.
+        assert_eq!(err.provider_response_body(), None);
+        assert_eq!(err.provider_response_status(), None);
     }
 
     #[tokio::test]
