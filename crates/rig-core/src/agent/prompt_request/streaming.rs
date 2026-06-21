@@ -220,6 +220,42 @@ fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
     span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 }
 
+/// Build the final streamed content for a finished run (#1928).
+///
+/// When the finishing turn carries a tool call it is a Tool-mode output-tool
+/// call (a real tool call would have routed to `CallTools`, not `Done`). In that
+/// case the tool call AND the model's prose are dropped, any reasoning/image
+/// content is kept, and `output` is appended as the final text — so the streamed
+/// `response()` is the structured output rather than the prose, with no
+/// unanswered tool_use, matching the non-streaming result. Otherwise returns
+/// `None` and the caller surfaces the turn's content unchanged.
+fn finalize_streamed_choice(
+    last_final_choice: &OneOrMany<AssistantContent>,
+    output: &str,
+) -> Option<OneOrMany<AssistantContent>> {
+    let finalized_via_output_tool = last_final_choice
+        .iter()
+        .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+    if !finalized_via_output_tool {
+        return None;
+    }
+    let mut items: Vec<AssistantContent> = last_final_choice
+        .iter()
+        .filter(|item| {
+            !matches!(
+                item,
+                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
+            )
+        })
+        .cloned()
+        .collect();
+    items.push(AssistantContent::text(output.to_string()));
+    Some(
+        OneOrMany::from_iter_optional(items)
+            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(output.to_string()))),
+    )
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
     #[error("CompletionError: {0}")]
@@ -1020,28 +1056,15 @@ where
                         }
                     }
                     AgentRunStep::Done(response) => {
-                        // Tool output mode (#1928) finalizes via the output-tool
-                        // call, so the final streamed turn carries the tool call
-                        // (not assistant text). Surface the run's output string as
-                        // the final content whenever the turn has no text but the
-                        // run produced output — covering both the Tool-mode tool
-                        // call and a genuinely empty turn. Any reasoning on the
-                        // turn is preserved (only the tool calls are dropped) so
-                        // `content()` stays consistent with the saved history.
-                        let final_choice = if assistant_text_from_choice(&last_final_choice)
-                            .is_empty()
-                            && !response.output.is_empty()
-                        {
-                            let mut items: Vec<AssistantContent> = last_final_choice
-                                .iter()
-                                .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
-                                .cloned()
-                                .collect();
-                            items.push(AssistantContent::text(response.output.clone()));
-                            OneOrMany::from_iter_optional(items).unwrap_or_else(|| {
-                                OneOrMany::one(AssistantContent::text(response.output.clone()))
-                            })
-                        } else {
+                        // Tool output mode (#1928): when the finishing turn made
+                        // the output-tool call, surface the run's structured
+                        // output as the final content (see `finalize_streamed_
+                        // choice`). Otherwise keep the turn's content as-is.
+                        let final_choice = finalize_streamed_choice(
+                            &last_final_choice,
+                            &response.output,
+                        )
+                        .unwrap_or_else(|| {
                             if is_empty_assistant_turn(&last_final_choice) {
                                 tracing::warn!(
                                     agent_name =
@@ -1051,7 +1074,7 @@ where
                                 );
                             }
                             last_final_choice.clone()
-                        };
+                        });
 
                         if created_agent_span {
                             let current_span = tracing::Span::current();
@@ -1177,6 +1200,52 @@ mod tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+    #[test]
+    fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
+        use crate::message::{ToolCall, ToolFunction};
+
+        let output_call = AssistantContent::ToolCall(ToolCall::new(
+            "c1".to_string(),
+            ToolFunction::new(
+                "final_result".to_string(),
+                serde_json::json!({"city": "Tokyo"}),
+            ),
+        ));
+
+        // Prose + output-tool call (#1928): the streamed response text must be
+        // the structured output, not the prose, with no orphan tool_use.
+        let with_prose = OneOrMany::many(vec![
+            AssistantContent::text("Sure, here is the weather:"),
+            output_call.clone(),
+        ])
+        .expect("two items");
+        let final_choice = finalize_streamed_choice(&with_prose, r#"{"city":"Tokyo"}"#)
+            .expect("a turn with the output-tool call is finalized via it");
+        assert_eq!(
+            assistant_text_from_choice(&final_choice),
+            r#"{"city":"Tokyo"}"#
+        );
+        assert!(
+            !final_choice
+                .iter()
+                .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+            "no unanswered tool_use should remain in the final content"
+        );
+
+        // Output-tool call only.
+        let only_call = OneOrMany::one(output_call);
+        let final_choice = finalize_streamed_choice(&only_call, r#"{"city":"Tokyo"}"#)
+            .expect("finalized via output tool");
+        assert_eq!(
+            assistant_text_from_choice(&final_choice),
+            r#"{"city":"Tokyo"}"#
+        );
+
+        // A plain-text finalize (no tool call) is left to the caller.
+        let text_only = OneOrMany::one(AssistantContent::text(r#"{"city":"Tokyo"}"#));
+        assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
+    }
 
     #[test]
     fn merge_reasoning_blocks_preserves_order_and_signatures() {
