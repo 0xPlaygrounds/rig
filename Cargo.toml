@@ -117,8 +117,10 @@ sqlx = "0.8.6"
 # AdaWorldAPI fork (kv-lance backend) instead of the crates.io 3.0.2 build.
 # rig-surrealdb is wired against our fork so the SurrealDB-on-Lance (kv-lance)
 # integration is the backend behind rig's SurrealDB vector store. The fork is
-# 3.1.0-alpha and exposes protocol-ws / kv-mem / kv-lance.
-surrealdb = { path = "../surrealdb/surrealdb" }
+# 3.1.0-alpha. Scoped to the minimum: default-features OFF, only protocol-ws +
+# rustls here; rig-surrealdb adds kv-mem + kv-lance. Heavy storage backends
+# (kv-rocksdb, kv-tikv, kv-surrealkv, kv-indxdb) are intentionally NOT enabled.
+surrealdb = { path = "../surrealdb/surrealdb", default-features = false, features = ["protocol-ws", "rustls"] }
 syn = "2.0.104"
 serenity = "0.12.4"
 term_size = "0.3.2"

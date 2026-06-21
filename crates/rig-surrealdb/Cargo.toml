@@ -9,7 +9,9 @@ license = "MIT"
 workspace = true
 
 [dependencies]
-surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem"] }
+# kv-lance = the AdaWorldAPI SurrealDB-on-Lance backend; kv-mem for tests/dev.
+# No kv-rocksdb / kv-tikv — keep the dep tree minimal.
+surrealdb = { workspace = true, features = ["protocol-ws", "kv-mem", "kv-lance"] }
 rig-core = { path = "../rig-core", version = "0.39.0", default-features = false, features = [
   "derive",
 ] }
