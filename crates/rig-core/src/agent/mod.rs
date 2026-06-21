@@ -123,4 +123,4 @@ pub use prompt_request::streaming::{
 pub use prompt_request::{
     CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
 };
-pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall};
+pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};

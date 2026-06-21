@@ -4,7 +4,10 @@ pub mod streaming;
 use super::{
     Agent,
     completion::{DynamicContextStore, build_prepared_completion_request},
-    run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall},
+    run::{
+        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode,
+        PendingToolCall,
+    },
 };
 use crate::{
     OneOrMany,
@@ -89,6 +92,7 @@ where
     concurrency: usize,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    output_mode: OutputMode,
     /// Optional conversation memory backend cloned from the agent.
     memory: Option<Arc<dyn ConversationMemory>>,
     /// Optional conversation id used for loading and saving memory.
@@ -121,6 +125,7 @@ where
             max_invalid_tool_call_retries: 0,
             concurrency: 1,
             output_schema: agent.output_schema.clone(),
+            output_mode: agent.output_mode.clone(),
             memory: agent.memory.clone(),
             conversation_id: agent.default_conversation_id.clone(),
         }
@@ -159,6 +164,7 @@ where
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             conversation_id: self.conversation_id,
         }
@@ -231,6 +237,7 @@ where
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             concurrency: self.concurrency,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             memory: self.memory,
             conversation_id: self.conversation_id,
         }
@@ -553,7 +560,13 @@ where
 
         let mut run = AgentRun::new(self.prompt.clone())
             .max_turns(self.max_turns)
-            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries);
+            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries)
+            .with_output_validation(
+                self.output_schema
+                    .as_ref()
+                    .map(|schema| schema.as_value().clone()),
+                DEFAULT_OUTPUT_RETRIES,
+            );
         if let Some(history) = chat_history {
             run = run.with_history(history);
         }
@@ -614,6 +627,11 @@ where
                         current_span_id.store(id.into_u64(), Ordering::SeqCst);
                     };
 
+                    // Pin Tool output mode once committed so later turns stay
+                    // consistent even if the per-turn tool set changes (#1928).
+                    // The pin rides on `output_tool_name`, which is persisted on
+                    // the run, so it also survives a serialize/resume.
+                    let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let prepared_request = build_prepared_completion_request(
                         &self.model,
                         prompt.clone(),
@@ -627,6 +645,8 @@ where
                         &self.tool_server_handle,
                         &self.dynamic_context,
                         self.output_schema.as_ref(),
+                        &self.output_mode,
+                        committed_output_tool.as_deref(),
                     )
                     .await?;
 
@@ -635,6 +655,8 @@ where
                         .send()
                         .instrument(chat_span.clone())
                         .await?;
+
+                    run.set_output_tool_name(prepared_request.output_tool_name.clone());
 
                     let mut outcome = run.model_response(ModelTurn::new(
                         resp.message_id.clone(),
@@ -903,6 +925,13 @@ where
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.output_schema = Some(schema_for!(T));
+        // Typed prompts deserialize the model's final string, so they pin
+        // `Native` structured output to keep the typed API's behavior unchanged
+        // across all providers (#1928). Routing the typed path through `Tool`
+        // output mode for tool-using agents on non-composing providers is a
+        // follow-up; use the untyped `output_schema`/`output_mode` API for
+        // tool-composing structured output today.
+        inner.output_mode = OutputMode::Native;
         Self {
             inner,
             _phantom: std::marker::PhantomData,
@@ -996,6 +1025,28 @@ where
     }
 }
 
+/// Deserialize a typed structured response from the model's final text.
+///
+/// Tries a direct parse first (the common path — native and tool-call output is
+/// already clean JSON), then falls back to the first balanced JSON value in the
+/// text so prose or markdown code fences around the JSON don't break weaker
+/// `Prompted`/best-effort output (#1928).
+fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, serde_json::Error> {
+    let trimmed = text.trim();
+    match serde_json::from_str::<T>(trimmed) {
+        Ok(value) => Ok(value),
+        Err(direct_err) => {
+            let Some(start) = trimmed.find(['{', '[']) else {
+                return Err(direct_err);
+            };
+            serde_json::Deserializer::from_str(&trimmed[start..])
+                .into_iter::<T>()
+                .next()
+                .unwrap_or(Err(direct_err))
+        }
+    }
+}
+
 impl<T, M, P> TypedPromptRequest<T, Standard, M, P>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
@@ -1010,7 +1061,7 @@ where
             return Err(StructuredOutputError::EmptyResponse);
         }
 
-        let parsed: T = serde_json::from_str(&response)?;
+        let parsed: T = deserialize_structured_output(&response)?;
         Ok(parsed)
     }
 }
@@ -1029,7 +1080,7 @@ where
             return Err(StructuredOutputError::EmptyResponse);
         }
 
-        let parsed: T = serde_json::from_str(&response.output)?;
+        let parsed: T = deserialize_structured_output(&response.output)?;
         Ok(TypedPromptResponse::new(parsed, response.usage)
             .with_completion_calls(response.completion_calls))
     }
@@ -1106,6 +1157,31 @@ mod tests {
     #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
     struct TypedAnswer {
         value: String,
+    }
+
+    #[test]
+    fn deserialize_structured_output_tolerates_fences_and_prose() {
+        // Clean JSON (native / output-tool path).
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
+            TypedAnswer { value: "x".into() }
+        );
+        // Markdown-fenced JSON (weak Prompted-mode models).
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```")
+                .unwrap(),
+            TypedAnswer { value: "y".into() }
+        );
+        // Prose around the JSON object.
+        assert_eq!(
+            super::deserialize_structured_output::<TypedAnswer>(
+                "Here you go: {\"value\":\"z\"} — hope that helps!"
+            )
+            .unwrap(),
+            TypedAnswer { value: "z".into() }
+        );
+        // No JSON at all still errors.
+        assert!(super::deserialize_structured_output::<TypedAnswer>("no json here").is_err());
     }
 
     #[derive(Clone)]

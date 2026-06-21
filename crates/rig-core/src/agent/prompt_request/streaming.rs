@@ -7,7 +7,7 @@ use crate::{
         is_empty_assistant_turn, tool_result_user_content,
     },
     agent::run::{
-        AgentRun, AgentRunStep,
+        AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, OutputMode,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     completion::{Document, GetTokenUsage},
@@ -220,6 +220,42 @@ fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
     span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 }
 
+/// Build the final streamed content for a finished run (#1928).
+///
+/// When the finishing turn carries a tool call it is a Tool-mode output-tool
+/// call (a real tool call would have routed to `CallTools`, not `Done`). In that
+/// case the tool call AND the model's prose are dropped, any reasoning/image
+/// content is kept, and `output` is appended as the final text — so the streamed
+/// `response()` is the structured output rather than the prose, with no
+/// unanswered tool_use, matching the non-streaming result. Otherwise returns
+/// `None` and the caller surfaces the turn's content unchanged.
+fn finalize_streamed_choice(
+    last_final_choice: &OneOrMany<AssistantContent>,
+    output: &str,
+) -> Option<OneOrMany<AssistantContent>> {
+    let finalized_via_output_tool = last_final_choice
+        .iter()
+        .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+    if !finalized_via_output_tool {
+        return None;
+    }
+    let mut items: Vec<AssistantContent> = last_final_choice
+        .iter()
+        .filter(|item| {
+            !matches!(
+                item,
+                AssistantContent::ToolCall(_) | AssistantContent::Text(_)
+            )
+        })
+        .cloned()
+        .collect();
+    items.push(AssistantContent::text(output.to_string()));
+    Some(
+        OneOrMany::from_iter_optional(items)
+            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(output.to_string()))),
+    )
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
     #[error("CompletionError: {0}")]
@@ -284,6 +320,7 @@ where
     tool_choice: Option<ToolChoice>,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
+    output_mode: OutputMode,
     /// Optional per-request hook for events
     hook: Option<P>,
     /// Maximum number of invalid tool-call retries for this request.
@@ -318,6 +355,7 @@ where
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
+            output_mode: agent.output_mode.clone(),
             hook: None,
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
@@ -348,6 +386,7 @@ where
             dynamic_context: agent.dynamic_context.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
+            output_mode: agent.output_mode.clone(),
             hook: agent.hook.clone(),
             max_invalid_tool_call_retries: 0,
             memory: agent.memory.clone(),
@@ -408,6 +447,7 @@ where
             dynamic_context: self.dynamic_context,
             tool_choice: self.tool_choice,
             output_schema: self.output_schema,
+            output_mode: self.output_mode,
             hook: Some(hook),
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
             memory: self.memory,
@@ -481,6 +521,7 @@ where
         let tool_choice = self.tool_choice.clone();
         let agent_name = self.agent_name.clone();
         let output_schema = self.output_schema;
+        let output_mode = self.output_mode.clone();
         // When the caller passes explicit history, memory is fully bypassed for
         // this request (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history; if either is
@@ -504,7 +545,13 @@ where
 
         let mut run = AgentRun::new(prompt.clone())
             .max_turns(self.max_turns)
-            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries);
+            .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries)
+            .with_output_validation(
+                output_schema
+                    .as_ref()
+                    .map(|schema| schema.as_value().clone()),
+                DEFAULT_OUTPUT_RETRIES,
+            );
         if let Some(history) = chat_history {
             run = run.with_history(history);
         }
@@ -574,6 +621,11 @@ where
                             gen_ai.output.messages = tracing::field::Empty,
                         );
 
+                        // Pin Tool output mode once committed so later turns stay
+                        // consistent even if the per-turn tool set changes (#1928).
+                        // The pin rides on `output_tool_name`, which is persisted
+                        // on the run, so it also survives a serialize/resume.
+                        let committed_output_tool = run.output_tool_name().map(str::to_owned);
                         let prepared_request = build_prepared_completion_request(
                             &model,
                             current_prompt.clone(),
@@ -587,8 +639,12 @@ where
                             &tool_server_handle,
                             &dynamic_context,
                             output_schema.as_ref(),
+                            &output_mode,
+                            committed_output_tool.as_deref(),
                         )
                         .await?;
+
+                        run.set_output_tool_name(prepared_request.output_tool_name.clone());
 
                         let mut stream = prepared_request
                             .builder
@@ -1000,13 +1056,25 @@ where
                         }
                     }
                     AgentRunStep::Done(response) => {
-                        if is_empty_assistant_turn(&last_final_choice) {
-                            tracing::warn!(
-                                agent_name = agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
-                                message_id = ?last_message_id,
-                                "Streaming turn completed without assistant text; final response will be empty"
-                            );
-                        }
+                        // Tool output mode (#1928): when the finishing turn made
+                        // the output-tool call, surface the run's structured
+                        // output as the final content (see `finalize_streamed_
+                        // choice`). Otherwise keep the turn's content as-is.
+                        let final_choice = finalize_streamed_choice(
+                            &last_final_choice,
+                            &response.output,
+                        )
+                        .unwrap_or_else(|| {
+                            if is_empty_assistant_turn(&last_final_choice) {
+                                tracing::warn!(
+                                    agent_name =
+                                        agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME),
+                                    message_id = ?last_message_id,
+                                    "Streaming turn completed without assistant text; final response will be empty"
+                                );
+                            }
+                            last_final_choice.clone()
+                        });
 
                         if created_agent_span {
                             let current_span = tracing::Span::current();
@@ -1030,7 +1098,7 @@ where
                             None
                         };
                         yield Ok(MultiTurnStreamItem::final_response_with_completion_calls(
-                            last_final_choice.clone(),
+                            final_choice,
                             response.usage,
                             response.completion_calls.clone(),
                             final_messages,
@@ -1132,6 +1200,52 @@ mod tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
+
+    #[test]
+    fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
+        use crate::message::{ToolCall, ToolFunction};
+
+        let output_call = AssistantContent::ToolCall(ToolCall::new(
+            "c1".to_string(),
+            ToolFunction::new(
+                "final_result".to_string(),
+                serde_json::json!({"city": "Tokyo"}),
+            ),
+        ));
+
+        // Prose + output-tool call (#1928): the streamed response text must be
+        // the structured output, not the prose, with no orphan tool_use.
+        let with_prose = OneOrMany::many(vec![
+            AssistantContent::text("Sure, here is the weather:"),
+            output_call.clone(),
+        ])
+        .expect("two items");
+        let final_choice = finalize_streamed_choice(&with_prose, r#"{"city":"Tokyo"}"#)
+            .expect("a turn with the output-tool call is finalized via it");
+        assert_eq!(
+            assistant_text_from_choice(&final_choice),
+            r#"{"city":"Tokyo"}"#
+        );
+        assert!(
+            !final_choice
+                .iter()
+                .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+            "no unanswered tool_use should remain in the final content"
+        );
+
+        // Output-tool call only.
+        let only_call = OneOrMany::one(output_call);
+        let final_choice = finalize_streamed_choice(&only_call, r#"{"city":"Tokyo"}"#)
+            .expect("finalized via output tool");
+        assert_eq!(
+            assistant_text_from_choice(&final_choice),
+            r#"{"city":"Tokyo"}"#
+        );
+
+        // A plain-text finalize (no tool call) is left to the caller.
+        let text_only = OneOrMany::one(AssistantContent::text(r#"{"city":"Tokyo"}"#));
+        assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
+    }
 
     #[test]
     fn merge_reasoning_blocks_preserves_order_and_signatures() {

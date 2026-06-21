@@ -53,7 +53,10 @@
 //! # }
 //! ```
 
+pub mod output_mode;
 pub mod streamed;
+
+pub use output_mode::OutputMode;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -76,6 +79,11 @@ pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
     StreamedTurnAssembler, StreamedTurnEvent,
 };
+
+/// Default number of times Tool output mode re-prompts the model for valid
+/// structured output before finalizing best-effort (see #1928). Mirrors
+/// pydantic-ai's default output-retry budget of 1.
+pub(crate) const DEFAULT_OUTPUT_RETRIES: usize = 1;
 
 /// What a driver must do next to advance an [`AgentRun`].
 ///
@@ -247,6 +255,22 @@ pub struct AgentRun {
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
     tool_choice: Option<ToolChoice>,
+    /// Name of the synthetic output tool when the agent uses Tool output mode
+    /// (see #1928). A model turn calling this tool finalizes the run with the
+    /// call's arguments as the response, instead of executing it as a tool.
+    #[serde(default)]
+    output_tool_name: Option<String>,
+    /// JSON schema the Tool-mode output must satisfy, used to re-prompt on
+    /// missing required fields before finalizing best-effort (#1928).
+    #[serde(default)]
+    output_schema: Option<serde_json::Value>,
+    /// Budget for re-prompting the model in Tool output mode when it finalizes
+    /// without calling the output tool, or calls it with arguments missing
+    /// required fields. Exhausting it finalizes best-effort.
+    #[serde(default)]
+    max_output_retries: usize,
+    #[serde(default)]
+    output_retries: usize,
     chat_history: Option<Vec<Message>>,
     new_messages: Vec<Message>,
     current_turn: usize,
@@ -274,6 +298,10 @@ impl AgentRun {
             max_turns: 0,
             max_invalid_tool_call_retries: 0,
             tool_choice: None,
+            output_tool_name: None,
+            output_schema: None,
+            max_output_retries: 0,
+            output_retries: 0,
             chat_history: None,
             new_messages: vec![prompt.into()],
             current_turn: 0,
@@ -300,6 +328,69 @@ impl AgentRun {
         self
     }
 
+    /// Configure Tool output-mode validation (#1928): the JSON schema the
+    /// output-tool arguments should satisfy, and how many times to re-prompt the
+    /// model — when it finalizes without calling the output tool, or calls it
+    /// with arguments missing required fields — before finalizing best-effort.
+    pub fn with_output_validation(
+        mut self,
+        output_schema: Option<serde_json::Value>,
+        max_output_retries: usize,
+    ) -> Self {
+        self.output_schema = output_schema;
+        self.max_output_retries = max_output_retries;
+        self
+    }
+
+    /// Top-level `required` schema fields absent from the output-tool arguments.
+    /// A lightweight structural check (not full JSON Schema validation): empty
+    /// when there is no schema, no `required` array, or every required field is
+    /// present. Non-object arguments (e.g. `null`) count every required field as
+    /// missing.
+    fn missing_required_output_fields(&self, args: &serde_json::Value) -> Vec<String> {
+        let Some(required) = self
+            .output_schema
+            .as_ref()
+            .and_then(|schema| schema.get("required"))
+            .and_then(|required| required.as_array())
+        else {
+            return Vec::new();
+        };
+        let object = args.as_object();
+        required
+            .iter()
+            .filter_map(|field| field.as_str())
+            .filter(|field| object.is_none_or(|object| !object.contains_key(*field)))
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// Whether `text` already parses as a JSON object satisfying the output
+    /// schema's required fields — i.e. it is acceptable structured output even
+    /// though the model returned it as plain text instead of an output-tool call.
+    fn text_satisfies_output_schema(&self, text: &str) -> bool {
+        serde_json::from_str::<serde_json::Value>(text.trim())
+            .ok()
+            .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
+    }
+
+    /// Whether the run may re-prompt for valid Tool-mode output: budget remains
+    /// AND a retry turn would not immediately exceed [`AgentRun::max_turns`]
+    /// (otherwise we finalize best-effort rather than surface a max-turns error).
+    fn can_reprompt_for_output(&self) -> bool {
+        self.output_retries < self.max_output_retries && self.current_turn <= self.max_turns + 1
+    }
+
+    /// Roll the run back to re-prompt for valid output (#1928). The caller must
+    /// have already appended the assistant turn and the corrective feedback
+    /// message to the history. Consumes one output-retry, then emits the retry
+    /// [`AgentRunStep::CallModel`].
+    fn reprompt_for_output(&mut self) -> Result<AgentRunStep, PromptError> {
+        self.output_retries += 1;
+        self.state = RunState::PreparingRequest;
+        self.next_step()
+    }
+
     /// Set the retry budget for [`InvalidToolCallHookAction::Retry`]
     /// resolutions. Invalid tool-call retries also consume multi-turn depth.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
@@ -313,6 +404,33 @@ impl AgentRun {
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self
+    }
+
+    /// Set the synthetic output-tool name for Tool output mode (see #1928).
+    /// When a model turn calls this tool, the run finalizes with the call's
+    /// arguments (serialized JSON) as the response.
+    pub fn with_output_tool_name(mut self, name: impl Into<String>) -> Self {
+        self.output_tool_name = Some(name.into());
+        self
+    }
+
+    /// Set (or clear) the output-tool name in place. The driver resolves the
+    /// name from the prepared request inside the run loop, where the agent's
+    /// tool set (and thus the resolved output mode) is known.
+    pub(crate) fn set_output_tool_name(&mut self, name: Option<String>) {
+        // The name is committed once and pinned for the whole run, so the
+        // request the driver builds each turn stays consistent with the
+        // intercept (and a tool set that shifts mid-run cannot flip the mode).
+        if self.output_tool_name.is_none() {
+            self.output_tool_name = name;
+        }
+    }
+
+    /// The synthetic output-tool name committed for this run, if any. The driver
+    /// passes this back when preparing later turns so Tool output mode stays
+    /// pinned even if the per-turn tool set changes (see #1928).
+    pub(crate) fn output_tool_name(&self) -> Option<&str> {
+        self.output_tool_name.as_deref()
     }
 
     /// Aggregated token usage across all completed model calls so far.
@@ -449,6 +567,70 @@ impl AgentRun {
                     ));
                 };
 
+                // Tool output mode (#1928): a call to the synthetic output tool
+                // finalizes the run with the call's arguments as the response,
+                // instead of executing it as a tool. First match wins; any
+                // sibling tool calls in the same turn are dropped.
+                if has_tool_calls
+                    && let Some(output_tool_name) = self.output_tool_name.clone()
+                    && let Some(tool_call) = items.iter().find_map(|item| match item {
+                        AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
+                            Some(tc)
+                        }
+                        _ => None,
+                    })
+                {
+                    let args = tool_call.function.arguments.clone();
+                    let tool_call_id = tool_call.id.clone();
+                    let output = json_utils::value_to_json_string(&args);
+
+                    // Validate the output against the schema's required fields and
+                    // re-prompt while budget remains, so a model that omits fields
+                    // gets a chance to fix it before we finalize best-effort.
+                    let missing = self.missing_required_output_fields(&args);
+                    if !missing.is_empty() && self.can_reprompt_for_output() {
+                        self.new_messages.push(Message::Assistant {
+                            id: message_id,
+                            content: choice.clone(),
+                        });
+                        let feedback = format!(
+                            "The `{output_tool_name}` arguments were missing required field(s): \
+                             {}. Call `{output_tool_name}` again with every required field.",
+                            missing.join(", ")
+                        );
+                        if let Some(user_message) =
+                            invalid_tool_retry_user_message(&choice, &tool_call_id, feedback)
+                        {
+                            self.new_messages.push(user_message);
+                        }
+                        return self.reprompt_for_output();
+                    }
+
+                    // Finalize. The turn is persisted as the assistant's final
+                    // *text* (keeping any reasoning, dropping every tool call)
+                    // rather than the raw output-tool call. Otherwise the saved
+                    // history would carry an unanswered tool_use, which providers
+                    // reject when the conversation is replayed on a later turn.
+                    let mut final_items: Vec<AssistantContent> = items
+                        .iter()
+                        .filter(|item| !matches!(item, AssistantContent::ToolCall(_)))
+                        .cloned()
+                        .collect();
+                    final_items.push(AssistantContent::text(output.clone()));
+                    if let Some(content) = OneOrMany::from_iter_optional(final_items) {
+                        self.new_messages.push(Message::Assistant {
+                            id: message_id,
+                            content,
+                        });
+                    }
+
+                    let response = PromptResponse::new(output, self.usage)
+                        .with_messages(self.new_messages.clone())
+                        .with_completion_calls(self.completion_calls.clone());
+                    self.state = RunState::Done(Box::new(response.clone()));
+                    return Ok(AgentRunStep::Done(response));
+                }
+
                 if !is_empty_assistant_turn(&choice) {
                     self.new_messages.push(Message::Assistant {
                         id: message_id,
@@ -457,6 +639,11 @@ impl AgentRun {
                 }
 
                 if has_tool_calls {
+                    // The model is making progress with real tools, so reset the
+                    // output-retry budget: it is per finalization attempt, not a
+                    // single per-run allowance an early stray turn could burn
+                    // before the model genuinely needs to produce output (#1928).
+                    self.output_retries = 0;
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .filter_map(|item| match item {
@@ -480,6 +667,29 @@ impl AgentRun {
                     self.state = RunState::ExecutingTools(calls.clone());
                     Ok(AgentRunStep::CallTools { calls })
                 } else {
+                    // Tool output mode (#1928): the model produced a final text
+                    // answer without calling the output tool. Re-prompt while
+                    // budget remains so it returns structured output; the
+                    // assistant text was already appended above, so just add the
+                    // corrective feedback. Empty turns finalize best-effort.
+                    //
+                    // But if the text already *is* valid output (parses as JSON
+                    // with every required field), accept it rather than wasting a
+                    // turn — the model answered correctly, just via the wrong
+                    // channel.
+                    if let Some(output_tool_name) = self.output_tool_name.clone()
+                        && !is_empty_assistant_turn(&choice)
+                        && self.can_reprompt_for_output()
+                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&choice))
+                    {
+                        let feedback = format!(
+                            "Provide your final answer by calling the `{output_tool_name}` tool \
+                             with the structured result as its arguments, not as plain text."
+                        );
+                        self.new_messages.push(Message::user(feedback));
+                        return self.reprompt_for_output();
+                    }
+
                     let response =
                         PromptResponse::new(assistant_text_from_choice(&choice), self.usage)
                             .with_messages(self.new_messages.clone())
@@ -1723,6 +1933,250 @@ mod tests {
             restored_context.chat_history.len(),
             context.chat_history.len()
         );
+    }
+
+    /// A turn calling `name`, advertising it as an allowed-but-not-executable
+    /// tool (the shape Tool output mode produces — see #1928).
+    fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
+        ModelTurn::new(
+            None,
+            OneOrMany::one(tool_call(id, name)),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add", name]),
+        )
+    }
+
+    /// Every assistant tool call in `messages` must have a matching user tool
+    /// result — an unanswered tool_use is rejected by providers on replay.
+    fn assert_no_orphan_tool_use(messages: &[Message]) {
+        let mut answered = BTreeSet::new();
+        for message in messages {
+            if let Message::User { content } = message {
+                for item in content.iter() {
+                    if let UserContent::ToolResult(result) = item {
+                        answered.insert(result.id.clone());
+                    }
+                }
+            }
+        }
+        for message in messages {
+            if let Message::Assistant { content, .. } = message {
+                for item in content.iter() {
+                    if let AssistantContent::ToolCall(call) = item {
+                        assert!(
+                            answered.contains(&call.id),
+                            "assistant tool_call {:?} has no matching tool_result in history",
+                            call.id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn output_tool_call_finalizes_run_with_arguments() {
+        let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(output_tool_turn("call_1", "final_result"))
+                .expect("model_response should succeed"),
+        );
+
+        // The output tool is not executed; its arguments become the run output.
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, r#"{"x":1}"#);
+        assert!(run.is_done());
+
+        // The finalizing turn is persisted as assistant text, not as the raw
+        // output-tool call, so the saved history has no dangling tool_use.
+        let messages = response.messages.expect("messages should be recorded");
+        assert_no_orphan_tool_use(&messages);
+        assert!(matches!(
+            messages.last(),
+            Some(Message::Assistant { content, .. })
+                if assistant_text_from_choice(content) == r#"{"x":1}"#
+        ));
+    }
+
+    #[test]
+    fn output_tool_call_wins_over_sibling_real_tool_calls() {
+        let mut run = AgentRun::new("do it")
+            .max_turns(2)
+            .with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        // The model emits a real tool call *and* the output tool in one turn;
+        // the output-tool intercept wins and the real call is never executed.
+        let turn = ModelTurn::new(
+            None,
+            OneOrMany::many(vec![
+                tool_call("call_1", "add"),
+                tool_call("call_2", "final_result"),
+            ])
+            .expect("two items"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add", "final_result"]),
+        );
+        expect_continue(
+            run.model_response(turn)
+                .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, r#"{"x":1}"#);
+        assert!(run.is_done());
+
+        // Both the sibling `add` call and the output-tool call are dropped from
+        // the persisted assistant message, leaving no unanswered tool_use.
+        let messages = response.messages.expect("messages should be recorded");
+        assert_no_orphan_tool_use(&messages);
+        assert!(
+            messages.iter().all(|message| match message {
+                Message::Assistant { content, .. } => !content
+                    .iter()
+                    .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+                _ => true,
+            }),
+            "no assistant tool calls should survive in the finalized history"
+        );
+    }
+
+    #[test]
+    fn real_tool_calls_still_execute_when_output_tool_unused() {
+        // With an output tool configured but only real tools called, the run
+        // proceeds to tool execution as normal (the intercept must not fire).
+        let mut run = AgentRun::new("add things")
+            .max_turns(2)
+            .with_output_tool_name("final_result");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].tool_call.function.name, "add");
+    }
+
+    fn required_field_schema(field: &str) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "required": [field],
+            "properties": { field: { "type": "string" } },
+        })
+    }
+
+    #[test]
+    fn tool_mode_reprompts_when_output_tool_not_called() {
+        // #1928: in Tool mode the model finalized with plain text instead of
+        // calling the output tool, so the run re-prompts (within budget).
+        let mut run = AgentRun::new("summarize")
+            .max_turns(3)
+            .with_output_tool_name("final_result")
+            .with_output_validation(Some(required_field_schema("summary")), 1);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("here is the answer"))
+                .expect("model_response should succeed"),
+        );
+
+        // Instead of finalizing, the run emits a second CallModel with corrective
+        // feedback naming the output tool.
+        let (prompt, _history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 2);
+        let prompt_json = serde_json::to_string(&prompt).expect("prompt should serialize");
+        assert!(
+            prompt_json.contains("final_result"),
+            "re-prompt feedback should name the output tool: {prompt_json}"
+        );
+        assert!(!run.is_done());
+    }
+
+    #[test]
+    fn tool_mode_reprompts_when_output_args_missing_required_fields() {
+        // #1928: the output tool was called but its arguments omit a required
+        // field, so the run re-prompts rather than finalizing invalid output.
+        let mut run = AgentRun::new("summarize")
+            .max_turns(3)
+            .with_output_tool_name("final_result")
+            // `output_tool_turn` calls with args {"x":1}; require a different key.
+            .with_output_validation(Some(required_field_schema("summary")), 1);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(output_tool_turn("call_1", "final_result"))
+                .expect("model_response should succeed"),
+        );
+
+        let (_prompt, _history, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 2);
+        assert!(!run.is_done());
+    }
+
+    #[test]
+    fn tool_mode_accepts_valid_json_text_without_reprompting() {
+        // The model returned valid structured output as plain text instead of an
+        // output-tool call — accept it rather than wasting a turn re-prompting.
+        let mut run = AgentRun::new("summarize")
+            .max_turns(3)
+            .with_output_tool_name("final_result")
+            .with_output_validation(Some(required_field_schema("summary")), 1);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn(r#"{"summary":"all good"}"#))
+                .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, r#"{"summary":"all good"}"#);
+        assert!(run.is_done());
+    }
+
+    #[test]
+    fn tool_mode_finalizes_best_effort_when_output_retry_budget_exhausted() {
+        // With no retry budget, invalid output finalizes best-effort (the caller
+        // validates) rather than looping — and history stays free of orphan
+        // tool_use.
+        let mut run = AgentRun::new("summarize")
+            .max_turns(3)
+            .with_output_tool_name("final_result")
+            .with_output_validation(Some(required_field_schema("summary")), 0);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(output_tool_turn("call_1", "final_result"))
+                .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        assert_eq!(response.output, r#"{"x":1}"#);
+        let messages = response.messages.expect("messages should be recorded");
+        assert_no_orphan_tool_use(&messages);
+    }
+
+    #[test]
+    fn set_output_tool_name_is_idempotent_and_only_fills_when_unset() {
+        // A pre-set name (e.g. via `with_output_tool_name`) is never overwritten,
+        // keeping a resumed run deterministic.
+        let mut run = AgentRun::new("x").with_output_tool_name("first");
+        run.set_output_tool_name(Some("second".to_string()));
+        run.set_output_tool_name(None);
+        assert_eq!(run.output_tool_name.as_deref(), Some("first"));
+
+        // When unset, the first non-None value fills it.
+        let mut run = AgentRun::new("x");
+        run.set_output_tool_name(None);
+        assert_eq!(run.output_tool_name, None);
+        run.set_output_tool_name(Some("filled".to_string()));
+        assert_eq!(run.output_tool_name.as_deref(), Some("filled"));
     }
 
     impl ModelTurn {

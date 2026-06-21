@@ -1404,6 +1404,17 @@ where
         Self::new(client.clone(), model)
     }
 
+    // OpenAI Chat Completions *defers* `response_format` while tools are present
+    // and no tool result exists yet (see `should_apply_response_format`), then
+    // applies it once a tool result is in the history. So the native constraint
+    // does not suppress tool calls — they compose — which is what this flag
+    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
+    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
+    // See issue #1928.
+    fn composes_native_output_with_tools(&self) -> bool {
+        true
+    }
+
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
