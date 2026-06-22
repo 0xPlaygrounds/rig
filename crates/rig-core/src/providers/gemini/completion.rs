@@ -1340,6 +1340,7 @@ pub mod gemini_api_types {
         pub cached_content_token_count: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub candidates_token_count: Option<i32>,
+        #[serde(default)]
         pub total_token_count: i32,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thoughts_token_count: Option<i32>,
@@ -2172,6 +2173,16 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_usage_metadata_deserializes_without_total_token_count() {
+        // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
+        // so `totalTokenCount` is absent on short/empty/blocked generations.
+        let usage: UsageMetadata =
+            serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
+        assert_eq!(usage.total_token_count, 0);
+        assert_eq!(usage.prompt_token_count, 12);
+    }
 
     #[test]
     fn test_resolve_request_model_uses_override() {

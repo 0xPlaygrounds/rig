@@ -21,6 +21,7 @@ use crate::telemetry::SpanCombinator;
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PartialUsage {
+    #[serde(default)]
     pub total_token_count: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_content_token_count: Option<i32>,
@@ -710,6 +711,16 @@ mod tests {
         assert_eq!(token_usage.output_tokens, 30);
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.total_tokens, 50);
+    }
+
+    #[test]
+    fn test_partial_usage_deserializes_without_total_token_count() {
+        // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
+        // so `totalTokenCount` is absent on short/empty/blocked generations.
+        let usage: PartialUsage =
+            serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
+        assert_eq!(usage.total_token_count, 0);
+        assert_eq!(usage.prompt_token_count, 12);
     }
 
     #[test]
