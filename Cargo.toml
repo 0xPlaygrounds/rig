@@ -51,6 +51,9 @@ version = "0.39.0"
 edition = "2024"
 
 [workspace.dependencies]
+# The `rig` facade is the workspace-root package; examples depend on it via
+# `rig.workspace = true` (add per-example features at the use site).
+rig = { path = ".", version = "0.39.0" }
 anyhow = "1.0.102"
 arrow-array = "58"
 as-any = "0.3.2"

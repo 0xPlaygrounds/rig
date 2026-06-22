@@ -8,6 +8,6 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { path = "../..", version = "0.39.0" }
+rig.workspace = true
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

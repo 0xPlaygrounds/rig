@@ -8,6 +8,6 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { path = "../..", version = "0.39.0", features = ["discord-bot"] }
+rig = { workspace = true, features = ["discord-bot"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

@@ -8,7 +8,7 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { path = "../..", version = "0.39.0", features = ["derive"] }
+rig = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 futures = { workspace = true }
 schemars = { workspace = true }

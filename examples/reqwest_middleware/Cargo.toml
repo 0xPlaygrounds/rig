@@ -8,7 +8,7 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { path = "../..", version = "0.39.0", features = ["reqwest-middleware"] }
+rig = { workspace = true, features = ["reqwest-middleware"] }
 anyhow = { workspace = true }
 reqwest-middleware = { workspace = true, features = ["json", "multipart", "charset", "http2", "rustls"] }
 reqwest-retry = { workspace = true }
