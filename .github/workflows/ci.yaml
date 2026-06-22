@@ -109,6 +109,31 @@ jobs:
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
           PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
 
+  # `cargo nextest` (used by the `test` job) does NOT run doctests, and the
+  # `doc` job only builds documentation — so without this job nothing executes
+  # the `///` code examples and a broken doctest can sail through CI.
+  doctest:
+    name: stable / doctest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      # Required to compile rig-lancedb
+      - name: Install Protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      # No API keys needed: the doctests that actually execute are pure (the
+      # provider examples are all `no_run`/compile-only), so this job stays
+      # hermetic and non-flaky.
+      - name: Run doctests
+        run: cargo test --doc --workspace --all-features
+
   doc:
     name: stable / doc
     runs-on: ubuntu-latest
