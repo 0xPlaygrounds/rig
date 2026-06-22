@@ -361,7 +361,7 @@ where
     H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().auth.auth_context().await.map(|_| ())
+        self.ext().auth.auth_context(self).await.map(|_| ())
     }
 }
 
@@ -761,7 +761,7 @@ where
         self.client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(&self.client)
             .await
             .map_err(|err| CompletionError::ProviderError(err.to_string()))
     }
@@ -1313,7 +1313,7 @@ where
             .client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(&self.client)
             .await
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
@@ -1460,11 +1460,15 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let auth = self.client.ext().auth.auth_context().await.map_err(|err| {
-            ModelListingError::AuthError {
+        let auth = self
+            .client
+            .ext()
+            .auth
+            .auth_context(&self.client)
+            .await
+            .map_err(|err| ModelListingError::AuthError {
                 message: err.to_string(),
-            }
-        })?;
+            })?;
 
         let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let req = apply_headers(

@@ -1,20 +1,22 @@
 //! Anthropic completion api implementation
 
 use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
+use crate::providers::anthropic::{auth, streaming::StreamingCompletionResponse};
 use crate::{
     OneOrMany,
     client::Provider,
     completion::{self, CompletionError, GetTokenUsage},
-    http_client::HttpClientExt,
+    http_client::{self, HttpClientExt},
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
     telemetry::{ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
 use bytes::Bytes;
+use http::{HeaderMap, HeaderValue, header::AUTHORIZATION};
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, str::FromStr};
+use serde_json::{Value, json};
+use std::{collections::HashMap, convert::Infallible, str::FromStr, sync::Arc};
 use tracing::{Instrument, Level, enabled, info_span};
 
 // ================================================================
@@ -38,11 +40,45 @@ pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
+pub(crate) const CLAUDE_CODE_IDENTITY: &str =
+    "You are Claude Code, Anthropic's official CLI for Claude.";
+pub(crate) const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
+pub(crate) const OAUTH_BETA: &str = "oauth-2025-04-20";
+pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.75";
+
+const CLAUDE_CODE_TOOLS: &[&str] = &[
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Grep",
+    "Glob",
+    "AskUserQuestion",
+    "EnterPlanMode",
+    "ExitPlanMode",
+    "KillShell",
+    "NotebookEdit",
+    "Skill",
+    "Task",
+    "TaskOutput",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+];
+
 pub trait AnthropicCompatibleProvider: Provider {
     const PROVIDER_NAME: &'static str;
 
+    fn authenticator(&self) -> Option<&auth::Authenticator> {
+        None
+    }
+
     fn default_max_tokens(model: &str) -> Option<u64> {
         let _ = model;
+        None
+    }
+
+    fn oauth_request_hook(&self) -> Option<&OAuthRequestHook> {
         None
     }
 }
@@ -50,8 +86,16 @@ pub trait AnthropicCompatibleProvider: Provider {
 impl AnthropicCompatibleProvider for super::client::AnthropicExt {
     const PROVIDER_NAME: &'static str = "anthropic";
 
+    fn authenticator(&self) -> Option<&auth::Authenticator> {
+        Some(&self.authenticator)
+    }
+
     fn default_max_tokens(model: &str) -> Option<u64> {
         default_max_tokens_for_model(model)
+    }
+
+    fn oauth_request_hook(&self) -> Option<&OAuthRequestHook> {
+        self.oauth_request_hook.as_ref()
     }
 }
 
@@ -64,6 +108,177 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
+}
+
+fn to_claude_code_name(name: &str) -> &str {
+    CLAUDE_CODE_TOOLS
+        .iter()
+        .copied()
+        .find(|tool| tool.eq_ignore_ascii_case(name))
+        .unwrap_or(name)
+}
+
+pub type ToolNameMap = HashMap<String, String>;
+
+/// Function trait for customizing Anthropic OAuth requests before they are sent.
+pub trait OAuthRequestHookFn:
+    Fn(&mut Value, &mut HeaderMap, &str) -> ToolNameMap + WasmCompatSend + WasmCompatSync
+{
+}
+
+impl<T> OAuthRequestHookFn for T where
+    T: Fn(&mut Value, &mut HeaderMap, &str) -> ToolNameMap + WasmCompatSend + WasmCompatSync
+{
+}
+
+/// Hook for customizing Anthropic OAuth requests before they are sent.
+pub type OAuthRequestHook = Arc<dyn OAuthRequestHookFn>;
+
+fn canonical_tool_name(name: &str) -> String {
+    to_claude_code_name(name).to_string()
+}
+
+fn canonicalize_tool_names(value: &mut Value) -> ToolNameMap {
+    let mut advertised_tools = Vec::new();
+
+    if let Some(tools) = value.get_mut("tools").and_then(Value::as_array_mut) {
+        for tool in tools {
+            if let Some(name) = tool.get("name").and_then(Value::as_str) {
+                let canonical = canonical_tool_name(name);
+                advertised_tools.push((name.to_string(), canonical.clone()));
+                tool["name"] = Value::String(canonical);
+            }
+        }
+    }
+
+    let mut name_map = ToolNameMap::default();
+    for (original, canonical) in &advertised_tools {
+        let canonical_was_registered = advertised_tools
+            .iter()
+            .any(|(registered, _)| registered == canonical);
+        if original != canonical && !canonical_was_registered {
+            name_map
+                .entry(canonical.clone())
+                .or_insert_with(|| original.clone());
+        }
+    }
+
+    if let Some(tool_choice) = value.get_mut("tool_choice")
+        && let Some(name) = tool_choice.get("name").and_then(Value::as_str)
+    {
+        tool_choice["name"] = Value::String(canonical_tool_name(name));
+    }
+
+    if let Some(messages) = value.get_mut("messages").and_then(Value::as_array_mut) {
+        for message in messages {
+            if let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) {
+                for block in content {
+                    if block.get("type").and_then(Value::as_str) == Some("tool_use")
+                        && let Some(name) = block.get("name").and_then(Value::as_str)
+                    {
+                        block["name"] = Value::String(canonical_tool_name(name));
+                    }
+                }
+            }
+        }
+    }
+
+    name_map
+}
+
+pub(crate) fn original_tool_name(name: &str, tool_name_map: &ToolNameMap) -> String {
+    tool_name_map
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| name.to_string())
+}
+
+fn restore_response_tool_names(response: &mut CompletionResponse, tool_name_map: &ToolNameMap) {
+    for content in &mut response.content {
+        if let Content::ToolUse { name, .. } = content
+            && let Some(original) = tool_name_map.get(name.as_str())
+        {
+            *name = original.clone();
+        }
+    }
+}
+
+fn apply_oauth_fingerprint(
+    value: &mut Value,
+    headers: &mut HeaderMap,
+    access_token: &str,
+) -> ToolNameMap {
+    if let Ok(value) = HeaderValue::from_str(&format!("Bearer {access_token}")) {
+        headers.insert(AUTHORIZATION, value);
+    }
+    let mut betas = vec![CLAUDE_CODE_BETA.to_string(), OAUTH_BETA.to_string()];
+    if let Some(configured) = headers
+        .get("anthropic-beta")
+        .and_then(|value| value.to_str().ok())
+    {
+        betas.extend(
+            configured
+                .split(',')
+                .map(str::trim)
+                .filter(|beta| !beta.is_empty())
+                .map(String::from),
+        );
+    }
+    if let Ok(value) = HeaderValue::from_str(&betas.join(",")) {
+        headers.insert("anthropic-beta", value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&format!("claude-cli/{CLAUDE_CODE_VERSION}")) {
+        headers.insert("user-agent", value);
+    }
+    headers.insert("x-app", HeaderValue::from_static("cli"));
+    headers.insert(
+        "anthropic-dangerous-direct-browser-access",
+        HeaderValue::from_static("true"),
+    );
+
+    let identity = json!({ "type": "text", "text": CLAUDE_CODE_IDENTITY });
+    match value.get_mut("system") {
+        Some(Value::Array(system)) => system.insert(0, identity),
+        Some(Value::String(system)) => {
+            let caller = std::mem::take(system);
+            value["system"] = json!([identity, { "type": "text", "text": caller }]);
+        }
+        _ => value["system"] = json!([identity]),
+    }
+
+    canonicalize_tool_names(value)
+}
+
+pub(crate) async fn prepare_anthropic_request<Ext, H>(
+    ext: &Ext,
+    http_client: &H,
+    value: &mut Value,
+    headers: &mut HeaderMap,
+) -> Result<ToolNameMap, CompletionError>
+where
+    Ext: AnthropicCompatibleProvider,
+    H: HttpClientExt,
+{
+    let Some(authenticator) = ext.authenticator() else {
+        return Ok(ToolNameMap::default());
+    };
+    let auth_context = authenticator
+        .auth_context(http_client)
+        .await
+        .map_err(|err| CompletionError::RequestError(err.into()))?;
+    if matches!(auth_context.source, auth::AuthSource::OAuth) {
+        // The baked fingerprint always runs first; an optional consumer hook then
+        // transforms the already-fingerprinted payload, layering on top rather than
+        // replacing it. Hook-provided tool renames win on key collisions.
+        let mut tool_name_map = apply_oauth_fingerprint(value, headers, &auth_context.access_token);
+        if let Some(hook) = ext.oauth_request_hook() {
+            let hook_map = hook(value, headers, &auth_context.access_token);
+            tool_name_map.extend(hook_map);
+        }
+        Ok(tool_name_map)
+    } else {
+        Ok(ToolNameMap::default())
+    }
 }
 
 impl ProviderResponseExt for CompletionResponse {
@@ -2464,12 +2679,32 @@ where
         }
 
         async move {
-            let request: Vec<u8> = serde_json::to_vec(&request)?;
-
-            let req = self
+            let mut req = self.client.post("/v1/messages")?;
+            let mut request_body = Vec::new();
+            let tool_name_map = if self
                 .client
-                .post("/v1/messages")?
-                .body(request)
+                .ext()
+                .authenticator()
+                .is_some_and(auth::Authenticator::is_oauth)
+            {
+                let mut body = serde_json::to_value(&request)?;
+                let tool_name_map = prepare_anthropic_request(
+                    self.client.ext(),
+                    &self.client,
+                    &mut body,
+                    req.headers_mut()
+                        .ok_or_else(|| CompletionError::HttpError(http_client::Error::NoHeaders))?,
+                )
+                .await?;
+                serde_json::to_writer(&mut request_body, &body)?;
+                tool_name_map
+            } else {
+                serde_json::to_writer(&mut request_body, &request)?;
+                ToolNameMap::default()
+            };
+
+            let req = req
+                .body(request_body)
                 .map_err(|e| CompletionError::HttpError(e.into()))?;
 
             let response = self
@@ -2487,7 +2722,8 @@ where
                         .to_vec()
                         .as_slice(),
                 )? {
-                    ApiResponse::Message(completion) => {
+                    ApiResponse::Message(mut completion) => {
+                        restore_response_tool_names(&mut completion, &tool_name_map);
                         let span = tracing::Span::current();
                         span.record_response_metadata(&completion);
                         span.record_token_usage(&completion.usage);
@@ -5688,6 +5924,179 @@ mod tests {
         assert_eq!(title.as_deref(), Some("Doc1"));
         assert_eq!(context.as_deref(), Some("ctx"));
         assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+    }
+
+    #[test]
+    fn oauth_fingerprint_adds_headers_identity_and_canonical_tool_names() {
+        let mut body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [{ "type": "tool_use", "id": "1", "name": "bash", "input": {} }]
+            }],
+            "system": [{ "type": "text", "text": "caller" }],
+            "tools": [{ "name": "grep", "description": "search", "input_schema": { "type": "object" } }]
+        });
+        let mut headers = HeaderMap::new();
+        headers.insert("anthropic-beta", HeaderValue::from_static("custom-beta"));
+
+        let tool_name_map = apply_oauth_fingerprint(&mut body, &mut headers, "token");
+
+        assert_eq!(
+            headers
+                .get(AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer token")
+        );
+        assert_eq!(
+            headers
+                .get("anthropic-beta")
+                .and_then(|value| value.to_str().ok()),
+            Some("claude-code-20250219,oauth-2025-04-20,custom-beta")
+        );
+        assert_eq!(
+            headers
+                .get("user-agent")
+                .and_then(|value| value.to_str().ok()),
+            Some("claude-cli/2.1.75")
+        );
+        assert_eq!(body["system"][0]["text"], CLAUDE_CODE_IDENTITY);
+        assert_eq!(body["system"][1]["text"], "caller");
+        assert_eq!(body["tools"][0]["name"], "Grep");
+        assert_eq!(body["messages"][0]["content"][0]["name"], "Bash");
+        assert_eq!(tool_name_map.get("Grep"), Some(&"grep".to_string()));
+    }
+
+    #[test]
+    fn oauth_tool_name_map_restores_response_tool_calls() {
+        let mut body = json!({
+            "tools": [{ "name": "bash", "description": "shell", "input_schema": { "type": "object" } }]
+        });
+        let mut headers = HeaderMap::new();
+        let tool_name_map = apply_oauth_fingerprint(&mut body, &mut headers, "token");
+        let mut response = CompletionResponse {
+            content: vec![Content::ToolUse {
+                id: "toolu_1".into(),
+                name: "Bash".into(),
+                input: json!({}),
+            }],
+            id: "msg_1".into(),
+            model: "claude".into(),
+            role: "assistant".into(),
+            stop_reason: Some("tool_use".into()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
+            },
+        };
+
+        restore_response_tool_names(&mut response, &tool_name_map);
+
+        assert_eq!(
+            response.content[0],
+            Content::ToolUse {
+                id: "toolu_1".into(),
+                name: "bash".into(),
+                input: json!({}),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn custom_oauth_request_hook_is_used_and_tool_name_map_round_trips() {
+        struct TempAuthFile(std::path::PathBuf);
+
+        impl Drop for TempAuthFile {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let auth_file = TempAuthFile(std::env::temp_dir().join(format!(
+            "rig-anthropic-oauth-hook-{}-{}.json",
+            std::process::id(),
+            now.as_nanos()
+        )));
+        let expires = now.as_secs() as i64 + 3600;
+        std::fs::write(
+            &auth_file.0,
+            serde_json::to_vec(&json!({
+                "access": "token",
+                "refresh": "refresh",
+                "expires": expires
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let client = crate::providers::anthropic::Client::builder()
+            .oauth()
+            .auth_file(&auth_file.0)
+            .on_oauth_request(|body, _headers, _token| {
+                body["hook_used"] = Value::Bool(true);
+                ToolNameMap::from([("Custom".to_string(), "custom".to_string())])
+            })
+            .build()
+            .unwrap();
+        let mut body = json!({});
+        let mut headers = HeaderMap::new();
+
+        let tool_name_map =
+            prepare_anthropic_request(client.ext(), &client, &mut body, &mut headers)
+                .await
+                .unwrap();
+        let mut response = CompletionResponse {
+            content: vec![Content::ToolUse {
+                id: "toolu_1".into(),
+                name: "Custom".into(),
+                input: json!({}),
+            }],
+            id: "msg_1".into(),
+            model: "claude".into(),
+            role: "assistant".into(),
+            stop_reason: Some("tool_use".into()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
+            },
+        };
+
+        restore_response_tool_names(&mut response, &tool_name_map);
+
+        // §2.3: the baked fingerprint runs first, then the consumer hook layers on top.
+        // Both must reach the wire.
+        assert_eq!(body["hook_used"], true);
+        assert_eq!(
+            headers
+                .get(AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer token"),
+            "fingerprint Bearer auth must survive alongside the hook"
+        );
+        assert!(
+            headers.contains_key("anthropic-beta"),
+            "fingerprint betas must survive alongside the hook"
+        );
+        assert_eq!(
+            body["system"][0]["text"], CLAUDE_CODE_IDENTITY,
+            "fingerprint identity block must survive alongside the hook"
+        );
+        assert_eq!(
+            response.content[0],
+            Content::ToolUse {
+                id: "toolu_1".into(),
+                name: "custom".into(),
+                input: json!({}),
+            }
+        );
     }
 
     #[test]

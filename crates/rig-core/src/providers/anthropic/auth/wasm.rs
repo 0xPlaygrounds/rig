@@ -1,16 +1,17 @@
-//! WASM ChatGPT auth implementation.
+//! Wasm Anthropic OAuth placeholder.
 
-use super::{AuthContext, AuthError, DeviceCodeHandler};
+use super::{AuthContext, AuthError, ManualCodeHandler, OAuthPromptHandler};
 use crate::http_client::HttpClientExt;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(super) struct PlatformAuthenticator;
 
 impl PlatformAuthenticator {
     pub(super) fn new(
         _auth_file: Option<PathBuf>,
-        _device_code_handler: DeviceCodeHandler,
+        _oauth_prompt_handler: OAuthPromptHandler,
+        _manual_code_handler: ManualCodeHandler,
     ) -> Self {
         Self
     }
@@ -23,7 +24,7 @@ impl PlatformAuthenticator {
         H: HttpClientExt,
     {
         Err(AuthError::Message(
-            "ChatGPT OAuth is not supported on wasm targets".into(),
+            "Anthropic OAuth is not supported on wasm targets".into(),
         ))
     }
 }
