@@ -1,0 +1,15 @@
+[package]
+name = "sentiment_classifier"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig = { path = "../..", version = "0.39.0" }
+anyhow = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
