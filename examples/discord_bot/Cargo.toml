@@ -1,0 +1,13 @@
+[package]
+name = "discord_bot"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig = { workspace = true, features = ["discord-bot"] }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
