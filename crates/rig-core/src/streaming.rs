@@ -159,7 +159,7 @@ impl RawStreamingToolCall {
     pub fn empty() -> Self {
         Self {
             id: String::new(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             call_id: None,
             name: String::new(),
             arguments: serde_json::Value::Null,
@@ -172,7 +172,7 @@ impl RawStreamingToolCall {
     pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
         Self {
             id,
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             call_id: None,
             name,
             arguments,

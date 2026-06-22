@@ -181,7 +181,7 @@ impl CompletionModel {
                     aws_bedrock::ConverseStreamOutput::ContentBlockStart(event) => {
                         match event.start.ok_or(CompletionError::ProviderError("ContentBlockStart has no data".into()))? {
                             aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
-                                let internal_call_id = nanoid::nanoid!();
+                                let internal_call_id = rig_core::id::generate();
                                 current_tool_call = Some(ToolCallState {
                                     name: tool_use.name.clone(),
                                     id: tool_use.tool_use_id.clone(),
@@ -449,7 +449,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "my_tool".to_string(),
             id: "tool_123".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: rig_core::id::generate(),
             input_json: String::new(),
         };
 
@@ -467,7 +467,7 @@ mod tests {
         let state = ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_abc".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: rig_core::id::generate(),
             input_json: String::new(),
         };
 
@@ -481,7 +481,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "get_weather".to_string(),
             id: "call_123".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: rig_core::id::generate(),
             input_json: String::new(),
         };
 
@@ -495,7 +495,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "search".to_string(),
             id: "call_xyz".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: rig_core::id::generate(),
             input_json: String::new(),
         };
 
@@ -514,7 +514,7 @@ mod tests {
         let mut state = ToolCallState {
             name: "analyze_data".to_string(),
             id: "call_456".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: rig_core::id::generate(),
             input_json: String::new(),
         };
 

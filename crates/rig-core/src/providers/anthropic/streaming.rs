@@ -508,7 +508,7 @@ fn handle_event(
                 })),
             })),
             Content::ToolUse { id, name, .. } => {
-                let internal_call_id = nanoid::nanoid!();
+                let internal_call_id = crate::id::generate();
                 *current_tool_call = Some(ToolCallState {
                     name: name.clone(),
                     id: id.clone(),
@@ -993,7 +993,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
@@ -1026,7 +1026,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
@@ -1063,7 +1063,7 @@ mod tests {
         let mut tool_call_state = Some(ToolCallState {
             name: "test_tool".to_string(),
             id: "tool_123".to_string(),
-            internal_call_id: nanoid::nanoid!(),
+            internal_call_id: crate::id::generate(),
             input_json: String::new(),
         });
         let mut thinking_state = None;
