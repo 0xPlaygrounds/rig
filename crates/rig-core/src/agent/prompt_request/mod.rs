@@ -737,7 +737,7 @@ where
                                 let tool_name = &tool_call.function.name;
                                 let args =
                                     json_utils::value_to_json_string(&tool_call.function.arguments);
-                                let internal_call_id = nanoid::nanoid!();
+                                let internal_call_id = crate::id::generate();
                                 if let Some(result) = preresolved_result {
                                     return Ok(result);
                                 }

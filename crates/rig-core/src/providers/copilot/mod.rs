@@ -382,7 +382,7 @@ fn default_headers(
         ("user-agent", USER_AGENT.to_string()),
         ("openai-intent", intent.as_header().to_string()),
         ("x-github-api-version", API_VERSION.to_string()),
-        ("x-request-id", nanoid::nanoid!()),
+        ("x-request-id", crate::id::generate()),
         (
             "x-vscode-user-agent-library-version",
             "electron-fetch".to_string(),
@@ -1071,7 +1071,7 @@ where
                                         if let StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } = message {
                                             let internal_call_id = tool_call_internal_ids
                                                 .entry(func.id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .or_insert_with(crate::id::generate)
                                                 .clone();
                                             yield Ok(RawStreamingChoice::ToolCallDelta {
                                                 id: func.id.clone(),
@@ -1084,7 +1084,7 @@ where
                                         StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } => {
                                             let internal_id = tool_call_internal_ids
                                                 .entry(func.id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .or_insert_with(crate::id::generate)
                                                 .clone();
                                             let raw_tool_call = streaming::RawStreamingToolCall::new(
                                                 func.id.clone(),
@@ -1130,7 +1130,7 @@ where
                                         if let Some(item_id) = chunk.item_id.as_ref() {
                                             let internal_call_id = tool_call_internal_ids
                                                 .entry(item_id.clone())
-                                                .or_insert_with(|| nanoid::nanoid!())
+                                                .or_insert_with(crate::id::generate)
                                                 .clone();
                                             yield Ok(RawStreamingChoice::ToolCallDelta {
                                                 id: item_id.clone(),

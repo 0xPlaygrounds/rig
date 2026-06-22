@@ -930,7 +930,7 @@ where
                             }
                             let internal_call_id = pending
                                 .internal_call_id
-                                .unwrap_or_else(|| nanoid::nanoid!());
+                                .unwrap_or_else(crate::id::generate);
 
                             let tool_span = info_span!(
                                 parent: tracing::Span::current(),

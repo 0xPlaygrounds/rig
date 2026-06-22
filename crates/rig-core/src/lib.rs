@@ -156,6 +156,7 @@ pub mod embeddings;
 pub mod evals;
 pub mod extractor;
 pub mod http_client;
+pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;

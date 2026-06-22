@@ -237,7 +237,7 @@ impl RawChoiceAccumulator {
                 let internal_call_id = self
                     .tool_call_internal_ids
                     .entry(func.id.clone())
-                    .or_insert_with(|| nanoid::nanoid!())
+                    .or_insert_with(crate::id::generate)
                     .clone();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                     id: func.id,
@@ -269,7 +269,7 @@ impl RawChoiceAccumulator {
                     let internal_call_id = self
                         .tool_call_internal_ids
                         .entry(item_id.clone())
-                        .or_insert_with(|| nanoid::nanoid!())
+                        .or_insert_with(crate::id::generate)
                         .clone();
                     immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: item_id,
@@ -315,7 +315,7 @@ impl RawChoiceAccumulator {
                 let internal_call_id = self
                     .tool_call_internal_ids
                     .entry(func.id.clone())
-                    .or_insert_with(|| nanoid::nanoid!())
+                    .or_insert_with(crate::id::generate)
                     .clone();
                 let tool_call =
                     streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
@@ -419,7 +419,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     let internal_call_id = accumulator
                         .tool_call_internal_ids
                         .entry(func.id.clone())
-                        .or_insert_with(|| nanoid::nanoid!())
+                        .or_insert_with(crate::id::generate)
                         .clone();
                     raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: func.id,
@@ -445,7 +445,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     let internal_call_id = accumulator
                         .tool_call_internal_ids
                         .entry(item_id.to_owned())
-                        .or_insert_with(|| nanoid::nanoid!())
+                        .or_insert_with(crate::id::generate)
                         .clone();
                     raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: item_id.to_owned(),

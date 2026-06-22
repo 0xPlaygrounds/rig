@@ -47,8 +47,6 @@ http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 serenity = { workspace = true, optional = true }
 fastrand = { workspace = true }
-nanoid = { workspace = true }
-getrandom = { workspace = true, optional = true }
 eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
@@ -127,9 +125,7 @@ pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 wasm = [
-  "dep:getrandom",
   "dep:wasm-bindgen-futures",
-  "getrandom/js",
 ]
 rmcp = ["dep:rmcp"]
 socks = ["reqwest/socks"]
