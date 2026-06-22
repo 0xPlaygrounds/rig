@@ -9,8 +9,7 @@
 
 /// The URL-safe alphabet used by `nanoid` (`A-Za-z0-9_-`), preserved so the
 /// shape of generated IDs is unchanged from the previous implementation.
-const ALPHABET: &[u8; 64] =
-    b"_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const ALPHABET: &[u8; 64] = b"_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /// Default ID length, matching `nanoid`'s default.
 const DEFAULT_LEN: usize = 21;
