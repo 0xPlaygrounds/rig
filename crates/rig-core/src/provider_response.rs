@@ -1,4 +1,12 @@
 //! Shared logic for inspecting provider error response bodies across capability errors.
+//!
+//! HTTP providers route their error responses through `from_http_response` (see
+//! [`CompletionError::from_http_response`](crate::completion::CompletionError::from_http_response))
+//! so callers can recover the raw status and body. Non-HTTP transports — AWS SDK (`rig-bedrock`), gRPC
+//! (`rig-vertexai`, `rig-gemini-grpc`), and local inference (`rig-fastembed`) —
+//! have no HTTP response to preserve, so the `provider_response_*` helpers
+//! deliberately return `None` for their failures (status `None` is correct
+//! there rather than a synthetic status).
 use http::StatusCode;
 
 /// A raw error response preserved from a provider.

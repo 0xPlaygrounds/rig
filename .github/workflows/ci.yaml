@@ -50,7 +50,7 @@ jobs:
             exit 1
           fi
 
-      # Guard migrated providers against re-flattening an HTTP failure into a
+      # Guard every in-core provider against re-flattening an HTTP failure into a
       # capability error's `ProviderError(String)`. The `provider_response_*`
       # inspection helpers (#1859) can only recover a status + body from the
       # `ProviderResponse` / `HttpError(InvalidStatusCodeWithMessage)` variants,
@@ -60,17 +60,17 @@ jobs:
       #
       # `perl -0777` slurps each whole file so the check is MULTI-LINE aware (the
       # canonical flatten spans several lines: `ProviderError(format!(\n "..",\n
-      # status, body))`). It is scoped to providers already migrated through the
-      # funnel; add a directory here as each remaining provider migrates (#1931).
-      # New, not-yet-migrated providers rely on the structural funnel + review.
-      - name: Check migrated providers don't flatten HTTP errors into ProviderError
+      # status, body))`). Companion crates (rig-bedrock/rig-vertexai/rig-gemini-grpc/
+      # rig-fastembed) are intentionally excluded: they use AWS SDK / gRPC / local
+      # inference, have no HTTP status to preserve, and the helpers correctly
+      # return None for them.
+      - name: Check providers don't flatten HTTP errors into ProviderError
         run: |
           hits=$(perl -0777 -ne '
             print "$ARGV\n" if /(Completion|Embedding|ImageGeneration|AudioGeneration|Transcription|Verify|Rerank)Error::ProviderError\(\s*format!\([^;]*?\bstatus\b/s;
-          ' $(find crates/rig-core/src/providers/anthropic \
-                   crates/rig-core/src/providers/gemini -name '*.rs'))
+          ' $(find crates/rig-core/src/providers -name '*.rs'))
           if [ -n "$hits" ]; then
-            echo "::error::A migrated provider flattened an HTTP status into ProviderError(format!(...)): ${hits}. Route the raw status + body through <Capability>Error::from_http_response(status, body) so the provider_response_* helpers can recover them (see crates/rig-core/src/provider_response.rs)."
+            echo "::error::A provider flattened an HTTP status into ProviderError(format!(...)): ${hits}. Route the raw status + body through <Capability>Error::from_http_response(status, body) so the provider_response_* helpers can recover them (see crates/rig-core/src/provider_response.rs)."
             exit 1
           fi
 
