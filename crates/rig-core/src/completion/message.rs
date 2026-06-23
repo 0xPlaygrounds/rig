@@ -744,6 +744,33 @@ impl UserContent {
         })
     }
 
+    /// Helper constructor to make creating user video content easier.
+    pub fn video(data: impl Into<String>, media_type: Option<VideoMediaType>) -> Self {
+        UserContent::Video(Video {
+            data: DocumentSourceKind::Base64(data.into()),
+            media_type,
+            additional_params: None,
+        })
+    }
+
+    /// Helper constructor to make creating user video content from raw unencoded bytes easier.
+    pub fn video_raw(data: impl Into<Vec<u8>>, media_type: Option<VideoMediaType>) -> Self {
+        UserContent::Video(Video {
+            data: DocumentSourceKind::Raw(data.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
+    /// Helper to create a video resource from a URL
+    pub fn video_url(url: impl Into<String>, media_type: Option<VideoMediaType>) -> Self {
+        UserContent::Video(Video {
+            data: DocumentSourceKind::Url(url.into()),
+            media_type,
+            ..Default::default()
+        })
+    }
+
     /// Helper constructor to make creating user document content easier.
     /// This creates a document that assumes the data being passed in is a raw string.
     pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
