@@ -11,7 +11,12 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Errors returned by rerank models.
+///
+/// Inspect provider failures with [`Self::provider_response_body`],
+/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RerankError {
     #[error("HttpError: {0}")]
     HttpError(#[from] http_client::Error),
@@ -27,7 +32,13 @@ pub enum RerankError {
 
     #[error("ProviderError: {0}")]
     ProviderError(String),
+
+    /// Raw error response preserved from the rerank model provider
+    #[error("ProviderResponseError: {0}")]
+    ProviderResponse(crate::provider_response::ProviderResponseError),
 }
+
+crate::provider_response::impl_provider_response_helpers!(RerankError);
 
 /// Trait for reranking models that score documents by relevance to a query.
 pub trait RerankModel: WasmCompatSend + WasmCompatSync {

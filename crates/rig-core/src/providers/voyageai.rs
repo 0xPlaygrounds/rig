@@ -455,11 +455,20 @@ where
                         usage,
                     })
                 }
-                ApiResponse::Err(err) => Err(RerankError::ProviderError(err.message)),
+                // VoyageAI returns its error envelope with a 2xx status; preserve
+                // the raw body alongside that status instead of flattening it.
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(RerankError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
             }
         } else {
-            Err(RerankError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
+            Err(RerankError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body),
             ))
         }
     }
@@ -475,5 +484,66 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn rerank_http_non_success_preserves_status_and_body() {
+        use crate::client::RerankingClient;
+        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"detail":"rate limited"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+        let client = crate::providers::voyageai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.rerank_model("rerank-2");
+
+        let error = model
+            .rerank("query", vec!["doc a".to_string(), "doc b".to_string()])
+            .await
+            .expect_err("rerank should fail with non-success status");
+
+        assert!(matches!(error, RerankError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn rerank_preserves_provider_error_envelope_on_2xx() {
+        use crate::client::RerankingClient;
+        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        // VoyageAI returns its error envelope with a 2xx status.
+        let body = r#"{"message":"model overloaded"}"#;
+        let http_client = RecordingHttpClient::with_error_response(http::StatusCode::OK, body);
+        let client = crate::providers::voyageai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.rerank_model("rerank-2");
+
+        let error = model
+            .rerank("query", vec!["doc a".to_string()])
+            .await
+            .expect_err("rerank should fail with provider error envelope");
+
+        match &error {
+            RerankError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+                assert_eq!(error.provider_response_body(), Some(body));
+                assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }
