@@ -406,11 +406,21 @@ where
 
                         response.try_into()
                     }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
+                    // Hyperbolic can return its error envelope with a 2xx status;
+                    // preserve the raw body alongside that status instead of
+                    // flattening to just the message.
+                    ApiResponse::Err(err) => {
+                        tracing::warn!(message = %err.message, "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body),
+                        ))
+                    }
                 }
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
                 ))
             }
         };
@@ -596,15 +606,21 @@ mod image_generation {
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(ImageGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(ImageGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
+                ));
             }
 
             match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(ImageGenerationError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
             }
         }
     }
@@ -697,15 +713,21 @@ mod audio_generation {
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(AudioGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(AudioGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
+                ));
             }
 
             match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(AudioGenerationError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
             }
         }
     }

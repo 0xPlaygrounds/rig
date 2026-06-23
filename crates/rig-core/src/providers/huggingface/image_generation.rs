@@ -88,13 +88,10 @@ where
 
         if !response.status().is_success() {
             let status = response.status();
-            let text: Vec<u8> = response.into_body().await?;
-            let text: String = String::from_utf8_lossy(&text).into();
+            let bytes: Vec<u8> = response.into_body().await?;
+            let text = String::from_utf8_lossy(&bytes);
 
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )));
+            return Err(ImageGenerationError::from_http_response(status, text));
         }
 
         let data: Vec<u8> = response.into_body().await?;

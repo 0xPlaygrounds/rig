@@ -161,7 +161,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::ProviderError(error.to_string()));
+                        yield Err(CompletionError::from_stream_transport(error));
                         break;
                     }
                 }
@@ -216,7 +216,7 @@ where
                 Err(crate::http_client::Error::StreamEnded) => break,
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }

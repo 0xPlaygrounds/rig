@@ -197,7 +197,7 @@ where
             resp.try_into()
         } else {
             let text = String::from_utf8_lossy(&body_bytes).to_string();
-            Err(TranscriptionError::ProviderError(text))
+            Err(TranscriptionError::from_http_response(status, text))
         }
     }
 }

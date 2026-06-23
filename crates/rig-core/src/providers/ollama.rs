@@ -298,9 +298,10 @@ where
 
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let text = http_client::text(response).await?;
-            return Err(EmbeddingError::ProviderError(text));
+            return Err(EmbeddingError::from_http_response(status, text));
         }
 
         let bytes: Vec<u8> = response.into_body().await?;
@@ -693,8 +694,9 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
                 ));
             }
 
@@ -774,9 +776,20 @@ where
         let mut byte_stream = response.into_body();
 
         if !status.is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "Got error status code trying to send a request to Ollama: {status}"
-            )));
+            // Drain the streaming body so the raw error payload is preserved
+            // verbatim alongside the status, instead of discarding it.
+            let mut error_body = Vec::new();
+            while let Some(chunk) = byte_stream.next().await {
+                match chunk {
+                    Ok(bytes) => error_body.extend_from_slice(&bytes),
+                    Err(_) => break,
+                }
+            }
+
+            return Err(CompletionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&error_body),
+            ));
         }
 
         let stream = try_stream! {

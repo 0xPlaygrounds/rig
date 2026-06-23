@@ -147,7 +147,8 @@ where
             .await
             .map_err(TranscriptionError::HttpError)?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        if status.is_success() {
             let response_bytes = response.into_body().await?;
             let response_body: MistralTranscriptionResponse =
                 serde_json::from_slice(&response_bytes)?;
@@ -158,8 +159,11 @@ where
                 response_body,
             )?)
         } else {
-            let text = String::from_utf8_lossy(&response.into_body().await?).into();
-            Err(TranscriptionError::ProviderError(text))
+            let body = response.into_body().await?;
+            Err(TranscriptionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            ))
         }
     }
 }

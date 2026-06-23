@@ -111,9 +111,14 @@ where
             .await
             .map_err(EmbeddingError::HttpError)?;
 
-        if response.status().is_success() {
-            let body: ApiResponse<EmbeddingResponse> =
-                serde_json::from_slice(response.into_body().await?.as_slice())?;
+        // Read the raw body exactly once so we can both deserialize it and, on a
+        // provider-authored error envelope, preserve it verbatim alongside the status.
+        let status = response.status();
+        let bytes = response.into_body().await?;
+        let text = String::from_utf8_lossy(&bytes);
+
+        if status.is_success() {
+            let body: ApiResponse<EmbeddingResponse> = serde_json::from_str(&text)?;
 
             match body {
                 ApiResponse::Ok(response) => {
@@ -148,11 +153,15 @@ where
                         })
                         .collect())
                 }
-                ApiResponse::Err(error) => Err(EmbeddingError::ProviderError(error.message)),
+                // Cohere returns its error envelope with a 2xx status; preserve the
+                // raw body alongside that status instead of flattening the message.
+                ApiResponse::Err(error) => {
+                    tracing::warn!(message = %error.message, "provider returned an error response");
+                    Err(EmbeddingError::from_http_response(status, text))
+                }
             }
         } else {
-            let text = String::from_utf8_lossy(&response.into_body().await?).into();
-            Err(EmbeddingError::ProviderError(text))
+            Err(EmbeddingError::from_http_response(status, text))
         }
     }
 }

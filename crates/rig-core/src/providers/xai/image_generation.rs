@@ -101,21 +101,21 @@ where
 
         let response = self.client.send(request).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = http_client::text(response).await?;
-
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text,
-            )));
-        }
-
+        let status = response.status();
         let text = http_client::text(response).await?;
+
+        if !status.is_success() {
+            return Err(ImageGenerationError::from_http_response(status, text));
+        }
 
         match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Error(err) => Err(ImageGenerationError::ProviderError(err.message())),
+            // xAI returns its error envelope with a 2xx status; preserve the raw
+            // body alongside that status instead of flattening the message.
+            ApiResponse::Error(err) => {
+                tracing::warn!(message = %err.message(), "provider returned an error response");
+                Err(ImageGenerationError::from_http_response(status, text))
+            }
         }
     }
 }

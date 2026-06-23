@@ -63,10 +63,7 @@ where
 
             let text: String = String::from_utf8_lossy(&as_slice).into();
 
-            return Err(AudioGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )));
+            return Err(AudioGenerationError::from_http_response(status, text));
         }
 
         let bytes: Bytes = response.into_body().await?;

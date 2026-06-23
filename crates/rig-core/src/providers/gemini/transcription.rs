@@ -129,8 +129,12 @@ where
 
             Ok(transcription::TranscriptionResponse::try_from(body)?)
         } else {
-            let text = String::from_utf8_lossy(&response.into_body().await?).into();
-            Err(TranscriptionError::ProviderError(text))
+            let status = response.status();
+            let body = response.into_body().await?;
+            Err(TranscriptionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            ))
         }
     }
 }

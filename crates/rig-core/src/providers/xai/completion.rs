@@ -262,13 +262,21 @@ where
 
                         response.try_into()
                     }
+                    // xAI returns its error envelope with a 2xx status; preserve
+                    // the raw body alongside that status instead of flattening the
+                    // message.
                     ApiResponse::Error(error) => {
-                        Err(CompletionError::ProviderError(error.message()))
+                        tracing::warn!(message = %error.message(), "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body),
+                        ))
                     }
                 }
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
                 ))
             }
         }

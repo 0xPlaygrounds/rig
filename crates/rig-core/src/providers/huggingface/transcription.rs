@@ -86,18 +86,22 @@ where
 
         let response = self.client.send(req).await?;
 
-        if response.status().is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            let body: ApiResponse<TranscriptionResponse> = serde_json::from_slice(&body)?;
-            match body {
+        let status = response.status();
+        let bytes: Vec<u8> = response.into_body().await?;
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+
+        if status.is_success() {
+            match serde_json::from_str::<ApiResponse<TranscriptionResponse>>(&text)? {
                 ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(TranscriptionError::ProviderError(err.to_string())),
+                // Huggingface returns its error envelope with a 2xx status;
+                // preserve the raw body alongside that status.
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err, "provider returned an error response");
+                    Err(TranscriptionError::from_http_response(status, text))
+                }
             }
         } else {
-            let text: Vec<u8> = response.into_body().await?;
-            let text = String::from_utf8_lossy(&text).into();
-
-            Err(TranscriptionError::ProviderError(text))
+            Err(TranscriptionError::from_http_response(status, text))
         }
     }
 }

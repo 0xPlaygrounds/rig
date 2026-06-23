@@ -283,7 +283,7 @@ where
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
                         stream_failed = true;
-                        yield Err(CompletionError::ProviderError(error.to_string()));
+                        yield Err(CompletionError::from_stream_transport(error));
                         break;
                     }
                 }

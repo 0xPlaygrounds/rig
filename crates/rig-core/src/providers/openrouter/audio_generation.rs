@@ -94,10 +94,7 @@ where
         if !response.status().is_success() {
             let status = response.status();
             let text = http_client::text(response).await?;
-            return Err(AudioGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )));
+            return Err(AudioGenerationError::from_http_response(status, text));
         }
 
         let audio: Vec<u8> = response.into_body().await?;

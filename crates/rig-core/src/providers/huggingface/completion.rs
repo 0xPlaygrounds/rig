@@ -797,17 +797,14 @@ where
 
                         response.try_into()
                     }
+                    // Huggingface returns its error envelope with a 2xx status;
+                    // preserve the raw body alongside that status.
                     ApiResponse::Err(err) => {
                         tracing::warn!(
                             message = %err,
                             "provider returned an error response"
                         );
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&bytes).into_owned(),
-                            },
-                        ))
+                        Err(CompletionError::from_http_response(status, text))
                     }
                 }
             } else {

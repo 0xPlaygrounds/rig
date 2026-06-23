@@ -633,9 +633,8 @@ fn terminal_response_result(
                 "OpenAI websocket response was incomplete: {reason}"
             )))
         }
-        status => Err(CompletionError::ProviderError(format!(
-            "OpenAI websocket response ended with status {:?}",
-            status
+        state => Err(CompletionError::ProviderError(format!(
+            "OpenAI websocket response ended in state {state:?}"
         ))),
     }
 }

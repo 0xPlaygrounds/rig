@@ -692,8 +692,9 @@ where
                     json_response.try_into()?;
                 Ok(completion)
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&body).to_string(),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
                 ))
             }
         }

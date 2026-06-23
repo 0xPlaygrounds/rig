@@ -112,10 +112,17 @@ where
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        let response: ApiResponse<gemini_api_types::EmbeddingResponse> =
-            serde_json::from_slice(&response.into_body().await?)?;
+        // Read the raw body exactly once so we can both deserialize it and, on
+        // failure, preserve it verbatim alongside the status for inspection.
+        let status = response.status();
+        let body = response.into_body().await?;
+        let text = String::from_utf8_lossy(&body);
 
-        match response {
+        if !status.is_success() {
+            return Err(EmbeddingError::from_http_response(status, text));
+        }
+
+        match serde_json::from_str::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&text)? {
             ApiResponse::Ok(response) => {
                 let docs = documents
                     .into_iter()
@@ -132,7 +139,12 @@ where
 
                 Ok(docs)
             }
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
+            // Gemini returns its error envelope with a 2xx status; preserve the
+            // raw body alongside that status instead of flattening the message.
+            ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(EmbeddingError::from_http_response(status, text))
+            }
         }
     }
 }

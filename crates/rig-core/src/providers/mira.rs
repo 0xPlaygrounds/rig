@@ -384,11 +384,10 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                let status = status.as_u16();
-                let error_text = String::from_utf8_lossy(&response_body).to_string();
-                return Err(CompletionError::ProviderError(format!(
-                    "API error: {status} - {error_text}"
-                )));
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
+                ));
             }
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
