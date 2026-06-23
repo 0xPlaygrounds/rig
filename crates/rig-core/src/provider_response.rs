@@ -16,7 +16,12 @@ pub struct ProviderResponseError {
 }
 
 impl ProviderResponseError {
-    pub(crate) fn without_status(body: impl Into<String>) -> Self {
+    /// Preserves a raw provider error body that has no associated HTTP status.
+    ///
+    /// Use this for non-HTTP transports (gRPC, native SDKs) where there is no
+    /// [`http::StatusCode`] to record but the provider still returned an error
+    /// payload worth surfacing through the `provider_response_*` helpers.
+    pub fn without_status(body: impl Into<String>) -> Self {
         Self {
             status: None,
             body: body.into(),
@@ -41,6 +46,11 @@ impl std::error::Error for ProviderResponseError {}
 /// - `Ok(Some(value))` when a body is present and valid JSON.
 /// - `Ok(None)` when no body is present.
 /// - `Err(error)` when a body is present but isn't valid JSON.
+///
+/// Note the empty-body asymmetry: an empty preserved body is reported as
+/// `Some("")` by `provider_response_body()` but treated as absent here (returns
+/// `Ok(None)`), since an empty string is not valid JSON. To distinguish "no
+/// body" from "empty body", check `provider_response_body()` directly.
 pub(crate) fn json(body: Option<&str>) -> Result<Option<serde_json::Value>, serde_json::Error> {
     body.filter(|body| !body.is_empty())
         .map(serde_json::from_str)
@@ -77,14 +87,14 @@ macro_rules! impl_provider_response_helpers {
             ///
             /// Either way the raw `body` is kept verbatim and the status stays
             /// recoverable through [`Self::provider_response_status`].
-            // Generated uniformly for every capability error as the regression
-            // anchor; not all of them have a wired HTTP path yet (mirrors the
-            // `ProviderResponse` variant being kept for symmetry / future paths).
+            ///
+            /// Provider integrations (including out-of-tree ones) should route
+            /// HTTP error responses through this constructor rather than
+            /// re-implementing the read-body-then-route logic.
+            // Generated uniformly for every capability error; `VerifyError` has
+            // no wired HTTP path yet, so allow the unused constructor there.
             #[allow(dead_code)]
-            pub(crate) fn from_http_response(
-                status: http::StatusCode,
-                body: impl Into<String>,
-            ) -> Self {
+            pub fn from_http_response(status: http::StatusCode, body: impl Into<String>) -> Self {
                 if status.is_success() {
                     Self::ProviderResponse($crate::provider_response::ProviderResponseError {
                         status: Some(status),
@@ -131,6 +141,13 @@ macro_rules! impl_provider_response_helpers {
             /// Returns the HTTP status code when this error preserves one, either
             /// from a non-success HTTP response, from a preserved provider
             /// response, or from a 2xx error envelope.
+            ///
+            /// **A returned 2xx status does not mean success**: some providers
+            /// return a structured error envelope with a success status (e.g.
+            /// OpenAI Chat Completions streaming errors). Never infer failure
+            /// from the status alone — this method only ever returns a status on
+            /// an error value; inspect [`Self::provider_response_body`] /
+            /// [`Self::provider_response_json`] for the error details.
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::ProviderResponse(response) => response.status,

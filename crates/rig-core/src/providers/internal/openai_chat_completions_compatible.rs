@@ -22,7 +22,15 @@ use crate::wasm_compat::WasmCompatSend;
 
 fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
-    if value.get("error").is_none() || value.get("choices").is_some() {
+    // Require `error` to be a non-null object so a `{"error":null}` (or
+    // `{"error":"..."}`) chunk that happens to omit `choices` can't be mistaken
+    // for an error envelope and prematurely terminate the stream.
+    if value
+        .get("error")
+        .and_then(serde_json::Value::as_object)
+        .is_none()
+        || value.get("choices").is_some()
+    {
         return None;
     }
 
@@ -623,7 +631,10 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
-    use super::{finalize_pending_tool_call, send_compatible_streaming_request};
+    use super::{
+        finalize_pending_tool_call, provider_response_from_compatible_sse_data,
+        send_compatible_streaming_request,
+    };
     use crate::completion::CompletionError;
     use crate::http_client;
     use crate::streaming::RawStreamingToolCall;
@@ -663,6 +674,25 @@ mod tests {
             finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
 
         assert_eq!(finalized.arguments, serde_json::json!({}));
+    }
+
+    #[test]
+    fn sse_error_detector_ignores_null_or_non_object_error_field() {
+        // A chunk with `error: null` (or a non-object error) and no `choices`
+        // must not be mistaken for an error envelope that terminates the stream.
+        assert!(provider_response_from_compatible_sse_data(r#"{"error":null}"#).is_none());
+        assert!(provider_response_from_compatible_sse_data(r#"{"error":"oops"}"#).is_none());
+        assert!(provider_response_from_compatible_sse_data(r#"{"choices":[]}"#).is_none());
+
+        // A genuine error envelope (object `error`, no `choices`) is still detected.
+        let detected = provider_response_from_compatible_sse_data(
+            r#"{"error":{"message":"slow down","type":"rate_limit"}}"#,
+        )
+        .expect("object error envelope should be detected");
+        assert_eq!(
+            detected.provider_response_body(),
+            Some(r#"{"error":{"message":"slow down","type":"rate_limit"}}"#)
+        );
     }
 
     #[test]

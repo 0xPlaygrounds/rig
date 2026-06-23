@@ -56,8 +56,30 @@ use thiserror::Error;
 // Errors
 /// Errors returned by completion models.
 ///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
+/// When a request fails because the provider returned an error response, the
+/// raw status and body are preserved so you can inspect them with
+/// [`Self::provider_response_body`], [`Self::provider_response_json`], and
+/// [`Self::provider_response_status`]:
+///
+/// ```
+/// use rig_core::completion::CompletionError;
+///
+/// fn inspect(err: &CompletionError) {
+///     if let Some(status) = err.provider_response_status() {
+///         eprintln!("provider responded with HTTP {status}");
+///     }
+///     match err.provider_response_json() {
+///         // The provider returned a structured (JSON) error envelope.
+///         Ok(Some(json)) => eprintln!("error details: {json}"),
+///         // No body was preserved (e.g. a transport error, or a provider
+///         // that has no response to inspect).
+///         Ok(None) => {}
+///         // A body was preserved but is not JSON; read it verbatim.
+///         Err(_) => eprintln!("raw body: {:?}", err.provider_response_body()),
+///     }
+/// }
+/// # let _ = inspect;
+/// ```
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum CompletionError {
