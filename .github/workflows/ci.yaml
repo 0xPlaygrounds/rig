@@ -35,6 +35,21 @@ jobs:
       - name: Run cargo fmt
         run: cargo fmt -- --check
 
+      # Guard against CWD-relative test fixture paths. `cargo test` runs from the
+      # crate root while `cargo nextest` (CI's runner) runs from the workspace
+      # root, so a bare `tests/data/...` path passes under one and fails under the
+      # other — letting a broken fixture path stay green in CI. Real test code
+      # must anchor fixtures to CARGO_MANIFEST_DIR (see
+      # crates/rig-core/src/loaders/test_fixtures.rs). Doc-comment example
+      # snippets (`///`, `//!`) are exempt.
+      - name: Check test fixture paths are CWD-independent
+        run: |
+          if grep -rnE '"(\./)?tests/data' crates/*/src crates/*/tests --include='*.rs' \
+            | grep -vE ':[[:space:]]*//[/!]'; then
+            echo "::error::Found a CWD-relative 'tests/data' path in test code. Anchor it to CARGO_MANIFEST_DIR via crate::loaders::test_fixtures (see crates/rig-core/src/loaders/test_fixtures.rs)."
+            exit 1
+          fi
+
   # Special check to make sure rig-core is compatible with the wasm target
   check-wasm:
     name: stable / check rig-core wasm target
