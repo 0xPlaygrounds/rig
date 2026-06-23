@@ -9,7 +9,7 @@ license = "MIT"
 workspace = true
 
 [lib]
-doctest = false
+doctest = true
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.39.0", default-features = false, features = [
