@@ -1538,9 +1538,7 @@ where
             } else {
                 let status = response.status();
                 let text = http_client::text(response).await?;
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
-                ))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)

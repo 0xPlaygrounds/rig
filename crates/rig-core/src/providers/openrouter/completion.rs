@@ -1,5 +1,5 @@
 use super::{
-    client::{ApiErrorResponse, ApiResponse, Client, Usage},
+    client::{ApiResponse, Client, Usage},
     streaming::StreamingCompletionResponse,
 };
 use crate::message::{
@@ -583,12 +583,6 @@ pub struct CompletionResponse {
     pub choices: Vec<Choice>,
     pub system_fingerprint: Option<String>,
     pub usage: Option<Usage>,
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
@@ -2021,20 +2015,16 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&response_body).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::HttpError(
-                    crate::http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).to_string(),
-                    ),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }

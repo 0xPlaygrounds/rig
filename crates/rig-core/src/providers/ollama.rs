@@ -179,20 +179,6 @@ impl ProviderClient for Client {
     }
 }
 
-// ---------- API Error and Response Structures ----------
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
 // ---------- Embedding API ----------
 
 pub const ALL_MINILM: &str = "all-minilm";
@@ -216,21 +202,6 @@ pub struct EmbeddingResponse {
     pub load_duration: Option<u64>,
     #[serde(default)]
     pub prompt_eval_count: Option<u64>,
-}
-
-impl From<ApiErrorResponse> for EmbeddingError {
-    fn from(err: ApiErrorResponse) -> Self {
-        EmbeddingError::ProviderError(err.message)
-    }
-}
-
-impl From<ApiResponse<EmbeddingResponse>> for Result<EmbeddingResponse, EmbeddingError> {
-    fn from(value: ApiResponse<EmbeddingResponse>) -> Self {
-        match value {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => Err(EmbeddingError::ProviderError(err.message)),
-        }
-    }
 }
 
 // ---------- Embedding Model ----------
@@ -298,9 +269,10 @@ where
 
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        if !status.is_success() {
             let text = http_client::text(response).await?;
-            return Err(EmbeddingError::ProviderError(text));
+            return Err(EmbeddingError::from_http_response(status, text));
         }
 
         let bytes: Vec<u8> = response.into_body().await?;
@@ -693,8 +665,9 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
                 ));
             }
 
@@ -774,9 +747,20 @@ where
         let mut byte_stream = response.into_body();
 
         if !status.is_success() {
-            return Err(CompletionError::ProviderError(format!(
-                "Got error status code trying to send a request to Ollama: {status}"
-            )));
+            let mut body = Vec::new();
+            while let Some(chunk) = byte_stream.next().await {
+                match chunk {
+                    Ok(bytes) => body.extend_from_slice(&bytes),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
+                        break;
+                    }
+                }
+            }
+            return Err(CompletionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            ));
         }
 
         let stream = try_stream! {
@@ -2221,5 +2205,70 @@ mod tests {
         assert_eq!(received.len(), 2);
         assert_eq!(received[0]["message"]["content"], "hi");
         assert_eq!(received[1]["done"], true);
+    }
+
+    // Proves a non-success HTTP response from `/api/chat` preserves the
+    // provider's status + body through the `provider_response_*` helpers
+    // (issue #1931).
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"model not found"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    // Proves a non-success HTTP response from `/api/embed` preserves the
+    // provider's status + body through the `provider_response_*` helpers
+    // (issue #1931).
+    #[tokio::test]
+    async fn embeddings_non_success_preserves_status_and_body() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"model not found"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(ALL_MINILM);
+
+        let error = model
+            .embed_texts(vec!["hello".to_string()])
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, EmbeddingError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

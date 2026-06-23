@@ -1476,19 +1476,12 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: text,
-                            },
-                        ))
+                        Err(CompletionError::from_http_response(status, text))
                     }
                 }
             } else {
                 let text = http_client::text(response).await?;
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
-                ))
+                Err(CompletionError::from_http_response(status, text))
             }
         }
         .instrument(span)

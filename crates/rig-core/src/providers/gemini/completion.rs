@@ -170,15 +170,16 @@ where
 
                 response.try_into()
             } else {
-                let text = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
+                let status = response.status();
+                let body = response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ))
             }
         }
         .instrument(span)
@@ -3257,5 +3258,36 @@ mod tests {
         anyhow::ensure!(!response_text.is_empty(), "Response should not be empty");
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::completion::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

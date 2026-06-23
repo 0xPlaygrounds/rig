@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- *(providers)* broaden provider error-response inspection (`provider_response_body` / `provider_response_json` / `provider_response_status`) to all in-core providers (Anthropic, Gemini, Cohere, xAI, Hyperbolic, Ollama, Mira, VoyageAI, Mistral, Hugging Face, OpenRouter, OpenAI audio, …) and the gRPC/SDK companion crates (`rig-bedrock`, `rig-vertexai`, `rig-gemini-grpc`). Adds the shared `from_http_response(status, body)` and `from_provider_body(body)` constructors on every capability error so HTTP failures are no longer flattened into `ProviderError(String)` ([#1944](https://github.com/0xPlaygrounds/rig/pull/1944), closes [#1931](https://github.com/0xPlaygrounds/rig/issues/1931))
+
+### Changed
+
+- *(rerank)* [**breaking**] `RerankError` is now `#[non_exhaustive]` and gains a `ProviderResponse` variant, so rerank failures preserve the provider's raw status + body for inspection (parity with the other capability errors)
+- *(streaming)* the OpenAI-compatible SSE stream now treats a present, non-empty `error` field (object or string) as a terminal provider error and ignores `{"error":null}` / empty values.
+- *(streaming)* terminal streaming failures preserve the provider's error payload as `ProviderResponse` when present, otherwise surface `ProviderError` (so `provider_response_body()` may be `None`).
+- *(providers)* [**behavioral**] migrated provider HTTP-error paths now yield `ProviderResponse` / `HttpError` instead of `ProviderError(String)` / `ResponseError(String)`. The error variant — and the `Display` / `to_string()` output for those failures — changed accordingly (e.g. `"ProviderError: …"` → `"HttpError: …"`). Exhaustive matches keep compiling (`#[non_exhaustive]`), but downstream code that matches specific variants or string-greps error messages will observe different runtime behavior.
+
 ## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.38.2...rig-core-v0.39.0) - 2026-06-19
 
 ### Added

@@ -13,12 +13,10 @@ use thiserror::Error;
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 ///
-/// Note: no provider path currently constructs [`Self::ProviderResponse`] for
-/// audio generation; coverage is limited today — only Azure audio failures
-/// surface as [`Self::HttpError`], which the helpers read, while other audio
-/// providers still emit [`Self::ProviderError`]. The variant is kept for
-/// symmetry with the other capability errors and for future provider paths that
-/// preserve a 2xx error envelope.
+/// HTTP audio failures preserve the provider's status and body: a non-success
+/// response surfaces as [`Self::HttpError`], and a provider error envelope
+/// returned with a 2xx status surfaces as [`Self::ProviderResponse`] (for
+/// example the Hyperbolic audio path). Both are read by the helpers.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AudioGenerationError {

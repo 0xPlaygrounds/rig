@@ -92,11 +92,6 @@ pub enum MiraError {
     JsonError(#[from] serde_json::Error),
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct RawMessage {
     pub role: String,
@@ -384,11 +379,10 @@ where
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                let status = status.as_u16();
-                let error_text = String::from_utf8_lossy(&response_body).to_string();
-                return Err(CompletionError::ProviderError(format!(
-                    "API error: {status} - {error_text}"
-                )));
+                return Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
+                ));
             }
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
@@ -482,12 +476,6 @@ where
         send_compatible_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
-    }
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
     }
 }
 
@@ -810,5 +798,38 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("Client::builder() failed");
+    }
+
+    // Proves a non-success HTTP response from `/v1/chat/completions` preserves
+    // the provider's status + body through the `provider_response_*` helpers
+    // (issue #1931).
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("deepseek-r1");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

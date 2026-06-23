@@ -149,8 +149,15 @@ where
                                 }
                                 final_interaction = Some(interaction);
                             }
-                            InteractionSseEvent::Error { error, .. } => {
-                                yield Err(CompletionError::ProviderError(error.message));
+                            InteractionSseEvent::Error { .. } => {
+                                // Preserve the full provider error payload (code +
+                                // message) by reusing the raw SSE event JSON, matching
+                                // the SSE path's `completion_error_from_body`. The error
+                                // arrives over an established stream, so there is no HTTP
+                                // status to attach (status: None).
+                                yield Err(crate::provider_response::completion_error_from_body(
+                                    message.data,
+                                ));
                                 break;
                             }
                             _ => continue,
@@ -161,7 +168,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::ProviderError(error.to_string()));
+                        yield Err(CompletionError::from_stream_transport(error));
                         break;
                     }
                 }
@@ -216,7 +223,7 @@ where
                 Err(crate::http_client::Error::StreamEnded) => break,
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::ProviderError(error.to_string()));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
