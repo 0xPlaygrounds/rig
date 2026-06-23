@@ -74,21 +74,19 @@ where
 
         let response = self.client.send(request).await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = http_client::text(response).await?;
-
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text,
-            )));
-        }
-
+        let status = response.status();
         let text = http_client::text(response).await?;
+
+        if !status.is_success() {
+            return Err(ImageGenerationError::from_http_response(status, text));
+        }
 
         match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(&text)? {
             ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => Err(ImageGenerationError::ProviderError(err.message)),
+            ApiResponse::Err(err) => {
+                tracing::warn!(message = %err.message, "provider returned an error response");
+                Err(ImageGenerationError::from_http_response(status, text))
+            }
         }
     }
 }
@@ -358,5 +356,67 @@ mod tests {
         .expect_err("text-only responses should fail");
 
         assert!(err.to_string().contains("did not include image data"));
+    }
+
+    #[tokio::test]
+    async fn image_generation_non_success_preserves_status_and_body() {
+        use crate::client::image_generation::ImageGenerationClient;
+        use crate::image_generation::ImageGenerationModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
+
+        let error = model
+            .image_generation(image_generation_request("draw a cat"))
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::image_generation::ImageGenerationClient;
+        use crate::image_generation::ImageGenerationModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        // 200 OK whose body deserializes to `ApiResponse::Err` (Gemini `ApiErrorResponse`
+        // requires a top-level `message` field; the absence of `candidates`/`response_id`
+        // prevents it from matching the success `GenerateContentResponse` variant).
+        let body =
+            r#"{"message":"boom","error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
+
+        let error = model
+            .image_generation(image_generation_request("draw a cat"))
+            .await
+            .expect_err("should fail with provider error envelope");
+
+        match &error {
+            ImageGenerationError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }

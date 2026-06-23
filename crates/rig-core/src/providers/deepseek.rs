@@ -124,12 +124,6 @@ enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
-
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
@@ -619,20 +613,16 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&response_body).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).to_string(),
-                    ),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         }

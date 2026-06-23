@@ -58,6 +58,32 @@ use thiserror::Error;
 ///
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
+/// These recover the provider's raw HTTP status and response body so you can
+/// branch on a provider error code or surface a precise diagnostic. The same
+/// helpers are available on `EmbeddingError`, `ImageGenerationError`,
+/// `AudioGenerationError`, `TranscriptionError`, `RerankError`, and (forwarded)
+/// [`PromptError`].
+///
+/// ```
+/// use rig_core::completion::CompletionError;
+///
+/// /// Log the provider's raw error response when a completion fails.
+/// fn report(error: &CompletionError) {
+///     if let Some(status) = error.provider_response_status() {
+///         // Note: this can be a 2xx status for providers that return an error
+///         // envelope alongside a success status — the error itself means failure.
+///         eprintln!("provider returned HTTP {status}");
+///     }
+///     match error.provider_response_json() {
+///         Ok(Some(json)) => eprintln!("provider error payload: {json}"),
+///         Ok(None) => eprintln!("no provider response body (e.g. a transport error)"),
+///         Err(_) => eprintln!(
+///             "provider response body was not valid JSON: {:?}",
+///             error.provider_response_body(),
+///         ),
+///     }
+/// }
+/// ```
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum CompletionError {

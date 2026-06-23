@@ -437,20 +437,16 @@ where
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::ProviderResponse(
-                            crate::provider_response::ProviderResponseError {
-                                status: Some(status),
-                                body: String::from_utf8_lossy(&response_body).into_owned(),
-                            },
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body).into_owned(),
                         ))
                     }
                 }
             } else {
-                Err(CompletionError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        String::from_utf8_lossy(&response_body).to_string(),
-                    ),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body).to_string(),
                 ))
             }
         };
@@ -603,20 +599,16 @@ where
                 ApiResponse::Ok(response) => response.try_into(),
                 ApiResponse::Err(api_error_response) => {
                     tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::ProviderResponse(
-                        crate::provider_response::ProviderResponseError {
-                            status: Some(status),
-                            body: String::from_utf8_lossy(&response_body).into_owned(),
-                        },
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body).into_owned(),
                     ))
                 }
             }
         } else {
-            Err(TranscriptionError::HttpError(
-                http_client::Error::InvalidStatusCodeWithMessage(
-                    status,
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ),
+            Err(TranscriptionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body).to_string(),
             ))
         }
     }

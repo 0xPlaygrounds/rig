@@ -22,15 +22,19 @@ use crate::wasm_compat::WasmCompatSend;
 
 fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
-    if value.get("error").is_none() || value.get("choices").is_some() {
+    // Treat the chunk as an error only when `error` is present AND carries a
+    // payload: either an object (`{"error":{...}}`, the canonical OpenAI-compatible
+    // error event) or a non-empty string (`{"error":"oops"}`, used by some
+    // gateways). A `{"error":null}` or `{"error":""}` chunk — which some providers
+    // send alongside the terminal usage event — must not terminate the stream.
+    let error = value
+        .get("error")
+        .filter(|error| error.is_object() || error.as_str().is_some_and(|s| !s.is_empty()))?;
+    if value.get("choices").is_some() {
         return None;
     }
 
-    if let Some(message) = value
-        .get("error")
-        .and_then(|error| error.get("message"))
-        .and_then(serde_json::Value::as_str)
-    {
+    if let Some(message) = error.get("message").and_then(serde_json::Value::as_str) {
         tracing::warn!(message, "provider returned a streaming error event");
     }
 
@@ -634,6 +638,39 @@ mod tests {
         FinishReasonCleanupProfile,
     };
     use futures::StreamExt;
+
+    #[test]
+    fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
+        use super::provider_response_from_compatible_sse_data as detect;
+
+        // An empty `error` (`null` or `""`) with no choices must NOT terminate the
+        // stream — some providers send one with the terminal usage event. Each of
+        // these should be treated as "not an error chunk".
+        assert!(detect(r#"{"error":null}"#).is_none());
+        assert!(detect(r#"{"error":null,"usage":{"total_tokens":3}}"#).is_none());
+        assert!(detect(r#"{"error":""}"#).is_none());
+        // A normal content chunk (no `error` key) is also not an error.
+        assert!(detect(r#"{"choices":[{"delta":{"content":"hi"}}]}"#).is_none());
+        // A live content chunk that ALSO carries an `error` field must NOT terminate
+        // the stream — the `choices` guard wins regardless of the error value.
+        assert!(detect(r#"{"error":"metadata","choices":[{"delta":{"content":"hi"}}]}"#).is_none());
+        assert!(
+            detect(r#"{"error":{"message":"x"},"choices":[{"delta":{"content":"hi"}}]}"#).is_none()
+        );
+
+        // A non-empty string `error` IS detected, preserving the raw body.
+        let string_body = r#"{"error":"oops"}"#;
+        let string_error = detect(string_body).expect("string error should be detected");
+        assert_eq!(string_error.provider_response_body(), Some(string_body));
+        assert_eq!(string_error.provider_response_status(), None);
+
+        // A real provider error envelope IS detected, preserving the raw body.
+        let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
+        let error = detect(body).expect("object error envelope should be detected");
+        assert_eq!(error.provider_response_body(), Some(body));
+        // It arrives mid-stream with no HTTP status attached.
+        assert_eq!(error.provider_response_status(), None);
+    }
 
     #[test]
     fn eof_cleanup_preserves_parameterless_tool_calls() {

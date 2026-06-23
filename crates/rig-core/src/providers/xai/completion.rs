@@ -263,12 +263,17 @@ where
                         response.try_into()
                     }
                     ApiResponse::Error(error) => {
-                        Err(CompletionError::ProviderError(error.message()))
+                        tracing::warn!(message = %error.message(), "provider returned an error response");
+                        Err(CompletionError::from_http_response(
+                            status,
+                            String::from_utf8_lossy(&response_body),
+                        ))
                     }
                 }
             } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
                 ))
             }
         }
@@ -369,5 +374,66 @@ mod tests {
             1,
             "document input should appear exactly once: {input:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":"boom","code":"503"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = crate::providers::xai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(crate::providers::xai::completion::GROK_4);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::test_utils::RecordingHttpClient;
+
+        // Deserializes to `ApiResponse::Error(ApiError { error, code })` on a 200 OK.
+        let body = r#"{"error":"boom","code":"503"}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = crate::providers::xai::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(crate::providers::xai::completion::GROK_4);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }

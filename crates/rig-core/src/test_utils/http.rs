@@ -262,6 +262,14 @@ impl HttpErrorStreamingClient {
     }
 }
 
+impl Default for HttpErrorStreamingClient {
+    /// The completion-model client bound requires `H: Default`; this lets the
+    /// streaming error client back a real model in tests.
+    fn default() -> Self {
+        Self::new(http::StatusCode::INTERNAL_SERVER_ERROR, String::new())
+    }
+}
+
 impl HttpClientExt for HttpErrorStreamingClient {
     fn send<T, U>(
         &self,

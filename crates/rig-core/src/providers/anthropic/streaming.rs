@@ -402,7 +402,7 @@ where
                         }
                     },
                     Err(e) => {
-                        yield Err(CompletionError::ProviderError(format!("SSE Error: {e}")));
+                        yield Err(CompletionError::from_stream_transport(e));
                         break;
                     }
                 }

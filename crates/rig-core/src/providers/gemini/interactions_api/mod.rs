@@ -195,15 +195,16 @@ where
 
                 response.try_into()
             } else {
-                let text = String::from_utf8_lossy(
-                    &response
-                        .into_body()
-                        .await
-                        .map_err(CompletionError::HttpError)?,
-                )
-                .into();
+                let status = response.status();
+                let body = response
+                    .into_body()
+                    .await
+                    .map_err(CompletionError::HttpError)?;
 
-                Err(CompletionError::ProviderError(text))
+                Err(CompletionError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&body),
+                ))
             }
         }
         .instrument(span)
@@ -444,15 +445,16 @@ where
 
         Ok(response)
     } else {
-        let text = String::from_utf8_lossy(
-            &response
-                .into_body()
-                .await
-                .map_err(CompletionError::HttpError)?,
-        )
-        .into();
+        let status = response.status();
+        let body = response
+            .into_body()
+            .await
+            .map_err(CompletionError::HttpError)?;
 
-        Err(CompletionError::ProviderError(text))
+        Err(CompletionError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body),
+        ))
     }
 }
 

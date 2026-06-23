@@ -9,36 +9,103 @@ use rig_core::completion::CompletionError;
 use rig_core::embeddings::EmbeddingError;
 use rig_core::image_generation::ImageGenerationError;
 
-pub struct AwsSdkInvokeModelError(pub SdkError<InvokeModelError, HttpResponse>);
-
-impl AwsSdkInvokeModelError {
-    pub fn into_service_error(self) -> String {
-        let error: String = match self.0.into_service_error() {
-            InvokeModelError::ModelTimeoutException(e) => e.message.unwrap_or("The request took too long to process. Processing time exceeded the model timeout length.".into()),
-            InvokeModelError::AccessDeniedException(e) => e.message.unwrap_or("The request is denied because you do not have sufficient permissions to perform the requested action.".into()),
-            InvokeModelError::ResourceNotFoundException(e) => e.message.unwrap_or("The specified resource ARN was not found.".into()),
-            InvokeModelError::ThrottlingException(e) => e.message.unwrap_or("Your request was denied due to exceeding the account quotas for Amazon Bedrock.".into()),
-            InvokeModelError::ServiceUnavailableException(e) => e.message.unwrap_or("The service isn't currently available.".into()),
-            InvokeModelError::InternalServerException(e) => e.message.unwrap_or("An internal server error occurred.".into()),
-            InvokeModelError::ValidationException(e) => e.message.unwrap_or("The input fails to satisfy the constraints specified by Amazon Bedrock.".into()),
-            InvokeModelError::ModelNotReadyException(e) => e.message.unwrap_or("The model specified in the request is not ready to serve inference requests. The AWS SDK will automatically retry the operation up to 5 times.".into()),
-            InvokeModelError::ModelErrorException(e) => e.message.unwrap_or("The request failed due to an error while processing the model.".into()),
-            InvokeModelError::ServiceQuotaExceededException(e) => e.message.unwrap_or("Your request exceeds the service quota for your account.".into()),
-            _ => "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
-        };
-        error
+/// Extracts the provider-supplied message from an [`InvokeModelError`] service
+/// error.
+///
+/// Returns `(Some(message), _)` when the service supplied a genuine error
+/// message (which should be surfaced as a provider response body), otherwise
+/// `(None, fallback)` where `fallback` is Rig-authored diagnostic prose. The
+/// caller decides which arm to surface so that Rig prose never leaks into
+/// `provider_response_body()`.
+fn invoke_model_message(err: InvokeModelError) -> (Option<String>, String) {
+    match err {
+        InvokeModelError::ModelTimeoutException(e) => (e.message, "The request took too long to process. Processing time exceeded the model timeout length.".into()),
+        InvokeModelError::AccessDeniedException(e) => (e.message, "The request is denied because you do not have sufficient permissions to perform the requested action.".into()),
+        InvokeModelError::ResourceNotFoundException(e) => (e.message, "The specified resource ARN was not found.".into()),
+        InvokeModelError::ThrottlingException(e) => (e.message, "Your request was denied due to exceeding the account quotas for Amazon Bedrock.".into()),
+        InvokeModelError::ServiceUnavailableException(e) => (e.message, "The service isn't currently available.".into()),
+        InvokeModelError::InternalServerException(e) => (e.message, "An internal server error occurred.".into()),
+        InvokeModelError::ValidationException(e) => (e.message, "The input fails to satisfy the constraints specified by Amazon Bedrock.".into()),
+        InvokeModelError::ModelNotReadyException(e) => (e.message, "The model specified in the request is not ready to serve inference requests. The AWS SDK will automatically retry the operation up to 5 times.".into()),
+        InvokeModelError::ModelErrorException(e) => (e.message, "The request failed due to an error while processing the model.".into()),
+        InvokeModelError::ServiceQuotaExceededException(e) => (e.message, "Your request exceeds the service quota for your account.".into()),
+        _ => (None, "An unexpected error occurred. Verify Internet connection or AWS keys".into()),
     }
 }
 
+/// Extracts the provider-supplied message from a [`ConverseError`] service
+/// error. See [`invoke_model_message`] for the gating contract.
+fn converse_message(err: ConverseError) -> (Option<String>, String) {
+    match err {
+        ConverseError::ModelTimeoutException(e) => (e.message, "The request took too long to process. Processing time exceeded the model timeout length.".into()),
+        ConverseError::AccessDeniedException(e) => (e.message, "The request is denied because you do not have sufficient permissions to perform the requested action.".into()),
+        ConverseError::ResourceNotFoundException(e) => (e.message, "The specified resource ARN was not found.".into()),
+        ConverseError::ThrottlingException(e) => (e.message, "Your request was denied due to exceeding the account quotas for AWS Bedrock.".into()),
+        ConverseError::ServiceUnavailableException(e) => (e.message, "The service isn't currently available.".into()),
+        ConverseError::InternalServerException(e) => (e.message, "An internal server error occurred.".into()),
+        ConverseError::ValidationException(e) => (e.message, "The input fails to satisfy the constraints specified by AWS Bedrock.".into()),
+        ConverseError::ModelNotReadyException(e) => (e.message, "The model specified in the request is not ready to serve inference requests. The AWS SDK will automatically retry the operation up to 5 times.".into()),
+        ConverseError::ModelErrorException(e) => (e.message, "The request failed due to an error while processing the model.".into()),
+        _ => (None, "An unexpected error occurred. Verify Internet connection or AWS keys".into()),
+    }
+}
+
+/// Extracts the provider-supplied message from a [`ConverseStreamError`]
+/// service error. See [`invoke_model_message`] for the gating contract.
+fn converse_stream_message(err: ConverseStreamError) -> (Option<String>, String) {
+    match err {
+        ConverseStreamError::ModelTimeoutException(e) => {
+            (e.message, "Bedrock model timed out".into())
+        }
+        ConverseStreamError::AccessDeniedException(e) => {
+            (e.message, "Bedrock access denied".into())
+        }
+        ConverseStreamError::ResourceNotFoundException(e) => {
+            (e.message, "Bedrock resource not found".into())
+        }
+        ConverseStreamError::ThrottlingException(e) => {
+            (e.message, "Bedrock request throttled".into())
+        }
+        ConverseStreamError::ServiceUnavailableException(e) => {
+            (e.message, "Bedrock service unavailable".into())
+        }
+        ConverseStreamError::InternalServerException(e) => {
+            (e.message, "Bedrock internal server error".into())
+        }
+        ConverseStreamError::ModelStreamErrorException(e) => {
+            (e.message, "Bedrock streaming model error".into())
+        }
+        ConverseStreamError::ValidationException(e) => {
+            (e.message, "Bedrock validation error".into())
+        }
+        ConverseStreamError::ModelNotReadyException(e) => {
+            (e.message, "Bedrock model not ready".into())
+        }
+        ConverseStreamError::ModelErrorException(e) => (e.message, "Bedrock model error".into()),
+        _ => (
+            None,
+            "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
+        ),
+    }
+}
+
+pub struct AwsSdkInvokeModelError(pub SdkError<InvokeModelError, HttpResponse>);
+
 impl From<AwsSdkInvokeModelError> for ImageGenerationError {
     fn from(value: AwsSdkInvokeModelError) -> Self {
-        ImageGenerationError::ProviderError(value.into_service_error())
+        match invoke_model_message(value.0.into_service_error()) {
+            (Some(msg), _) => ImageGenerationError::from_provider_body(msg),
+            (None, fallback) => ImageGenerationError::ProviderError(fallback),
+        }
     }
 }
 
 impl From<AwsSdkInvokeModelError> for EmbeddingError {
     fn from(value: AwsSdkInvokeModelError) -> Self {
-        EmbeddingError::ProviderError(value.into_service_error())
+        match invoke_model_message(value.0.into_service_error()) {
+            (Some(msg), _) => EmbeddingError::from_provider_body(msg),
+            (None, fallback) => EmbeddingError::ProviderError(fallback),
+        }
     }
 }
 
@@ -46,59 +113,20 @@ pub struct AwsSdkConverseError(pub SdkError<ConverseError, HttpResponse>);
 
 impl From<AwsSdkConverseError> for CompletionError {
     fn from(value: AwsSdkConverseError) -> Self {
-        let error: String = match value.0.into_service_error() {
-            ConverseError::ModelTimeoutException(e) => e.message.unwrap_or("The request took too long to process. Processing time exceeded the model timeout length.".into()),
-            ConverseError::AccessDeniedException(e) => e.message.unwrap_or("The request is denied because you do not have sufficient permissions to perform the requested action.".into()),
-            ConverseError::ResourceNotFoundException(e) => e.message.unwrap_or("The specified resource ARN was not found.".into()),
-            ConverseError::ThrottlingException(e) => e.message.unwrap_or("Your request was denied due to exceeding the account quotas for AWS Bedrock.".into()),
-            ConverseError::ServiceUnavailableException(e) => e.message.unwrap_or("The service isn't currently available.".into()),
-            ConverseError::InternalServerException(e) => e.message.unwrap_or("An internal server error occurred.".into()),
-            ConverseError::ValidationException(e) => e.message.unwrap_or("The input fails to satisfy the constraints specified by AWS Bedrock.".into()),
-            ConverseError::ModelNotReadyException(e) => e.message.unwrap_or("The model specified in the request is not ready to serve inference requests. The AWS SDK will automatically retry the operation up to 5 times.".into()),
-            ConverseError::ModelErrorException(e) => e.message.unwrap_or("The request failed due to an error while processing the model.".into()),
-            _ => String::from("An unexpected error occurred. Verify Internet connection or AWS keys")
-        };
-        CompletionError::ProviderError(error)
+        match converse_message(value.0.into_service_error()) {
+            (Some(msg), _) => CompletionError::from_provider_body(msg),
+            (None, fallback) => CompletionError::ProviderError(fallback),
+        }
     }
 }
 
 pub struct AwsSdkConverseStreamError(pub SdkError<ConverseStreamError, HttpResponse>);
 impl From<AwsSdkConverseStreamError> for CompletionError {
     fn from(value: AwsSdkConverseStreamError) -> Self {
-        let error: String = match value.0.into_service_error() {
-            ConverseStreamError::ModelTimeoutException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock model timed out".to_string()),
-            ConverseStreamError::AccessDeniedException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock access denied".to_string()),
-            ConverseStreamError::ResourceNotFoundException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock resource not found".to_string()),
-            ConverseStreamError::ThrottlingException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock request throttled".to_string()),
-            ConverseStreamError::ServiceUnavailableException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock service unavailable".to_string()),
-            ConverseStreamError::InternalServerException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock internal server error".to_string()),
-            ConverseStreamError::ModelStreamErrorException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock streaming model error".to_string()),
-            ConverseStreamError::ValidationException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock validation error".to_string()),
-            ConverseStreamError::ModelNotReadyException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock model not ready".to_string()),
-            ConverseStreamError::ModelErrorException(e) => e
-                .message
-                .unwrap_or_else(|| "Bedrock model error".to_string()),
-            _ => "An unexpected error occurred. Verify Internet connection or AWS keys".into(),
-        };
-        CompletionError::ProviderError(error)
+        match converse_stream_message(value.0.into_service_error()) {
+            (Some(msg), _) => CompletionError::from_provider_body(msg),
+            (None, fallback) => CompletionError::ProviderError(fallback),
+        }
     }
 }
 
@@ -119,3 +147,155 @@ impl fmt::Display for TypeConversionError {
 }
 
 impl std::error::Error for TypeConversionError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_bedrockruntime::types::error::{
+        InternalServerException, ModelTimeoutException, ValidationException,
+    };
+
+    // NOTE: These tests construct the *extracted* service-error enum variants
+    // directly via the AWS-provided builders and drive the gating helpers plus
+    // the `From` conversions. The `SdkError` wrapper (and thus the public
+    // `AwsSdk*Error` newtypes) cannot be constructed in a unit test, so the
+    // `From` contract is asserted on the helper + builder-routed error type
+    // rather than on the newtype. None of these paths are feature-gated in
+    // `rig-bedrock` (the crate exposes no `image`/`audio` features; the
+    // completion/embedding/image/streaming modules are always compiled), so the
+    // tests only need `#[cfg(test)]`.
+
+    #[test]
+    fn invoke_model_message_returns_provider_message_when_present() {
+        let err = InvokeModelError::ModelTimeoutException(
+            ModelTimeoutException::builder().message("boom").build(),
+        );
+        let (message, _fallback) = invoke_model_message(err);
+        assert_eq!(message, Some("boom".to_string()));
+    }
+
+    #[test]
+    fn invoke_model_message_returns_none_when_message_absent() {
+        let err =
+            InvokeModelError::InternalServerException(InternalServerException::builder().build());
+        let (message, fallback) = invoke_model_message(err);
+        assert_eq!(message, None);
+        assert_eq!(fallback, "An internal server error occurred.".to_string());
+    }
+
+    #[test]
+    fn image_generation_with_provider_message_yields_provider_response() {
+        let err = InvokeModelError::ValidationException(
+            ValidationException::builder().message("boom").build(),
+        );
+        let error: ImageGenerationError = match invoke_model_message(err) {
+            (Some(msg), _) => ImageGenerationError::from_provider_body(msg),
+            (None, fallback) => ImageGenerationError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), Some("boom"));
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn image_generation_without_provider_message_yields_provider_error() {
+        // A matched variant with no message -> `(None, fallback)` -> `ProviderError`,
+        // which must NOT surface Rig prose through `provider_response_body()`.
+        let err = InvokeModelError::ValidationException(ValidationException::builder().build());
+        let error: ImageGenerationError = match invoke_model_message(err) {
+            (Some(msg), _) => ImageGenerationError::from_provider_body(msg),
+            (None, fallback) => ImageGenerationError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn embedding_with_provider_message_yields_provider_response() {
+        let err = InvokeModelError::ValidationException(
+            ValidationException::builder().message("boom").build(),
+        );
+        let error: EmbeddingError = match invoke_model_message(err) {
+            (Some(msg), _) => EmbeddingError::from_provider_body(msg),
+            (None, fallback) => EmbeddingError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), Some("boom"));
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn embedding_without_provider_message_yields_provider_error() {
+        let err =
+            InvokeModelError::InternalServerException(InternalServerException::builder().build());
+        let error: EmbeddingError = match invoke_model_message(err) {
+            (Some(msg), _) => EmbeddingError::from_provider_body(msg),
+            (None, fallback) => EmbeddingError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), None);
+    }
+
+    #[test]
+    fn converse_message_returns_provider_message_when_present() {
+        let err = ConverseError::ModelTimeoutException(
+            ModelTimeoutException::builder().message("boom").build(),
+        );
+        let (message, _fallback) = converse_message(err);
+        assert_eq!(message, Some("boom".to_string()));
+    }
+
+    #[test]
+    fn converse_with_provider_message_yields_provider_response() {
+        let err = ConverseError::ModelTimeoutException(
+            ModelTimeoutException::builder().message("boom").build(),
+        );
+        let error: CompletionError = match converse_message(err) {
+            (Some(msg), _) => CompletionError::from_provider_body(msg),
+            (None, fallback) => CompletionError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), Some("boom"));
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn converse_without_provider_message_yields_provider_error() {
+        let err = ConverseError::ModelTimeoutException(ModelTimeoutException::builder().build());
+        let error: CompletionError = match converse_message(err) {
+            (Some(msg), _) => CompletionError::from_provider_body(msg),
+            (None, fallback) => CompletionError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn converse_stream_message_returns_provider_message_when_present() {
+        let err = ConverseStreamError::ModelTimeoutException(
+            ModelTimeoutException::builder().message("boom").build(),
+        );
+        let (message, _fallback) = converse_stream_message(err);
+        assert_eq!(message, Some("boom".to_string()));
+    }
+
+    #[test]
+    fn converse_stream_with_provider_message_yields_provider_response() {
+        let err = ConverseStreamError::ValidationException(
+            ValidationException::builder().message("boom").build(),
+        );
+        let error: CompletionError = match converse_stream_message(err) {
+            (Some(msg), _) => CompletionError::from_provider_body(msg),
+            (None, fallback) => CompletionError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), Some("boom"));
+        assert_eq!(error.provider_response_status(), None);
+    }
+
+    #[test]
+    fn converse_stream_without_provider_message_yields_provider_error() {
+        let err = ConverseStreamError::ValidationException(ValidationException::builder().build());
+        let error: CompletionError = match converse_stream_message(err) {
+            (Some(msg), _) => CompletionError::from_provider_body(msg),
+            (None, fallback) => CompletionError::ProviderError(fallback),
+        };
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+    }
+}
